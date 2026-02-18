@@ -1,0 +1,151 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+/* xterm.js — import after tailwind so its styles take precedence */
+@import "@xterm/xterm/css/xterm.css" layer(xterm);
+
+/* Ensure xterm layer wins over tailwind base */
+@layer xterm {
+  .xterm {
+    position: relative;
+    user-select: none;
+  }
+}
+
+.xterm {
+  padding: 8px;
+  height: 100%;
+}
+
+/* Theme variables for hex-color scoped styles */
+:root {
+  /* Pane tab bar */
+  --pane-tab-bg: #f6f8fa;
+  --pane-tab-border: #d0d7de;
+  --pane-tab-active-bg: #ffffff;
+  --pane-tab-active-text: #1f2328;
+  --pane-tab-active-accent: #0969da;
+  --pane-tab-inactive-text: #656d76;
+  --pane-tab-hover-text: #1f2328;
+  --pane-tab-hover-bg: #eaeef2;
+  --pane-tab-close-hover-bg: #d0d7de;
+
+  /* Terminal area (tmux tab bar, terminal background) */
+  --terminal-bg: #ffffff;
+  --terminal-bar-bg: #f6f8fa;
+  --terminal-bar-border: #d0d7de;
+  --terminal-text: #1f2328;
+  --terminal-text-muted: #656d76;
+  --terminal-text-dimmed: #afb8c1;
+  --terminal-hover-bg: #eaeef2;
+  --terminal-active-bg: #ffffff;
+  --terminal-accent: #0969da;
+  --terminal-danger: #cf222e;
+  --terminal-close-hover-bg: #d0d7de;
+  --terminal-input-bg: #ffffff;
+  --terminal-input-border: #d0d7de;
+
+  /* Scrollbar (xterm) */
+  --scrollbar-track: #f6f8fa;
+  --scrollbar-thumb: #d0d7de;
+  --scrollbar-thumb-hover: #afb8c1;
+}
+
+.dark {
+  --pane-tab-bg: #0d1117;
+  --pane-tab-border: #21262d;
+  --pane-tab-active-bg: #161b22;
+  --pane-tab-active-text: #c9d1d9;
+  --pane-tab-active-accent: #58a6ff;
+  --pane-tab-inactive-text: #7d8590;
+  --pane-tab-hover-text: #c9d1d9;
+  --pane-tab-hover-bg: #21262d;
+  --pane-tab-close-hover-bg: #30363d;
+
+  --terminal-bg: #0d1117;
+  --terminal-bar-bg: #161b22;
+  --terminal-bar-border: #30363d;
+  --terminal-text: #c9d1d9;
+  --terminal-text-muted: #8b949e;
+  --terminal-text-dimmed: #484f58;
+  --terminal-hover-bg: #21262d;
+  --terminal-active-bg: #0d1117;
+  --terminal-accent: #58a6ff;
+  --terminal-danger: #f85149;
+  --terminal-close-hover-bg: #30363d;
+  --terminal-input-bg: #0d1117;
+  --terminal-input-border: #30363d;
+
+  --scrollbar-track: #0d1117;
+  --scrollbar-thumb: #30363d;
+  --scrollbar-thumb-hover: #484f58;
+}
+
+.xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.xterm-viewport::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Sidebar resize handle */
+.sidebar-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  position: relative;
+}
+
+/* Wider hit area for easier grabbing */
+.sidebar-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+}
+
+.sidebar-handle:hover,
+.sidebar-handle.dragging {
+  background: #3b82f6;
+}
+
+/* During drag: prevent iframes/xterm from stealing mouse events */
+body.split-dragging {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+body.split-dragging iframe,
+body.split-dragging .xterm {
+  pointer-events: none;
+}
+
+body.split-dragging-v {
+  cursor: row-resize !important;
+  user-select: none;
+}
+
+body.split-dragging-v iframe,
+body.split-dragging-v .xterm {
+  pointer-events: none;
+}
+
+/* During tab drag: prevent iframes/xterm from intercepting drag events */
+body.tab-dragging iframe,
+body.tab-dragging .xterm {
+  pointer-events: none;
+}

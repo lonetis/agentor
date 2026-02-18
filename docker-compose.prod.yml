@@ -1,0 +1,25 @@
+services:
+  orchestrator:
+    image: ghcr.io/lonetis/agentor-orchestrator:latest
+    restart: unless-stopped
+    container_name: agentor-orchestrator
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - agentor-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agentor-data:/data
+      - ./.cred:/cred
+    environment:
+      - WORKER_IMAGE_PREFIX=ghcr.io/lonetis/
+      - DATA_VOLUME=agentor-data
+    env_file: .env
+
+volumes:
+  agentor-data:
+
+networks:
+  agentor-net:
+    name: agentor-net
+    driver: bridge

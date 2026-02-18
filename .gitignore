@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Nuxt build output
+.nuxt/
+.output/
+
+# Environment
+.env
+
+# OAuth credentials
+.cred/
+
+# Persistent data (environments, etc.)
+data/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

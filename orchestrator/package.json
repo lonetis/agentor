@@ -1,0 +1,28 @@
+{
+  "name": "agentor-orchestrator",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@nuxt/ui": "^3.0.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "dockerode": "^4.0.4",
+    "ws": "^8.18.0",
+    "nanoid": "^5.1.2",
+    "nuxt": "^3.16.0",
+    "tar-stream": "^3.1.7"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.34",
+    "@types/node": "^25.3.0",
+    "@types/ws": "^8.18.0",
+    "@types/tar-stream": "^3.1.4"
+  }
+}

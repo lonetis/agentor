@@ -1,0 +1,38 @@
+OAuth / Subscription Credential Files
+======================================
+
+These files are bind-mounted directly into worker containers so that
+token rotations (e.g. refresh tokens) propagate to all workers instantly.
+Logging in manually inside one worker authenticates all future (and
+existing running) workers.
+
+API keys (always-valid, no rotation) remain in .env.
+
+Setup:
+  cp -r .cred.example .cred
+
+Then fill in the files below as needed. Leave as {} if unused.
+
+claude.json
+-----------
+Path in worker: ~/.claude/.credentials.json
+Contents: OAuth credentials JSON from your Claude Pro/Max subscription.
+  macOS:  security find-generic-password -s "Claude Code-credentials" -w
+  Linux:  cat ~/.claude/.credentials.json
+Or start a worker, run `claude` to log in interactively — the credentials
+will be written back to this file automatically.
+
+codex.json
+----------
+Path in worker: ~/.codex/auth.json
+Contents: Codex auth.json from your ChatGPT Plus/Pro subscription.
+  Run `codex login` locally, then copy ~/.codex/auth.json contents here.
+Or start a worker, run `codex --login` to log in interactively.
+
+gemini.json
+-----------
+Path in worker: ~/.gemini/oauth_creds.json
+Contents: Gemini OAuth credentials from your Google account.
+  Run `gemini` locally, select "Login with Google", then copy the
+  contents of ~/.gemini/oauth_creds.json here.
+Or start a worker, run `gemini` to log in interactively.
