@@ -137,7 +137,7 @@ export class TraefikManager {
       console.warn('[traefik-manager] ACME_EMAIL not configured — TLS certificates will not be issued');
     }
 
-    const image = this.config.workerImagePrefix + this.config.traefikImage;
+    const image = this.config.traefikImage;
 
     const cmd = [
       '--entrypoints.web.address=:80',
