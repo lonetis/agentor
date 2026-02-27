@@ -18,6 +18,7 @@ services:
 
 volumes:
   agentor-data:
+    name: agentor-data
 
 networks:
   agentor-net:
