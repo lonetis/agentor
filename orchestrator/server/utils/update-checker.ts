@@ -1,6 +1,12 @@
 import Docker from 'dockerode';
 import type { Config } from './config';
-import type { ImageUpdateInfo, UpdateStatus, ApplyResult } from '../../shared/types';
+import type { ImageUpdateInfo, UpdateStatus, ApplyResult, UpdatableImage } from '../../shared/types';
+
+interface ImageRef {
+  registry: string;
+  repo: string;
+  tag: string;
+}
 
 export class UpdateChecker {
   private docker: Docker;
@@ -15,12 +21,13 @@ export class UpdateChecker {
       orchestrator: null,
       mapper: null,
       worker: null,
-      isProductionMode: !!config.workerImagePrefix,
+      traefik: null,
+      isProductionMode: !!config.workerImagePrefix || !!config.baseDomain,
     };
   }
 
   async init(): Promise<void> {
-    if (!this.config.workerImagePrefix) return;
+    if (!this.config.workerImagePrefix && !this.config.baseDomain) return;
     await this.check();
     this.pollInterval = setInterval(() => {
       this.check().catch((err) => {
@@ -34,29 +41,47 @@ export class UpdateChecker {
   }
 
   async check(): Promise<UpdateStatus> {
-    if (!this.config.workerImagePrefix) return this.status;
-
     const prefix = this.config.workerImagePrefix;
-    const orchestratorImage = prefix + this.config.orchestratorImage;
-    const mapperImage = prefix + this.config.mapperImage;
-    const workerImage = prefix + this.config.workerImage;
+    const hasPrefix = !!prefix;
+    const hasBaseDomain = !!this.config.baseDomain;
 
-    const [orchestrator, mapper, worker] = await Promise.all([
-      this.checkImage(orchestratorImage),
-      this.checkImage(mapperImage),
-      this.checkImage(workerImage),
-    ]);
+    if (!hasPrefix && !hasBaseDomain) return this.status;
+
+    const checks: Promise<ImageUpdateInfo | null>[] = [];
+
+    if (hasPrefix) {
+      checks.push(
+        this.checkImage(prefix + this.config.orchestratorImage),
+        this.checkImage(prefix + this.config.mapperImage),
+        this.checkImage(prefix + this.config.workerImage),
+      );
+    } else {
+      checks.push(
+        Promise.resolve(null),
+        Promise.resolve(null),
+        Promise.resolve(null),
+      );
+    }
+
+    if (hasBaseDomain) {
+      checks.push(this.checkImage(this.config.traefikImage));
+    } else {
+      checks.push(Promise.resolve(null));
+    }
+
+    const results = await Promise.all(checks);
 
     this.status = {
-      orchestrator,
-      mapper,
-      worker,
-      isProductionMode: true,
+      orchestrator: results[0] ?? null,
+      mapper: results[1] ?? null,
+      worker: results[2] ?? null,
+      traefik: results[3] ?? null,
+      isProductionMode: hasPrefix || hasBaseDomain,
     };
 
-    const updates = [orchestrator, mapper, worker].filter((i) => i.updateAvailable);
+    const updates = results.filter((i) => i?.updateAvailable);
     if (updates.length > 0) {
-      console.log(`[update-checker] ${updates.length} update(s) available: ${updates.map((u) => u.name).join(', ')}`);
+      console.log(`[update-checker] ${updates.length} update(s) available: ${updates.map((u) => u!.name).join(', ')}`);
     }
 
     return this.status;
@@ -87,43 +112,101 @@ export class UpdateChecker {
     }
   }
 
+  private parseImageRef(fullImageName: string): ImageRef {
+    // ghcr.io/org/repo:tag
+    const ghcrMatch = fullImageName.match(/^(ghcr\.io)\/(.+):(.+)$/);
+    if (ghcrMatch) {
+      return { registry: ghcrMatch[1]!, repo: ghcrMatch[2]!, tag: ghcrMatch[3]! };
+    }
+
+    // registry.host/path:tag (any explicit registry)
+    const explicitMatch = fullImageName.match(/^([^/]+\.[^/]+)\/(.+):(.+)$/);
+    if (explicitMatch) {
+      return { registry: explicitMatch[1]!, repo: explicitMatch[2]!, tag: explicitMatch[3]! };
+    }
+
+    // user/repo:tag (Docker Hub)
+    const userMatch = fullImageName.match(/^([^/]+\/[^/]+):(.+)$/);
+    if (userMatch) {
+      return { registry: 'registry-1.docker.io', repo: userMatch[1]!, tag: userMatch[2]! };
+    }
+
+    // official image: traefik:v3 -> library/traefik:v3
+    const officialMatch = fullImageName.match(/^([^/:]+):(.+)$/);
+    if (officialMatch) {
+      return { registry: 'registry-1.docker.io', repo: `library/${officialMatch[1]}`, tag: officialMatch[2]! };
+    }
+
+    // Bare name without tag
+    return { registry: 'registry-1.docker.io', repo: fullImageName.includes('/') ? fullImageName : `library/${fullImageName}`, tag: 'latest' };
+  }
+
+  private async getRegistryToken(ref: ImageRef): Promise<string> {
+    if (ref.registry === 'ghcr.io') {
+      const tokenUrl = `https://ghcr.io/token?scope=repository:${ref.repo}:pull`;
+      const headers: Record<string, string> = {};
+      if (this.config.githubToken) {
+        headers['Authorization'] = 'Basic ' + Buffer.from(`token:${this.config.githubToken}`).toString('base64');
+      }
+      try {
+        const resp = await fetch(tokenUrl, { headers });
+        if (resp.ok) {
+          const data = await resp.json() as { token?: string };
+          return data.token || '';
+        }
+      } catch {
+        // Fall through
+      }
+      return '';
+    }
+
+    // Docker Hub (registry-1.docker.io)
+    const tokenUrl = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${ref.repo}:pull`;
+    try {
+      const resp = await fetch(tokenUrl);
+      if (resp.ok) {
+        const data = await resp.json() as { token?: string };
+        return data.token || '';
+      }
+    } catch {
+      // Fall through
+    }
+    return '';
+  }
+
   private async getLocalDigest(imageName: string): Promise<string> {
     try {
       const image = this.docker.getImage(imageName);
       const info = await image.inspect();
       const repoDigests: string[] = info.RepoDigests || [];
       const repoName = imageName.split(':')[0] ?? '';
+
+      // Try exact prefix match first (works for GHCR: ghcr.io/org/repo@sha256:...)
       const matching = repoDigests.find((d: string) => d.startsWith(repoName + '@'));
-      return matching?.split('@')[1] || '';
+      if (matching) return matching.split('@')[1] || '';
+
+      // Fallback: Docker Hub images may have fully-qualified RepoDigests
+      // e.g. imageName="traefik:v3" but RepoDigest="docker.io/library/traefik@sha256:..."
+      const ref = this.parseImageRef(imageName);
+      const qualifiedPrefix = ref.registry === 'registry-1.docker.io'
+        ? `docker.io/${ref.repo}@`
+        : `${ref.registry}/${ref.repo}@`;
+      const qualifiedMatch = repoDigests.find((d: string) => d.startsWith(qualifiedPrefix));
+      if (qualifiedMatch) return qualifiedMatch.split('@')[1] || '';
+
+      // Last resort: use first digest entry
+      const firstDigest = repoDigests.find((d: string) => d.includes('@'));
+      return firstDigest?.split('@')[1] || '';
     } catch {
       return '';
     }
   }
 
   private async getRemoteDigest(fullImageName: string): Promise<string> {
-    const match = fullImageName.match(/^(.+?)\/(.+):(.+)$/);
-    if (!match) return '';
-    const [, registry, repo, tag] = match;
+    const ref = this.parseImageRef(fullImageName);
+    const token = await this.getRegistryToken(ref);
 
-    // First get a token for the GHCR registry
-    const tokenUrl = `https://${registry}/token?scope=repository:${repo}:pull`;
-    const tokenHeaders: Record<string, string> = {};
-    if (this.config.githubToken) {
-      tokenHeaders['Authorization'] = 'Basic ' + Buffer.from(`token:${this.config.githubToken}`).toString('base64');
-    }
-
-    let bearerToken = '';
-    try {
-      const tokenResp = await fetch(tokenUrl, { headers: tokenHeaders });
-      if (tokenResp.ok) {
-        const tokenData = await tokenResp.json() as { token?: string };
-        bearerToken = tokenData.token || '';
-      }
-    } catch {
-      // Fall back to direct auth
-    }
-
-    const url = `https://${registry}/v2/${repo}/manifests/${tag}`;
+    const url = `https://${ref.registry}/v2/${ref.repo}/manifests/${ref.tag}`;
     const headers: Record<string, string> = {
       'Accept': [
         'application/vnd.docker.distribution.manifest.v2+json',
@@ -133,9 +216,9 @@ export class UpdateChecker {
       ].join(', '),
     };
 
-    if (bearerToken) {
-      headers['Authorization'] = `Bearer ${bearerToken}`;
-    } else if (this.config.githubToken) {
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    } else if (ref.registry === 'ghcr.io' && this.config.githubToken) {
       headers['Authorization'] = `Bearer ${this.config.githubToken}`;
     }
 
@@ -146,7 +229,10 @@ export class UpdateChecker {
   }
 
   async pullImage(imageName: string): Promise<void> {
-    const auth = this.config.githubToken
+    const ref = this.parseImageRef(imageName);
+    const isGhcr = ref.registry === 'ghcr.io';
+
+    const auth = isGhcr && this.config.githubToken
       ? { username: 'token', password: this.config.githubToken }
       : undefined;
 
@@ -161,24 +247,29 @@ export class UpdateChecker {
     });
   }
 
-  async applyUpdates(): Promise<ApplyResult> {
+  async applyUpdates(images?: UpdatableImage[]): Promise<ApplyResult> {
     const result: ApplyResult = {
       orchestratorPulled: false,
       mapperPulled: false,
       workerPulled: false,
+      traefikPulled: false,
       orchestratorRestarting: false,
       errors: [],
     };
 
-    if (!this.config.workerImagePrefix) {
+    const hasPrefix = !!this.config.workerImagePrefix;
+    const hasBaseDomain = !!this.config.baseDomain;
+
+    if (!hasPrefix && !hasBaseDomain) {
       result.errors.push('Not in production mode');
       return result;
     }
 
+    const shouldUpdate = (key: UpdatableImage) => !images || images.includes(key);
     const prefix = this.config.workerImagePrefix;
 
     // Pull mapper image if update available
-    if (this.status.mapper?.updateAvailable) {
+    if (hasPrefix && shouldUpdate('mapper') && this.status.mapper?.updateAvailable) {
       try {
         await this.pullImage(prefix + this.config.mapperImage);
         result.mapperPulled = true;
@@ -188,7 +279,7 @@ export class UpdateChecker {
     }
 
     // Pull worker image if update available
-    if (this.status.worker?.updateAvailable) {
+    if (hasPrefix && shouldUpdate('worker') && this.status.worker?.updateAvailable) {
       try {
         await this.pullImage(prefix + this.config.workerImage);
         result.workerPulled = true;
@@ -197,8 +288,18 @@ export class UpdateChecker {
       }
     }
 
+    // Pull Traefik image if update available
+    if (hasBaseDomain && shouldUpdate('traefik') && this.status.traefik?.updateAvailable) {
+      try {
+        await this.pullImage(this.config.traefikImage);
+        result.traefikPulled = true;
+      } catch (err: unknown) {
+        result.errors.push(`Traefik pull failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     // Pull orchestrator image if update available
-    if (this.status.orchestrator?.updateAvailable) {
+    if (hasPrefix && shouldUpdate('orchestrator') && this.status.orchestrator?.updateAvailable) {
       try {
         await this.pullImage(prefix + this.config.orchestratorImage);
         result.orchestratorPulled = true;
@@ -218,11 +319,13 @@ export class UpdateChecker {
     const info = await container.inspect();
     const newImage = this.config.workerImagePrefix + this.config.orchestratorImage;
     const containerName = info.Name.replace(/^\//, '');
+    const tempName = `${containerName}-next`;
+    const swapperName = `${containerName}-swapper`;
 
-    // Build config for the replacement container
+    // Build config for the replacement container (temp name — ports would conflict)
     const createOpts: Docker.ContainerCreateOptions = {
       Image: newImage,
-      name: containerName,
+      name: tempName,
       Env: info.Config.Env,
       Labels: info.Config.Labels,
       ExposedPorts: info.Config.ExposedPorts,
@@ -243,10 +346,63 @@ export class UpdateChecker {
 
     console.log(`[update-checker] recreating orchestrator: ${containerName} with image ${newImage}`);
 
-    await container.stop();
-    await container.remove();
+    // Clean up leftover containers from a previous failed attempt
+    await this.removeContainerIfExists(tempName);
+    await this.removeContainerIfExists(swapperName);
+
+    // Create replacement container (not started — host port bindings would conflict)
     const newContainer = await this.docker.createContainer(createOpts);
-    await newContainer.start();
+
+    // Delegate the stop→remove→rename→start sequence to a one-shot swapper container.
+    // We can't do this in-process because stopping our own container kills this process.
+    const swapScript = [
+      'const http = require("http");',
+      'function api(method, path) {',
+      '  return new Promise((resolve, reject) => {',
+      '    const req = http.request({ socketPath: "/var/run/docker.sock", method, path }, (res) => {',
+      '      let d = ""; res.on("data", c => d += c);',
+      '      res.on("end", () => resolve({ status: res.statusCode, data: d }));',
+      '    });',
+      '    req.on("error", reject);',
+      '    req.end();',
+      '  });',
+      '}',
+      '(async () => {',
+      `  console.log("[swapper] stopping ${containerName}...");`,
+      `  await api("POST", "/containers/${containerName}/stop?t=30");`,
+      `  await api("POST", "/containers/${containerName}/wait");`,
+      `  console.log("[swapper] removing old container...");`,
+      `  await api("DELETE", "/containers/${containerName}");`,
+      `  console.log("[swapper] renaming ${tempName} -> ${containerName}...");`,
+      `  await api("POST", "/containers/${newContainer.id}/rename?name=${containerName}");`,
+      `  console.log("[swapper] starting new orchestrator...");`,
+      `  const r = await api("POST", "/containers/${newContainer.id}/start");`,
+      '  if (r.status < 300) console.log("[swapper] orchestrator replaced successfully");',
+      '  else { console.error("[swapper] start failed:", r.status, r.data); process.exit(1); }',
+      '})().catch(e => { console.error("[swapper] fatal:", e.message || e); process.exit(1); });',
+    ].join('\n');
+
+    const swapper = await this.docker.createContainer({
+      Image: newImage,
+      name: swapperName,
+      Cmd: ['node', '-e', swapScript],
+      HostConfig: {
+        Binds: ['/var/run/docker.sock:/var/run/docker.sock'],
+        AutoRemove: true,
+        NetworkMode: 'none',
+      },
+    });
+
+    await swapper.start();
+    console.log('[update-checker] swapper started — orchestrator will be replaced shortly');
+  }
+
+  private async removeContainerIfExists(name: string): Promise<void> {
+    try {
+      await this.docker.getContainer(name).remove({ force: true });
+    } catch (err: unknown) {
+      if ((err as { statusCode?: number }).statusCode !== 404) throw err;
+    }
   }
 
 }
