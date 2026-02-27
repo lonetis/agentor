@@ -154,4 +154,6 @@ RUN chmod +x /home/agent/agents/*/setup.sh
 
 WORKDIR /workspace
 
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=120s CMD tmux has-session 2>/dev/null || exit 1
+
 ENTRYPOINT ["/home/agent/entrypoint.sh"]

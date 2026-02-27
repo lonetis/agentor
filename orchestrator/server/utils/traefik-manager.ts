@@ -181,6 +181,7 @@ export class TraefikManager {
       '--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web',
       `--certificatesresolvers.letsencrypt.acme.email=${this.config.acmeEmail}`,
       '--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json',
+      '--ping=true',
     ];
 
     const container = await this.docker.createContainer({
@@ -190,6 +191,12 @@ export class TraefikManager {
       ExposedPorts: { '80/tcp': {}, '443/tcp': {} },
       Labels: {
         [TRAEFIK_LABEL]: TRAEFIK_LABEL_VALUE,
+      },
+      Healthcheck: {
+        Test: ['CMD-SHELL', 'wget -qO- http://localhost:8080/ping || exit 1'],
+        Interval: 30_000_000_000,
+        Timeout: 5_000_000_000,
+        Retries: 3,
       },
       HostConfig: {
         NetworkMode: this.config.dockerNetwork,

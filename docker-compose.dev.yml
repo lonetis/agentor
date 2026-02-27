@@ -4,6 +4,12 @@ services:
     command: sh -c "npm install && npx nuxt dev --host 0.0.0.0"
     container_name: agentor-orchestrator
     working_dir: /app
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     ports:
       - "127.0.0.1:3000:3000"
     networks:
