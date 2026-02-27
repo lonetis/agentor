@@ -16,8 +16,13 @@ else
     BOLD='' GREEN='' YELLOW='' CYAN='' RESET=''
 fi
 
+# Use /dev/tty for prompts so it works even when piped (curl | bash)
 INTERACTIVE=true
-[ ! -t 0 ] && INTERACTIVE=false
+if ! exec 3</dev/tty 2>/dev/null; then
+    INTERACTIVE=false
+else
+    exec 3<&-
+fi
 
 # Temp directory for downloads, cleaned up on exit
 TMPDIR=$(mktemp -d)
@@ -66,7 +71,7 @@ sync_file() {
         echo -e "  ${BOLD}m${RESET}) Merge (open in \$EDITOR)"
         echo -e "  ${BOLD}d${RESET}) Show diff again"
         echo -n "Choice [o/n/m/d]: "
-        read -r choice
+        read -r choice </dev/tty
 
         case "$choice" in
             o|O)
@@ -81,7 +86,7 @@ sync_file() {
             m|M)
                 cp "$local_path" "$local_path.bak"
                 cp "$tmp_file" "$local_path"
-                ${EDITOR:-vi} "$local_path"
+                ${EDITOR:-vi} "$local_path" </dev/tty
                 echo -e "${GREEN}Merged${RESET}     $local_path (backup at $local_path.bak)"
                 return
                 ;;
