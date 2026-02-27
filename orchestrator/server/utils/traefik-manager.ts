@@ -135,11 +135,12 @@ export class TraefikManager {
           middlewares.push(`auth-${safeId}`);
         }
 
+        const isHttpOnly = m.protocol === 'http';
         config.http.routers[`http-${safeId}`] = {
           rule: `Host(\`${host}\`)`,
           service: `http-${safeId}`,
-          entryPoints: ['websecure'],
-          tls: { certResolver: 'letsencrypt' },
+          entryPoints: [isHttpOnly ? 'web' : 'websecure'],
+          ...(isHttpOnly ? {} : { tls: { certResolver: 'letsencrypt' } }),
           ...(middlewares.length > 0 ? { middlewares } : {}),
         };
         config.http.services[`http-${safeId}`] = {
@@ -175,8 +176,6 @@ export class TraefikManager {
     const cmd = [
       '--entrypoints.web.address=:80',
       '--entrypoints.websecure.address=:443',
-      '--entrypoints.web.http.redirections.entrypoint.to=websecure',
-      '--entrypoints.web.http.redirections.entrypoint.scheme=https',
       '--providers.file.filename=/data/traefik-config.json',
       '--providers.file.watch=true',
       '--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web',
