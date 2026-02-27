@@ -47,6 +47,25 @@ export class TraefikManager {
     return this.reconcileQueue;
   }
 
+  forceRecreate(): Promise<void> {
+    this.reconcileQueue = this.reconcileQueue.then(() => this.forceRecreateNow()).catch((err) => {
+      console.error('[traefik-manager] force recreate failed:', err instanceof Error ? err.message : err);
+    });
+    return this.reconcileQueue;
+  }
+
+  private async forceRecreateNow(): Promise<void> {
+    if (!this.config.baseDomain) return;
+
+    const mappings = this.store.list();
+    const hasDashboard = !!this.config.dashboardSubdomain;
+    if (mappings.length === 0 && !hasDashboard) return;
+
+    await this.removeTraefik();
+    await this.writeTraefikConfig(mappings);
+    await this.createTraefik();
+  }
+
   private async reconcileNow(): Promise<void> {
     if (!this.config.baseDomain) return;
 

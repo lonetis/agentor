@@ -64,10 +64,13 @@ export interface ImageUpdateInfo {
   error?: string;
 }
 
+export type UpdatableImage = 'orchestrator' | 'mapper' | 'worker' | 'traefik';
+
 export interface UpdateStatus {
   orchestrator: ImageUpdateInfo | null;
   mapper: ImageUpdateInfo | null;
   worker: ImageUpdateInfo | null;
+  traefik: ImageUpdateInfo | null;
   isProductionMode: boolean;
 }
 
@@ -75,6 +78,7 @@ export interface ApplyResult {
   orchestratorPulled: boolean;
   mapperPulled: boolean;
   workerPulled: boolean;
+  traefikPulled: boolean;
   orchestratorRestarting: boolean;
   errors: string[];
 }

@@ -1,4 +1,4 @@
-import type { UpdateStatus, ApplyResult } from '~/types';
+import type { UpdateStatus, ApplyResult, UpdatableImage } from '~/types';
 
 export function useUpdates() {
   const status = ref<UpdateStatus | null>(null);
@@ -6,6 +6,7 @@ export function useUpdates() {
   const isApplying = ref(false);
   const isRestarting = ref(false);
   const applyErrors = ref<string[]>([]);
+  const applyingImages = ref(new Set<UpdatableImage>());
 
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let healthPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -47,6 +48,30 @@ export function useUpdates() {
       applyErrors.value = [fetchErr.data?.statusMessage || fetchErr.message || 'Update failed'];
     } finally {
       isApplying.value = false;
+    }
+  }
+
+  async function applyImage(image: UpdatableImage) {
+    applyingImages.value.add(image);
+    applyErrors.value = [];
+    try {
+      const result = await $fetch<ApplyResult>('/api/updates/apply', {
+        method: 'POST',
+        body: { images: [image] },
+      });
+      applyErrors.value = result.errors;
+
+      if (result.orchestratorRestarting) {
+        isRestarting.value = true;
+        pollHealth();
+      } else {
+        await fetchStatus();
+      }
+    } catch (err: unknown) {
+      const fetchErr = err as { data?: { statusMessage?: string }; message?: string };
+      applyErrors.value = [fetchErr.data?.statusMessage || fetchErr.message || 'Update failed'];
+    } finally {
+      applyingImages.value.delete(image);
     }
   }
 
@@ -101,6 +126,7 @@ export function useUpdates() {
     if (status.value.orchestrator?.updateAvailable) count++;
     if (status.value.mapper?.updateAvailable) count++;
     if (status.value.worker?.updateAvailable) count++;
+    if (status.value.traefik?.updateAvailable) count++;
     return count;
   });
 
@@ -117,9 +143,11 @@ export function useUpdates() {
     isApplying,
     isRestarting,
     applyErrors,
+    applyingImages,
     updatesAvailable,
     isProductionMode,
     checkNow,
     applyUpdates,
+    applyImage,
   };
 }

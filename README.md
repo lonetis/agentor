@@ -23,7 +23,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 - **App system** — launch Chromium (with CDP) or SOCKS5 proxy instances inside workers
 - **Port mapper** — dedicated container running TCP reverse proxies to expose worker-internal ports to the host
 - **Domain mapping** — Traefik reverse proxy with Let's Encrypt TLS, subdomain-based routing to worker ports, optional HTTP basic auth
-- **Auto-updates** — one-click image updates in production mode with GHCR digest comparison (orchestrator self-replaces)
+- **Auto-updates** — per-image or bulk image updates in production mode with registry-agnostic digest comparison (GHCR + Docker Hub), orchestrator self-replaces
 - **Resource limits** — per-worker CPU and memory constraints
 - **Volume mounts** — bind-mount host directories into workers
 - **Persistent workspaces** — workspace data survives container stops, restarts, and archiving via named Docker volumes

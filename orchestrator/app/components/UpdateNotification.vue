@@ -1,14 +1,18 @@
 <script setup lang="ts">
+import type { ImageUpdateInfo, UpdatableImage } from '~/types';
+
 const {
   status,
   isChecking,
   isApplying,
   isRestarting,
   applyErrors,
+  applyingImages,
   updatesAvailable,
   isProductionMode,
   checkNow,
   applyUpdates,
+  applyImage,
 } = useUpdates();
 
 const expanded = ref(false);
@@ -22,9 +26,28 @@ function shortDigest(digest: string): string {
 
 function imageName(fullName: string): string {
   // ghcr.io/lonetis/agentor-orchestrator:latest -> orchestrator
-  const match = fullName.match(/agentor-(\w+):/);
-  return match?.[1] ?? fullName;
+  const agentorMatch = fullName.match(/agentor-(\w+):/);
+  if (agentorMatch) return agentorMatch[1]!;
+  // traefik:v3 -> traefik, user/repo:tag -> repo
+  const parts = fullName.split(':')[0] ?? fullName;
+  const segments = parts.split('/');
+  return segments[segments.length - 1]!;
 }
+
+function imageKey(info: ImageUpdateInfo): UpdatableImage | null {
+  if (status.value?.orchestrator === info) return 'orchestrator';
+  if (status.value?.mapper === info) return 'mapper';
+  if (status.value?.worker === info) return 'worker';
+  if (status.value?.traefik === info) return 'traefik';
+  return null;
+}
+
+const imageList = computed(() =>
+  [status.value?.orchestrator, status.value?.mapper, status.value?.worker, status.value?.traefik]
+    .filter((i): i is ImageUpdateInfo => !!i)
+);
+
+const anyApplyingImage = computed(() => applyingImages.value.size > 0);
 </script>
 
 <template>
@@ -69,30 +92,41 @@ function imageName(fullName: string): string {
         <!-- Expanded details -->
         <div v-if="expanded" class="mt-2 space-y-1.5">
           <div
-            v-for="info in [status?.orchestrator, status?.mapper, status?.worker].filter(Boolean)"
-            :key="info!.name"
+            v-for="info in imageList"
+            :key="info.name"
             class="text-xs"
           >
-            <div class="flex items-center justify-between">
-              <span class="font-medium text-amber-700 dark:text-amber-300">{{ imageName(info!.name) }}</span>
-              <span
-                v-if="info!.updateAvailable"
-                class="text-amber-600 dark:text-amber-400"
-              >
-                {{ shortDigest(info!.localDigest) }} -> {{ shortDigest(info!.remoteDigest) }}
-              </span>
-              <span
-                v-else-if="info!.error"
-                class="text-red-500"
-              >
-                error
-              </span>
-              <span
-                v-else
-                class="text-green-600 dark:text-green-400"
-              >
-                up to date
-              </span>
+            <div class="flex items-center justify-between gap-1">
+              <span class="font-medium text-amber-700 dark:text-amber-300">{{ imageName(info.name) }}</span>
+              <div class="flex items-center gap-1.5">
+                <span
+                  v-if="info.updateAvailable"
+                  class="text-amber-600 dark:text-amber-400"
+                >
+                  {{ shortDigest(info.localDigest) }} -> {{ shortDigest(info.remoteDigest) }}
+                </span>
+                <span
+                  v-else-if="info.error"
+                  class="text-red-500"
+                >
+                  error
+                </span>
+                <span
+                  v-else
+                  class="text-green-600 dark:text-green-400"
+                >
+                  up to date
+                </span>
+                <button
+                  v-if="info.updateAvailable && imageKey(info)"
+                  class="ml-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 hover:bg-amber-300 dark:hover:bg-amber-700 disabled:opacity-50"
+                  :disabled="isApplying || anyApplyingImage || isChecking"
+                  @click="applyImage(imageKey(info)!)"
+                >
+                  <template v-if="applyingImages.has(imageKey(info)!)">...</template>
+                  <template v-else>Update</template>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -114,17 +148,17 @@ function imageName(fullName: string): string {
             size="xs"
             color="warning"
             :loading="isApplying"
-            :disabled="isChecking"
+            :disabled="isChecking || anyApplyingImage"
             @click="applyUpdates"
           >
-            Update Now
+            Update All
           </UButton>
           <UButton
             size="xs"
             color="neutral"
             variant="ghost"
             :loading="isChecking"
-            :disabled="isApplying"
+            :disabled="isApplying || anyApplyingImage"
             @click="checkNow"
           >
             Re-check

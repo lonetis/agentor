@@ -11,6 +11,7 @@ export type {
   ContainerStatus,
   CreateContainerRequest,
   ImageUpdateInfo,
+  UpdatableImage,
   UpdateStatus,
   ApplyResult,
 } from '../../shared/types';

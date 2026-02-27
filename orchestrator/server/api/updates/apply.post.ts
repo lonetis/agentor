@@ -1,6 +1,7 @@
-import { useUpdateChecker, useMapperManager } from '../../utils/services';
+import type { UpdatableImage } from '../../../shared/types';
+import { useUpdateChecker, useMapperManager, useTraefikManager } from '../../utils/services';
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
   const checker = useUpdateChecker();
   const status = checker.getStatus();
 
@@ -8,15 +9,19 @@ export default defineEventHandler(async () => {
     throw createError({ statusCode: 400, statusMessage: 'Not in production mode' });
   }
 
+  const body = await readBody<{ images?: UpdatableImage[] }>(event).catch(() => null);
+  const images = body?.images;
+
   const hasUpdates = status.orchestrator?.updateAvailable
     || status.mapper?.updateAvailable
-    || status.worker?.updateAvailable;
+    || status.worker?.updateAvailable
+    || status.traefik?.updateAvailable;
 
   if (!hasUpdates) {
     throw createError({ statusCode: 400, statusMessage: 'No updates available' });
   }
 
-  const result = await checker.applyUpdates();
+  const result = await checker.applyUpdates(images);
 
   // Force-recreate mapper container with new image if pulled
   if (result.mapperPulled) {
@@ -24,6 +29,15 @@ export default defineEventHandler(async () => {
       await useMapperManager().forceRecreate();
     } catch (err: unknown) {
       result.errors.push(`Mapper recreate failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Force-recreate Traefik container with new image if pulled
+  if (result.traefikPulled) {
+    try {
+      await useTraefikManager().forceRecreate();
+    } catch (err: unknown) {
+      result.errors.push(`Traefik recreate failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
