@@ -14,6 +14,7 @@ export class TraefikManager {
   private config: Config;
   private store: DomainMappingStore;
   private reconcileQueue: Promise<void> = Promise.resolve();
+  private configFileJustCreated = false;
 
   constructor(config: Config, store: DomainMappingStore) {
     this.docker = new Docker({ socketPath: '/var/run/docker.sock' });
@@ -32,9 +33,9 @@ export class TraefikManager {
     try {
       await access(configPath);
     } catch {
-      const empty = { http: { routers: {}, services: {}, middlewares: {} }, tcp: { routers: {}, services: {} } };
       await mkdir(dirname(configPath), { recursive: true });
-      await writeFile(configPath, JSON.stringify(empty, null, 2));
+      await writeFile(configPath, '{}');
+      this.configFileJustCreated = true;
       console.log('[traefik-manager] created empty config file');
     }
   }
@@ -61,9 +62,16 @@ export class TraefikManager {
 
     const container = await this.findTraefik();
     if (container) {
-      const info = await this.docker.getContainer(container.Id).inspect();
+      const c = this.docker.getContainer(container.Id);
+      const info = await c.inspect();
       if (!info.State.Running) {
-        await this.docker.getContainer(container.Id).start();
+        await c.start();
+      } else if (this.configFileJustCreated) {
+        // Config file was just created — Traefik likely started before it existed,
+        // causing the file provider to fail fatally. Restart to reinitialize.
+        this.configFileJustCreated = false;
+        await c.restart();
+        console.log('[traefik-manager] restarted Traefik (config file was recreated)');
       }
       return;
     }
@@ -140,9 +148,19 @@ export class TraefikManager {
       }
     }
 
+    // Strip empty sub-objects — Traefik v3 rejects standalone empty maps
+    const clean: Record<string, unknown> = {};
+    for (const [proto, sections] of Object.entries(config)) {
+      const filtered: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(sections as Record<string, Record<string, unknown>>)) {
+        if (Object.keys(val).length > 0) filtered[key] = val;
+      }
+      if (Object.keys(filtered).length > 0) clean[proto] = filtered;
+    }
+
     const configPath = join(this.config.dataDir, 'traefik-config.json');
     await mkdir(dirname(configPath), { recursive: true });
-    await writeFile(configPath, JSON.stringify(config, null, 2));
+    await writeFile(configPath, JSON.stringify(clean, null, 2));
   }
 
   private async createTraefik(): Promise<void> {
