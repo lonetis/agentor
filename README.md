@@ -2,6 +2,8 @@
 
 Self-hosted alternative to Claude Code Web, Codex in the Cloud, and similar managed agent environments — with full control over the runtime environment. Spawns isolated AI coding agent workers in Docker containers, each with terminal access, a virtual desktop, port forwarding, and optional git repo cloning, all managed through a web dashboard.
 
+![Agentor Dashboard](docs/screenshot.png)
+
 ## Pre-installed Agents
 
 All agents are installed in a single unified worker image. Start any agent via init script presets or manually in the terminal.
