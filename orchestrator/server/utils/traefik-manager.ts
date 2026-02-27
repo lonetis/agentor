@@ -139,6 +139,8 @@ export class TraefikManager {
 
     const image = this.config.traefikImage;
 
+    await this.ensureImage(image);
+
     const cmd = [
       '--entrypoints.web.address=:80',
       '--entrypoints.websecure.address=:443',
@@ -175,6 +177,19 @@ export class TraefikManager {
 
     await container.start();
     console.log('[traefik-manager] created Traefik container');
+  }
+
+  private async ensureImage(image: string): Promise<void> {
+    try {
+      await this.docker.getImage(image).inspect();
+    } catch {
+      console.log(`[traefik-manager] pulling image ${image}...`);
+      const stream = await this.docker.pull(image);
+      await new Promise<void>((resolve, reject) => {
+        this.docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()));
+      });
+      console.log(`[traefik-manager] pulled image ${image}`);
+    }
   }
 
   private async removeTraefik(): Promise<void> {
