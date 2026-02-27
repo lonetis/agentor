@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, access } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import Docker from 'dockerode';
 import type { Config } from './config';
@@ -23,7 +23,20 @@ export class TraefikManager {
 
   async init(): Promise<void> {
     if (!this.config.baseDomain) return;
+    await this.ensureConfigFile();
     await this.reconcile();
+  }
+
+  private async ensureConfigFile(): Promise<void> {
+    const configPath = join(this.config.dataDir, 'traefik-config.json');
+    try {
+      await access(configPath);
+    } catch {
+      const empty = { http: { routers: {}, services: {}, middlewares: {} }, tcp: { routers: {}, services: {} } };
+      await mkdir(dirname(configPath), { recursive: true });
+      await writeFile(configPath, JSON.stringify(empty, null, 2));
+      console.log('[traefik-manager] created empty config file');
+    }
   }
 
   reconcile(): Promise<void> {
