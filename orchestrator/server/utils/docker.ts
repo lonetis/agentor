@@ -104,6 +104,7 @@ export class DockerService {
     }
 
     const image = this.config.workerImagePrefix + this.config.workerImage;
+    await this.ensureImage(image);
 
     // Add CAP_NET_ADMIN when network restrictions are needed (for iptables)
     // Docker-in-Docker requires --privileged (which implies all caps)
@@ -332,6 +333,19 @@ export class DockerService {
   }
 
   // --- Helpers ---
+
+  async ensureImage(image: string): Promise<void> {
+    try {
+      await this.docker.getImage(image).inspect();
+    } catch {
+      console.log(`[docker] pulling image ${image}...`);
+      const stream = await this.docker.pull(image);
+      await new Promise<void>((resolve, reject) => {
+        this.docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()));
+      });
+      console.log(`[docker] pulled image ${image}`);
+    }
+  }
 
   private parseMemoryLimit(limit: string): number {
     const match = limit.match(/^(\d+(?:\.\d+)?)\s*(b|k|m|g|kb|mb|gb)$/i);

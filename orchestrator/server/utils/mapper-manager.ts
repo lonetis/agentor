@@ -70,6 +70,8 @@ export class MapperManager {
     portBindings: Record<string, { HostIp: string; HostPort: string }[]>
   ): Promise<void> {
     const image = this.config.workerImagePrefix + this.config.mapperImage;
+    await this.ensureImage(image);
+
     const exposedPorts: Record<string, object> = {};
     for (const key of Object.keys(portBindings)) {
       exposedPorts[key] = {};
@@ -101,6 +103,19 @@ export class MapperManager {
     const desired = this.buildPortBindings(mappings);
     await this.removeMapper();
     await this.createMapper(mappings, desired);
+  }
+
+  private async ensureImage(image: string): Promise<void> {
+    try {
+      await this.docker.getImage(image).inspect();
+    } catch {
+      console.log(`[mapper-manager] pulling image ${image}...`);
+      const stream = await this.docker.pull(image);
+      await new Promise<void>((resolve, reject) => {
+        this.docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()));
+      });
+      console.log(`[mapper-manager] pulled image ${image}`);
+    }
   }
 
   private async removeMapper(): Promise<void> {
