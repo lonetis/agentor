@@ -22,6 +22,7 @@ const emit = defineEmits<{
   downloadWorkspace: [id: string];
   unarchiveWorker: [name: string];
   deleteArchivedWorker: [name: string];
+  toggleCollapse: [];
 }>();
 
 const archivedCollapsed = ref(true);
@@ -45,7 +46,18 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
     <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
       <div class="flex items-center justify-between">
         <h1 class="text-lg font-bold text-gray-900 dark:text-white">Agentor</h1>
-        <ThemeToggle />
+        <div class="flex items-center gap-1">
+          <ThemeToggle />
+          <button
+            class="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
+            title="Collapse sidebar"
+            @click="emit('toggleCollapse')"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+          </button>
+        </div>
       </div>
       <p class="text-xs text-gray-500 mt-0.5">Orchestrator</p>
       <UButton class="w-full mt-3" @click="emit('newWorker')">

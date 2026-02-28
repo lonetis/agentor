@@ -25,7 +25,7 @@ const {
 const showCreateModal = ref(false);
 const showEnvironmentsModal = ref(false);
 
-const { sidebarWidth, isDragging, startDrag } = useSidebarResize();
+const { sidebarWidth, isDragging, isCollapsed, isMobile, startDrag, toggleCollapse } = useSidebarResize();
 
 function handleOpenTab(containerId: string, type: 'terminal' | 'desktop' | 'apps' | 'editor') {
   const container = containers.value.find((c) => c.id === containerId);
@@ -96,9 +96,20 @@ function openEnvironmentsFromModal() {
 
 <template>
   <div class="flex h-screen bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
+    <!-- Mobile backdrop -->
+    <div
+      v-if="isMobile && !isCollapsed"
+      class="sidebar-backdrop"
+      @click="toggleCollapse"
+    />
+
     <!-- Sidebar -->
     <AppSidebar
-      :style="{ width: sidebarWidth + 'px' }"
+      :style="{ width: isCollapsed ? '0px' : sidebarWidth + 'px' }"
+      :class="[
+        'sidebar-panel',
+        { 'sidebar-collapsed': isCollapsed, 'sidebar-mobile': isMobile },
+      ]"
       :containers="containers"
       :tabs="tabs"
       :active-tab-id="activeTabId"
@@ -116,14 +127,29 @@ function openEnvironmentsFromModal() {
       @download-workspace="handleDownloadWorkspace"
       @unarchive-worker="handleUnarchive"
       @delete-archived-worker="handleDeleteArchived"
+      @toggle-collapse="toggleCollapse"
     />
 
     <!-- Sidebar resize handle -->
     <div
+      v-if="!isCollapsed && !isMobile"
       class="sidebar-handle"
       :class="{ dragging: isDragging }"
       @mousedown="startDrag"
     />
+
+    <!-- Collapsed sidebar rail -->
+    <div v-if="isCollapsed" class="sidebar-rail">
+      <button
+        class="sidebar-expand-btn"
+        title="Expand sidebar"
+        @click="toggleCollapse"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+    </div>
 
     <!-- Main content -->
     <main class="flex-1 flex min-w-0 min-h-0">

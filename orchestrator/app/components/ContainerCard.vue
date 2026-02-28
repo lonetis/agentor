@@ -46,7 +46,7 @@ const isRunning = computed(() => props.container.status === 'running');
 
 <template>
   <div
-    class="rounded-lg p-3 border transition-colors"
+    class="rounded-lg p-3 border transition-colors overflow-hidden"
     :class="[
       isActive ? 'bg-blue-50/60 dark:bg-gray-800/60 border-blue-500/50 shadow-lg shadow-blue-500/10' : 'bg-gray-100/60 dark:bg-gray-800/40 border-gray-300/50 dark:border-gray-700/50',
     ]"
@@ -68,7 +68,7 @@ const isRunning = computed(() => props.container.status === 'running');
     <div class="mb-2" />
 
     <!-- View buttons -->
-    <div v-if="isRunning" class="flex items-center gap-1.5 mb-2">
+    <div v-if="isRunning" class="flex items-center flex-wrap gap-1.5 mb-2">
       <UTooltip text="Terminal">
         <UButton
           size="xs"
@@ -147,16 +147,7 @@ const isRunning = computed(() => props.container.status === 'running');
     </div>
 
     <!-- Action buttons -->
-    <div class="flex items-center gap-1.5 pt-2 border-t border-gray-300/50 dark:border-gray-700/50">
-      <UButton
-        v-if="isRunning"
-        size="xs"
-        color="warning"
-        variant="solid"
-        @click="emit('stop', container.id)"
-      >
-        Stop
-      </UButton>
+    <div class="flex items-center flex-wrap gap-1.5 pt-2 border-t border-gray-300/50 dark:border-gray-700/50">
       <UButton
         v-if="container.status === 'stopped'"
         size="xs"
@@ -168,9 +159,18 @@ const isRunning = computed(() => props.container.status === 'running');
       </UButton>
       <div class="flex-1" />
       <UButton
+        v-if="isRunning"
         size="xs"
         color="neutral"
         variant="subtle"
+        @click="emit('stop', container.id)"
+      >
+        Stop
+      </UButton>
+      <UButton
+        size="xs"
+        color="warning"
+        variant="solid"
         @click="emit('archive', container.id)"
       >
         Archive
