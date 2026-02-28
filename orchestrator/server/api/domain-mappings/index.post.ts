@@ -72,7 +72,14 @@ export default defineEventHandler(async (event) => {
   };
 
   const store = useDomainMappingStore();
-  await store.add(mapping);
+  try {
+    await store.add(mapping);
+  } catch (err) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: err instanceof Error ? err.message : 'Subdomain conflict',
+    });
+  }
   await useTraefikManager().reconcile();
 
   setResponseStatus(event, 201);
