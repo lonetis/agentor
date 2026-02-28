@@ -2,37 +2,39 @@ OAuth / Subscription Credential Files
 ======================================
 
 These files are bind-mounted directly into worker containers so that
-token rotations (e.g. refresh tokens) propagate to all workers instantly.
-Logging in manually inside one worker authenticates all future (and
-existing running) workers.
+all workers share the same credentials. You only need to log in once
+after installing Agentor — the credentials are written back to these
+files automatically and propagate to all workers instantly.
+
+IMPORTANT: Do NOT copy OAuth tokens from your local machine. OAuth
+refresh tokens rotate on use, so copying them would cause the local
+and worker tokens to go out of sync and break authentication on both
+sides. Always log in inside a worker instead.
 
 API keys (always-valid, no rotation) remain in .env.
 
 Setup:
   cp -r .cred.example .cred
 
-Then fill in the files below as needed. Leave as {} if unused.
+Then start a worker and log in to each agent you want to use:
 
 claude.json
 -----------
 Path in worker: ~/.claude/.credentials.json
-Contents: OAuth credentials JSON from your Claude Pro/Max subscription.
-  macOS:  security find-generic-password -s "Claude Code-credentials" -w
-  Linux:  cat ~/.claude/.credentials.json
-Or start a worker, run `claude` to log in interactively — the credentials
-will be written back to this file automatically.
+Log in once: open a worker terminal, run `claude`, then use `/login`.
+The credentials are written back to this file automatically and all
+current and future workers are authenticated.
 
 codex.json
 ----------
 Path in worker: ~/.codex/auth.json
-Contents: Codex auth.json from your ChatGPT Plus/Pro subscription.
-  Run `codex login` locally, then copy ~/.codex/auth.json contents here.
-Or start a worker, run `codex --login` to log in interactively.
+Log in once: open a worker terminal, run `codex login --device-auth`.
+The credentials are written back to this file automatically and all
+current and future workers are authenticated.
 
 gemini.json
 -----------
 Path in worker: ~/.gemini/oauth_creds.json
-Contents: Gemini OAuth credentials from your Google account.
-  Run `gemini` locally, select "Login with Google", then copy the
-  contents of ~/.gemini/oauth_creds.json here.
-Or start a worker, run `gemini` to log in interactively.
+Log in once: open a worker terminal, run `gemini`, then use `/auth`.
+The credentials are written back to this file automatically and all
+current and future workers are authenticated.

@@ -8,11 +8,11 @@ Self-hosted alternative to Claude Code Web, Codex in the Cloud, and similar mana
 
 All agents are installed in a single unified worker image. Start any agent via init script presets or manually in the terminal.
 
-| Agent | | Auth |
-|-------|---|------|
-| **Claude** | [anthropics/claude-code](https://github.com/anthropics/claude-code) | `.cred/claude.json` or `ANTHROPIC_API_KEY` |
-| **Codex** | [openai/codex](https://github.com/openai/codex) | `.cred/codex.json` or `OPENAI_API_KEY` |
-| **Gemini** | [google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) | `.cred/gemini.json` or `GEMINI_API_KEY` |
+| Agent | | OAuth Login (in worker) | API Key (in `.env`) |
+|-------|---|------------------------|---------------------|
+| **Claude** | [anthropics/claude-code](https://github.com/anthropics/claude-code) | `claude` → `/login` | `ANTHROPIC_API_KEY` |
+| **Codex** | [openai/codex](https://github.com/openai/codex) | `codex login --device-auth` | `OPENAI_API_KEY` |
+| **Gemini** | [google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) | `gemini` → `/auth` | `GEMINI_API_KEY` |
 
 ## Features
 
@@ -44,7 +44,7 @@ curl -fsSL https://raw.githubusercontent.com/lonetis/agentor/main/install.sh | b
 
 This downloads `docker-compose.yml`, `.env`, and `.cred/` template files into the current directory. Then:
 
-1. Edit `.env` and `.cred/` with your API keys / credentials (see [`.env.example`](.env.example), [`.cred.example/README`](.cred.example/README))
+1. Edit `.env` with your API keys (see [`.env.example`](.env.example)) — for OAuth auth, log in once inside a worker instead (see [`.cred.example/README`](.cred.example/README))
 2. `docker compose up -d`
 3. Open **http://localhost:3000**
 
@@ -65,7 +65,7 @@ This downloads `docker-compose.yml`, `.env`, and `.cred/` template files into th
    cp -r .cred.example .cred
    ```
 
-2. Edit `.env` — everything works out of the box with defaults, but see [`.env.example`](.env.example) for all available options. For OAuth/subscription credentials, fill in the JSON files in `.cred/` (see [`.cred.example/README`](.cred.example/README)).
+2. Edit `.env` — everything works out of the box with defaults, but see [`.env.example`](.env.example) for all available options. For OAuth/subscription authentication, start a worker and log in once — credentials are shared across all workers automatically (see [`.cred.example/README`](.cred.example/README)).
 
 ---
 

@@ -119,6 +119,6 @@ sync_file "$BASE/.cred.example/gemini.json"  ".cred/gemini.json"
 
 echo ""
 echo "Done! Next steps:"
-echo "  1. Edit .env and .cred/ files with your API keys / credentials"
+echo "  1. Edit .env with your API keys (for OAuth, log in inside a worker — see .cred/README)"
 echo "  2. docker compose up -d"
 echo "  3. Open http://localhost:3000"
