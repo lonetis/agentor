@@ -435,7 +435,7 @@ export class ContainerManager {
 
   async createTmuxWindow(id: string, name?: string): Promise<string> {
     const windowName = name || `shell-${nanoid(4)}`;
-    await this.dockerService.execTmux(id, ['new-window', '-t', 'main', '-n', windowName]);
+    await this.dockerService.execTmux(id, ['new-window', '-t', 'main:', '-n', windowName]);
     return windowName;
   }
 

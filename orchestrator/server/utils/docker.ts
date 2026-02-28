@@ -200,7 +200,7 @@ export class DockerService {
         'tmux',
         'list-windows',
         '-t',
-        'main',
+        'main:',
         '-F',
         '#{window_index}:#{window_name}:#{window_active}',
       ],
