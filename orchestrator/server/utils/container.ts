@@ -444,7 +444,7 @@ export class ContainerManager {
   }
 
   async killTmuxWindow(id: string, windowName: string): Promise<void> {
-    if (windowName === 'shell') {
+    if (windowName === 'main') {
       throw new Error('Cannot kill the main tmux window');
     }
     await this.dockerService.execTmux(id, ['kill-window', '-t', `main:${windowName}`]);

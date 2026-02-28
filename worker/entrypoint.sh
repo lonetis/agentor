@@ -72,7 +72,7 @@ wait_for_port() {
 # real-time progress with spinner animation. The pane is replaced with a
 # clean shell + init script only after everything is fully ready.
 # ==========================================================================
-WINDOW_NAME="shell"
+WINDOW_NAME="main"
 _boot
 _total 8
 tmux new-session -d -s main -n "$WINDOW_NAME" -c /workspace \
@@ -361,12 +361,12 @@ if [ -n "$INIT_SCRIPT_B64" ]; then
     fi
 fi
 
-# Configure pane persistence — always relaunch the same command on exit
+# Configure pane persistence — respawn a clean shell on exit (never re-run init script)
 tmux set-option -w -t "main:$WINDOW_NAME" remain-on-exit on
 tmux set-hook -t main pane-died \
-    "if-shell -F '#{==:#{window_name},shell}' 'respawn-pane -k -c /workspace $PANE_CMD'"
+    "if-shell -F '#{==:#{window_name},main}' 'respawn-pane -k -c /workspace bash'"
 
-# Replace loading screen with the shell pane command
+# Replace loading screen with the shell pane command (init script runs once)
 tmux respawn-pane -k -t "main:$WINDOW_NAME" -c /workspace $PANE_CMD
 
 _log "Startup complete"

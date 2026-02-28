@@ -44,7 +44,7 @@ function handleTerminalOpen(peer: Peer): void {
   }
 
   dockerService
-    .execAttachTmuxWindow(params.containerId, params.windowName || 'shell')
+    .execAttachTmuxWindow(params.containerId, params.windowName || 'main')
     .then(({ exec, stream }) => {
       if (ctx.closed) {
         stream.end();

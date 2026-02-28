@@ -7,7 +7,7 @@ const { $Terminal, $FitAddon } = useNuxtApp();
 
 const containerIdRef = toRef(props, 'containerId');
 
-const defaultWindow = 'shell';
+const defaultWindow = 'main';
 
 const {
   windows,
