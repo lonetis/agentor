@@ -5,17 +5,24 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event);
   const config = useConfig();
 
-  if (!config.baseDomain) {
+  if (config.baseDomains.length === 0) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Domain mapping is not enabled (BASE_DOMAIN not set)',
+      statusMessage: 'Domain mapping is not enabled (BASE_DOMAINS not set)',
     });
   }
 
-  if (!body.subdomain || !body.protocol || !body.workerId || !body.internalPort) {
+  if (!body.subdomain || !body.protocol || !body.workerId || !body.internalPort || !body.baseDomain) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Missing required fields: subdomain, protocol, workerId, internalPort',
+      statusMessage: 'Missing required fields: subdomain, baseDomain, protocol, workerId, internalPort',
+    });
+  }
+
+  if (!config.baseDomains.includes(body.baseDomain)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `baseDomain must be one of: ${config.baseDomains.join(', ')}`,
     });
   }
 
@@ -62,6 +69,7 @@ export default defineEventHandler(async (event) => {
   const mapping = {
     id: nanoid(),
     subdomain: body.subdomain,
+    baseDomain: body.baseDomain,
     protocol: body.protocol,
     workerId: body.workerId,
     workerName: containerInfo.name,

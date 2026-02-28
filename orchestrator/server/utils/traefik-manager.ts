@@ -23,7 +23,7 @@ export class TraefikManager {
   }
 
   async init(): Promise<void> {
-    if (!this.config.baseDomain) return;
+    if (this.config.baseDomains.length === 0) return;
     await this.ensureConfigFile();
     await this.reconcile();
   }
@@ -55,7 +55,7 @@ export class TraefikManager {
   }
 
   private async forceRecreateNow(): Promise<void> {
-    if (!this.config.baseDomain) return;
+    if (this.config.baseDomains.length === 0) return;
 
     const mappings = this.store.list();
     const hasDashboard = !!this.config.dashboardSubdomain;
@@ -67,7 +67,7 @@ export class TraefikManager {
   }
 
   private async reconcileNow(): Promise<void> {
-    if (!this.config.baseDomain) return;
+    if (this.config.baseDomains.length === 0) return;
 
     const mappings = this.store.list();
     const hasDashboard = !!this.config.dashboardSubdomain;
@@ -99,14 +99,13 @@ export class TraefikManager {
   }
 
   private async writeTraefikConfig(mappings: DomainMapping[]): Promise<void> {
-    const baseDomain = this.config.baseDomain;
     const config = {
       http: { routers: {} as Record<string, unknown>, services: {} as Record<string, unknown>, middlewares: {} as Record<string, unknown> },
       tcp: { routers: {} as Record<string, unknown>, services: {} as Record<string, unknown> },
     };
 
-    if (this.config.dashboardSubdomain) {
-      const dashHost = `${this.config.dashboardSubdomain}.${baseDomain}`;
+    if (this.config.dashboardSubdomain && this.config.dashboardBaseDomain) {
+      const dashHost = `${this.config.dashboardSubdomain}.${this.config.dashboardBaseDomain}`;
       const dashMiddlewares: string[] = [];
 
       if (this.config.dashboardAuthUser && this.config.dashboardAuthPassword) {
@@ -130,7 +129,7 @@ export class TraefikManager {
     }
 
     for (const m of mappings) {
-      const host = `${m.subdomain}.${baseDomain}`;
+      const host = `${m.subdomain}.${m.baseDomain}`;
       const safeId = m.id.replace(/[^a-zA-Z0-9-]/g, '');
 
       if (m.protocol === 'tcp') {

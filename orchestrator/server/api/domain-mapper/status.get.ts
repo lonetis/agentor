@@ -5,11 +5,11 @@ export default defineEventHandler(() => {
   const mappings = useDomainMappingStore().list();
 
   return {
-    enabled: !!config.baseDomain,
-    baseDomain: config.baseDomain,
+    enabled: config.baseDomains.length > 0,
+    baseDomains: config.baseDomains,
     totalMappings: mappings.length,
-    ...(config.dashboardSubdomain && config.baseDomain
-      ? { dashboardUrl: `https://${config.dashboardSubdomain}.${config.baseDomain}` }
+    ...(config.dashboardSubdomain && config.dashboardBaseDomain
+      ? { dashboardUrl: `https://${config.dashboardSubdomain}.${config.dashboardBaseDomain}` }
       : {}),
   };
 });

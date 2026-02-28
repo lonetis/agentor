@@ -12,9 +12,18 @@ const formSubdomain = ref('');
 const formProtocol = ref<'http' | 'https' | 'tcp'>('http');
 const formWorkerId = ref('');
 const formInternalPort = ref<number | undefined>();
+const formBaseDomain = ref('');
 const formAuthEnabled = ref(false);
 const formAuthUsername = ref('');
 const formAuthPassword = ref('');
+
+const multiDomain = computed(() => status.value.baseDomains.length > 1);
+
+watch(() => status.value.baseDomains, (domains) => {
+  if (!formBaseDomain.value && domains.length > 0) {
+    formBaseDomain.value = domains[0]!;
+  }
+}, { immediate: true });
 
 const runningContainers = computed(() =>
   props.containers.filter((c) => c.status === 'running')
@@ -22,6 +31,7 @@ const runningContainers = computed(() =>
 
 function resetForm() {
   formSubdomain.value = '';
+  formBaseDomain.value = status.value.baseDomains[0] || '';
   formProtocol.value = 'http';
   formWorkerId.value = '';
   formInternalPort.value = undefined;
@@ -32,9 +42,10 @@ function resetForm() {
 }
 
 async function handleCreate() {
-  if (!formSubdomain.value || !formWorkerId.value || !formInternalPort.value) return;
+  if (!formSubdomain.value || !formWorkerId.value || !formInternalPort.value || !formBaseDomain.value) return;
   await createMapping({
     subdomain: formSubdomain.value,
+    baseDomain: formBaseDomain.value,
     protocol: formProtocol.value,
     workerId: formWorkerId.value,
     internalPort: formInternalPort.value,
@@ -82,7 +93,14 @@ const protocolColors: Record<string, string> = {
           placeholder="subdomain"
           class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
         />
-        <span class="text-gray-400 dark:text-gray-500 text-[10px] shrink-0">.{{ status.baseDomain }}</span>
+        <select
+          v-if="multiDomain"
+          v-model="formBaseDomain"
+          class="bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 rounded px-1 py-1 text-[10px] shrink-0"
+        >
+          <option v-for="d in status.baseDomains" :key="d" :value="d">.{{ d }}</option>
+        </select>
+        <span v-else class="text-gray-400 dark:text-gray-500 text-[10px] shrink-0">.{{ status.baseDomains[0] }}</span>
       </div>
       <div class="flex gap-1.5 items-center">
         <input
@@ -145,7 +163,7 @@ const protocolColors: Record<string, string> = {
       >
         {{ m.protocol }}
       </span>
-      <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.subdomain }}.{{ status.baseDomain }}</span>
+      <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.subdomain }}.{{ m.baseDomain }}</span>
       <svg
         v-if="m.basicAuth"
         class="w-3 h-3 text-amber-500 shrink-0"

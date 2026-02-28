@@ -61,6 +61,7 @@ export interface PortMapping {
 export interface DomainMapping {
   id: string;
   subdomain: string;
+  baseDomain: string;
   protocol: 'http' | 'https' | 'tcp';
   workerId: string;
   workerName: string;
@@ -73,7 +74,7 @@ export interface DomainMapping {
 
 export interface DomainMapperStatus {
   enabled: boolean;
-  baseDomain: string;
+  baseDomains: string[];
   totalMappings: number;
   dashboardUrl?: string;
 }

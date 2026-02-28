@@ -14,7 +14,8 @@ export interface Config {
   workerImagePrefix: string;
   packageManagerDomains: string[];
   dataDir: string;
-  baseDomain: string;
+  baseDomains: string[];
+  dashboardBaseDomain: string;
   dashboardSubdomain: string;
   acmeEmail: string;
   traefikImage: string;
@@ -24,6 +25,14 @@ export interface Config {
 
 export function loadConfig(): Config {
   const pmDomainsEnv = process.env.PACKAGE_MANAGER_DOMAINS?.trim();
+
+  const baseDomains = (process.env.BASE_DOMAINS || process.env.BASE_DOMAIN || '')
+    .split(',').map((d) => d.trim()).filter(Boolean);
+
+  const dashboardBaseDomainEnv = process.env.DASHBOARD_BASE_DOMAIN?.trim() || '';
+  const dashboardBaseDomain = dashboardBaseDomainEnv && baseDomains.includes(dashboardBaseDomainEnv)
+    ? dashboardBaseDomainEnv
+    : baseDomains[0] || '';
 
   return {
     githubToken: process.env.GITHUB_TOKEN || '',
@@ -43,7 +52,8 @@ export function loadConfig(): Config {
       ? pmDomainsEnv.split(',').map((d) => d.trim()).filter(Boolean)
       : [],
     dataDir: process.env.DATA_DIR || '/data',
-    baseDomain: process.env.BASE_DOMAIN || '',
+    baseDomains,
+    dashboardBaseDomain,
     dashboardSubdomain: process.env.DASHBOARD_SUBDOMAIN || '',
     acmeEmail: process.env.ACME_EMAIL || '',
     traefikImage: process.env.TRAEFIK_IMAGE || 'traefik:v3',

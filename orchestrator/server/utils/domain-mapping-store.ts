@@ -3,6 +3,7 @@ import { JsonStore } from './json-store';
 export interface DomainMapping {
   id: string;
   subdomain: string;
+  baseDomain: string;
   protocol: 'http' | 'https' | 'tcp';
   workerId: string;
   workerName: string;
@@ -20,17 +21,19 @@ export class DomainMappingStore extends JsonStore<string, DomainMapping> {
 
   async add(mapping: DomainMapping): Promise<void> {
     for (const existing of this.items.values()) {
-      if (existing.subdomain !== mapping.subdomain) continue;
+      if (existing.subdomain !== mapping.subdomain || existing.baseDomain !== mapping.baseDomain) continue;
+
+      const fullDomain = `${mapping.subdomain}.${mapping.baseDomain}`;
 
       if (existing.protocol === mapping.protocol) {
-        throw new Error(`Subdomain '${mapping.subdomain}' is already mapped for protocol '${mapping.protocol}'`);
+        throw new Error(`'${fullDomain}' is already mapped for protocol '${mapping.protocol}'`);
       }
 
       // HTTPS and TCP both use Traefik's websecure entrypoint (port 443) —
       // TCP's HostSNI matches at the TLS layer before HTTP routing, so they conflict.
       const pair = new Set([existing.protocol, mapping.protocol]);
       if (pair.has('https') && pair.has('tcp')) {
-        throw new Error(`Subdomain '${mapping.subdomain}' cannot have both HTTPS and TCP mappings (both use port 443)`);
+        throw new Error(`'${fullDomain}' cannot have both HTTPS and TCP mappings (both use port 443)`);
       }
     }
     this.items.set(mapping.id, mapping);

@@ -17,7 +17,7 @@ Orchestrator (TraefikManager) <--dockerode--> Traefik container (domain-based re
 Four managed containers:
 - **Orchestrator**: Nuxt 3 app (SPA mode) with Nitro server, serving dashboard + managing workers, mapper, and Traefik containers via Docker socket
 - **Mapper**: Lightweight Node.js container running TCP reverse proxies. Managed by the orchestrator via dockerode — created/recreated when port mappings change, removed when empty.
-- **Traefik**: Reverse proxy for domain-based routing with Let's Encrypt TLS. Managed by the orchestrator — created when domain mappings or dashboard subdomain are configured, removed when empty. Optional (requires `BASE_DOMAIN` env var).
+- **Traefik**: Reverse proxy for domain-based routing with Let's Encrypt TLS. Managed by the orchestrator — created when domain mappings or dashboard subdomain are configured, removed when empty. Optional (requires `BASE_DOMAINS` env var).
 - **Workers**: Single unified Docker image (`agentor-worker`, Ubuntu 24.04) with all agent CLIs pre-installed, running in tmux, plus an integrated display stack (Xvfb + fluxbox + x11vnc + noVNC on port 6080), code-server (VS Code on port 8443), and Chromium. Each worker is a single container with all agents available.
 
 ## Worker State & Persistence
@@ -160,13 +160,13 @@ The port mapper runs as a separate Docker container (`agentor-mapper`), managed 
 
 ## Domain Mapping (Traefik)
 
-Domain-based routing via a Traefik reverse proxy container. Optional — requires `BASE_DOMAIN` env var. All subdomains of the base domain route to worker containers. Supports HTTP, HTTPS, and TCP protocols with Let's Encrypt TLS certificates and optional HTTP basic auth per mapping.
+Domain-based routing via a Traefik reverse proxy container. Optional — requires `BASE_DOMAINS` env var. Supports multiple base domains (comma-separated, e.g. `example.com,example.org`). Each domain mapping specifies which base domain it uses. Supports HTTP, HTTPS, and TCP protocols with Let's Encrypt TLS certificates and optional HTTP basic auth per mapping.
 
 **Architecture:**
-- `DomainMappingStore` (`domain-mapping-store.ts`): Persists mappings to `<DATA_DIR>/domain-mappings.json`, extends `JsonStore<string, DomainMapping>`
-- `TraefikManager` (`traefik-manager.ts`): Manages the `agentor-traefik` container lifecycle. On mapping changes, writes a Traefik file provider config (`traefik-config.json`), then ensures the Traefik container exists. Uses `providers.file.watch=true` so config changes are picked up without container restart. Serialized via promise queue.
+- `DomainMappingStore` (`domain-mapping-store.ts`): Persists mappings to `<DATA_DIR>/domain-mappings.json`, extends `JsonStore<string, DomainMapping>`. Each mapping includes a `baseDomain` field. Uniqueness checked on `subdomain + baseDomain` (same subdomain can exist on different base domains).
+- `TraefikManager` (`traefik-manager.ts`): Manages the `agentor-traefik` container lifecycle. On mapping changes, writes a Traefik file provider config (`traefik-config.json`), then ensures the Traefik container exists. Uses `providers.file.watch=true` so config changes are picked up without container restart. Serialized via promise queue. Routes use per-mapping `baseDomain`, dashboard uses `dashboardBaseDomain` from config.
 - Traefik container: publishes ports 80 (HTTP → HTTPS redirect) and 443 (TLS termination), uses Let's Encrypt ACME HTTP challenge
-- Dashboard subdomain: if `DASHBOARD_SUBDOMAIN` is set, the orchestrator dashboard is accessible at `<DASHBOARD_SUBDOMAIN>.<BASE_DOMAIN>`
+- Dashboard subdomain: if `DASHBOARD_SUBDOMAIN` is set, the orchestrator dashboard is accessible at `<DASHBOARD_SUBDOMAIN>.<DASHBOARD_BASE_DOMAIN>` (defaults to first domain in `BASE_DOMAINS`)
 
 **Container lifecycle:**
 - Created when mappings exist or dashboard subdomain is configured, removed when both are empty
@@ -192,7 +192,7 @@ Browser-based VS Code editor integrated into each worker container via [code-ser
 
 ## Production Update Mechanism
 
-Automatic image update detection and per-image or bulk updates for production deployments. Active when `WORKER_IMAGE_PREFIX` is set (GHCR images) and/or `BASE_DOMAIN` is set (Traefik). Tracks four images: orchestrator, mapper, worker (GHCR), and traefik (Docker Hub).
+Automatic image update detection and per-image or bulk updates for production deployments. Active when `WORKER_IMAGE_PREFIX` is set (GHCR images) and/or `BASE_DOMAINS` is set (Traefik). Tracks four images: orchestrator, mapper, worker (GHCR), and traefik (Docker Hub).
 
 **Architecture:**
 - `UpdateChecker` (`update-checker.ts`): Registry-agnostic digest checker. Parses image references (`parseImageRef`) to handle GHCR (`ghcr.io/org/repo:tag`), Docker Hub user images (`user/repo:tag`), and official images (`traefik:v3` → `library/traefik`). Token acquisition (`getRegistryToken`) handles GHCR (Basic auth + Bearer) and Docker Hub (anonymous token) separately. Polls every 5 minutes.
@@ -517,7 +517,7 @@ All API routes return JSON only (no HTML partials).
 | GET | `/api/domain-mappings` | List domain mappings |
 | POST | `/api/domain-mappings` | Create domain mapping |
 | DELETE | `/api/domain-mappings/:id` | Remove domain mapping |
-| GET | `/api/domain-mapper/status` | Domain mapper status (enabled, baseDomain) |
+| GET | `/api/domain-mapper/status` | Domain mapper status (enabled, baseDomains) |
 | GET | `/api/updates` | Update status (image digests, production mode) |
 | POST | `/api/updates/check` | Trigger manual update check |
 | POST | `/api/updates/apply` | Pull updated images, recreate mapper/orchestrator |

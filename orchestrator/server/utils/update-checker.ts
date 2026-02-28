@@ -22,7 +22,7 @@ export class UpdateChecker {
       mapper: null,
       worker: null,
       traefik: null,
-      isProductionMode: !!config.workerImagePrefix || !!config.baseDomain,
+      isProductionMode: !!config.workerImagePrefix || config.baseDomains.length > 0,
     };
   }
 
@@ -31,7 +31,7 @@ export class UpdateChecker {
     await this.getLocalImages();
 
     // In production mode, also check remote digests and start polling
-    if (this.config.workerImagePrefix || this.config.baseDomain) {
+    if (this.config.workerImagePrefix || this.config.baseDomains.length > 0) {
       await this.check();
       this.pollInterval = setInterval(() => {
         this.check().catch((err) => {
@@ -70,9 +70,9 @@ export class UpdateChecker {
   async check(): Promise<UpdateStatus> {
     const prefix = this.config.workerImagePrefix;
     const hasPrefix = !!prefix;
-    const hasBaseDomain = !!this.config.baseDomain;
+    const hasBaseDomains = this.config.baseDomains.length > 0;
 
-    if (!hasPrefix && !hasBaseDomain) return this.status;
+    if (!hasPrefix && !hasBaseDomains) return this.status;
 
     const checks: Promise<ImageUpdateInfo | null>[] = [];
 
@@ -90,7 +90,7 @@ export class UpdateChecker {
       );
     }
 
-    if (hasBaseDomain) {
+    if (hasBaseDomains) {
       checks.push(this.checkImage(this.config.traefikImage));
     } else {
       checks.push(Promise.resolve(null));
@@ -103,7 +103,7 @@ export class UpdateChecker {
       mapper: results[1] ?? null,
       worker: results[2] ?? null,
       traefik: results[3] ?? null,
-      isProductionMode: hasPrefix || hasBaseDomain,
+      isProductionMode: hasPrefix || hasBaseDomains,
     };
 
     const updates = results.filter((i) => i?.updateAvailable);
@@ -285,9 +285,9 @@ export class UpdateChecker {
     };
 
     const hasPrefix = !!this.config.workerImagePrefix;
-    const hasBaseDomain = !!this.config.baseDomain;
+    const hasBaseDomains = this.config.baseDomains.length > 0;
 
-    if (!hasPrefix && !hasBaseDomain) {
+    if (!hasPrefix && !hasBaseDomains) {
       result.errors.push('Not in production mode');
       return result;
     }
@@ -316,7 +316,7 @@ export class UpdateChecker {
     }
 
     // Pull Traefik image if update available
-    if (hasBaseDomain && shouldUpdate('traefik') && this.status.traefik?.updateAvailable) {
+    if (hasBaseDomains && shouldUpdate('traefik') && this.status.traefik?.updateAvailable) {
       try {
         await this.pullImage(this.config.traefikImage);
         result.traefikPulled = true;
