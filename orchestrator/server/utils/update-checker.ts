@@ -27,13 +27,40 @@ export class UpdateChecker {
   }
 
   async init(): Promise<void> {
-    if (!this.config.workerImagePrefix && !this.config.baseDomain) return;
-    await this.check();
-    this.pollInterval = setInterval(() => {
-      this.check().catch((err) => {
-        console.error('[update-checker] poll error:', err.message || err);
-      });
-    }, 5 * 60 * 1000);
+    // Always populate local digests so the UI can show image versions
+    await this.getLocalImages();
+
+    // In production mode, also check remote digests and start polling
+    if (this.config.workerImagePrefix || this.config.baseDomain) {
+      await this.check();
+      this.pollInterval = setInterval(() => {
+        this.check().catch((err) => {
+          console.error('[update-checker] poll error:', err.message || err);
+        });
+      }, 5 * 60 * 1000);
+    }
+  }
+
+  private async getLocalImages(): Promise<void> {
+    const prefix = this.config.workerImagePrefix;
+    const images: { key: keyof Pick<UpdateStatus, 'orchestrator' | 'mapper' | 'worker' | 'traefik'>; name: string }[] = [
+      { key: 'orchestrator', name: (prefix || '') + this.config.orchestratorImage },
+      { key: 'mapper', name: (prefix || '') + this.config.mapperImage },
+      { key: 'worker', name: (prefix || '') + this.config.workerImage },
+      { key: 'traefik', name: this.config.traefikImage },
+    ];
+
+    const now = new Date().toISOString();
+    for (const { key, name } of images) {
+      const localDigest = await this.getLocalDigest(name);
+      this.status[key] = {
+        name,
+        localDigest,
+        remoteDigest: '',
+        updateAvailable: false,
+        lastChecked: now,
+      };
+    }
   }
 
   getStatus(): UpdateStatus {

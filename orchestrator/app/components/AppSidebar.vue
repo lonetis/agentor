@@ -28,6 +28,7 @@ const emit = defineEmits<{
 const archivedCollapsed = ref(true);
 const portMappingsCollapsed = ref(false);
 const domainMappingsCollapsed = ref(false);
+const imagesCollapsed = ref(false);
 
 const { data: domainMapperStatus } = useFetch<{ enabled: boolean }>('/api/domain-mapper/status', {
   default: () => ({ enabled: false }),
@@ -161,9 +162,24 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
       </div>
     </div>
 
-    <!-- Update Notification (production mode only) -->
+    <!-- Images (always visible, collapsible) -->
     <div class="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
-      <UpdateNotification />
+      <button
+        class="w-full flex items-center justify-between px-4 py-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+        @click="imagesCollapsed = !imagesCollapsed"
+      >
+        Images
+        <svg
+          class="w-3.5 h-3.5 transition-transform"
+          :class="imagesCollapsed ? '-rotate-90' : ''"
+          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <div v-if="!imagesCollapsed">
+        <UpdateNotification />
+      </div>
     </div>
   </aside>
 </template>
