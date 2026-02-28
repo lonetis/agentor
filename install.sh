@@ -112,7 +112,6 @@ sync_file "$BASE/docker-compose.prod.yml" "docker-compose.yml"
 sync_file "$BASE/.env.example"            ".env"
 
 mkdir -p .cred
-sync_file "$BASE/.cred.example/README"       ".cred/README"
 sync_file "$BASE/.cred.example/claude.json"  ".cred/claude.json"
 sync_file "$BASE/.cred.example/codex.json"   ".cred/codex.json"
 sync_file "$BASE/.cred.example/gemini.json"  ".cred/gemini.json"
