@@ -14,6 +14,10 @@ node_modules/
 # Persistent data (environments, etc.)
 data/
 
+# Playwright
+tests/playwright-report/
+tests/test-results/
+
 # OS
 .DS_Store
 
