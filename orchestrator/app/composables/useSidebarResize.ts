@@ -31,6 +31,8 @@ export function useSidebarResize() {
 
   let activeMoveHandler: ((ev: MouseEvent) => void) | null = null;
   let activeUpHandler: (() => void) | null = null;
+  let rafId = 0;
+  let pendingX = 0;
 
   function cleanupDragListeners() {
     if (activeMoveHandler) {
@@ -41,6 +43,10 @@ export function useSidebarResize() {
       document.removeEventListener('mouseup', activeUpHandler);
       activeUpHandler = null;
     }
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
   }
 
   function startDrag(event: MouseEvent) {
@@ -50,14 +56,21 @@ export function useSidebarResize() {
     document.body.classList.add('split-dragging');
 
     activeMoveHandler = (ev: MouseEvent) => {
-      const w = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, ev.clientX));
-      sidebarWidth.value = w;
-      try { localStorage.setItem(STORAGE_KEY_WIDTH, String(w)); } catch {}
+      pendingX = ev.clientX;
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          sidebarWidth.value = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, pendingX));
+        });
+      }
     };
 
     activeUpHandler = () => {
       isDragging.value = false;
       document.body.classList.remove('split-dragging');
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+      sidebarWidth.value = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, pendingX));
+      try { localStorage.setItem(STORAGE_KEY_WIDTH, String(sidebarWidth.value)); } catch {}
       cleanupDragListeners();
     };
 
