@@ -6,7 +6,7 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
  * Navigate to the dashboard and wait for it to fully load.
  */
 export async function goToDashboard(page: Page): Promise<void> {
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
   // Wait for the sidebar to render
   await page.waitForSelector('text=Agentor', { timeout: 15_000 });
 }
