@@ -265,6 +265,12 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
+  // ─── Usage ──────────────────────────────────────────────────
+  async getUsageStatus() {
+    const res = await this.request.get(`${BASE_URL}/api/usage`);
+    return { status: res.status(), body: await res.json() };
+  }
+
   // ─── Updates ──────────────────────────────────────────────────
   async getUpdateStatus() {
     const res = await this.request.get(`${BASE_URL}/api/updates`);

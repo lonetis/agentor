@@ -10,6 +10,7 @@ import { GitHubService } from './github';
 import { EnvironmentStore } from './environments';
 import { WorkerStore } from './worker-store';
 import { UpdateChecker } from './update-checker';
+import { UsageChecker } from './usage-checker';
 import { CredentialMountManager } from './credential-mounts';
 
 function singleton<T>(factory: () => T): () => T {
@@ -31,6 +32,7 @@ export const useGitHubService = singleton(() => new GitHubService(useConfig()));
 export const useEnvironmentStore = singleton(() => new EnvironmentStore(useConfig().dataDir));
 export const useWorkerStore = singleton(() => new WorkerStore(useConfig().dataDir));
 export const useUpdateChecker = singleton(() => new UpdateChecker(useConfig()));
+export const useUsageChecker = singleton(() => new UsageChecker(useConfig()));
 export const useCredentialMountManager = singleton(
   () => new CredentialMountManager(new Docker({ socketPath: '/var/run/docker.sock' }))
 );

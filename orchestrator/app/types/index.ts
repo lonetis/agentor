@@ -14,6 +14,10 @@ export type {
   UpdatableImage,
   UpdateStatus,
   ApplyResult,
+  AgentAuthType,
+  UsageWindow,
+  AgentUsageInfo,
+  AgentUsageStatus,
 } from '../../shared/types';
 
 export interface GitProviderInfo {

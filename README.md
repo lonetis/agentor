@@ -30,6 +30,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 - **Worker archiving** — archive workers to free resources while preserving workspace data; unarchive to restore
 - **File upload/download** — upload files/folders to running workers or during creation, download workspace as `.tar.gz`
 - **Docker-in-Docker** — opt-in per-environment, full Docker daemon inside workers (build, run, compose)
+- **Usage monitoring** — real-time usage/rate limit indicators for OAuth-authenticated agents (Claude, Codex, Gemini)
 - **Theme toggle** — switch between system default, light, and dark mode
 
 ---

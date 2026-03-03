@@ -82,3 +82,26 @@ export interface ApplyResult {
   orchestratorRestarting: boolean;
   errors: string[];
 }
+
+export type AgentAuthType = 'oauth' | 'api-key' | 'none';
+
+export interface UsageWindow {
+  label: string;
+  utilization: number;
+  resetsAt: string | null;
+}
+
+export interface AgentUsageInfo {
+  agentId: string;
+  displayName: string;
+  authType: AgentAuthType;
+  usageAvailable: boolean;
+  windows: UsageWindow[];
+  planType?: string;
+  error?: string;
+  lastChecked?: string;
+}
+
+export interface AgentUsageStatus {
+  agents: AgentUsageInfo[];
+}

@@ -208,6 +208,25 @@ Automatic image update detection and per-image or bulk updates for production de
 
 **No version numbers** — only image digest hashes (sha256) are compared and displayed. Workers are NOT automatically restarted; they pick up the new image when next created or unarchived.
 
+## Agent Usage Monitoring
+
+Polls agent usage APIs to show remaining capacity in the sidebar. Only works for OAuth-authenticated agents (credential files in `.cred/`). API key auth has no usage endpoints.
+
+**Architecture:**
+- `UsageChecker` (`usage-checker.ts`): Singleton + 60s polling (follows `UpdateChecker` pattern). Reads credential files from `/cred/`, detects auth type per agent (OAuth > API key > none), fetches usage in parallel
+- `UsagePanel.vue`: Sidebar component showing per-agent auth badge + progress bars per usage window
+- `useUsage.ts`: composable for 60s polling of `/api/usage`
+
+**Supported agents:**
+
+| Agent | Endpoint | Auth | Token Refresh |
+|-------|----------|------|---------------|
+| Claude | `GET https://api.anthropic.com/api/oauth/usage` | Bearer + `anthropic-beta: oauth-2025-04-20` | Not needed (CLI handles it) |
+| Codex | `GET https://chatgpt.com/backend-api/wham/usage` | Bearer (+ optional `ChatGPT-Account-Id`) | Hardcoded client_id, refreshes when `last_refresh` > 8 days |
+| Gemini | `POST https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota` | Bearer | Not implemented (CLI client_id/secret not available in orchestrator); reports error if token expired |
+
+**Normalized output:** All APIs are mapped to a common `UsageWindow` type with `label`, `utilization` (0-100%), and `resetsAt` (ISO 8601). Claude shows Session/Weekly/Sonnet windows, Codex shows Session/Weekly (+ Reserve when credits available), Gemini shows per-model-family windows (Pro/Flash). Progress bars use green (<50%), amber (50-79%), red (>=80%) coloring.
+
 ## Docker-in-Docker (DinD)
 
 Workers support running Docker inside the container, enabled per-environment via the `dockerEnabled` toggle. When enabled:
@@ -349,12 +368,12 @@ Three-way color mode toggle (Default/White/Dark) in the sidebar header, powered 
 - `orchestrator/app.config.ts` - App-level configuration
 
 ### Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult)
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus)
 
 ### Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build
 - `orchestrator/nuxt.config.ts` - Nuxt configuration (modules, SPA mode, Nitro WebSocket)
-- `orchestrator/server/plugins/services.ts` - Nitro startup: init Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + WorkerStore + UpdateChecker
+- `orchestrator/server/plugins/services.ts` - Nitro startup: init Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + WorkerStore + UpdateChecker + UsageChecker
 - `orchestrator/server/utils/config.ts` - Environment variable parsing
 - `orchestrator/server/utils/init-presets.ts` - Init preset registry (INIT_PRESETS) for agent start scripts and API domains
 - `orchestrator/server/utils/git-providers.ts` - Git provider registry (GIT_PROVIDER_REGISTRY)
@@ -367,10 +386,11 @@ Three-way color mode toggle (Default/White/Dark) in the sidebar header, powered 
 - `orchestrator/server/utils/domain-mapping-store.ts` - DomainMappingStore class (persistent domain mappings)
 - `orchestrator/server/utils/traefik-manager.ts` - TraefikManager class (Traefik container lifecycle, dynamic config generation)
 - `orchestrator/server/utils/update-checker.ts` - UpdateChecker class (GHCR digest polling, image pull, orchestrator self-replacement)
+- `orchestrator/server/utils/usage-checker.ts` - UsageChecker class (agent usage API polling, OAuth token refresh for Codex)
 - `orchestrator/server/utils/environments.ts` - EnvironmentStore class, network mode types, package manager domains list
 - `orchestrator/server/utils/worker-store.ts` - WorkerStore class (persistent worker metadata for archive/unarchive)
 - `orchestrator/server/utils/credential-mounts.ts` - CredentialMountManager class (resolves host path of /cred mount, generates bind mount strings for worker containers) + AGENT_CREDENTIAL_MAPPINGS registry
-- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useUpdateChecker, useCredentialMountManager) + shared `cleanupWorkerMappings()` utility
+- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager) + shared `cleanupWorkerMappings()` utility
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)
 - `orchestrator/server/utils/terminal-handler.ts` - Docker stream WebSocket terminal logic (uses ws-utils, exports terminalWsHandler)
@@ -386,7 +406,7 @@ Three-way color mode toggle (Default/White/Dark) in the sidebar header, powered 
 - `orchestrator/app/app.vue` - Nuxt app root component
 - `orchestrator/app/pages/index.vue` - Dashboard page (sidebar + split pane layout + modals)
 - `orchestrator/app/plugins/xterm.client.ts` - Provides `$Terminal` and `$FitAddon` globally (avoids SSR import issues)
-- `orchestrator/app/components/AppSidebar.vue` - Left sidebar (container list, archived workers, port mappings, domain mappings, update notification)
+- `orchestrator/app/components/AppSidebar.vue` - Left sidebar (container list, archived workers, port mappings, domain mappings, usage panel, update notification)
 - `orchestrator/app/components/AppInstanceRow.vue` - Single app row in AppsPane
 - `orchestrator/app/components/AppsPane.vue` - App instances for a container
 - `orchestrator/app/components/ArchivedWorkerCard.vue` - Archived worker card in sidebar
@@ -412,6 +432,7 @@ Three-way color mode toggle (Default/White/Dark) in the sidebar header, powered 
 - `orchestrator/app/components/ThemeToggle.vue` - Three-way color mode toggle (Default/White/Dark)
 - `orchestrator/app/components/TmuxTabBar.vue` - Inner tmux window tab bar
 - `orchestrator/app/components/UpdateNotification.vue` - Sidebar update notification (image digests, one-click update)
+- `orchestrator/app/components/UsagePanel.vue` - Agent usage monitoring panel (progress bars, auth badges, reset times)
 - `orchestrator/app/components/UploadModal.vue` - Modal for workspace file uploads
 - `orchestrator/app/composables/useApps.ts` - App CRUD + polling
 - `orchestrator/app/composables/useArchivedWorkers.ts` - Archived workers list + polling
@@ -431,7 +452,8 @@ Three-way color mode toggle (Default/White/Dark) in the sidebar header, powered 
 - `orchestrator/app/composables/useTerminal.ts` - xterm.js lifecycle + WebSocket (manually managed with `destroy()`)
 - `orchestrator/app/composables/useTmuxTabs.ts` - Tmux window management (fetch, poll, create, close, activate, rename)
 - `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only)
-- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, InitPresetInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone
+- `orchestrator/app/composables/useUsage.ts` - Agent usage status polling (60s)
+- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, InitPresetInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone
 
 ### Worker
 - `worker/Dockerfile` - Unified worker image (Node.js 22, all agent CLIs, code-server, display stack, Chromium, Playwright, Firefox, microsocks, utility packages, agent user, entrypoint)
@@ -518,6 +540,7 @@ All API routes return JSON only (no HTML partials).
 | POST | `/api/domain-mappings` | Create domain mapping |
 | DELETE | `/api/domain-mappings/:id` | Remove domain mapping |
 | GET | `/api/domain-mapper/status` | Domain mapper status (enabled, baseDomains) |
+| GET | `/api/usage` | Agent usage status (OAuth usage windows per agent) |
 | GET | `/api/updates` | Update status (image digests, production mode) |
 | POST | `/api/updates/check` | Trigger manual update check |
 | POST | `/api/updates/apply` | Pull updated images, recreate mapper/orchestrator |

@@ -1,4 +1,4 @@
-import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useCredentialMountManager } from '../utils/services';
+import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager } from '../utils/services';
 
 export default defineNitroPlugin(async () => {
   const dockerService = useDockerService();
@@ -55,6 +55,10 @@ export default defineNitroPlugin(async () => {
   // Initialize update checker (polls GHCR for newer images in production mode)
   const updateChecker = useUpdateChecker();
   await updateChecker.init();
+
+  // Initialize usage checker (polls agent usage APIs for OAuth-authenticated agents)
+  const usageChecker = useUsageChecker();
+  await usageChecker.init();
 
   console.log(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
 });
