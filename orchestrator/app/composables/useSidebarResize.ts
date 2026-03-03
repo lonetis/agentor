@@ -1,32 +1,12 @@
-const DEFAULT_WIDTH = 320;
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 700;
 const MOBILE_BREAKPOINT = 768;
-const STORAGE_KEY_WIDTH = 'agentor-sidebar-width';
-const STORAGE_KEY_COLLAPSED = 'agentor-sidebar-collapsed';
-
-function loadStoredWidth(): number {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY_WIDTH);
-    if (stored) {
-      const val = Number(stored);
-      if (val >= MIN_WIDTH && val <= MAX_WIDTH) return val;
-    }
-  } catch {}
-  return DEFAULT_WIDTH;
-}
-
-function loadStoredCollapsed(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEY_COLLAPSED) === 'true';
-  } catch {}
-  return false;
-}
 
 export function useSidebarResize() {
-  const sidebarWidth = ref(loadStoredWidth());
+  const { state, setSidebarWidth, setSidebarCollapsed } = useUiState();
+  const sidebarWidth = ref(state.value.sidebar.width);
   const isDragging = ref(false);
-  const isCollapsed = ref(loadStoredCollapsed());
+  const isCollapsed = ref(state.value.sidebar.collapsed);
   const isMobile = ref(false);
 
   let activeMoveHandler: ((ev: MouseEvent) => void) | null = null;
@@ -70,7 +50,7 @@ export function useSidebarResize() {
       document.body.classList.remove('split-dragging');
       if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
       sidebarWidth.value = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, pendingX));
-      try { localStorage.setItem(STORAGE_KEY_WIDTH, String(sidebarWidth.value)); } catch {}
+      setSidebarWidth(sidebarWidth.value);
       cleanupDragListeners();
     };
 
@@ -80,7 +60,7 @@ export function useSidebarResize() {
 
   function toggleCollapse() {
     isCollapsed.value = !isCollapsed.value;
-    try { localStorage.setItem(STORAGE_KEY_COLLAPSED, String(isCollapsed.value)); } catch {}
+    if (!isMobile.value) setSidebarCollapsed(isCollapsed.value);
   }
 
   function checkMobile() {

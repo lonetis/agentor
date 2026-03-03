@@ -343,6 +343,28 @@ Three-way color mode toggle (Default/White/Dark) in the sidebar header, powered 
 - xterm.js theme defined as `DARK_THEME` / `LIGHT_THEME` constants in `useTerminal.ts`, reactively switched via `watch(colorMode.value)`
 - TmuxTabBar scoped CSS uses `--terminal-*` CSS variables for seamless theme transitions
 
+## UI State Persistence
+
+All client-side UI state is consolidated into a single localStorage key (`agentor-ui-state`) managed by the `useUiState` composable (`orchestrator/app/composables/useUiState.ts`). Color mode is the only exception — it stays with `@nuxtjs/color-mode`.
+
+**State shape** (`UiState`, version 1):
+- `sidebar.width` — sidebar pixel width (200-700, default 320)
+- `sidebar.collapsed` — sidebar collapsed toggle (default false)
+- `sidebar.panels` — per-section collapse states: `archived` (default true), `portMappings`, `domainMappings`, `usage`, `images` (default false)
+- `panes.rootNode` — serialized `PaneNode` tree (split pane layout + open tabs)
+- `panes.focusedNodeId` — which leaf pane group is focused
+- `tmux.activeWindows` — `Record<containerId, windowName>` for restoring active tmux tab per terminal
+
+**Architecture:**
+- Module-level singleton ref, loaded from localStorage on first access
+- 500ms debounced writes via `scheduleWrite()`, plus `beforeunload` flush
+- Defensively merges stored JSON into defaults (handles partial/corrupt data)
+- `useSidebarResize` reads initial width/collapsed from `useUiState().state` and writes back via `setSidebarWidth()`/`setSidebarCollapsed()`
+- `AppSidebar.vue` panel collapse refs are computed get/set backed by `useUiState().state.sidebar.panels`
+- `useSplitPanes` initializes `rootNode`/`focusedNodeId` from stored state, rehydrates `_nextNodeId` from the restored tree, and deep-watches for changes
+- `useTmuxTabs` uses `getTmuxActiveWindow()`/`setTmuxActiveWindow()` instead of a module-level Map
+- `_resetUiState()` export for testing (clears singleton + timers)
+
 ## Tech Stack
 
 - Framework: Nuxt 3 (SPA mode), Nitro server, Vue 3
@@ -448,7 +470,8 @@ Three-way color mode toggle (Default/White/Dark) in the sidebar header, powered 
 - `orchestrator/app/composables/usePolling.ts` - Polling lifecycle helper (start/stop with onMounted/onUnmounted)
 - `orchestrator/app/composables/usePortMappings.ts` - Port mapping CRUD + polling
 - `orchestrator/app/composables/useSidebarResize.ts` - Sidebar drag-to-resize
-- `orchestrator/app/composables/useSplitPanes.ts` - Pane state manager (tab CRUD, split/merge, resize)
+- `orchestrator/app/composables/useSplitPanes.ts` - Pane state manager (tab CRUD, split/merge, resize, persisted)
+- `orchestrator/app/composables/useUiState.ts` - Unified UI state persistence (single localStorage key, debounced writes)
 - `orchestrator/app/composables/useTerminal.ts` - xterm.js lifecycle + WebSocket (manually managed with `destroy()`)
 - `orchestrator/app/composables/useTmuxTabs.ts` - Tmux window management (fetch, poll, create, close, activate, rename)
 - `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only)

@@ -1,6 +1,19 @@
 import type { Tab, TabType, PaneNode, PaneLeafNode, PaneContainerNode, SplitDirection } from '~/types';
 
 let _nextNodeId = 0;
+
+function maxNodeIdNum(node: PaneNode): number {
+  let max = 0;
+  const match = node.id.match(/^node-(\d+)-/);
+  if (match) max = Number(match[1]);
+  if (isContainer(node)) {
+    for (const child of node.children) {
+      max = Math.max(max, maxNodeIdNum(child));
+    }
+  }
+  return max;
+}
+
 function generateNodeId(): string {
   return `node-${++_nextNodeId}-${Date.now().toString(36)}`;
 }
@@ -130,10 +143,28 @@ function removeLeafFromTree(root: PaneNode, leafId: string): PaneNode | null {
   return collapseIfSingleChild(root);
 }
 
-// --- Module state ---
+// --- Module state (restored from useUiState) ---
 
-const rootNode = ref<PaneNode | null>(null);
-const focusedNodeId = ref<string | null>(null);
+const { state: _uiState, setPaneLayout: _setPaneLayout } = useUiState();
+const _restored = _uiState.value.panes;
+
+const rootNode = ref<PaneNode | null>(_restored.rootNode);
+const focusedNodeId = ref<string | null>(_restored.focusedNodeId);
+
+// Rehydrate _nextNodeId so new IDs don't collide with restored tree
+if (rootNode.value) {
+  _nextNodeId = maxNodeIdNum(rootNode.value);
+}
+
+// Persist pane layout changes (debounced via useUiState's scheduleWrite)
+let _skipPersist = false;
+watch(
+  [rootNode, focusedNodeId],
+  () => {
+    if (!_skipPersist) _setPaneLayout(rootNode.value, focusedNodeId.value);
+  },
+  { deep: true },
+);
 
 export function useSplitPanes() {
   // --- Derived state ---

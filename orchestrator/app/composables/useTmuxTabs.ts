@@ -2,10 +2,8 @@ import type { TmuxWindow } from '~/types';
 
 const POLL_INTERVAL = 3000;
 
-// Persists active window across outer tab close/reopen
-const lastActiveWindowMap = new Map<string, string>();
-
 export function useTmuxTabs(containerId: Ref<string>) {
+  const { getTmuxActiveWindow, setTmuxActiveWindow } = useUiState();
   const windows = ref<TmuxWindow[]>([]);
   const activeWindowName = ref<string | null>(null);
 
@@ -34,7 +32,7 @@ export function useTmuxTabs(containerId: Ref<string>) {
 
       // Persist for reopen
       if (activeWindowName.value) {
-        lastActiveWindowMap.set(containerId.value, activeWindowName.value);
+        setTmuxActiveWindow(containerId.value, activeWindowName.value);
       }
     } catch {
       // Container may be stopped or removed
@@ -45,7 +43,7 @@ export function useTmuxTabs(containerId: Ref<string>) {
     await fetchWindows();
 
     // Restore last active window if it still exists
-    const saved = lastActiveWindowMap.get(containerId.value);
+    const saved = getTmuxActiveWindow(containerId.value);
     if (saved && windows.value.some((w) => w.name === saved)) {
       activeWindowName.value = saved;
     } else if (windows.value.length > 0 && !activeWindowName.value) {
@@ -75,7 +73,7 @@ export function useTmuxTabs(containerId: Ref<string>) {
       );
       await fetchWindows();
       activeWindowName.value = windowName;
-      lastActiveWindowMap.set(containerId.value, windowName);
+      setTmuxActiveWindow(containerId.value, windowName);
       return windowName;
     } catch {
       return null;
@@ -99,9 +97,9 @@ export function useTmuxTabs(containerId: Ref<string>) {
       }
 
       // Update persisted active window
-      const saved = lastActiveWindowMap.get(containerId.value);
+      const saved = getTmuxActiveWindow(containerId.value);
       if (saved === oldName) {
-        lastActiveWindowMap.set(containerId.value, newName);
+        setTmuxActiveWindow(containerId.value, newName);
       }
 
       return true;
@@ -123,13 +121,13 @@ export function useTmuxTabs(containerId: Ref<string>) {
       activeWindowName.value = windows.value.length > 0 ? windows.value[0]!.name : null;
     }
     if (activeWindowName.value) {
-      lastActiveWindowMap.set(containerId.value, activeWindowName.value);
+      setTmuxActiveWindow(containerId.value, activeWindowName.value);
     }
   }
 
   function activateWindow(name: string) {
     activeWindowName.value = name;
-    lastActiveWindowMap.set(containerId.value, name);
+    setTmuxActiveWindow(containerId.value, name);
   }
 
   function destroy() {

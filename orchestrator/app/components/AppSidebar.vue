@@ -25,39 +25,28 @@ const emit = defineEmits<{
   toggleCollapse: [];
 }>();
 
-const STORAGE_KEY = 'agentor-sidebar-collapsed';
+const { state: uiState, setPanelCollapsed } = useUiState();
 
-function loadCollapsedState(): Record<string, boolean> {
-  if (import.meta.server) return {};
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch { return {}; }
-}
-
-function saveCollapsedState(state: Record<string, boolean>) {
-  if (import.meta.server) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-
-function usePersistedCollapse(key: string, defaultValue: boolean) {
-  const saved = loadCollapsedState();
-  const value = ref(key in saved ? saved[key] : defaultValue);
-  watch(value, (v) => {
-    const state = loadCollapsedState();
-    state[key] = v;
-    saveCollapsedState(state);
-  });
-  return value;
-}
-
-const archivedCollapsed = usePersistedCollapse('archived', true);
-const portMappingsCollapsed = usePersistedCollapse('portMappings', false);
-const domainMappingsCollapsed = usePersistedCollapse('domainMappings', false);
-const usageCollapsed = usePersistedCollapse('usage', false);
-const imagesCollapsed = usePersistedCollapse('images', false);
+const archivedCollapsed = computed({
+  get: () => uiState.value.sidebar.panels.archived,
+  set: (v: boolean) => setPanelCollapsed('archived', v),
+});
+const portMappingsCollapsed = computed({
+  get: () => uiState.value.sidebar.panels.portMappings,
+  set: (v: boolean) => setPanelCollapsed('portMappings', v),
+});
+const domainMappingsCollapsed = computed({
+  get: () => uiState.value.sidebar.panels.domainMappings,
+  set: (v: boolean) => setPanelCollapsed('domainMappings', v),
+});
+const usageCollapsed = computed({
+  get: () => uiState.value.sidebar.panels.usage,
+  set: (v: boolean) => setPanelCollapsed('usage', v),
+});
+const imagesCollapsed = computed({
+  get: () => uiState.value.sidebar.panels.images,
+  set: (v: boolean) => setPanelCollapsed('images', v),
+});
 
 const { data: domainMapperStatus } = useFetch<{ enabled: boolean }>('/api/domain-mapper/status', {
   default: () => ({ enabled: false }),
