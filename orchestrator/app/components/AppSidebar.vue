@@ -25,11 +25,39 @@ const emit = defineEmits<{
   toggleCollapse: [];
 }>();
 
-const archivedCollapsed = ref(true);
-const portMappingsCollapsed = ref(false);
-const domainMappingsCollapsed = ref(false);
-const usageCollapsed = ref(false);
-const imagesCollapsed = ref(false);
+const STORAGE_KEY = 'agentor-sidebar-collapsed';
+
+function loadCollapsedState(): Record<string, boolean> {
+  if (import.meta.server) return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch { return {}; }
+}
+
+function saveCollapsedState(state: Record<string, boolean>) {
+  if (import.meta.server) return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function usePersistedCollapse(key: string, defaultValue: boolean) {
+  const saved = loadCollapsedState();
+  const value = ref(key in saved ? saved[key] : defaultValue);
+  watch(value, (v) => {
+    const state = loadCollapsedState();
+    state[key] = v;
+    saveCollapsedState(state);
+  });
+  return value;
+}
+
+const archivedCollapsed = usePersistedCollapse('archived', true);
+const portMappingsCollapsed = usePersistedCollapse('portMappings', false);
+const domainMappingsCollapsed = usePersistedCollapse('domainMappings', false);
+const usageCollapsed = usePersistedCollapse('usage', false);
+const imagesCollapsed = usePersistedCollapse('images', false);
 
 const { data: domainMapperStatus } = useFetch<{ enabled: boolean }>('/api/domain-mapper/status', {
   default: () => ({ enabled: false }),
