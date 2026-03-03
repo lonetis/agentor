@@ -18,6 +18,9 @@ data/
 tests/playwright-report/
 tests/test-results/
 
+# Vitest coverage
+orchestrator/coverage/
+
 # OS
 .DS_Store
 
