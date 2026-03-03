@@ -147,7 +147,7 @@ const isRunning = computed(() => props.container.status === 'running');
     </div>
 
     <!-- Action buttons -->
-    <div class="flex items-center flex-wrap gap-1.5 pt-2 border-t border-gray-300/50 dark:border-gray-700/50">
+    <div class="flex items-center flex-wrap gap-1.5 pt-2 border-t border-gray-300/50 dark:border-gray-700/50 justify-end">
       <UButton
         v-if="container.status === 'stopped'"
         size="xs"
@@ -157,7 +157,6 @@ const isRunning = computed(() => props.container.status === 'running');
       >
         Restart
       </UButton>
-      <div class="flex-1" />
       <UButton
         v-if="isRunning"
         size="xs"
