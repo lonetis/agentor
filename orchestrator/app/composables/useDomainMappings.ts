@@ -36,6 +36,22 @@ export function useDomainMappings() {
     return result;
   }
 
+  async function createMappings(items: {
+    subdomain: string;
+    baseDomain: string;
+    protocol: 'http' | 'https' | 'tcp';
+    workerId: string;
+    internalPort: number;
+    basicAuth?: { username: string; password: string };
+  }[]) {
+    const result = await $fetch<DomainMapping[]>('/api/domain-mappings/batch', {
+      method: 'POST',
+      body: { items },
+    });
+    await fetchMappings();
+    return result;
+  }
+
   async function removeMapping(id: string) {
     await $fetch(`/api/domain-mappings/${id}`, { method: 'DELETE' });
     await fetchMappings();
@@ -49,6 +65,7 @@ export function useDomainMappings() {
     mappings,
     status,
     createMapping,
+    createMappings,
     removeMapping,
   };
 }

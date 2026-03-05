@@ -5,7 +5,7 @@ const props = defineProps<{
   containers: ContainerInfo[];
 }>();
 
-const { mappings, status, createMapping, removeMapping } = useDomainMappings();
+const { mappings, status, createMappings, removeMapping } = useDomainMappings();
 
 const showForm = ref(false);
 const formSubdomain = ref('');
@@ -107,20 +107,19 @@ async function handleCreate() {
   if (!formWorkerId.value || !formInternalPort.value || formBaseDomains.value.size === 0 || formProtocols.value.size === 0) return;
   const protocols = [...formProtocols.value];
   const domains = [...formBaseDomains.value];
-  for (const baseDomain of domains) {
-    for (const protocol of protocols) {
-      await createMapping({
-        subdomain: formSubdomain.value,
-        baseDomain,
-        protocol,
-        workerId: formWorkerId.value,
-        internalPort: formInternalPort.value,
-        ...(protocol !== 'tcp' && formAuthEnabled.value && formAuthUsername.value && formAuthPassword.value
-          ? { basicAuth: { username: formAuthUsername.value, password: formAuthPassword.value } }
-          : {}),
-      });
-    }
-  }
+  const items = domains.flatMap((baseDomain) =>
+    protocols.map((protocol) => ({
+      subdomain: formSubdomain.value,
+      baseDomain,
+      protocol,
+      workerId: formWorkerId.value,
+      internalPort: formInternalPort.value!,
+      ...(protocol !== 'tcp' && formAuthEnabled.value && formAuthUsername.value && formAuthPassword.value
+        ? { basicAuth: { username: formAuthUsername.value, password: formAuthPassword.value } }
+        : {}),
+    })),
+  );
+  await createMappings(items);
   resetForm();
 }
 
