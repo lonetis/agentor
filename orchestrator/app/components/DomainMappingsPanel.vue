@@ -9,7 +9,7 @@ const { mappings, status, createMapping, removeMapping } = useDomainMappings();
 
 const showForm = ref(false);
 const formSubdomain = ref('');
-const formProtocol = ref<'http' | 'https' | 'tcp'>('http');
+const formProtocols = ref<Set<'http' | 'https' | 'tcp'>>(new Set(['http']));
 const formWorkerId = ref('');
 const formInternalPort = ref<number | undefined>();
 const formBaseDomain = ref('');
@@ -53,17 +53,38 @@ const availableProtocols = computed(() => {
   ];
 });
 
+function toggleProtocol(value: 'http' | 'https' | 'tcp') {
+  const s = formProtocols.value;
+  if (value === 'tcp') {
+    // TCP is exclusive — selecting it deselects http/https and vice versa
+    s.clear();
+    s.add('tcp');
+  } else {
+    s.delete('tcp');
+    if (s.has(value)) {
+      // Don't allow deselecting the last protocol
+      if (s.size > 1) s.delete(value);
+    } else {
+      s.add(value);
+    }
+  }
+  formProtocols.value = new Set(s);
+}
+
 // Reset protocol if it becomes invalid when base domain changes
 watch(selectedDomainHasTls, (hasTls) => {
-  if (!hasTls && (formProtocol.value === 'https' || formProtocol.value === 'tcp')) {
-    formProtocol.value = 'http';
+  if (!hasTls) {
+    formProtocols.value.delete('https');
+    formProtocols.value.delete('tcp');
+    if (formProtocols.value.size === 0) formProtocols.value.add('http');
+    formProtocols.value = new Set(formProtocols.value);
   }
 });
 
 function resetForm() {
   formSubdomain.value = '';
   formBaseDomain.value = status.value.baseDomains[0] || '';
-  formProtocol.value = 'http';
+  formProtocols.value = new Set(['http']);
   formWorkerId.value = '';
   formInternalPort.value = undefined;
   formAuthEnabled.value = false;
@@ -73,17 +94,20 @@ function resetForm() {
 }
 
 async function handleCreate() {
-  if (!formWorkerId.value || !formInternalPort.value || !formBaseDomain.value) return;
-  await createMapping({
-    subdomain: formSubdomain.value,
-    baseDomain: formBaseDomain.value,
-    protocol: formProtocol.value,
-    workerId: formWorkerId.value,
-    internalPort: formInternalPort.value,
-    ...(formAuthEnabled.value && formAuthUsername.value && formAuthPassword.value
-      ? { basicAuth: { username: formAuthUsername.value, password: formAuthPassword.value } }
-      : {}),
-  });
+  if (!formWorkerId.value || !formInternalPort.value || !formBaseDomain.value || formProtocols.value.size === 0) return;
+  const protocols = [...formProtocols.value];
+  for (const protocol of protocols) {
+    await createMapping({
+      subdomain: formSubdomain.value,
+      baseDomain: formBaseDomain.value,
+      protocol,
+      workerId: formWorkerId.value,
+      internalPort: formInternalPort.value,
+      ...(protocol !== 'tcp' && formAuthEnabled.value && formAuthUsername.value && formAuthPassword.value
+        ? { basicAuth: { username: formAuthUsername.value, password: formAuthPassword.value } }
+        : {}),
+    });
+  }
   resetForm();
 }
 
@@ -105,19 +129,25 @@ const challengeColors: Record<string, string> = {
     <!-- Add mapping form -->
     <div v-if="showForm" class="flex flex-col gap-1.5 bg-gray-100 dark:bg-gray-800 rounded p-2 text-xs">
       <div class="flex gap-1.5">
-        <select
-          v-model="formProtocol"
-          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs shrink-0"
-        >
-          <option
+        <div class="flex shrink-0">
+          <button
             v-for="p in availableProtocols"
             :key="p.value"
-            :value="p.value"
+            type="button"
             :disabled="p.disabled"
+            class="px-2 py-1 text-xs font-medium border transition-colors first:rounded-l last:rounded-r"
+            :class="[
+              formProtocols.has(p.value)
+                ? 'bg-primary-600 dark:bg-primary-500 text-white border-primary-600 dark:border-primary-500'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600',
+              p.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:opacity-80',
+            ]"
+            :title="p.disabled ? 'No TLS configured' : ''"
+            @click="!p.disabled && toggleProtocol(p.value)"
           >
-            {{ p.label }}{{ p.disabled ? ' (no TLS)' : '' }}
-          </option>
-        </select>
+            {{ p.label }}
+          </button>
+        </div>
         <select
           v-model="formWorkerId"
           class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
@@ -152,7 +182,7 @@ const challengeColors: Record<string, string> = {
           class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
         />
       </div>
-      <div v-if="formProtocol !== 'tcp'" class="flex flex-col gap-1.5">
+      <div v-if="!formProtocols.has('tcp')" class="flex flex-col gap-1.5">
         <label class="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 cursor-pointer">
           <input
             v-model="formAuthEnabled"
