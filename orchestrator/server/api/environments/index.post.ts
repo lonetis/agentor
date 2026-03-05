@@ -1,3 +1,20 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Environments'],
+    summary: 'Create environment',
+    description: 'Creates a new worker environment configuration.',
+    operationId: 'createEnvironment',
+    requestBody: {
+      required: true,
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/Environment' } } },
+    },
+    responses: {
+      201: { description: 'Created environment', content: { 'application/json': { schema: { $ref: '#/components/schemas/Environment' } } } },
+      400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { useEnvironmentStore } from '../../utils/services';
 import type { NetworkMode } from '../../../shared/types';
 

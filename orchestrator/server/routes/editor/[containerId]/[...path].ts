@@ -1,3 +1,20 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Internal'],
+    summary: 'Editor proxy (subpath)',
+    description: 'Combined HTTP + WebSocket proxy to worker code-server (port 8443) sub-paths.',
+    operationId: 'proxyEditorSubpath',
+    parameters: [
+      { name: 'containerId', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' },
+      { name: 'path', in: 'path', required: true, schema: { type: 'string' }, description: 'Proxied path' },
+    ],
+    responses: {
+      200: { description: 'Proxied response' },
+      404: { description: 'Container not found' },
+    },
+  },
+});
+
 import { useContainerManager } from '../../../utils/services';
 import { createWsRelayHandlers, getPeerUrl } from '../../../utils/ws-utils';
 

@@ -619,6 +619,32 @@ All API routes return JSON only (no HTML partials).
 | GET | `/api/github/repos/:owner/:repo/branches` | List branches + default branch |
 | GET | `/api/health` | Health check |
 
+## API Documentation
+
+Auto-generated OpenAPI 3.1.0 docs powered by Nitro's built-in OpenAPI support. Zero external dependencies.
+
+**Endpoints:**
+- `/api/docs` — Scalar UI (interactive API explorer, deepSpace theme)
+- `/api/docs/openapi.json` — Raw OpenAPI 3.1.0 spec
+
+**How it works:** Each route file has a top-level `defineRouteMeta()` call (auto-imported Nitro macro) that enriches the generated spec with tags, summaries, schemas, parameters, and request/response bodies. Nitro auto-discovers all file-based routes and merges the metadata into a single OpenAPI spec.
+
+**Tag groups (12):** Containers, Tmux, Apps, Port Mappings, Domain Mappings, Environments, Archived Workers, Updates, GitHub, Usage, Config, Health — plus an "Internal" tag for proxy/WebSocket relay routes.
+
+**Shared schemas:** Defined via `$global.components.schemas` in anchor files (typically the "list" endpoint for each group). Other routes in the same group reference these via `$ref`. Schemas: `ContainerInfo`, `RepoConfig`, `MountConfig`, `TmuxWindow`, `AppInstanceInfo`, `PortMapping`, `DomainMapping`, `Environment`, `ArchivedWorker`, `ImageUpdateInfo`, `ErrorResponse`, `SuccessResponse`.
+
+**Adding docs to a new route:**
+1. Add `defineRouteMeta({ openAPI: { ... } })` as the very first statement in the route file (before imports)
+2. Include `tags`, `summary`, `operationId`, `parameters` (for path/query params), `requestBody` (for POST/PUT), and `responses`
+3. For new entity types, define the schema in `$global.components.schemas` in the "list" route and reference via `$ref` elsewhere
+4. The Scalar UI at `/api/docs` updates automatically — no rebuild needed in dev
+
+**Configuration** in `orchestrator/nuxt.config.ts` under `nitro.openAPI`:
+- `production: 'runtime'` — spec available in production builds
+- `route: '/api/docs/openapi.json'` — spec URL
+- `ui.scalar.route: '/api/docs'` — Scalar UI URL
+- `ui.scalar.theme: 'deepSpace'` — dark theme matching the dashboard
+
 ## Environment Variables
 
 See `.env.example` for full list. Agent API keys (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) are optional — for OAuth/subscription auth, log in once inside any worker instead (see `.cred.example/README`).

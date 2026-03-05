@@ -1,3 +1,21 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Environments'],
+    summary: 'Update environment',
+    description: 'Updates an existing environment configuration.',
+    operationId: 'updateEnvironment',
+    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Environment ID' }],
+    requestBody: {
+      required: true,
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/Environment' } } },
+    },
+    responses: {
+      200: { description: 'Updated environment', content: { 'application/json': { schema: { $ref: '#/components/schemas/Environment' } } } },
+      404: { description: 'Environment not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { useEnvironmentStore } from '../../utils/services';
 import type { NetworkMode } from '../../../shared/types';
 

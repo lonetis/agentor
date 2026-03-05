@@ -1,3 +1,18 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Domain Mappings'],
+    summary: 'Get domain mapper status',
+    description: 'Returns domain mapper status including enabled state and configured base domains.',
+    operationId: 'getDomainMapperStatus',
+    responses: {
+      200: {
+        description: 'Domain mapper status',
+        content: { 'application/json': { schema: { type: 'object', properties: { enabled: { type: 'boolean' }, baseDomains: { type: 'array', items: { type: 'string' } } } } } },
+      },
+    },
+  },
+});
+
 import { useDomainMappingStore, useConfig } from '../../utils/services';
 
 export default defineEventHandler(() => {

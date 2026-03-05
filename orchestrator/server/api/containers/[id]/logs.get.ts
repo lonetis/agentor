@@ -1,3 +1,17 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Containers'],
+    summary: 'Get container logs',
+    description: 'Returns stdout/stderr logs from a worker container.',
+    operationId: 'getContainerLogs',
+    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' }],
+    responses: {
+      200: { description: 'Container logs as text', content: { 'text/plain': { schema: { type: 'string' } } } },
+      404: { description: 'Container not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { useContainerManager } from '../../../utils/services';
 
 export default defineEventHandler(async (event) => {

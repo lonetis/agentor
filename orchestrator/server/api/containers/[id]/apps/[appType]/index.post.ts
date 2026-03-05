@@ -1,3 +1,20 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Apps'],
+    summary: 'Start app instance',
+    description: 'Starts a new instance of the specified app type in a container.',
+    operationId: 'startAppInstance',
+    parameters: [
+      { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' },
+      { name: 'appType', in: 'path', required: true, schema: { type: 'string' }, description: 'App type (e.g. chromium, socks5)' },
+    ],
+    responses: {
+      201: { description: 'Started app instance', content: { 'application/json': { schema: { $ref: '#/components/schemas/AppInstanceInfo' } } } },
+      400: { description: 'Error starting app', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { useContainerManager } from '../../../../../utils/services';
 
 export default defineEventHandler(async (event) => {

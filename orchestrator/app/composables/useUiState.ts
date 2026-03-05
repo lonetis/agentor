@@ -9,6 +9,7 @@ interface PanelStates {
   domainMappings: boolean;
   usage: boolean;
   images: boolean;
+  settings: boolean;
 }
 
 interface SidebarState {
@@ -38,6 +39,7 @@ const DEFAULT_PANELS: PanelStates = {
   domainMappings: false,
   usage: false,
   images: false,
+  settings: false,
 };
 
 function defaultState(): UiState {

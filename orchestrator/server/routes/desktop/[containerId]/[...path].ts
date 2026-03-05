@@ -1,3 +1,20 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Internal'],
+    summary: 'Desktop proxy',
+    description: 'Reverse proxy to worker noVNC desktop (port 6080).',
+    operationId: 'proxyDesktop',
+    parameters: [
+      { name: 'containerId', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' },
+      { name: 'path', in: 'path', required: true, schema: { type: 'string' }, description: 'Proxied path' },
+    ],
+    responses: {
+      200: { description: 'Proxied response' },
+      404: { description: 'Container not found' },
+    },
+  },
+});
+
 import { useContainerManager } from '../../../utils/services';
 
 export default defineEventHandler(async (event) => {

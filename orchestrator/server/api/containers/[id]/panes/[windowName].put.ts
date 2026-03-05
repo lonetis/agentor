@@ -1,3 +1,34 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Tmux'],
+    summary: 'Rename tmux window',
+    description: 'Renames an existing tmux window.',
+    operationId: 'renameTmuxWindow',
+    parameters: [
+      { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' },
+      { name: 'windowName', in: 'path', required: true, schema: { type: 'string' }, description: 'Current window name' },
+    ],
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['newName'],
+            properties: {
+              newName: { type: 'string', description: 'New window name' },
+            },
+          },
+        },
+      },
+    },
+    responses: {
+      200: { description: 'Window renamed', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
+      400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { useContainerManager } from '../../../../utils/services';
 import { WINDOW_NAME_RE } from '../../../../utils/validation';
 

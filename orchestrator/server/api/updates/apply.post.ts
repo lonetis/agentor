@@ -1,3 +1,44 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Updates'],
+    summary: 'Apply updates',
+    description: 'Pulls updated images and recreates affected containers. Optionally targets specific images.',
+    operationId: 'applyUpdates',
+    requestBody: {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              images: { type: 'array', items: { type: 'string', enum: ['orchestrator', 'mapper', 'worker', 'traefik'] }, description: 'Specific images to update (all if omitted)' },
+            },
+          },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: 'Apply result',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                orchestratorPulled: { type: 'boolean' },
+                mapperPulled: { type: 'boolean' },
+                workerPulled: { type: 'boolean' },
+                traefikPulled: { type: 'boolean' },
+                orchestratorRestarting: { type: 'boolean' },
+                errors: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+});
+
 import type { UpdatableImage } from '../../../shared/types';
 import { useUpdateChecker, useMapperManager, useTraefikManager } from '../../utils/services';
 

@@ -1,3 +1,18 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Internal'],
+    summary: 'Editor proxy (root)',
+    description: 'Combined HTTP + WebSocket proxy to worker code-server (port 8443) root path.',
+    operationId: 'proxyEditorRoot',
+    parameters: [{ name: 'containerId', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' }],
+    responses: {
+      200: { description: 'Proxied response' },
+      301: { description: 'Redirect to trailing slash' },
+      404: { description: 'Container not found' },
+    },
+  },
+});
+
 import { useContainerManager } from '../../../utils/services';
 import { createWsRelayHandlers } from '../../../utils/ws-utils';
 

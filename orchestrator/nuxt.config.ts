@@ -16,6 +16,23 @@ export default defineNuxtConfig({
   nitro: {
     experimental: {
       websocket: true,
+      openAPI: true,
+    },
+    openAPI: {
+      meta: {
+        title: 'Agentor API',
+        description: 'Docker orchestrator for AI coding agent workers',
+        version: '1.0.0',
+      },
+      production: 'runtime',
+      route: '/api/docs/openapi.json',
+      ui: {
+        scalar: {
+          route: '/api/docs',
+          theme: 'deepSpace',
+        },
+        swagger: false,
+      },
     },
     preset: 'node-server',
   },

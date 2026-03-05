@@ -1,3 +1,18 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Config'],
+    summary: 'List orchestrator environment variables',
+    description: 'Returns system environment variables passed to all agent workers.',
+    operationId: 'listOrchestratorEnvVars',
+    responses: {
+      200: {
+        description: 'Array of environment variable objects',
+        content: { 'application/json': { schema: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, value: { type: 'string' } } } } } },
+      },
+    },
+  },
+});
+
 import { useConfig, useCredentialMountManager } from '../utils/services';
 import { listInitPresets } from '../utils/init-presets';
 import { listGitProviders } from '../utils/git-providers';

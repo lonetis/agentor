@@ -1,3 +1,35 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Port Mappings'],
+    summary: 'Create port mapping',
+    description: 'Creates a new TCP port mapping from an external port to a worker internal port.',
+    operationId: 'createPortMapping',
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['externalPort', 'type', 'workerId', 'internalPort'],
+            properties: {
+              externalPort: { type: 'integer', description: 'Host port to expose' },
+              type: { type: 'string', enum: ['localhost', 'external'], description: 'Binding type' },
+              workerId: { type: 'string', description: 'Target worker container ID' },
+              internalPort: { type: 'integer', description: 'Worker internal port' },
+              appType: { type: 'string', description: 'Optional app type reference' },
+              instanceId: { type: 'string', description: 'Optional app instance ID' },
+            },
+          },
+        },
+      },
+    },
+    responses: {
+      201: { description: 'Created port mapping', content: { 'application/json': { schema: { $ref: '#/components/schemas/PortMapping' } } } },
+      400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { usePortMappingStore, useMapperManager, useContainerManager } from '../../utils/services';
 
 export default defineEventHandler(async (event) => {

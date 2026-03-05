@@ -1,3 +1,17 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Containers'],
+    summary: 'Download workspace',
+    description: 'Downloads the workspace directory as a .tar.gz archive.',
+    operationId: 'downloadWorkspace',
+    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' }],
+    responses: {
+      200: { description: 'Workspace archive', content: { 'application/gzip': { schema: { type: 'string', format: 'binary' } } } },
+      404: { description: 'Container not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { createGzip } from 'node:zlib';
 
 export default defineEventHandler(async (event) => {

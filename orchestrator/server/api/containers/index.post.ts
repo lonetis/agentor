@@ -1,3 +1,36 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Containers'],
+    summary: 'Create container',
+    description: 'Creates a new worker container with the given configuration.',
+    operationId: 'createContainer',
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Container name (auto-generated if omitted)' },
+              displayName: { type: 'string', description: 'Friendly display name' },
+              repos: { type: 'array', items: { $ref: '#/components/schemas/RepoConfig' } },
+              cpuLimit: { type: 'number', description: 'CPU core limit' },
+              memoryLimit: { type: 'string', description: 'Memory limit (e.g. "2g")' },
+              mounts: { type: 'array', items: { $ref: '#/components/schemas/MountConfig' } },
+              environmentId: { type: 'string', description: 'Environment configuration ID' },
+              initScript: { type: 'string', description: 'Init script to run on startup' },
+            },
+          },
+        },
+      },
+    },
+    responses: {
+      201: { description: 'Created container info', content: { 'application/json': { schema: { $ref: '#/components/schemas/ContainerInfo' } } } },
+      400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { useContainerManager } from '../../utils/services';
 
 export default defineEventHandler(async (event) => {

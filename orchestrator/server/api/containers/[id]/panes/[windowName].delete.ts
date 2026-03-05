@@ -1,3 +1,20 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Tmux'],
+    summary: 'Delete tmux window',
+    description: 'Kills a tmux window in the container session.',
+    operationId: 'deleteTmuxWindow',
+    parameters: [
+      { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' },
+      { name: 'windowName', in: 'path', required: true, schema: { type: 'string' }, description: 'Window name to delete' },
+    ],
+    responses: {
+      200: { description: 'Window deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
+      404: { description: 'Window not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { useContainerManager } from '../../../../utils/services';
 import { WINDOW_NAME_RE } from '../../../../utils/validation';
 

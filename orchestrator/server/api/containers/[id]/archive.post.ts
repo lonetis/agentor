@@ -1,3 +1,17 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Containers'],
+    summary: 'Archive container',
+    description: 'Archives a worker container, keeping its workspace volume.',
+    operationId: 'archiveContainer',
+    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' }],
+    responses: {
+      200: { description: 'Container archived', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
+      404: { description: 'Container not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { useContainerManager, cleanupWorkerMappings } from '../../../utils/services';
 
 export default defineEventHandler(async (event) => {

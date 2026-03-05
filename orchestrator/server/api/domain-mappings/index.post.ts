@@ -1,3 +1,36 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Domain Mappings'],
+    summary: 'Create domain mapping',
+    description: 'Creates a new Traefik domain mapping for a worker port.',
+    operationId: 'createDomainMapping',
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['baseDomain', 'workerId', 'internalPort'],
+            properties: {
+              subdomain: { type: 'string', description: 'Subdomain (empty for bare domain)' },
+              baseDomain: { type: 'string', description: 'Base domain from BASE_DOMAINS' },
+              protocol: { type: 'string', enum: ['http', 'https', 'tcp'], description: 'Routing protocol' },
+              workerId: { type: 'string', description: 'Target worker container ID' },
+              internalPort: { type: 'integer', description: 'Worker internal port' },
+              authUser: { type: 'string', description: 'HTTP basic auth username' },
+              authPassword: { type: 'string', description: 'HTTP basic auth password' },
+            },
+          },
+        },
+      },
+    },
+    responses: {
+      201: { description: 'Created domain mapping', content: { 'application/json': { schema: { $ref: '#/components/schemas/DomainMapping' } } } },
+      400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import { nanoid } from 'nanoid';
 import { useDomainMappingStore, useTraefikManager, useContainerManager, useConfig } from '../../utils/services';
 

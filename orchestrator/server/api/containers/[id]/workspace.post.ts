@@ -1,3 +1,21 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Containers'],
+    summary: 'Upload to workspace',
+    description: 'Uploads files to the workspace directory of a running container.',
+    operationId: 'uploadToWorkspace',
+    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' }],
+    requestBody: {
+      required: true,
+      content: { 'multipart/form-data': { schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } } },
+    },
+    responses: {
+      200: { description: 'Upload result', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
+      404: { description: 'Container not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+    },
+  },
+});
+
 import * as tar from 'tar-stream';
 
 export default defineEventHandler(async (event) => {

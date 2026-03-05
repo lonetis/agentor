@@ -1,3 +1,18 @@
+defineRouteMeta({
+  openAPI: {
+    tags: ['Config'],
+    summary: 'List git providers',
+    description: 'Returns available git provider configurations.',
+    operationId: 'listGitProviders',
+    responses: {
+      200: {
+        description: 'Array of git providers',
+        content: { 'application/json': { schema: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, urlPlaceholder: { type: 'string' } } } } } },
+      },
+    },
+  },
+});
+
 import { listGitProviders } from '../utils/git-providers';
 import { useConfig } from '../utils/services';
 
