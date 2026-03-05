@@ -6,6 +6,9 @@ import type { AgentUsageInfo, AgentUsageStatus, AgentAuthType, UsageWindow } fro
 const CRED_DIR = '/cred';
 const POLL_INTERVAL_MS = 300_000;
 
+/** Per-agent backoff state for rate-limited endpoints */
+const rateLimitBackoff = new Map<string, number>(); // agentId → earliest retry timestamp (ms)
+
 const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const CODEX_TOKEN_ENDPOINT = 'https://auth.openai.com/oauth/token';
 
@@ -111,6 +114,13 @@ export class UsageChecker {
 
     if (!token) return base;
 
+    // Skip if rate-limited
+    const backoffUntil = rateLimitBackoff.get('claude');
+    if (backoffUntil && Date.now() < backoffUntil) {
+      base.error = `Rate limited — retrying after ${new Date(backoffUntil).toISOString()}`;
+      return base;
+    }
+
     try {
       const resp = await fetch('https://api.anthropic.com/api/oauth/usage', {
         headers: {
@@ -118,6 +128,18 @@ export class UsageChecker {
           'anthropic-beta': 'oauth-2025-04-20',
         },
       });
+
+      if (resp.status === 429) {
+        const retryAfter = resp.headers.get('retry-after');
+        const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
+        const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
+        rateLimitBackoff.set('claude', Date.now() + delayMs);
+        base.error = `Rate limited — retry after ${delaySec}s`;
+        return base;
+      }
+
+      // Clear backoff on success or non-429 responses
+      rateLimitBackoff.delete('claude');
 
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
@@ -194,6 +216,13 @@ export class UsageChecker {
       }
     }
 
+    // Skip if rate-limited
+    const codexBackoff = rateLimitBackoff.get('codex');
+    if (codexBackoff && Date.now() < codexBackoff) {
+      base.error = `Rate limited — retrying after ${new Date(codexBackoff).toISOString()}`;
+      return base;
+    }
+
     try {
       const headers: Record<string, string> = {
         'Authorization': `Bearer ${token}`,
@@ -203,6 +232,17 @@ export class UsageChecker {
       }
 
       const resp = await fetch('https://chatgpt.com/backend-api/wham/usage', { headers });
+
+      if (resp.status === 429) {
+        const retryAfter = resp.headers.get('retry-after');
+        const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
+        const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
+        rateLimitBackoff.set('codex', Date.now() + delayMs);
+        base.error = `Rate limited — retry after ${delaySec}s`;
+        return base;
+      }
+
+      rateLimitBackoff.delete('codex');
 
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
@@ -319,6 +359,13 @@ export class UsageChecker {
       return base;
     }
 
+    // Skip if rate-limited
+    const geminiBackoff = rateLimitBackoff.get('gemini');
+    if (geminiBackoff && Date.now() < geminiBackoff) {
+      base.error = `Rate limited — retrying after ${new Date(geminiBackoff).toISOString()}`;
+      return base;
+    }
+
     try {
       const resp = await fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota', {
         method: 'POST',
@@ -328,6 +375,17 @@ export class UsageChecker {
         },
         body: '{}',
       });
+
+      if (resp.status === 429) {
+        const retryAfter = resp.headers.get('retry-after');
+        const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
+        const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
+        rateLimitBackoff.set('gemini', Date.now() + delayMs);
+        base.error = `Rate limited — retry after ${delaySec}s`;
+        return base;
+      }
+
+      rateLimitBackoff.delete('gemini');
 
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
