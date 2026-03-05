@@ -64,6 +64,15 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
   async seedBuiltIns(items: BuiltInAgentsMdEntry[]): Promise<void> {
     let changed = false;
     const now = new Date().toISOString();
+    const incomingIds = new Set(items.map((i) => i.id));
+
+    for (const [id, entry] of this.items) {
+      if (entry.builtIn && !incomingIds.has(id)) {
+        this.items.delete(id);
+        changed = true;
+      }
+    }
+
     for (const item of items) {
       const existing = this.items.get(item.id);
       if (!existing) {
