@@ -60,7 +60,7 @@ function formatValue(value: string): string {
         <!-- Header -->
         <div class="flex items-center justify-between mb-5">
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white truncate mr-3">
-            {{ container.displayName || container.name }}
+            {{ container.displayName || shortName(container.name) }}
           </h2>
           <UBadge :color="statusColor" variant="subtle" size="sm" class="shrink-0">
             {{ container.status }}
@@ -73,7 +73,7 @@ function formatValue(value: string): string {
             <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Worker</h3>
             <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
               <dt class="text-gray-500 dark:text-gray-400">Container</dt>
-              <dd class="text-gray-900 dark:text-white font-mono text-xs">{{ container.name }}</dd>
+              <dd class="text-gray-900 dark:text-white font-mono text-xs">{{ shortName(container.name) }}</dd>
 
               <dt class="text-gray-500 dark:text-gray-400">Container ID</dt>
               <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.id">{{ container.id.slice(0, 12) }}</dd>

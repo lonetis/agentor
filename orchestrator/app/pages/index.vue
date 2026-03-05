@@ -29,7 +29,7 @@ const { sidebarWidth, isDragging, isCollapsed, isMobile, startDrag, toggleCollap
 
 function handleOpenTab(containerId: string, type: 'terminal' | 'desktop' | 'apps' | 'editor') {
   const container = containers.value.find((c) => c.id === containerId);
-  const name = container?.displayName || container?.name || containerId.slice(0, 12);
+  const name = container?.displayName || shortName(container?.name || containerId.slice(0, 12));
   openTab(containerId, name, type);
 }
 

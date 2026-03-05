@@ -54,8 +54,8 @@ const isRunning = computed(() => props.container.status === 'running');
     <!-- Name + status (clickable for details) -->
     <div class="cursor-pointer hover:opacity-80 transition-opacity" @click="showDetail = true">
       <div class="flex items-center justify-between mb-0.5">
-        <h3 class="text-sm font-semibold text-gray-900 dark:text-white truncate" :title="container.displayName || container.name">
-          {{ container.displayName || container.name }}
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white truncate" :title="container.displayName || shortName(container.name)">
+          {{ container.displayName || shortName(container.name) }}
         </h3>
         <UBadge :color="statusColor" variant="subtle" size="xs" class="shrink-0 ml-2">
           {{ container.status }}
@@ -187,7 +187,7 @@ const isRunning = computed(() => props.container.status === 'running');
     <UploadModal
       v-model:open="showUpload"
       :container-id="container.id"
-      :container-name="container.displayName || container.name"
+      :container-name="container.displayName || shortName(container.name)"
     />
 
     <ContainerDetailModal

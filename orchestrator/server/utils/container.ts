@@ -1,6 +1,5 @@
-import { nanoid, customAlphabet } from 'nanoid';
-
-const containerNanoid = customAlphabet('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 8);
+import { nanoid } from 'nanoid';
+import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
 import type { Config } from './config';
 import { getAppType } from './apps';
 import { DockerService } from './docker';
@@ -150,7 +149,11 @@ export class ContainerManager {
   }
 
   generateName(): string {
-    return `${this.config.containerPrefix}-${containerNanoid()}`;
+    return `${this.config.containerPrefix}-${uniqueNamesGenerator({
+      dictionaries: [adjectives, animals],
+      separator: '-',
+      style: 'lowerCase',
+    })}`;
   }
 
   async create(request: CreateContainerRequest): Promise<ContainerInfo> {

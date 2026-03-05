@@ -191,7 +191,7 @@ function reset() {
         <UFormField label="Name">
           <UInput
             v-model="form.displayName"
-            :placeholder="generatedName"
+            :placeholder="shortName(generatedName)"
             class="w-full"
           />
         </UFormField>

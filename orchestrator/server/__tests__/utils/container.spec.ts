@@ -142,10 +142,9 @@ describe('ContainerManager', () => {
   });
 
   describe('generateName', () => {
-    it('returns containerPrefix + random string', () => {
+    it('returns containerPrefix + adjective-animal name', () => {
       const name = manager.generateName();
-      expect(name).toMatch(/^agentor-worker-/);
-      expect(name.length).toBeGreaterThan('agentor-worker-'.length);
+      expect(name).toMatch(/^agentor-worker-[a-z]+-[a-z]+$/);
     });
   });
 

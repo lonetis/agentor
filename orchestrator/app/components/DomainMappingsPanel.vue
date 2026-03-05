@@ -124,7 +124,7 @@ const challengeColors: Record<string, string> = {
         >
           <option value="" disabled>Worker</option>
           <option v-for="c in runningContainers" :key="c.id" :value="c.id">
-            {{ c.displayName || c.name }}
+            {{ c.displayName || shortName(c.name) }}
           </option>
         </select>
       </div>
@@ -222,7 +222,7 @@ const challengeColors: Record<string, string> = {
         <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
       </svg>
       <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>
-      <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ m.workerName }}:{{ m.internalPort }}</span>
+      <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ shortName(m.workerName) }}:{{ m.internalPort }}</span>
       <button
         class="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5"
         title="Remove mapping"

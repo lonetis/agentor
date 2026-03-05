@@ -62,9 +62,8 @@ test.describe('Containers API', () => {
     test('generated names are valid container names', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.generateName();
-      // Container names contain alphanumeric chars (mixed case) and dashes
-      expect(body.name).toMatch(/^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]$/);
-      expect(body.name.length).toBeGreaterThan(5);
+      // Container names: prefix + adjective-animal (lowercase, dashes)
+      expect(body.name).toMatch(/^agentor-worker-[a-z]+-[a-z]+$/);
     });
   });
 

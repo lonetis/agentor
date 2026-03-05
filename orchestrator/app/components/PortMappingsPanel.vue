@@ -55,7 +55,7 @@ async function handleCreate() {
         >
           <option value="" disabled>Worker</option>
           <option v-for="c in runningContainers" :key="c.id" :value="c.id">
-            {{ c.displayName || c.name }}
+            {{ c.displayName || shortName(c.name) }}
           </option>
         </select>
       </div>
@@ -103,7 +103,7 @@ async function handleCreate() {
       </span>
       <span class="text-gray-700 dark:text-gray-300 font-mono shrink-0">:{{ m.externalPort }}</span>
       <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>
-      <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ m.workerName }}:{{ m.internalPort }}</span>
+      <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ shortName(m.workerName) }}:{{ m.internalPort }}</span>
       <button
         class="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5"
         title="Remove mapping"
