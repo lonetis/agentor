@@ -126,39 +126,35 @@
   background: rgba(0, 0, 0, 0.5);
 }
 
-/* Collapsed sidebar rail */
-.sidebar-rail {
-  width: 40px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 10px;
+/* Collapsed sidebar — floating expand button */
+.sidebar-expand-fab {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 50;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
   background: #f9fafb;
-  border-right: 1px solid #e5e7eb;
-}
-
-.dark .sidebar-rail {
-  background: #111827;
-  border-right-color: #1f2937;
-}
-
-.sidebar-expand-btn {
-  padding: 6px;
-  border-radius: 6px;
-  background: transparent;
-  border: none;
   color: #6b7280;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
-.sidebar-expand-btn:hover {
+.sidebar-expand-fab:hover {
   background: #e5e7eb;
   color: #374151;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
-.dark .sidebar-expand-btn:hover {
+.dark .sidebar-expand-fab {
+  background: #1f2937;
+  border-color: #374151;
+  color: #9ca3af;
+}
+
+.dark .sidebar-expand-fab:hover {
   background: #374151;
   color: #d1d5db;
 }

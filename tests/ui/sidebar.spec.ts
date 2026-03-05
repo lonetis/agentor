@@ -13,7 +13,7 @@ test.describe('Sidebar', () => {
       // Click the collapse button (double chevron icon in sidebar header)
       await page.click('button[title="Collapse sidebar"]');
       await page.waitForTimeout(500);
-      // After collapse, the rail with expand button should be visible
+      // After collapse, the floating expand button should be visible
       await expect(page.locator('button[title="Expand sidebar"]')).toBeVisible();
     });
 

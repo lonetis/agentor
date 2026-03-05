@@ -138,18 +138,17 @@ function openEnvironmentsFromModal() {
       @mousedown="startDrag"
     />
 
-    <!-- Collapsed sidebar rail -->
-    <div v-if="isCollapsed" class="sidebar-rail">
-      <button
-        class="sidebar-expand-btn"
-        title="Expand sidebar"
-        @click="toggleCollapse"
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
-    </div>
+    <!-- Collapsed sidebar expand button -->
+    <button
+      v-if="isCollapsed"
+      class="sidebar-expand-fab"
+      title="Expand sidebar"
+      @click="toggleCollapse"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    </button>
 
     <!-- Main content -->
     <main class="flex-1 flex min-w-0 min-h-0">
