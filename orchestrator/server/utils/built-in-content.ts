@@ -22,7 +22,7 @@ function parseEntryName(content: string): string {
  * Each file's basename (without extension) is used as the skill ID.
  */
 export async function loadBuiltInSkills(): Promise<BuiltInSkill[]> {
-  const storage = useStorage('assets:built-in/skills');
+  const storage = useStorage('assets:builtin-skills');
   const keys = await storage.getKeys();
   const skills: BuiltInSkill[] = [];
   for (const key of keys) {
@@ -41,7 +41,7 @@ export async function loadBuiltInSkills(): Promise<BuiltInSkill[]> {
  * The name is parsed from the first `# Heading` in the content.
  */
 export async function loadBuiltInAgentsMd(): Promise<BuiltInAgentsMdEntry[]> {
-  const storage = useStorage('assets:built-in/agents-md');
+  const storage = useStorage('assets:builtin-agents-md');
   const keys = await storage.getKeys();
   const entries: BuiltInAgentsMdEntry[] = [];
   for (const key of keys) {

@@ -36,8 +36,8 @@ export default defineNuxtConfig({
     },
     preset: 'node-server',
     serverAssets: [
-      { baseName: 'built-in/skills', dir: './server/built-in/skills' },
-      { baseName: 'built-in/agents-md', dir: './server/built-in/agents-md' },
+      { baseName: 'builtin-skills', dir: './built-in/skills' },
+      { baseName: 'builtin-agents-md', dir: './built-in/agents-md' },
     ],
   },
 
