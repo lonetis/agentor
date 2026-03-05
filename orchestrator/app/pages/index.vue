@@ -36,23 +36,12 @@ function handleOpenTab(containerId: string, type: 'terminal' | 'desktop' | 'apps
   openTab(containerId, name, type);
 }
 
-async function handleCreate(request: CreateContainerRequest, files: File[]) {
+async function handleCreate(request: CreateContainerRequest) {
   const container = await createContainer(request);
   if (!container) return;
 
   // Auto-open terminal tab immediately — the container is already starting
   handleOpenTab(container.id, 'terminal');
-
-  if (files.length > 0) {
-    const formData = new FormData();
-    for (const file of files) {
-      formData.append('files', file, file.name);
-    }
-    await $fetch(`/api/containers/${container.id}/workspace`, {
-      method: 'POST',
-      body: formData,
-    });
-  }
 }
 
 function handleDownloadWorkspace(id: string) {

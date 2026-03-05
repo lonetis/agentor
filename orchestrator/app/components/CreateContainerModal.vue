@@ -6,7 +6,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  create: [request: CreateContainerRequest, files: File[]];
+  create: [request: CreateContainerRequest];
   manageEnvironments: [];
   manageInitScripts: [];
 }>();
@@ -45,7 +45,6 @@ const form = reactive({
   environmentId: 'default',
   repos: [] as RepoConfig[],
   mounts: [] as MountConfig[],
-  files: [] as File[],
   initScript: '',
 });
 
@@ -166,7 +165,7 @@ function submit() {
   if (form.initScript.trim()) {
     request.initScript = form.initScript;
   }
-  emit('create', request, [...form.files]);
+  emit('create', request);
   reset();
   open.value = false;
 }
@@ -176,7 +175,6 @@ function reset() {
   form.environmentId = 'default';
   form.repos = [];
   form.mounts = [];
-  form.files = [];
   form.initScript = '';
   generatedName.value = '';
   branchData.clear();
@@ -263,10 +261,6 @@ function reset() {
           >
             + Add mount
           </UButton>
-        </UFormField>
-
-        <UFormField label="Upload Files" hint="Uploaded to /workspace after container starts">
-          <FileDropZone v-model="form.files" />
         </UFormField>
 
         <UFormField label="Init Script" hint="Script to run in tmux on startup">
