@@ -35,10 +35,10 @@ import { usePortMappingStore, useMapperManager, useContainerManager } from '../.
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
 
-  if (!body.externalPort || !body.type || !body.workerId || !body.internalPort) {
+  if (!body.externalPort || !body.type || (!body.workerId && !body.workerName) || !body.internalPort) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Missing required fields: externalPort, type, workerId, internalPort',
+      statusMessage: 'Missing required fields: externalPort, type, workerId or workerName, internalPort',
     });
   }
 
@@ -62,7 +62,13 @@ export default defineEventHandler(async (event) => {
   const store = usePortMappingStore();
   const containerManager = useContainerManager();
 
-  const containerInfo = containerManager.get(body.workerId);
+  // Resolve worker by ID or name
+  let containerInfo;
+  if (body.workerId) {
+    containerInfo = containerManager.get(body.workerId);
+  } else if (body.workerName) {
+    containerInfo = containerManager.list().find((c) => c.name === body.workerName);
+  }
   if (!containerInfo || containerInfo.status !== 'running') {
     throw createError({
       statusCode: 400,
@@ -73,7 +79,7 @@ export default defineEventHandler(async (event) => {
   const mapping = {
     externalPort: extPort,
     type: body.type as 'localhost' | 'external',
-    workerId: body.workerId as string,
+    workerId: containerInfo.id,
     workerName: containerInfo.name,
     internalPort: intPort,
     appType: body.appType as string | undefined,

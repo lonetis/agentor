@@ -105,3 +105,27 @@ export interface AgentUsageInfo {
 export interface AgentUsageStatus {
   agents: AgentUsageInfo[];
 }
+
+export interface ExposeApis {
+  portMappings: boolean;
+  domainMappings: boolean;
+  usage: boolean;
+}
+
+export interface SkillInfo {
+  id: string;
+  name: string;
+  content: string;
+  builtIn: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InstructionInfo {
+  id: string;
+  name: string;
+  content: string;
+  builtIn: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

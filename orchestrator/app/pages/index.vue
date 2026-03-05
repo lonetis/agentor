@@ -24,6 +24,8 @@ const {
 
 const showCreateModal = ref(false);
 const showEnvironmentsModal = ref(false);
+const showSkillsModal = ref(false);
+const showInstructionsModal = ref(false);
 const showSettingsModal = ref(false);
 
 const { sidebarWidth, isDragging, isCollapsed, isMobile, startDrag, toggleCollapse } = useSidebarResize();
@@ -117,6 +119,8 @@ function openEnvironmentsFromModal() {
       :archived-workers="archivedWorkers"
       @new-worker="showCreateModal = true"
       @manage-environments="showEnvironmentsModal = true"
+      @manage-skills="showSkillsModal = true"
+      @manage-instructions="showInstructionsModal = true"
       @open-terminal="(cid) => handleOpenTab(cid, 'terminal')"
       @open-desktop="(cid) => handleOpenTab(cid, 'desktop')"
       @open-apps="(cid) => handleOpenTab(cid, 'apps')"
@@ -179,6 +183,8 @@ function openEnvironmentsFromModal() {
       :init-presets="initPresets"
     />
 
+    <SkillsModal v-model:open="showSkillsModal" />
+    <InstructionsModal v-model:open="showInstructionsModal" />
     <SettingsModal v-model:open="showSettingsModal" />
   </div>
 </template>

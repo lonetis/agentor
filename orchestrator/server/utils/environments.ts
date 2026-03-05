@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid';
 import { JsonStore } from './json-store';
 import { loadConfig } from './config';
-import type { NetworkMode } from '../../shared/types';
+import type { NetworkMode, ExposeApis } from '../../shared/types';
 
 export interface Environment {
   id: string;
@@ -15,6 +15,9 @@ export interface Environment {
   envVars: string;
   setupScript: string;
   initScript: string;
+  exposeApis: ExposeApis;
+  enabledSkillIds: string[] | null;
+  enabledInstructionIds: string[] | null;
   createdAt: string;
   updatedAt: string;
 }

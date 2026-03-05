@@ -45,10 +45,10 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  if (!body.protocol || !body.workerId || !body.internalPort || !body.baseDomain) {
+  if (!body.protocol || (!body.workerId && !body.workerName) || !body.internalPort || !body.baseDomain) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Missing required fields: baseDomain, protocol, workerId, internalPort',
+      statusMessage: 'Missing required fields: baseDomain, protocol, workerId or workerName, internalPort',
     });
   }
 
@@ -96,7 +96,13 @@ export default defineEventHandler(async (event) => {
   }
 
   const containerManager = useContainerManager();
-  const containerInfo = containerManager.get(body.workerId);
+  // Resolve worker by ID or name
+  let containerInfo;
+  if (body.workerId) {
+    containerInfo = containerManager.get(body.workerId);
+  } else if (body.workerName) {
+    containerInfo = containerManager.list().find((c) => c.name === body.workerName);
+  }
   if (!containerInfo || containerInfo.status !== 'running') {
     throw createError({
       statusCode: 400,
@@ -118,7 +124,7 @@ export default defineEventHandler(async (event) => {
     subdomain: body.subdomain,
     baseDomain: body.baseDomain,
     protocol: body.protocol,
-    workerId: body.workerId,
+    workerId: containerInfo.id,
     workerName: containerInfo.name,
     internalPort: intPort,
     ...(hasUser && hasPass

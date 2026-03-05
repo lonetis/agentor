@@ -3,7 +3,7 @@ import type { Duplex } from 'node:stream';
 import type { Config } from './config';
 import { getAppType } from './apps';
 import { listGitProviders } from './git-providers';
-import type { NetworkMode, MountConfig, RepoConfig, TmuxWindow, AppInstanceInfo } from '../../shared/types';
+import type { NetworkMode, ExposeApis, MountConfig, RepoConfig, TmuxWindow, AppInstanceInfo } from '../../shared/types';
 
 const MANAGED_LABEL = 'agentor.managed';
 
@@ -44,6 +44,9 @@ export class DockerService {
     credentialBinds?: string[];
     environmentId?: string;
     environmentName?: string;
+    instructionsB64?: string;
+    skillsB64?: string;
+    exposeApis?: ExposeApis;
   }): Promise<Docker.Container> {
     const env: string[] = [];
 
@@ -79,6 +82,21 @@ export class DockerService {
       for (const v of opts.customEnvVars) {
         env.push(v);
       }
+    }
+
+    // Orchestrator API access
+    env.push('ORCHESTRATOR_URL=http://agentor-orchestrator:3000');
+    env.push(`WORKER_CONTAINER_NAME=${opts.name}`);
+    if (opts.instructionsB64) {
+      env.push(`INSTRUCTIONS_B64=${opts.instructionsB64}`);
+    }
+    if (opts.skillsB64) {
+      env.push(`SKILLS_B64=${opts.skillsB64}`);
+    }
+    if (opts.exposeApis) {
+      env.push(`EXPOSE_PORT_MAPPINGS=${opts.exposeApis.portMappings}`);
+      env.push(`EXPOSE_DOMAIN_MAPPINGS=${opts.exposeApis.domainMappings}`);
+      env.push(`EXPOSE_USAGE=${opts.exposeApis.usage}`);
     }
 
     const memBytes = opts.memoryLimit ? this.parseMemoryLimit(opts.memoryLimit) : 0;

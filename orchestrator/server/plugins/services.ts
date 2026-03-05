@@ -1,4 +1,5 @@
-import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager } from '../utils/services';
+import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useInstructionStore } from '../utils/services';
+import { BUILT_IN_SKILLS, BUILT_IN_INSTRUCTIONS } from '../utils/built-in-content';
 
 export default defineNitroPlugin(async () => {
   const dockerService = useDockerService();
@@ -16,6 +17,17 @@ export default defineNitroPlugin(async () => {
   const environmentStore = useEnvironmentStore();
   await environmentStore.init();
   containerManager.setEnvironmentStore(environmentStore);
+
+  // Initialize skill and instruction stores (load from disk, seed built-ins)
+  const skillStore = useSkillStore();
+  await skillStore.init();
+  await skillStore.seedBuiltIns(BUILT_IN_SKILLS);
+  containerManager.setSkillStore(skillStore);
+
+  const instructionStore = useInstructionStore();
+  await instructionStore.init();
+  await instructionStore.seedBuiltIns(BUILT_IN_INSTRUCTIONS);
+  containerManager.setInstructionStore(instructionStore);
 
   // Initialize worker store (load from disk) and connect to container manager
   const workerStore = useWorkerStore();
@@ -60,5 +72,5 @@ export default defineNitroPlugin(async () => {
   const usageChecker = useUsageChecker();
   await usageChecker.init();
 
-  console.log(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
+  console.log(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${skillStore.list().length} skills, ${instructionStore.list().length} instructions, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
 });

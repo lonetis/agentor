@@ -282,9 +282,63 @@ Workers support running Docker inside the container, enabled per-environment via
 
 Workers support optional host bind-mounts configured at creation time. Each mount specifies a `source` (host path), `target` (container path), and `readOnly` flag. Defined via the `MountConfig` interface in `orchestrator/app/types/index.ts`, configured in the UI via `MountInput.vue` within `CreateContainerModal.vue`, and passed through `ContainerManager.createContainer()` to dockerode as Docker bind mounts.
 
+## Skills & Instructions
+
+Skills and instructions are content documents injected into worker containers to provide agents with structured knowledge.
+
+### Skills
+
+Reusable knowledge documents teaching agents how to use specific capabilities. Managed via `orchestrator/server/utils/skill-store.ts` (`SkillStore`), persisted to `<DATA_DIR>/skills.json`.
+
+**Built-in skills (3):**
+- `builtin-port-mapping` — Documents port mapping API (auto-filtered when `exposeApis.portMappings` is false)
+- `builtin-domain-mapping` — Documents domain mapping API (auto-filtered when `exposeApis.domainMappings` is false)
+- `builtin-usage` — Documents usage monitoring API (auto-filtered when `exposeApis.usage` is false)
+
+Custom skills can be created via the Skills modal in the sidebar. Built-in skills cannot be edited or deleted, but their content is updated on startup.
+
+Skills are written to agent-specific paths on container first startup:
+- Claude: `/home/agent/.claude/skills/agentor-<safe-name>/SKILL.md` (with YAML frontmatter)
+- Codex: `/home/agent/.agents/skills/agentor-<safe-name>/SKILL.md` (with YAML frontmatter)
+- Gemini: `/home/agent/.gemini/commands/agentor-<safe-name>.toml`
+
+### Instructions
+
+Platform context documents injected into agent instruction paths. Managed via `orchestrator/server/utils/instruction-store.ts` (`InstructionStore`), persisted to `<DATA_DIR>/instructions.json`.
+
+**Built-in instruction (1):**
+- `builtin-platform-guide` — Comprehensive worker environment description (OS, tools, display stack, Docker, orchestrator API, etc.)
+
+Instructions are merged into a single markdown document and written to:
+- Claude: `/home/agent/.claude/CLAUDE.md`
+- Codex: `/home/agent/.codex/AGENTS.md`
+- Gemini: `/home/agent/.gemini/GEMINI.md`
+
+### Environment Integration
+
+Both skills and instructions are selected per-environment:
+- `exposeApis: { portMappings, domainMappings, usage }` — Controls which API skills are included (default all true)
+- `enabledSkillIds: string[] | null` — `null` = all, `[]` = none, or specific IDs
+- `enabledInstructionIds: string[] | null` — Same semantics
+
+### Worker API Exposure
+
+Workers can call orchestrator APIs over the Docker network. The orchestrator passes these env vars to every worker:
+- `ORCHESTRATOR_URL=http://agentor-orchestrator:3000`
+- `WORKER_CONTAINER_NAME=<container-name>`
+- `EXPOSE_PORT_MAPPINGS=true/false`
+- `EXPOSE_DOMAIN_MAPPINGS=true/false`
+- `EXPOSE_USAGE=true/false`
+
+Port mapping and domain mapping create endpoints also accept `workerName` as an alternative to `workerId`, so agents can use `$WORKER_CONTAINER_NAME` directly.
+
+No firewall changes needed — the orchestrator is on the same Docker bridge network (`agentor-net`), and existing firewall rules allow private network ranges.
+
+Platform setup runs only on first container startup (sentinel file `/workspace/.agentor-platform-init`). On restart, user modifications to skill/instruction files are preserved.
+
 ## Environment System
 
-Environments bundle per-worker configuration: CPU/memory limits, network access policy, Docker-in-Docker toggle, custom env vars, setup script (pre-agent), and init script (agent launch script via preset or custom). Managed via `orchestrator/server/utils/environments.ts` (`EnvironmentStore`), stored as JSON in `<DATA_DIR>/environments.json`.
+Environments bundle per-worker configuration: CPU/memory limits, network access policy, Docker-in-Docker toggle, custom env vars, setup script (pre-agent), init script (agent launch script via preset or custom), API exposure flags, and skill/instruction selections. Managed via `orchestrator/server/utils/environments.ts` (`EnvironmentStore`), stored as JSON in `<DATA_DIR>/environments.json`.
 
 ### Network Firewall
 
@@ -308,6 +362,7 @@ Fully synchronous — every phase runs foreground and completes before the next 
 
 0. **Tmux session** with animated loading screen (`bash /home/agent/loading-screen.sh`)
 1. **Agent setup** — all `agents/*/setup.sh` scripts (CLI config, settings — OAuth credentials are bind-mounted)
+1b. **Platform setup** — writes instructions + skills to agent-specific paths (first startup only, sentinel `/workspace/.agentor-platform-init`)
 2. **Docker daemon** — if `DOCKER_ENABLED=true`: start dockerd, wait for socket (up to 30s); otherwise skipped
 3. **Display stack** — Xvfb + fluxbox + x11vnc + websockify/noVNC, wait for each service
 4. **Code editor** — code-server on port 8443 (`--auth none --bind-addr 0.0.0.0:8443`), wait for port ready
@@ -422,12 +477,12 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/app.config.ts` - App-level configuration
 
 ### Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus)
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, InstructionInfo)
 
 ### Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build
 - `orchestrator/nuxt.config.ts` - Nuxt configuration (modules, SPA mode, Nitro WebSocket)
-- `orchestrator/server/plugins/services.ts` - Nitro startup: init Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + WorkerStore + UpdateChecker + UsageChecker
+- `orchestrator/server/plugins/services.ts` - Nitro startup: init Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + SkillStore + InstructionStore + WorkerStore + UpdateChecker + UsageChecker
 - `orchestrator/server/utils/config.ts` - Environment variable parsing
 - `orchestrator/server/utils/init-presets.ts` - Init preset registry (INIT_PRESETS) for agent start scripts and API domains
 - `orchestrator/server/utils/git-providers.ts` - Git provider registry (GIT_PROVIDER_REGISTRY)
@@ -444,7 +499,10 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/server/utils/environments.ts` - EnvironmentStore class, network mode types, package manager domains list
 - `orchestrator/server/utils/worker-store.ts` - WorkerStore class (persistent worker metadata for archive/unarchive)
 - `orchestrator/server/utils/credential-mounts.ts` - CredentialMountManager class (resolves host path of /cred mount, generates bind mount strings for worker containers) + AGENT_CREDENTIAL_MAPPINGS registry
-- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager) + shared `cleanupWorkerMappings()` utility
+- `orchestrator/server/utils/skill-store.ts` - SkillStore class (extends JsonStore, built-in seeding)
+- `orchestrator/server/utils/instruction-store.ts` - InstructionStore class (extends JsonStore, built-in seeding)
+- `orchestrator/server/utils/built-in-content.ts` - Built-in skill and instruction content (port mapping, domain mapping, usage, platform guide)
+- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useInstructionStore) + shared `cleanupWorkerMappings()` utility
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)
 - `orchestrator/server/utils/terminal-handler.ts` - Docker stream WebSocket terminal logic (uses ws-utils, exports terminalWsHandler)
@@ -469,8 +527,10 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/app/components/CreateContainerModal.vue` - New worker modal (environment selector, init preset, repos)
 - `orchestrator/app/components/ServicePane.vue` - Unified iframe pane for desktop (noVNC) and editor (code-server)
 - `orchestrator/app/components/DomainMappingsPanel.vue` - Domain mapping CRUD panel (subdomain, protocol, basic auth)
-- `orchestrator/app/components/EnvironmentEditor.vue` - Environment form (resources, network, Docker, scripts)
+- `orchestrator/app/components/EnvironmentEditor.vue` - Environment form (resources, network, Docker, expose APIs, skills, instructions, scripts)
 - `orchestrator/app/components/EnvironmentsModal.vue` - Environment list + editor (CRUD)
+- `orchestrator/app/components/SkillsModal.vue` - Skills management modal (list, view built-in, create/edit/delete custom)
+- `orchestrator/app/components/InstructionsModal.vue` - Instructions management modal (same pattern)
 - `orchestrator/app/components/SettingsModal.vue` - System settings viewer (auto-renders categorized sections from `/api/settings`)
 - `orchestrator/app/components/FileDropZone.vue` - Drag-and-drop file zone for uploads
 - `orchestrator/app/components/MountInput.vue` - Form input for a single host bind-mount config
@@ -497,6 +557,8 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/app/composables/useInitPresetSync.ts` - Bidirectional sync between init preset dropdown and init script textarea
 - `orchestrator/app/composables/useDragTab.ts` - Tab drag-and-drop (HTML5 DnD)
 - `orchestrator/app/composables/useEnvironments.ts` - Environment CRUD
+- `orchestrator/app/composables/useSkills.ts` - Skill CRUD
+- `orchestrator/app/composables/useInstructions.ts` - Instruction CRUD
 - `orchestrator/app/composables/useGitHubRepos.ts` - GitHub repos list, org filter, create repo
 - `orchestrator/app/composables/useGitProviders.ts` - Git provider list
 - `orchestrator/app/composables/useInitPresets.ts` - Init preset list
@@ -509,11 +571,11 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/app/composables/useTmuxTabs.ts` - Tmux window management (fetch, poll, create, close, activate, rename)
 - `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only)
 - `orchestrator/app/composables/useUsage.ts` - Agent usage status polling (60s)
-- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, InitPresetInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone
+- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, InstructionInfo) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, InitPresetInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone
 
 ### Worker
 - `worker/Dockerfile` - Unified worker image (Node.js 22, all agent CLIs, code-server, display stack, Chromium, Playwright, Firefox, microsocks, utility packages, agent user, entrypoint)
-- `worker/entrypoint.sh` - Entrypoint (tmux, agent setups, docker daemon, display stack, code-server, git auth, repo clone, firewall, setup script, launch)
+- `worker/entrypoint.sh` - Entrypoint (tmux, agent setups, platform setup, docker daemon, display stack, code-server, git auth, repo clone, firewall, setup script, launch)
 - `worker/loading-screen.sh` - Animated startup display (braille spinner, progress bar, per-step timing)
 - `worker/git-wrapper.sh` - Process-tree-aware git identity wrapper (installed at /usr/local/bin/git)
 - `worker/apps/chromium/manage.sh` - Chromium app manager (start/stop/list via docker exec)
@@ -596,6 +658,16 @@ All API routes return JSON only (no HTML partials).
 | POST | `/api/domain-mappings` | Create domain mapping |
 | DELETE | `/api/domain-mappings/:id` | Remove domain mapping |
 | GET | `/api/domain-mapper/status` | Domain mapper status (enabled, baseDomains) |
+| GET | `/api/skills` | List all skills |
+| POST | `/api/skills` | Create custom skill |
+| GET | `/api/skills/:id` | Get single skill |
+| PUT | `/api/skills/:id` | Update custom skill |
+| DELETE | `/api/skills/:id` | Delete custom skill |
+| GET | `/api/instructions` | List all instructions |
+| POST | `/api/instructions` | Create custom instruction |
+| GET | `/api/instructions/:id` | Get single instruction |
+| PUT | `/api/instructions/:id` | Update custom instruction |
+| DELETE | `/api/instructions/:id` | Delete custom instruction |
 | GET | `/api/usage` | Agent usage status (OAuth usage windows per agent) |
 | GET | `/api/updates` | Update status (image digests, production mode) |
 | POST | `/api/updates/check` | Trigger manual update check |
@@ -631,9 +703,9 @@ Auto-generated OpenAPI 3.1.0 docs powered by Nitro's built-in OpenAPI support. Z
 
 **How it works:** Each route file has a top-level `defineRouteMeta()` call (auto-imported Nitro macro) that enriches the generated spec with tags, summaries, schemas, parameters, and request/response bodies. Nitro auto-discovers all file-based routes and merges the metadata into a single OpenAPI spec.
 
-**Tag groups (12):** Containers, Tmux, Apps, Port Mappings, Domain Mappings, Environments, Archived Workers, Updates, GitHub, Usage, Config, Health — plus an "Internal" tag for proxy/WebSocket relay routes.
+**Tag groups (14):** Containers, Tmux, Apps, Port Mappings, Domain Mappings, Environments, Skills, Instructions, Archived Workers, Updates, GitHub, Usage, Config, Health — plus an "Internal" tag for proxy/WebSocket relay routes.
 
-**Shared schemas:** Defined via `$global.components.schemas` in anchor files (typically the "list" endpoint for each group). Other routes in the same group reference these via `$ref`. Schemas: `ContainerInfo`, `RepoConfig`, `MountConfig`, `TmuxWindow`, `AppInstanceInfo`, `PortMapping`, `DomainMapping`, `Environment`, `ArchivedWorker`, `ImageUpdateInfo`, `ErrorResponse`, `SuccessResponse`.
+**Shared schemas:** Defined via `$global.components.schemas` in anchor files (typically the "list" endpoint for each group). Other routes in the same group reference these via `$ref`. Schemas: `ContainerInfo`, `RepoConfig`, `MountConfig`, `TmuxWindow`, `AppInstanceInfo`, `PortMapping`, `DomainMapping`, `Environment`, `Skill`, `Instruction`, `ArchivedWorker`, `ImageUpdateInfo`, `ErrorResponse`, `SuccessResponse`.
 
 **Adding docs to a new route:**
 1. Add `defineRouteMeta({ openAPI: { ... } })` as the very first statement in the route file (before imports)

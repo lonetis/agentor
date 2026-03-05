@@ -57,6 +57,9 @@ function makeEnvInput(overrides: Partial<EnvInput> = {}): EnvInput {
     envVars: '',
     setupScript: '',
     initScript: '',
+    exposeApis: { portMappings: true, domainMappings: true, usage: true },
+    enabledSkillIds: null,
+    enabledInstructionIds: null,
     ...overrides,
   };
 }

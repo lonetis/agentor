@@ -142,12 +142,17 @@ function removeMount(idx: number) {
   form.mounts.splice(idx, 1);
 }
 
+function sanitizeContainerName(input: string): string {
+  return input.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
 function submit() {
+  const customName = form.displayName.trim();
   const request: CreateContainerRequest = {
-    name: generatedName.value,
+    name: customName ? `agentor-worker-${sanitizeContainerName(customName)}` : generatedName.value,
   };
   if (form.environmentId && form.environmentId !== NONE_ENV) request.environmentId = form.environmentId;
-  if (form.displayName) request.displayName = form.displayName;
+  if (customName) request.displayName = customName;
   const validRepos = form.repos.filter((r) => r.url);
   if (validRepos.length > 0) {
     request.repos = validRepos.map((r) => ({

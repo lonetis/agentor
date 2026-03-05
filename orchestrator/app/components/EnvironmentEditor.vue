@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { InitPresetInfo, EnvironmentInfo, NetworkMode, OrchestratorEnvVar } from '~/types';
+import type { InitPresetInfo, EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, SkillInfo, InstructionInfo } from '~/types';
 
 const props = defineProps<{
   initPresets: InitPresetInfo[];
@@ -23,6 +23,9 @@ const form = reactive({
   envVars: '',
   setupScript: '',
   initScript: '',
+  exposeApis: { portMappings: true, domainMappings: true, usage: true } as ExposeApis,
+  enabledSkillIds: null as string[] | null,
+  enabledInstructionIds: null as string[] | null,
 });
 
 const { selectedPreset, presetOptions } = useInitPresetSync(
@@ -31,6 +34,55 @@ const { selectedPreset, presetOptions } = useInitPresetSync(
 );
 
 const systemEnvVars = ref<OrchestratorEnvVar[]>([]);
+
+const { data: allSkills } = useFetch<SkillInfo[]>('/api/skills', { default: () => [] });
+const { data: allInstructions } = useFetch<InstructionInfo[]>('/api/instructions', { default: () => [] });
+
+// Track "all selected" toggle state
+const allSkillsSelected = computed({
+  get: () => form.enabledSkillIds === null,
+  set: (v: boolean) => {
+    form.enabledSkillIds = v ? null : allSkills.value.map((s) => s.id);
+  },
+});
+const allInstructionsSelected = computed({
+  get: () => form.enabledInstructionIds === null,
+  set: (v: boolean) => {
+    form.enabledInstructionIds = v ? null : allInstructions.value.map((i) => i.id);
+  },
+});
+
+function isSkillEnabled(id: string): boolean {
+  return form.enabledSkillIds === null || form.enabledSkillIds.includes(id);
+}
+function toggleSkill(id: string) {
+  if (form.enabledSkillIds === null) {
+    form.enabledSkillIds = allSkills.value.map((s) => s.id).filter((sid) => sid !== id);
+  } else if (form.enabledSkillIds.includes(id)) {
+    form.enabledSkillIds = form.enabledSkillIds.filter((sid) => sid !== id);
+  } else {
+    form.enabledSkillIds = [...form.enabledSkillIds, id];
+    if (form.enabledSkillIds.length === allSkills.value.length) {
+      form.enabledSkillIds = null;
+    }
+  }
+}
+
+function isInstructionEnabled(id: string): boolean {
+  return form.enabledInstructionIds === null || form.enabledInstructionIds.includes(id);
+}
+function toggleInstruction(id: string) {
+  if (form.enabledInstructionIds === null) {
+    form.enabledInstructionIds = allInstructions.value.map((i) => i.id).filter((iid) => iid !== id);
+  } else if (form.enabledInstructionIds.includes(id)) {
+    form.enabledInstructionIds = form.enabledInstructionIds.filter((iid) => iid !== id);
+  } else {
+    form.enabledInstructionIds = [...form.enabledInstructionIds, id];
+    if (form.enabledInstructionIds.length === allInstructions.value.length) {
+      form.enabledInstructionIds = null;
+    }
+  }
+}
 
 const networkModeOptions = [
   { label: 'Full', value: 'full', description: 'Unrestricted network access' },
@@ -73,6 +125,9 @@ function initForm() {
     form.envVars = props.environment.envVars;
     form.setupScript = props.environment.setupScript;
     form.initScript = props.environment.initScript;
+    form.exposeApis = props.environment.exposeApis ?? { portMappings: true, domainMappings: true, usage: true };
+    form.enabledSkillIds = props.environment.enabledSkillIds ?? null;
+    form.enabledInstructionIds = props.environment.enabledInstructionIds ?? null;
   }
   fetchSystemEnvVars();
 }
@@ -98,6 +153,9 @@ function handleSave() {
     envVars: form.envVars,
     setupScript: form.setupScript,
     initScript: form.initScript,
+    exposeApis: form.exposeApis,
+    enabledSkillIds: form.enabledSkillIds,
+    enabledInstructionIds: form.enabledInstructionIds,
   });
 }
 </script>
@@ -230,6 +288,90 @@ function handleSave() {
             {{ domain }}
           </div>
         </div>
+      </div>
+    </fieldset>
+
+    <!-- Expose APIs -->
+    <fieldset>
+      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Expose APIs</legend>
+      <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+        Allow workers to call orchestrator APIs. Skills for disabled APIs are automatically excluded.
+      </p>
+      <div class="space-y-1.5">
+        <label class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
+          <UCheckbox v-model="form.exposeApis.portMappings" :disabled="readOnly" />
+          Port Mappings
+        </label>
+        <label class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
+          <UCheckbox v-model="form.exposeApis.domainMappings" :disabled="readOnly" />
+          Domain Mappings
+        </label>
+        <label class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
+          <UCheckbox v-model="form.exposeApis.usage" :disabled="readOnly" />
+          Usage Monitoring
+        </label>
+      </div>
+    </fieldset>
+
+    <!-- Skills -->
+    <fieldset v-if="allSkills.length > 0">
+      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Skills</legend>
+      <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+        Select which skills are available to agents in this environment.
+      </p>
+      <div class="mb-2">
+        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
+          <UCheckbox :model-value="allSkillsSelected" @update:model-value="allSkillsSelected = !!$event" :disabled="readOnly" />
+          Select All
+        </label>
+      </div>
+      <div class="space-y-1.5 pl-1">
+        <label
+          v-for="skill in allSkills"
+          :key="skill.id"
+          class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
+          :class="readOnly ? 'cursor-default' : 'cursor-pointer'"
+        >
+          <UCheckbox :model-value="isSkillEnabled(skill.id)" @update:model-value="toggleSkill(skill.id)" :disabled="readOnly" />
+          {{ skill.name }}
+          <span
+            v-if="skill.builtIn"
+            class="px-1 py-0.5 rounded text-[9px] font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
+          >
+            Built-in
+          </span>
+        </label>
+      </div>
+    </fieldset>
+
+    <!-- Instructions -->
+    <fieldset v-if="allInstructions.length > 0">
+      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Instructions</legend>
+      <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+        Select which instructions are injected into agents in this environment.
+      </p>
+      <div class="mb-2">
+        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
+          <UCheckbox :model-value="allInstructionsSelected" @update:model-value="allInstructionsSelected = !!$event" :disabled="readOnly" />
+          Select All
+        </label>
+      </div>
+      <div class="space-y-1.5 pl-1">
+        <label
+          v-for="instruction in allInstructions"
+          :key="instruction.id"
+          class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
+          :class="readOnly ? 'cursor-default' : 'cursor-pointer'"
+        >
+          <UCheckbox :model-value="isInstructionEnabled(instruction.id)" @update:model-value="toggleInstruction(instruction.id)" :disabled="readOnly" />
+          {{ instruction.name }}
+          <span
+            v-if="instruction.builtIn"
+            class="px-1 py-0.5 rounded text-[9px] font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
+          >
+            Built-in
+          </span>
+        </label>
       </div>
     </fieldset>
 

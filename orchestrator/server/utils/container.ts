@@ -10,7 +10,9 @@ import { getPackageManagerDomains } from './environments';
 import type { EnvironmentStore } from './environments';
 import type { WorkerStore, WorkerRecord } from './worker-store';
 import type { CredentialMountManager } from './credential-mounts';
-import type { NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest } from '../../shared/types';
+import type { SkillStore } from './skill-store';
+import type { InstructionStore } from './instruction-store';
+import type { NetworkMode, ExposeApis, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest } from '../../shared/types';
 
 function parseLabelFloat(value: string | undefined): number | undefined {
   if (value == null) return undefined;
@@ -28,6 +30,9 @@ interface ResolvedEnvConfig {
   customEnvVars?: string[];
   dockerEnabled?: boolean;
   environmentName?: string;
+  instructionsB64?: string;
+  skillsB64?: string;
+  exposeApis?: ExposeApis;
 }
 
 export class ContainerManager {
@@ -37,6 +42,8 @@ export class ContainerManager {
   private environmentStore?: EnvironmentStore;
   private workerStore?: WorkerStore;
   private credentialMountManager?: CredentialMountManager;
+  private skillStore?: SkillStore;
+  private instructionStore?: InstructionStore;
 
   constructor(dockerService: DockerService, config: Config) {
     this.dockerService = dockerService;
@@ -55,8 +62,66 @@ export class ContainerManager {
     this.credentialMountManager = manager;
   }
 
+  setSkillStore(store: SkillStore): void {
+    this.skillStore = store;
+  }
+
+  setInstructionStore(store: InstructionStore): void {
+    this.instructionStore = store;
+  }
+
+  private resolveSkillsAndInstructions(
+    enabledSkillIds: string[] | null | undefined,
+    enabledInstructionIds: string[] | null | undefined,
+    exposeApis: ExposeApis,
+  ): { skillsB64?: string; instructionsB64?: string } {
+    let instructionsB64: string | undefined;
+    if (this.instructionStore) {
+      const allInstructions = this.instructionStore.list();
+      const enabledInstructions = enabledInstructionIds === null || enabledInstructionIds === undefined
+        ? allInstructions
+        : allInstructions.filter((i) => enabledInstructionIds!.includes(i.id));
+
+      if (enabledInstructions.length > 0) {
+        const merged = enabledInstructions.map((i) => `# ${i.name}\n\n${i.content}`).join('\n\n---\n\n');
+        instructionsB64 = Buffer.from(merged).toString('base64');
+      }
+    }
+
+    let skillsB64: string | undefined;
+    if (this.skillStore) {
+      const allSkills = this.skillStore.list();
+      let enabledSkills = enabledSkillIds === null || enabledSkillIds === undefined
+        ? allSkills
+        : allSkills.filter((s) => enabledSkillIds!.includes(s.id));
+
+      const apiSkillFilter: Record<string, keyof ExposeApis> = {
+        'builtin-port-mapping': 'portMappings',
+        'builtin-domain-mapping': 'domainMappings',
+        'builtin-usage': 'usage',
+      };
+      enabledSkills = enabledSkills.filter((s) => {
+        const apiKey = apiSkillFilter[s.id];
+        return !apiKey || exposeApis[apiKey];
+      });
+
+      if (enabledSkills.length > 0) {
+        const serialized = JSON.stringify(enabledSkills.map((s) => ({ name: s.name, content: s.content })));
+        skillsB64 = Buffer.from(serialized).toString('base64');
+      }
+    }
+
+    return { skillsB64, instructionsB64 };
+  }
+
   private resolveEnvironmentConfig(environmentId?: string): ResolvedEnvConfig {
-    if (!environmentId || !this.environmentStore) return {};
+    // Default environment: all skills, all instructions, all APIs exposed
+    const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
+
+    if (!environmentId || !this.environmentStore) {
+      const { skillsB64, instructionsB64 } = this.resolveSkillsAndInstructions(null, null, defaultExposeApis);
+      return { instructionsB64, skillsB64, exposeApis: defaultExposeApis };
+    }
 
     const env = this.environmentStore.get(environmentId);
     if (!env) throw new Error(`Environment not found: ${environmentId}`);
@@ -86,6 +151,11 @@ export class ContainerManager {
       }
     }
 
+    const exposeApis: ExposeApis = env.exposeApis ?? defaultExposeApis;
+    const { skillsB64, instructionsB64 } = this.resolveSkillsAndInstructions(
+      env.enabledSkillIds, env.enabledInstructionIds, exposeApis,
+    );
+
     return {
       cpuLimit: env.cpuLimit != null ? env.cpuLimit : undefined,
       memoryLimit: env.memoryLimit || undefined,
@@ -96,6 +166,9 @@ export class ContainerManager {
       customEnvVars: customEnvVars.length > 0 ? customEnvVars : undefined,
       dockerEnabled: env.dockerEnabled ?? true,
       environmentName: env.name,
+      instructionsB64,
+      skillsB64,
+      exposeApis,
     };
   }
 
@@ -200,6 +273,9 @@ export class ContainerManager {
       credentialBinds: this.credentialMountManager?.getBindMounts(),
       environmentId: request.environmentId,
       environmentName: envConfig.environmentName,
+      instructionsB64: envConfig.instructionsB64,
+      skillsB64: envConfig.skillsB64,
+      exposeApis: envConfig.exposeApis,
     });
 
     const image = this.config.workerImagePrefix + this.config.workerImage;
@@ -350,6 +426,9 @@ export class ContainerManager {
       credentialBinds: this.credentialMountManager?.getBindMounts(),
       environmentId: worker.environmentId,
       environmentName: envConfig.environmentName || worker.environmentName,
+      instructionsB64: envConfig.instructionsB64,
+      skillsB64: envConfig.skillsB64,
+      exposeApis: envConfig.exposeApis,
     });
 
     await this.workerStore.unarchive(worker.name, container.id);

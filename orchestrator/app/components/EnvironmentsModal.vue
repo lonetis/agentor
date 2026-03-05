@@ -11,26 +11,36 @@ const { environments, createEnvironment, updateEnvironment, deleteEnvironment } 
 
 const editingId = ref<string | null>(null);
 const creating = ref(false);
+const viewingDefault = ref(false);
 
 const editingEnvironment = computed(() =>
   editingId.value ? environments.value.find((e) => e.id === editingId.value) : undefined
 );
 
-const showEditor = computed(() => creating.value || editingId.value !== null);
+const showEditor = computed(() => creating.value || editingId.value !== null || viewingDefault.value);
 
 function startCreate() {
   editingId.value = null;
+  viewingDefault.value = false;
   creating.value = true;
 }
 
 function startEdit(id: string) {
   creating.value = false;
+  viewingDefault.value = false;
   editingId.value = id;
+}
+
+function startViewDefault() {
+  creating.value = false;
+  editingId.value = null;
+  viewingDefault.value = true;
 }
 
 function cancelEdit() {
   creating.value = false;
   editingId.value = null;
+  viewingDefault.value = false;
 }
 
 async function handleSave(data: Partial<EnvironmentInfo>) {
@@ -49,13 +59,6 @@ async function handleDelete(id: string) {
   }
 }
 
-const networkModeBadge: Record<string, { label: string; class: string }> = {
-  full: { label: 'Full', class: 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' },
-  'package-managers': { label: 'PM only', class: 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' },
-  custom: { label: 'Custom', class: 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300' },
-  block: { label: 'Blocked', class: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' },
-  'block-all': { label: 'Block all', class: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' },
-};
 </script>
 
 <template>
@@ -76,40 +79,36 @@ const networkModeBadge: Record<string, { label: string; class: string }> = {
 
         <!-- Environment list -->
         <div v-if="!showEditor" class="space-y-2">
-          <template v-if="environments.length > 0">
-            <div
-              v-for="env in environments"
-              :key="env.id"
-              class="flex items-center justify-between bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3"
-            >
-              <div class="flex items-center gap-3 min-w-0">
-                <div class="min-w-0">
-                  <div class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{{ env.name }}</div>
-                  <div class="flex items-center gap-2 mt-0.5">
-                    <span
-                      class="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                      :class="networkModeBadge[env.networkMode]?.class"
-                    >
-                      {{ networkModeBadge[env.networkMode]?.label }}
-                    </span>
-                    <span v-if="env.cpuLimit" class="text-[10px] text-gray-400 dark:text-gray-500">{{ env.cpuLimit }} CPU</span>
-                    <span v-if="env.memoryLimit" class="text-[10px] text-gray-400 dark:text-gray-500">{{ env.memoryLimit }} mem</span>
-                  </div>
-                </div>
-              </div>
-              <div class="flex gap-1 shrink-0">
-                <UButton size="xs" color="neutral" variant="ghost" @click="startEdit(env.id)">
-                  Edit
-                </UButton>
-                <UButton size="xs" color="error" variant="ghost" @click="handleDelete(env.id)">
-                  Delete
-                </UButton>
-              </div>
+          <!-- Default environment (always shown) -->
+          <div class="flex items-center justify-between bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">Default</span>
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                Built-in
+              </span>
             </div>
-          </template>
+            <div class="flex gap-1 shrink-0">
+              <UButton size="xs" color="neutral" variant="ghost" @click="startViewDefault">
+                View
+              </UButton>
+            </div>
+          </div>
 
-          <div v-else class="text-gray-400 dark:text-gray-500 text-sm text-center py-4">
-            No environments yet. Create one to get started.
+          <!-- Custom environments -->
+          <div
+            v-for="env in environments"
+            :key="env.id"
+            class="flex items-center justify-between bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3"
+          >
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate min-w-0">{{ env.name }}</div>
+            <div class="flex gap-1 shrink-0">
+              <UButton size="xs" color="neutral" variant="ghost" @click="startEdit(env.id)">
+                Edit
+              </UButton>
+              <UButton size="xs" color="error" variant="ghost" @click="handleDelete(env.id)">
+                Delete
+              </UButton>
+            </div>
           </div>
         </div>
 
@@ -117,7 +116,25 @@ const networkModeBadge: Record<string, { label: string; class: string }> = {
         <div v-if="showEditor" class="border border-gray-300 dark:border-gray-700 rounded-lg p-4">
           <EnvironmentEditor
             :init-presets="initPresets"
-            :environment="editingEnvironment"
+            :environment="viewingDefault ? {
+              id: '',
+              name: 'Default',
+              cpuLimit: 0,
+              memoryLimit: '',
+              networkMode: 'full',
+              allowedDomains: [],
+              includePackageManagerDomains: false,
+              dockerEnabled: true,
+              envVars: '',
+              setupScript: '',
+              initScript: '',
+              exposeApis: { portMappings: true, domainMappings: true, usage: true },
+              enabledSkillIds: null,
+              enabledInstructionIds: null,
+              createdAt: '',
+              updatedAt: '',
+            } : editingEnvironment"
+            :read-only="viewingDefault"
             @save="handleSave"
             @cancel="cancelEdit"
           />

@@ -11,6 +11,8 @@ defineProps<{
 const emit = defineEmits<{
   newWorker: [];
   manageEnvironments: [];
+  manageSkills: [];
+  manageInstructions: [];
   openTerminal: [containerId: string];
   openDesktop: [containerId: string];
   openApps: [containerId: string];
@@ -90,6 +92,14 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
       <UButton class="w-full mt-2" color="neutral" variant="outline" size="sm" @click="emit('manageEnvironments')">
         Environments
       </UButton>
+      <div class="flex gap-2 mt-2">
+        <UButton class="flex-1" color="neutral" variant="outline" size="sm" @click="emit('manageSkills')">
+          Skills
+        </UButton>
+        <UButton class="flex-1" color="neutral" variant="outline" size="sm" @click="emit('manageInstructions')">
+          Instructions
+        </UButton>
+      </div>
     </div>
 
     <!-- Workers (scrollable) -->

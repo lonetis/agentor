@@ -1,4 +1,4 @@
-import type { NetworkMode, RepoConfig } from '../../shared/types';
+import type { NetworkMode, RepoConfig, ExposeApis as ExposeApisType } from '../../shared/types';
 
 export type {
   RepoConfig,
@@ -18,6 +18,9 @@ export type {
   UsageWindow,
   AgentUsageInfo,
   AgentUsageStatus,
+  ExposeApis,
+  SkillInfo,
+  InstructionInfo,
 } from '../../shared/types';
 
 export interface GitProviderInfo {
@@ -104,6 +107,9 @@ export interface EnvironmentInfo {
   envVars: string;
   setupScript: string;
   initScript: string;
+  exposeApis: ExposeApisType;
+  enabledSkillIds: string[] | null;
+  enabledInstructionIds: string[] | null;
   createdAt: string;
   updatedAt: string;
 }

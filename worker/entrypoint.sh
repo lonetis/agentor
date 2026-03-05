@@ -74,7 +74,7 @@ wait_for_port() {
 # ==========================================================================
 WINDOW_NAME="main"
 _boot
-_total 8
+_total 9
 tmux new-session -d -s main -n "$WINDOW_NAME" -c /workspace \
     "bash /home/agent/loading-screen.sh"
 tmux set -g mouse on
@@ -96,6 +96,91 @@ for setup_script in /home/agent/agents/*/setup.sh; do
 done
 _done agents "Agent setup"
 _log "Agent setup: done"
+
+# ==========================================================================
+# Phase 1b: Platform setup (instructions + skills for agents)
+# Only runs on first startup (sentinel prevents re-running on restart).
+# ==========================================================================
+PLATFORM_SENTINEL="/workspace/.agentor-platform-init"
+if [ ! -f "$PLATFORM_SENTINEL" ]; then
+    _step platform "Platform setup"
+    _log "Platform setup: start"
+
+    # --- Instructions ---
+    if [ -n "$INSTRUCTIONS_B64" ]; then
+        INSTRUCTIONS_MD=$(echo -n "$INSTRUCTIONS_B64" | base64 -d 2>/dev/null) || INSTRUCTIONS_MD=""
+        if [ -n "$INSTRUCTIONS_MD" ]; then
+            # Claude: append to ~/.claude/CLAUDE.md
+            mkdir -p /home/agent/.claude
+            if [ -f /home/agent/.claude/CLAUDE.md ]; then
+                echo -e "\n\n$INSTRUCTIONS_MD" >> /home/agent/.claude/CLAUDE.md
+            else
+                echo "$INSTRUCTIONS_MD" > /home/agent/.claude/CLAUDE.md
+            fi
+
+            # Codex: write to ~/.codex/AGENTS.md
+            mkdir -p /home/agent/.codex
+            if [ -f /home/agent/.codex/AGENTS.md ]; then
+                echo -e "\n\n$INSTRUCTIONS_MD" >> /home/agent/.codex/AGENTS.md
+            else
+                echo "$INSTRUCTIONS_MD" > /home/agent/.codex/AGENTS.md
+            fi
+
+            # Gemini: write to ~/.gemini/GEMINI.md
+            mkdir -p /home/agent/.gemini
+            if [ -f /home/agent/.gemini/GEMINI.md ]; then
+                echo -e "\n\n$INSTRUCTIONS_MD" >> /home/agent/.gemini/GEMINI.md
+            else
+                echo "$INSTRUCTIONS_MD" > /home/agent/.gemini/GEMINI.md
+            fi
+            _log "Platform setup: wrote instructions to agent paths"
+        fi
+    fi
+
+    # --- Skills ---
+    if [ -n "$SKILLS_B64" ]; then
+        SKILLS_JSON=$(echo -n "$SKILLS_B64" | base64 -d 2>/dev/null) || SKILLS_JSON=""
+        if [ -n "$SKILLS_JSON" ]; then
+            SKILL_COUNT=$(echo "$SKILLS_JSON" | jq -r 'length' 2>/dev/null || echo 0)
+            for i in $(seq 0 $((SKILL_COUNT - 1))); do
+                SKILL_NAME=$(echo "$SKILLS_JSON" | jq -r ".[$i].name")
+                SKILL_CONTENT=$(echo "$SKILLS_JSON" | jq -r ".[$i].content")
+                # Safe directory name: lowercase, replace spaces/special with hyphens
+                SAFE_NAME=$(echo "$SKILL_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
+
+                # Claude: ~/.claude/skills/agentor-<safe-name>/SKILL.md
+                # Content already includes YAML frontmatter — write directly
+                CLAUDE_SKILL_DIR="/home/agent/.claude/skills/agentor-${SAFE_NAME}"
+                mkdir -p "$CLAUDE_SKILL_DIR"
+                echo "$SKILL_CONTENT" > "$CLAUDE_SKILL_DIR/SKILL.md"
+
+                # Codex: ~/.agents/skills/agentor-<safe-name>/SKILL.md
+                CODEX_SKILL_DIR="/home/agent/.agents/skills/agentor-${SAFE_NAME}"
+                mkdir -p "$CODEX_SKILL_DIR"
+                echo "$SKILL_CONTENT" > "$CODEX_SKILL_DIR/SKILL.md"
+
+                # Gemini: ~/.gemini/commands/agentor-<safe-name>.toml
+                # Strip YAML frontmatter for Gemini TOML format
+                BODY_CONTENT=$(echo "$SKILL_CONTENT" | sed -n '/^---$/,/^---$/!p' | sed '/./,$!d')
+                mkdir -p /home/agent/.gemini/commands
+                ESCAPED_BODY=$(echo "$BODY_CONTENT" | sed 's/\\/\\\\/g')
+                cat > "/home/agent/.gemini/commands/agentor-${SAFE_NAME}.toml" <<TOMLEOF
+description = "${SKILL_NAME}"
+prompt = """
+${ESCAPED_BODY}
+"""
+TOMLEOF
+            done
+            _log "Platform setup: wrote $SKILL_COUNT skills to agent paths"
+        fi
+    fi
+
+    touch "$PLATFORM_SENTINEL"
+    _done platform "Platform setup"
+    _log "Platform setup: done"
+else
+    _skip platform "Platform setup"
+fi
 
 # ==========================================================================
 # Phase 2: Docker daemon (DinD, opt-in)
