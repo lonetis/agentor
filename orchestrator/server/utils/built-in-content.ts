@@ -1,5 +1,6 @@
 export interface BuiltInSkill {
   id: string;
+  name: string;
   content: string;
 }
 
@@ -44,7 +45,7 @@ export async function loadBuiltInSkills(): Promise<BuiltInSkill[]> {
     const content = await storage.getItem(key) as string;
     if (!content) continue;
     const id = key.replace(/\.md$/, '');
-    skills.push({ id, content });
+    skills.push({ id, name: id, content });
   }
   return skills;
 }

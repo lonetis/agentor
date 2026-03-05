@@ -9,21 +9,15 @@ const editingId = ref<string | null>(null);
 const creating = ref(false);
 const viewing = ref<string | null>(null);
 
-const editContent = ref('');
+const editForm = reactive({ name: '', content: '' });
 
 const showEditor = computed(() => creating.value || editingId.value !== null || viewing.value !== null);
-
-const FRONTMATTER_TEMPLATE = `---
-name: my-skill
-description: What this skill does and when to use it
----
-
-`;
 
 function startCreate() {
   editingId.value = null;
   viewing.value = null;
-  editContent.value = FRONTMATTER_TEMPLATE;
+  editForm.name = '';
+  editForm.content = '';
   creating.value = true;
 }
 
@@ -31,14 +25,16 @@ function startEdit(skill: SkillInfo) {
   creating.value = false;
   viewing.value = null;
   editingId.value = skill.id;
-  editContent.value = skill.content;
+  editForm.name = skill.name;
+  editForm.content = skill.content;
 }
 
 function startView(skill: SkillInfo) {
   creating.value = false;
   editingId.value = null;
   viewing.value = skill.id;
-  editContent.value = skill.content;
+  editForm.name = skill.name;
+  editForm.content = skill.content;
 }
 
 function cancelEdit() {
@@ -48,11 +44,11 @@ function cancelEdit() {
 }
 
 async function handleSave() {
-  if (!editContent.value.trim()) return;
+  if (!editForm.name.trim() || !editForm.content.trim()) return;
   if (editingId.value) {
-    await updateSkill(editingId.value, editContent.value);
+    await updateSkill(editingId.value, { name: editForm.name, content: editForm.content });
   } else {
-    await createSkill(editContent.value);
+    await createSkill({ name: editForm.name, content: editForm.content });
   }
   cancelEdit();
 }
@@ -123,12 +119,14 @@ async function handleDelete(id: string) {
 
         <!-- Inline editor -->
         <div v-if="showEditor" class="border border-gray-300 dark:border-gray-700 rounded-lg p-4 space-y-4">
-          <UFormField label="SKILL.md" hint="YAML frontmatter + Markdown">
+          <UFormField label="Name">
+            <UInput v-model="editForm.name" placeholder="Skill name" class="w-full" :disabled="!!viewing" />
+          </UFormField>
+          <UFormField label="Content" hint="SKILL.md (YAML frontmatter + Markdown)">
             <UTextarea
-              v-model="editContent"
+              v-model="editForm.content"
               :rows="16"
               placeholder="---
-name: my-skill
 description: What this skill does
 ---
 
@@ -138,7 +136,7 @@ Skill instructions here..."
             />
           </UFormField>
           <div class="flex gap-3">
-            <UButton v-if="!viewing" @click="handleSave" :disabled="!editContent.trim()">
+            <UButton v-if="!viewing" @click="handleSave" :disabled="!editForm.name.trim() || !editForm.content.trim()">
               {{ editingId ? 'Update' : 'Create' }}
             </UButton>
             <UButton color="neutral" variant="outline" @click="cancelEdit">

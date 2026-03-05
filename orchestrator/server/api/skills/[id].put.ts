@@ -23,20 +23,30 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
   const body = await readBody(event);
 
-  if (!body.content || typeof body.content !== 'string') {
-    throw createError({ statusCode: 400, statusMessage: 'content is required' });
+  const update: { name?: string; content?: string } = {};
+  if (body.name !== undefined) {
+    if (typeof body.name !== 'string' || !body.name) {
+      throw createError({ statusCode: 400, statusMessage: 'name must be a non-empty string' });
+    }
+    update.name = body.name;
+  }
+  if (body.content !== undefined) {
+    if (typeof body.content !== 'string' || !body.content) {
+      throw createError({ statusCode: 400, statusMessage: 'content must be a non-empty string' });
+    }
+    update.content = body.content;
   }
 
   const store = useSkillStore();
 
   try {
-    return await store.update(id, { content: body.content });
+    return await store.update(id, update);
   } catch (err: unknown) {
     if (err instanceof Error) {
       if (err.message.includes('not found')) {
         throw createError({ statusCode: 404, statusMessage: 'Skill not found' });
       }
-      if (err.message.includes('built-in') || err.message.includes('frontmatter')) {
+      if (err.message.includes('built-in')) {
         throw createError({ statusCode: 400, statusMessage: err.message });
       }
     }

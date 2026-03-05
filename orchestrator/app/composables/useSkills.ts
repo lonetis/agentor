@@ -5,19 +5,19 @@ export function useSkills() {
     default: () => [],
   });
 
-  async function createSkill(content: string): Promise<SkillInfo> {
+  async function createSkill(data: { name: string; content: string }): Promise<SkillInfo> {
     const result = await $fetch<SkillInfo>('/api/skills', {
       method: 'POST',
-      body: { content },
+      body: data,
     });
     await refresh();
     return result;
   }
 
-  async function updateSkill(id: string, content: string): Promise<SkillInfo> {
+  async function updateSkill(id: string, data: { name?: string; content?: string }): Promise<SkillInfo> {
     const result = await $fetch<SkillInfo>(`/api/skills/${id}`, {
       method: 'PUT',
-      body: { content },
+      body: data,
     });
     await refresh();
     return result;

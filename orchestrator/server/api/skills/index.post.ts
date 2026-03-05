@@ -20,20 +20,15 @@ import { useSkillStore } from '../../utils/services';
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
 
+  if (!body.name || typeof body.name !== 'string') {
+    throw createError({ statusCode: 400, statusMessage: 'name is required' });
+  }
   if (!body.content || typeof body.content !== 'string') {
     throw createError({ statusCode: 400, statusMessage: 'content is required' });
   }
 
   const store = useSkillStore();
-
-  try {
-    const skill = await store.create({ content: body.content });
-    setResponseStatus(event, 201);
-    return skill;
-  } catch (err: unknown) {
-    if (err instanceof Error && err.message.includes('frontmatter')) {
-      throw createError({ statusCode: 400, statusMessage: err.message });
-    }
-    throw err;
-  }
+  const skill = await store.create({ name: body.name, content: body.content });
+  setResponseStatus(event, 201);
+  return skill;
 });
