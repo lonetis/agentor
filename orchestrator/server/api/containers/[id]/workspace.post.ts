@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Path traversal not allowed' });
     }
 
-    pack.entry({ name: filePath, size: part.data.length }, part.data);
+    pack.entry({ name: filePath, size: part.data.length, uid: 1000, gid: 1000 }, part.data);
     fileCount++;
   }
 
