@@ -12,7 +12,7 @@ const formSubdomain = ref('');
 const formProtocols = ref<Set<'http' | 'https' | 'tcp'>>(new Set(['http']));
 const formWorkerId = ref('');
 const formInternalPort = ref<number | undefined>();
-const formBaseDomain = ref('');
+const formBaseDomains = ref<Set<string>>(new Set());
 const formAuthEnabled = ref(false);
 const formAuthUsername = ref('');
 const formAuthPassword = ref('');
@@ -20,8 +20,8 @@ const formAuthPassword = ref('');
 const multiDomain = computed(() => status.value.baseDomains.length > 1);
 
 watch(() => status.value.baseDomains, (domains) => {
-  if (!formBaseDomain.value && domains.length > 0) {
-    formBaseDomain.value = domains[0]!;
+  if (formBaseDomains.value.size === 0 && domains.length > 0) {
+    formBaseDomains.value = new Set([domains[0]!]);
   }
 }, { immediate: true });
 
@@ -39,19 +39,29 @@ function getDnsProvider(baseDomain: string): string | undefined {
   return dc?.dnsProvider;
 }
 
-const selectedDomainHasTls = computed(() => {
-  if (!formBaseDomain.value) return false;
-  return getChallengeType(formBaseDomain.value) !== 'none';
+const selectedDomainsAllHaveTls = computed(() => {
+  if (formBaseDomains.value.size === 0) return false;
+  return [...formBaseDomains.value].every((d) => getChallengeType(d) !== 'none');
 });
 
 const availableProtocols = computed(() => {
-  const hasTls = selectedDomainHasTls.value;
+  const hasTls = selectedDomainsAllHaveTls.value;
   return [
     { value: 'http' as const, label: 'http', disabled: false },
     { value: 'https' as const, label: 'https', disabled: !hasTls },
     { value: 'tcp' as const, label: 'tcp', disabled: !hasTls },
   ];
 });
+
+function toggleBaseDomain(domain: string) {
+  const s = formBaseDomains.value;
+  if (s.has(domain)) {
+    if (s.size > 1) s.delete(domain);
+  } else {
+    s.add(domain);
+  }
+  formBaseDomains.value = new Set(s);
+}
 
 function toggleProtocol(value: 'http' | 'https' | 'tcp') {
   const s = formProtocols.value;
@@ -72,7 +82,7 @@ function toggleProtocol(value: 'http' | 'https' | 'tcp') {
 }
 
 // Reset protocol if it becomes invalid when base domain changes
-watch(selectedDomainHasTls, (hasTls) => {
+watch(selectedDomainsAllHaveTls, (hasTls) => {
   if (!hasTls) {
     formProtocols.value.delete('https');
     formProtocols.value.delete('tcp');
@@ -83,7 +93,7 @@ watch(selectedDomainHasTls, (hasTls) => {
 
 function resetForm() {
   formSubdomain.value = '';
-  formBaseDomain.value = status.value.baseDomains[0] || '';
+  formBaseDomains.value = new Set(status.value.baseDomains.length > 0 ? [status.value.baseDomains[0]!] : []);
   formProtocols.value = new Set(['http']);
   formWorkerId.value = '';
   formInternalPort.value = undefined;
@@ -94,19 +104,22 @@ function resetForm() {
 }
 
 async function handleCreate() {
-  if (!formWorkerId.value || !formInternalPort.value || !formBaseDomain.value || formProtocols.value.size === 0) return;
+  if (!formWorkerId.value || !formInternalPort.value || formBaseDomains.value.size === 0 || formProtocols.value.size === 0) return;
   const protocols = [...formProtocols.value];
-  for (const protocol of protocols) {
-    await createMapping({
-      subdomain: formSubdomain.value,
-      baseDomain: formBaseDomain.value,
-      protocol,
-      workerId: formWorkerId.value,
-      internalPort: formInternalPort.value,
-      ...(protocol !== 'tcp' && formAuthEnabled.value && formAuthUsername.value && formAuthPassword.value
-        ? { basicAuth: { username: formAuthUsername.value, password: formAuthPassword.value } }
-        : {}),
-    });
+  const domains = [...formBaseDomains.value];
+  for (const baseDomain of domains) {
+    for (const protocol of protocols) {
+      await createMapping({
+        subdomain: formSubdomain.value,
+        baseDomain,
+        protocol,
+        workerId: formWorkerId.value,
+        internalPort: formInternalPort.value,
+        ...(protocol !== 'tcp' && formAuthEnabled.value && formAuthUsername.value && formAuthPassword.value
+          ? { basicAuth: { username: formAuthUsername.value, password: formAuthPassword.value } }
+          : {}),
+      });
+    }
   }
   resetForm();
 }
@@ -165,13 +178,23 @@ const challengeColors: Record<string, string> = {
           placeholder="subdomain (optional)"
           class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
         />
-        <select
-          v-if="multiDomain"
-          v-model="formBaseDomain"
-          class="bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 rounded px-1 py-1 text-[10px] shrink-0"
-        >
-          <option v-for="d in status.baseDomains" :key="d" :value="d">.{{ d }} ({{ getChallengeType(d) }}{{ getDnsProvider(d) ? ':' + getDnsProvider(d) : '' }})</option>
-        </select>
+        <div v-if="multiDomain" class="flex shrink-0">
+          <button
+            v-for="d in status.baseDomains"
+            :key="d"
+            type="button"
+            class="px-1.5 py-1 text-[10px] font-medium border transition-colors first:rounded-l last:rounded-r"
+            :class="[
+              formBaseDomains.has(d)
+                ? 'bg-primary-600 dark:bg-primary-500 text-white border-primary-600 dark:border-primary-500'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-300 dark:border-gray-600',
+            ]"
+            :title="`${getChallengeType(d)}${getDnsProvider(d) ? ':' + getDnsProvider(d) : ''}`"
+            @click="toggleBaseDomain(d)"
+          >
+            .{{ d }}
+          </button>
+        </div>
         <span v-else class="text-gray-400 dark:text-gray-500 text-[10px] shrink-0">.{{ status.baseDomains[0] }}</span>
       </div>
       <div class="flex gap-1.5 items-center">
