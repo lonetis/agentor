@@ -1,5 +1,7 @@
 # Agentor
 
+[![Build and Push Docker Images](https://github.com/lonetis/agentor/actions/workflows/docker-build.yml/badge.svg?branch=main)](https://github.com/lonetis/agentor/actions/workflows/docker-build.yml)
+
 Self-hosted alternative to Claude Code Web, Codex in the Cloud, and similar managed agent environments — with full control over the runtime environment. Spawns isolated AI coding agent workers in Docker containers, each with terminal access, a virtual desktop, port forwarding, and optional git repo cloning, all managed through a web dashboard.
 
 ![Agentor Dashboard](docs/screenshot.png)
