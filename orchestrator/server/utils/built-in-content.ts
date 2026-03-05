@@ -87,7 +87,7 @@ export async function loadBuiltInInitScripts(): Promise<BuiltInInitScript[]> {
 
 /**
  * Load all built-in environments from server assets (server/built-in/environments/*.json).
- * The filename (without extension) is the ID; the `name` field comes from the JSON.
+ * The filename (without extension) is both the ID and the name.
  */
 export async function loadBuiltInEnvironments(): Promise<BuiltInEnvironment[]> {
   const storage = useStorage('assets:builtin-environments');
@@ -99,7 +99,7 @@ export async function loadBuiltInEnvironments(): Promise<BuiltInEnvironment[]> {
     if (!raw) continue;
     const id = key.replace(/\.json$/, '');
     const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    environments.push({ id, ...data });
+    environments.push({ id, name: id, ...data });
   }
   return environments;
 }

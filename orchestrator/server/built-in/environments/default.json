@@ -1,5 +1,4 @@
 {
-  "name": "default",
   "cpuLimit": 0,
   "memoryLimit": "",
   "networkMode": "full",
