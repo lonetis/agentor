@@ -12,7 +12,7 @@ export function useUsage() {
   }
 
   fetchStatus();
-  usePolling(() => fetchStatus(), 60_000);
+  usePolling(() => fetchStatus(), 300_000);
 
   return { status };
 }
