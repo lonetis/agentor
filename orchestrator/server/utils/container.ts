@@ -4,8 +4,8 @@ import type { Config } from './config';
 import { getAppType } from './apps';
 import { DockerService } from './docker';
 import type { AppInstanceInfo, RepoConfig, TmuxWindow } from '../../shared/types';
-import { getAllApiDomains, getAllAgentEnvVars } from './init-presets';
 import { getAllGitCloneDomains } from './git-providers';
+import { getAllAgentApiDomains, getAllAgentEnvVars } from './agent-config';
 import { getPackageManagerDomains } from './environments';
 import type { EnvironmentStore } from './environments';
 import type { WorkerStore, WorkerRecord } from './worker-store';
@@ -43,7 +43,6 @@ export class ContainerManager {
   private credentialMountManager?: CredentialMountManager;
   private skillStore?: SkillStore;
   private agentsMdStore?: AgentsMdStore;
-
   constructor(dockerService: DockerService, config: Config) {
     this.dockerService = dockerService;
     this.config = config;
@@ -95,9 +94,9 @@ export class ContainerManager {
         : allSkills.filter((s) => enabledSkillIds!.includes(s.id));
 
       const apiSkillFilter: Record<string, keyof ExposeApis> = {
-        'builtin-port-mapping': 'portMappings',
-        'builtin-domain-mapping': 'domainMappings',
-        'builtin-usage': 'usage',
+        'port-mapping': 'portMappings',
+        'domain-mapping': 'domainMappings',
+        'usage': 'usage',
       };
       enabledSkills = enabledSkills.filter((s) => {
         const apiKey = apiSkillFilter[s.id];
@@ -114,16 +113,15 @@ export class ContainerManager {
   }
 
   private resolveEnvironmentConfig(environmentId?: string): ResolvedEnvConfig {
-    // Default environment: all skills, all AGENTS.md entries, all APIs exposed
-    const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
-
-    if (!environmentId || !this.environmentStore) {
+    if (!this.environmentStore) {
+      const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
       const { skillsB64, agentsMdB64 } = this.resolveSkillsAndAgentsMd(null, null, defaultExposeApis);
       return { agentsMdB64, skillsB64, exposeApis: defaultExposeApis };
     }
 
-    const env = this.environmentStore.get(environmentId);
-    if (!env) throw new Error(`Environment not found: ${environmentId}`);
+    const resolvedId = environmentId || 'default';
+    const env = this.environmentStore.get(resolvedId);
+    if (!env) throw new Error(`Environment not found: ${resolvedId}`);
 
     let domains: string[] = [];
     if (env.networkMode === 'package-managers') {
@@ -136,7 +134,7 @@ export class ContainerManager {
     }
 
     if (env.networkMode !== 'full' && env.networkMode !== 'block-all') {
-      domains.push(...getAllApiDomains());
+      domains.push(...(getAllAgentApiDomains()));
       domains.push(...getAllGitCloneDomains());
     }
 
@@ -150,7 +148,7 @@ export class ContainerManager {
       }
     }
 
-    const exposeApis: ExposeApis = env.exposeApis ?? defaultExposeApis;
+    const exposeApis: ExposeApis = env.exposeApis ?? { portMappings: true, domainMappings: true, usage: true };
     const { skillsB64, agentsMdB64 } = this.resolveSkillsAndAgentsMd(
       env.enabledSkillIds, env.enabledAgentsMdIds, exposeApis,
     );
@@ -243,7 +241,7 @@ export class ContainerManager {
 
     // Merge all agent env vars with environment custom env vars
     const allCustomEnvVars = [
-      ...getAllAgentEnvVars(this.config),
+      ...(getAllAgentEnvVars(this.config)),
       ...(envConfig.customEnvVars || []),
     ];
 
@@ -397,7 +395,7 @@ export class ContainerManager {
     const dockerEnabled = envConfig.dockerEnabled ?? worker.dockerEnabled ?? true;
 
     const allCustomEnvVars = [
-      ...getAllAgentEnvVars(this.config),
+      ...(getAllAgentEnvVars(this.config)),
       ...(envConfig.customEnvVars || []),
     ];
 

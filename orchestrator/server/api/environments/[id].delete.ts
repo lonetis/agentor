@@ -18,6 +18,14 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
   const store = useEnvironmentStore();
 
+  const existing = store.get(id);
+  if (!existing) {
+    throw createError({ statusCode: 404, statusMessage: 'Environment not found' });
+  }
+  if (existing.builtIn) {
+    throw createError({ statusCode: 400, statusMessage: 'Cannot delete built-in environments' });
+  }
+
   try {
     await store.delete(id);
   } catch (err: unknown) {

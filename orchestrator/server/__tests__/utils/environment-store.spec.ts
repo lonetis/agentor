@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { EnvironmentStore, type Environment } from '../../utils/environments';
+import type { BuiltInEnvironment } from '../../utils/built-in-content';
 
 let tempDir: string;
 
@@ -43,7 +44,24 @@ async function makeTempDir(): Promise<string> {
   return tempDir;
 }
 
-type EnvInput = Omit<Environment, 'id' | 'createdAt' | 'updatedAt'>;
+type EnvInput = Omit<Environment, 'id' | 'builtIn' | 'createdAt' | 'updatedAt'>;
+
+function makeBuiltInEnv(overrides: Partial<BuiltInEnvironment> & { id: string; name: string }): BuiltInEnvironment {
+  return {
+    cpuLimit: 0,
+    memoryLimit: '',
+    networkMode: 'full',
+    allowedDomains: [],
+    includePackageManagerDomains: false,
+    dockerEnabled: true,
+    envVars: '',
+    setupScript: '',
+    exposeApis: { portMappings: true, domainMappings: true, usage: true },
+    enabledSkillIds: null,
+    enabledAgentsMdIds: null,
+    ...overrides,
+  };
+}
 
 function makeEnvInput(overrides: Partial<EnvInput> = {}): EnvInput {
   return {
@@ -185,5 +203,111 @@ describe('EnvironmentStore', () => {
     await store2.init();
     expect(store2.list()).toHaveLength(1);
     expect(store2.get(env.id)?.name).toBe('Persistent');
+  });
+
+  it('create() sets builtIn to false', async () => {
+    const dir = await makeTempDir();
+    const store = new EnvironmentStore(dir);
+    await store.init();
+    const env = await store.create(makeEnvInput());
+    expect(env.builtIn).toBe(false);
+  });
+
+  it('update() throws for built-in environment', async () => {
+    const dir = await makeTempDir();
+    const store = new EnvironmentStore(dir);
+    await store.init();
+    await store.seedBuiltIns([makeBuiltInEnv({ id: 'default', name: 'default' })]);
+    await expect(store.update('default', { name: 'Renamed' })).rejects.toThrow(
+      'Cannot modify built-in environments',
+    );
+  });
+
+  it('delete() throws for built-in environment', async () => {
+    const dir = await makeTempDir();
+    const store = new EnvironmentStore(dir);
+    await store.init();
+    await store.seedBuiltIns([makeBuiltInEnv({ id: 'default', name: 'default' })]);
+    await expect(store.delete('default')).rejects.toThrow(
+      'Cannot delete built-in environments',
+    );
+  });
+
+  it('list() sorts built-ins first', async () => {
+    const dir = await makeTempDir();
+    const store = new EnvironmentStore(dir);
+    await store.init();
+    await store.create(makeEnvInput({ name: 'Alpha' }));
+    await store.seedBuiltIns([makeBuiltInEnv({ id: 'default', name: 'default' })]);
+    const list = store.list();
+    expect(list[0]!.builtIn).toBe(true);
+    expect(list[0]!.name).toBe('default');
+    expect(list[1]!.builtIn).toBe(false);
+  });
+
+  describe('seedBuiltIns()', () => {
+    it('inserts new built-in', async () => {
+      const dir = await makeTempDir();
+      const store = new EnvironmentStore(dir);
+      await store.init();
+      await store.seedBuiltIns([makeBuiltInEnv({ id: 'default', name: 'default' })]);
+      const env = store.get('default');
+      expect(env).toBeDefined();
+      expect(env!.builtIn).toBe(true);
+      expect(env!.name).toBe('default');
+    });
+
+    it('updates changed built-in', async () => {
+      const dir = await makeTempDir();
+      const store = new EnvironmentStore(dir);
+      await store.init();
+      await store.seedBuiltIns([makeBuiltInEnv({ id: 'default', name: 'default', cpuLimit: 0 })]);
+      const original = store.get('default')!;
+
+      await new Promise((r) => setTimeout(r, 10));
+      await store.seedBuiltIns([makeBuiltInEnv({ id: 'default', name: 'default', cpuLimit: 4 })]);
+      const updated = store.get('default')!;
+      expect(updated.cpuLimit).toBe(4);
+      expect(updated.updatedAt).not.toBe(original.updatedAt);
+    });
+
+    it('removes stale built-in', async () => {
+      const dir = await makeTempDir();
+      const store = new EnvironmentStore(dir);
+      await store.init();
+      await store.seedBuiltIns([
+        makeBuiltInEnv({ id: 'old', name: 'old' }),
+        makeBuiltInEnv({ id: 'default', name: 'default' }),
+      ]);
+      expect(store.get('old')).toBeDefined();
+
+      await store.seedBuiltIns([makeBuiltInEnv({ id: 'default', name: 'default' })]);
+      expect(store.get('old')).toBeUndefined();
+      expect(store.get('default')).toBeDefined();
+    });
+
+    it('preserves custom environments when removing stale built-ins', async () => {
+      const dir = await makeTempDir();
+      const store = new EnvironmentStore(dir);
+      await store.init();
+      const custom = await store.create(makeEnvInput({ name: 'My Custom' }));
+      await store.seedBuiltIns([makeBuiltInEnv({ id: 'default', name: 'default' })]);
+
+      expect(store.get(custom.id)).toBeDefined();
+      expect(store.get('default')).toBeDefined();
+    });
+
+    it('does not persist when nothing changed', async () => {
+      const dir = await makeTempDir();
+      const store = new EnvironmentStore(dir);
+      await store.init();
+      const builtIn = makeBuiltInEnv({ id: 'default', name: 'default' });
+      await store.seedBuiltIns([builtIn]);
+      const first = store.get('default')!;
+
+      await store.seedBuiltIns([builtIn]);
+      const second = store.get('default')!;
+      expect(second.updatedAt).toBe(first.updatedAt);
+    });
   });
 });

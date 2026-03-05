@@ -48,6 +48,14 @@ export default defineEventHandler(async (event) => {
 
   const store = useEnvironmentStore();
 
+  const existing = store.get(id);
+  if (!existing) {
+    throw createError({ statusCode: 404, statusMessage: 'Environment not found' });
+  }
+  if (existing.builtIn) {
+    throw createError({ statusCode: 400, statusMessage: 'Cannot modify built-in environments' });
+  }
+
   try {
     return await store.update(id, update);
   } catch (err: unknown) {

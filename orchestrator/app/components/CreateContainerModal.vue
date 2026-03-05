@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import type { InitPresetInfo, GitProviderInfo, MountConfig, RepoConfig, CreateContainerRequest, GitHubBranchInfo, GitHubRepoInfo } from '~/types';
+import type { GitProviderInfo, MountConfig, RepoConfig, CreateContainerRequest, GitHubBranchInfo, GitHubRepoInfo } from '~/types';
 
 const props = defineProps<{
-  initPresets: InitPresetInfo[];
   gitProviders: GitProviderInfo[];
 }>();
 
 const emit = defineEmits<{
   create: [request: CreateContainerRequest, files: File[]];
   manageEnvironments: [];
+  manageInitScripts: [];
 }>();
 
 const open = defineModel<boolean>('open', { default: false });
@@ -40,26 +40,25 @@ watch(open, async (isOpen) => {
   }
 });
 
-const NONE_ENV = '__none__';
-
 const form = reactive({
   displayName: '',
-  environmentId: NONE_ENV,
+  environmentId: 'default',
   repos: [] as RepoConfig[],
   mounts: [] as MountConfig[],
   files: [] as File[],
   initScript: '',
 });
 
-const { selectedPreset, presetOptions } = useInitPresetSync(
-  computed(() => props.initPresets),
+const { initScripts } = useInitScripts();
+
+const { selectedPreset, presetOptions } = useInitScriptSync(
+  initScripts,
   toRef(form, 'initScript'),
 );
 
-const environmentOptions = computed(() => [
-  { label: 'Default', value: NONE_ENV },
-  ...environments.value.map((e) => ({ label: e.name, value: e.id })),
-]);
+const environmentOptions = computed(() =>
+  environments.value.map((e) => ({ label: e.name, value: e.id })),
+);
 
 const defaultProvider = computed(() => props.gitProviders[0]?.id || 'github');
 
@@ -151,7 +150,7 @@ function submit() {
   const request: CreateContainerRequest = {
     name: customName ? `agentor-worker-${sanitizeContainerName(customName)}` : generatedName.value,
   };
-  if (form.environmentId && form.environmentId !== NONE_ENV) request.environmentId = form.environmentId;
+  if (form.environmentId) request.environmentId = form.environmentId;
   if (customName) request.displayName = customName;
   const validRepos = form.repos.filter((r) => r.url);
   if (validRepos.length > 0) {
@@ -174,7 +173,7 @@ function submit() {
 
 function reset() {
   form.displayName = '';
-  form.environmentId = NONE_ENV;
+  form.environmentId = 'default';
   form.repos = [];
   form.mounts = [];
   form.files = [];
@@ -272,7 +271,17 @@ function reset() {
 
         <UFormField label="Init Script" hint="Script to run in tmux on startup">
           <div class="space-y-2">
-            <USelect v-model="selectedPreset" :items="presetOptions" class="w-full" />
+            <div class="flex gap-2">
+              <USelect v-model="selectedPreset" :items="presetOptions" class="flex-1" />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                @click="emit('manageInitScripts')"
+              >
+                Manage
+              </UButton>
+            </div>
             <UTextarea
               v-model="form.initScript"
               :rows="3"

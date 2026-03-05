@@ -1,5 +1,5 @@
-import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useAgentsMdStore } from '../utils/services';
-import { loadBuiltInSkills, loadBuiltInAgentsMd } from '../utils/built-in-content';
+import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useAgentsMdStore, useInitScriptStore } from '../utils/services';
+import { loadBuiltInSkills, loadBuiltInAgentsMd, loadBuiltInInitScripts, loadBuiltInEnvironments } from '../utils/built-in-content';
 
 export default defineNitroPlugin(async () => {
   const dockerService = useDockerService();
@@ -13,9 +13,10 @@ export default defineNitroPlugin(async () => {
   containerManager.setCredentialMountManager(credentialMountManager);
   await containerManager.sync();
 
-  // Initialize environment store (load from disk) and connect to container manager
+  // Initialize environment store (load from disk, seed built-ins) and connect to container manager
   const environmentStore = useEnvironmentStore();
   await environmentStore.init();
+  await environmentStore.seedBuiltIns(await loadBuiltInEnvironments());
   containerManager.setEnvironmentStore(environmentStore);
 
   // Initialize skill and AGENTS.md stores (load from disk, seed built-ins)
@@ -28,6 +29,11 @@ export default defineNitroPlugin(async () => {
   await agentsMdStore.init();
   await agentsMdStore.seedBuiltIns(await loadBuiltInAgentsMd());
   containerManager.setAgentsMdStore(agentsMdStore);
+
+  // Initialize init script store (load from disk, seed built-ins)
+  const initScriptStore = useInitScriptStore();
+  await initScriptStore.init();
+  await initScriptStore.seedBuiltIns(await loadBuiltInInitScripts());
 
   // Initialize worker store (load from disk) and connect to container manager
   const workerStore = useWorkerStore();
@@ -72,5 +78,5 @@ export default defineNitroPlugin(async () => {
   const usageChecker = useUsageChecker();
   await usageChecker.init();
 
-  console.log(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${skillStore.list().length} skills, ${agentsMdStore.list().length} agents-md entries, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
+  console.log(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${skillStore.list().length} skills, ${agentsMdStore.list().length} agents-md entries, ${initScriptStore.list().length} init scripts, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
 });

@@ -71,7 +71,7 @@ async function handleDelete(id: string) {
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Skills</h2>
           <div class="flex gap-2">
             <UButton v-if="!showEditor" size="sm" @click="startCreate">
-              New Skill
+              New
             </UButton>
             <UButton size="sm" color="neutral" variant="ghost" @click="open = false">
               Close

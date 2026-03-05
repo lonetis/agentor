@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import { JsonStore } from './json-store';
 import { loadConfig } from './config';
 import type { NetworkMode, ExposeApis } from '../../shared/types';
+import type { BuiltInEnvironment } from './built-in-content';
 
 export interface Environment {
   id: string;
@@ -17,6 +18,7 @@ export interface Environment {
   exposeApis: ExposeApis;
   enabledSkillIds: string[] | null;
   enabledAgentsMdIds: string[] | null;
+  builtIn: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -163,24 +165,29 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
   }
 
   override list(): Environment[] {
-    return super.list().sort((a, b) => a.name.localeCompare(b.name));
+    return super.list().sort((a, b) => {
+      if (a.builtIn !== b.builtIn) return a.builtIn ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
   }
 
-  async create(data: Omit<Environment, 'id' | 'createdAt' | 'updatedAt'>): Promise<Environment> {
+  async create(data: Omit<Environment, 'id' | 'builtIn' | 'createdAt' | 'updatedAt'>): Promise<Environment> {
     const now = new Date().toISOString();
-    const env: Environment = { ...data, id: nanoid(12), createdAt: now, updatedAt: now };
+    const env: Environment = { ...data, id: nanoid(12), builtIn: false, createdAt: now, updatedAt: now };
     this.items.set(env.id, env);
     await this.persist();
     return env;
   }
 
-  async update(id: string, data: Partial<Omit<Environment, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Environment> {
+  async update(id: string, data: Partial<Omit<Environment, 'id' | 'builtIn' | 'createdAt' | 'updatedAt'>>): Promise<Environment> {
     const existing = this.items.get(id);
     if (!existing) throw new Error(`Environment not found: ${id}`);
+    if (existing.builtIn) throw new Error('Cannot modify built-in environments');
     const updated: Environment = {
       ...existing,
       ...data,
       id: existing.id,
+      builtIn: existing.builtIn,
       createdAt: existing.createdAt,
       updatedAt: new Date().toISOString(),
     };
@@ -190,8 +197,81 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
   }
 
   async delete(id: string): Promise<void> {
-    if (!this.items.has(id)) throw new Error(`Environment not found: ${id}`);
+    const existing = this.items.get(id);
+    if (!existing) throw new Error(`Environment not found: ${id}`);
+    if (existing.builtIn) throw new Error('Cannot delete built-in environments');
     this.items.delete(id);
     await this.persist();
+  }
+
+  async seedBuiltIns(items: BuiltInEnvironment[]): Promise<void> {
+    let changed = false;
+    const now = new Date().toISOString();
+    const incomingIds = new Set(items.map((i) => i.id));
+
+    for (const [id, entry] of this.items) {
+      if (entry.builtIn && !incomingIds.has(id)) {
+        this.items.delete(id);
+        changed = true;
+      }
+    }
+
+    for (const item of items) {
+      const existing = this.items.get(item.id);
+      if (!existing) {
+        this.items.set(item.id, {
+          id: item.id,
+          name: item.name,
+          cpuLimit: item.cpuLimit,
+          memoryLimit: item.memoryLimit,
+          networkMode: item.networkMode as NetworkMode,
+          allowedDomains: item.allowedDomains,
+          includePackageManagerDomains: item.includePackageManagerDomains,
+          dockerEnabled: item.dockerEnabled,
+          envVars: item.envVars,
+          setupScript: item.setupScript,
+          exposeApis: item.exposeApis,
+          enabledSkillIds: item.enabledSkillIds,
+          enabledAgentsMdIds: item.enabledAgentsMdIds,
+          builtIn: true,
+          createdAt: now,
+          updatedAt: now,
+        });
+        changed = true;
+      } else if (this.builtInChanged(existing, item)) {
+        this.items.set(item.id, {
+          ...existing,
+          name: item.name,
+          cpuLimit: item.cpuLimit,
+          memoryLimit: item.memoryLimit,
+          networkMode: item.networkMode as NetworkMode,
+          allowedDomains: item.allowedDomains,
+          includePackageManagerDomains: item.includePackageManagerDomains,
+          dockerEnabled: item.dockerEnabled,
+          envVars: item.envVars,
+          setupScript: item.setupScript,
+          exposeApis: item.exposeApis,
+          enabledSkillIds: item.enabledSkillIds,
+          enabledAgentsMdIds: item.enabledAgentsMdIds,
+          updatedAt: now,
+        });
+        changed = true;
+      }
+    }
+    if (changed) await this.persist();
+  }
+
+  private builtInChanged(existing: Environment, incoming: BuiltInEnvironment): boolean {
+    return existing.name !== incoming.name
+      || existing.cpuLimit !== incoming.cpuLimit
+      || existing.memoryLimit !== incoming.memoryLimit
+      || existing.networkMode !== incoming.networkMode
+      || existing.dockerEnabled !== incoming.dockerEnabled
+      || existing.envVars !== incoming.envVars
+      || existing.setupScript !== incoming.setupScript
+      || JSON.stringify(existing.allowedDomains) !== JSON.stringify(incoming.allowedDomains)
+      || JSON.stringify(existing.exposeApis) !== JSON.stringify(incoming.exposeApis)
+      || JSON.stringify(existing.enabledSkillIds) !== JSON.stringify(incoming.enabledSkillIds)
+      || JSON.stringify(existing.enabledAgentsMdIds) !== JSON.stringify(incoming.enabledAgentsMdIds);
   }
 }

@@ -1,0 +1,14 @@
+{
+  "name": "default",
+  "cpuLimit": 0,
+  "memoryLimit": "",
+  "networkMode": "full",
+  "allowedDomains": [],
+  "includePackageManagerDomains": false,
+  "dockerEnabled": true,
+  "envVars": "",
+  "setupScript": "",
+  "exposeApis": { "portMappings": true, "domainMappings": true, "usage": true },
+  "enabledSkillIds": null,
+  "enabledAgentsMdIds": null
+}

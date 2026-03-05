@@ -23,6 +23,7 @@ export type {
   SkillInfo,
   AgentsMdEntryInfo,
   CredentialInfo,
+  InitScriptInfo,
 } from '../../shared/types';
 
 export interface GitProviderInfo {
@@ -40,13 +41,6 @@ export interface GitHubRepoInfo {
 
 export interface GitHubBranchInfo {
   name: string;
-}
-
-export interface InitPresetInfo {
-  id: string;
-  displayName: string;
-  script: string;
-  apiDomains: string[];
 }
 
 export interface AppTypeInfo {
@@ -111,6 +105,7 @@ export interface EnvironmentInfo {
   exposeApis: ExposeApisType;
   enabledSkillIds: string[] | null;
   enabledAgentsMdIds: string[] | null;
+  builtIn: boolean;
   createdAt: string;
   updatedAt: string;
 }

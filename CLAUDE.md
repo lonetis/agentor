@@ -65,23 +65,28 @@ The detail modal auto-displays all `agentor.*` labels (except internal ones like
 
 A single Docker image (`agentor-worker`, built from `worker/`) contains all agent CLIs and their setup scripts. OAuth/subscription credentials are stored as JSON files in `.cred/` on the host and bind-mounted directly into worker containers at the correct paths (e.g., `.cred/claude.json` → `/home/agent/.claude/.credentials.json`). All workers share the same credential files, so users only need to log in once inside any worker after installation — the credentials are written back automatically and propagate to all workers. Copying OAuth tokens from a local machine is not supported because refresh token rotation would cause the local and worker tokens to go out of sync. API keys (always-valid, no rotation) remain in `.env`. On container startup, ALL agent setup scripts run to configure settings for every installed agent. Users start agents via init script presets or manually in the terminal.
 
-### Init Preset System
+### Init Script System
 
-Init presets are defined in `orchestrator/server/utils/init-presets.ts` via `INIT_PRESETS`. Each preset specifies:
-- Display name and start script (e.g., `#!/bin/bash\nclaude --dangerously-skip-permissions`)
-- API domains (always allowed through the firewall in restricted modes)
-- Environment variable mappings for auth tokens
+Init scripts are managed via `InitScriptStore` (`orchestrator/server/utils/init-script-store.ts`), stored as JSON in `<DATA_DIR>/init-scripts.json`. Built-in init script files live in `orchestrator/server/built-in/init-scripts/` as plain `.sh` files — the filename (without extension) is both the ID and the name. Custom scripts can be created via the Init Scripts modal in the sidebar. Init scripts are just bash scripts — they are not tied to any specific agent.
 
-The UI provides a dropdown to select a preset, which populates an editable init script textarea. Users can modify the script or write fully custom ones. The dropdown syncs both ways — editing the textarea to match a preset selects it, clearing it switches to None, and any other edit switches to Custom.
+Agent-specific configuration (API domains, env var mappings) lives separately in `orchestrator/server/utils/agent-config.ts` as a static registry (`AGENT_CONFIGS`). This provides `getAllAgentApiDomains()` (firewall allowlist) and `getAllAgentEnvVars(config)` (env vars for worker containers).
+
+The UI provides a dropdown to select a script, which populates an editable init script textarea. Users can modify the script or write fully custom ones. The dropdown syncs both ways — editing the textarea to match a script selects it, clearing it switches to None, and any other edit switches to Custom. A "Manage" button opens the Init Scripts modal for CRUD operations.
+
+**Built-in init scripts (3):**
+- `claude` — Claude Code CLI with `--dangerously-skip-permissions`
+- `codex` — OpenAI Codex CLI with `--dangerously-bypass-approvals-and-sandbox`
+- `gemini` — Google Gemini CLI with `--yolo`
 
 **Adding a new agent** requires:
 1. Install the CLI in `worker/Dockerfile`
 2. Create `worker/agents/<agent-id>/setup.sh` (settings/config, runs on every container start)
 3. Create `worker/agents/<agent-id>/git-identity` (two lines: name, email — used by the git wrapper)
-4. Add an init preset entry in `orchestrator/server/utils/init-presets.ts`
-5. Add a credential mapping in `orchestrator/server/utils/credential-mounts.ts` (`AGENT_CREDENTIAL_MAPPINGS`)
-6. Add a template file in `.cred.example/` and document in `.cred.example/README`
-7. Rebuild the worker image
+4. Add an agent config entry in `orchestrator/server/utils/agent-config.ts` (API domains, env vars)
+5. Add a built-in init script file in `orchestrator/server/built-in/init-scripts/`
+6. Add a credential mapping in `orchestrator/server/utils/credential-mounts.ts` (`AGENT_CREDENTIAL_MAPPINGS`)
+7. Add a template file in `.cred.example/` and document in `.cred.example/README`
+8. Rebuild the worker image
 
 ### Worker image contents
 
@@ -291,10 +296,10 @@ Skills and AGENTS.md entries are content documents injected into worker containe
 Reusable knowledge documents teaching agents how to use specific capabilities, following the [Agent Skills specification](https://agentskills.io/specification). Each skill is a markdown file with YAML frontmatter (`name`, `description`, optional `license`, `compatibility`, `metadata`, `allowed-tools`). Managed via `orchestrator/server/utils/skill-store.ts` (`SkillStore`), persisted to `<DATA_DIR>/skills.json`. Built-in skill files live in `orchestrator/server/built-in/skills/`.
 
 **Built-in skills (4):**
-- `builtin-port-mapping` — Documents port mapping API (auto-filtered when `exposeApis.portMappings` is false)
-- `builtin-domain-mapping` — Documents domain mapping API (auto-filtered when `exposeApis.domainMappings` is false)
-- `builtin-usage` — Documents usage monitoring API (auto-filtered when `exposeApis.usage` is false)
-- `builtin-tmux` — Documents tmux session/window/pane management inside workers (always included, no API filter)
+- `port-mapping` — Documents port mapping API (auto-filtered when `exposeApis.portMappings` is false)
+- `domain-mapping` — Documents domain mapping API (auto-filtered when `exposeApis.domainMappings` is false)
+- `usage` — Documents usage monitoring API (auto-filtered when `exposeApis.usage` is false)
+- `tmux` — Documents tmux session/window/pane management inside workers (always included, no API filter)
 
 Custom skills can be created via the Skills modal in the sidebar. Built-in skills cannot be edited or deleted, but their content is updated on startup.
 
@@ -308,7 +313,7 @@ Skills are written to agent-specific paths on container first startup:
 Platform context documents following the [AGENTS.md standard](https://agents.md/) — a dedicated, predictable place to provide context and instructions to help AI coding agents work on a project. Managed via `orchestrator/server/utils/agents-md-store.ts` (`AgentsMdStore`), persisted to `<DATA_DIR>/agents-md.json`. Built-in AGENTS.md files live in `orchestrator/server/built-in/agents-md/`. The entry name is parsed from the first `# Heading` in the markdown.
 
 **Built-in entry (1):**
-- `builtin-platform-guide` — Comprehensive worker environment description (OS, tools, display stack, Docker, orchestrator API, etc.)
+- `platform-guide` — Comprehensive worker environment description (OS, tools, display stack, Docker, orchestrator API, etc.)
 
 AGENTS.md entries are merged into a single markdown document and written to:
 - Claude: `/home/agent/.claude/CLAUDE.md`
@@ -335,11 +340,11 @@ Port mapping and domain mapping create endpoints also accept `workerName` as an 
 
 No firewall changes needed — the orchestrator is on the same Docker bridge network (`agentor-net`), and existing firewall rules allow private network ranges.
 
-Platform setup runs only on first container startup (sentinel file `/workspace/.agentor-platform-init`). On restart, user modifications to skill/AGENTS.md files are preserved.
+Platform setup runs only on first container startup (sentinel file `/home/agent/.agentor-platform-init`). On restart, user modifications to skill/AGENTS.md files are preserved.
 
 ## Environment System
 
-Environments bundle per-worker configuration: CPU/memory limits, network access policy, Docker-in-Docker toggle, custom env vars, setup script (pre-agent), API exposure flags, and skill/AGENTS.md selections. The init script (which agent to launch) is configured per-worker at creation time via the Create Worker modal, not in environments. Managed via `orchestrator/server/utils/environments.ts` (`EnvironmentStore`), stored as JSON in `<DATA_DIR>/environments.json`.
+Environments bundle per-worker configuration: CPU/memory limits, network access policy, Docker-in-Docker toggle, custom env vars, setup script (pre-agent), API exposure flags, and skill/AGENTS.md selections. The init script (which agent to launch) is configured per-worker at creation time via the Create Worker modal, not in environments. Managed via `orchestrator/server/utils/environments.ts` (`EnvironmentStore`), stored as JSON in `<DATA_DIR>/environments.json`. Follows the built-in store pattern: a built-in `default.json` file in `orchestrator/server/built-in/environments/` defines the default environment, `EnvironmentStore` has a `builtIn` field and `seedBuiltIns()` method (same pattern as skills, agents-md, and init-scripts). Built-in environments cannot be edited or deleted, but their content is updated on startup.
 
 ### Network Firewall
 
@@ -353,7 +358,7 @@ Uses **dnsmasq + ipset + iptables** for network-level domain filtering (not a by
 | `package-managers` | dnsmasq + ipset allowlist of 98 package registry domains + agent API domains |
 | `custom` | dnsmasq + ipset with user-defined domains (+ optional PM domains) + agent API domains |
 
-**Agent API domains** (aggregated from all init presets in `INIT_PRESETS`) are always injected into every restricted mode so any agent CLI can reach its model API, auth, and telemetry endpoints. The UI shows all agent domains in a collapsible section when a restricted mode is selected.
+**Agent API domains** (aggregated from `AGENT_CONFIGS` in `agent-config.ts`) are always injected into every restricted mode so any agent CLI can reach its model API, auth, and telemetry endpoints. The UI shows all agent domains in a collapsible section when a restricted mode is selected.
 
 Architecture: dnsmasq resolves allowed domains and adds IPs to a kernel ipset via `ipset=` directives. iptables OUTPUT policy is DROP, with exceptions for loopback, Docker networks, and the ipset. Blocks all protocols (TCP/UDP/ICMP) to non-allowed destinations.
 
@@ -363,7 +368,7 @@ Fully synchronous — every phase runs foreground and completes before the next 
 
 0. **Tmux session** with animated loading screen (`bash /home/agent/loading-screen.sh`)
 1. **Agent setup** — all `agents/*/setup.sh` scripts (CLI config, settings — OAuth credentials are bind-mounted)
-1b. **Platform setup** — writes AGENTS.md + skills to agent-specific paths (first startup only, sentinel `/workspace/.agentor-platform-init`)
+1b. **Platform setup** — writes AGENTS.md + skills to agent-specific paths (first startup only, sentinel `/home/agent/.agentor-platform-init`)
 2. **Docker daemon** — if `DOCKER_ENABLED=true`: start dockerd, wait for socket (up to 30s); otherwise skipped
 3. **Display stack** — Xvfb + fluxbox + x11vnc + websockify/noVNC, wait for each service
 4. **Code editor** — code-server on port 8443 (`--auth none --bind-addr 0.0.0.0:8443`), wait for port ready
@@ -478,14 +483,15 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/app.config.ts` - App-level configuration
 
 ### Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo)
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo, InitScriptInfo)
 
 ### Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build
 - `orchestrator/nuxt.config.ts` - Nuxt configuration (modules, SPA mode, Nitro WebSocket)
-- `orchestrator/server/plugins/services.ts` - Nitro startup: init Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + SkillStore + AgentsMdStore + WorkerStore + UpdateChecker + UsageChecker
+- `orchestrator/server/plugins/services.ts` - Nitro startup: init Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + SkillStore + AgentsMdStore + InitScriptStore + WorkerStore + UpdateChecker + UsageChecker
 - `orchestrator/server/utils/config.ts` - Environment variable parsing
-- `orchestrator/server/utils/init-presets.ts` - Init preset registry (INIT_PRESETS) for agent start scripts and API domains
+- `orchestrator/server/utils/init-script-store.ts` - InitScriptStore class (extends JsonStore, built-in seeding)
+- `orchestrator/server/utils/agent-config.ts` - Static agent configuration registry (API domains, env var mappings per agent)
 - `orchestrator/server/utils/git-providers.ts` - Git provider registry (GIT_PROVIDER_REGISTRY)
 - `orchestrator/server/utils/apps.ts` - App type registry (APP_REGISTRY)
 - `orchestrator/server/utils/json-store.ts` - Generic JsonStore<K, V> base class (Map + JSON file + saveQueue pattern)
@@ -505,7 +511,9 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/server/utils/built-in-content.ts` - Built-in content loader (reads markdown files from server assets via `useStorage()`)
 - `orchestrator/server/built-in/skills/` - Built-in skill markdown files (filename = ID, content = skill markdown with YAML frontmatter)
 - `orchestrator/server/built-in/agents-md/` - Built-in AGENTS.md entry files (filename = ID, name parsed from first `# Heading`)
-- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useAgentsMdStore) + shared `cleanupWorkerMappings()` utility
+- `orchestrator/server/built-in/init-scripts/` - Built-in init script files (plain .sh, filename = ID and name)
+- `orchestrator/server/built-in/environments/` - Built-in environment JSON files (filename = ID, contains environment config)
+- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useAgentsMdStore, useInitScriptStore) + shared `cleanupWorkerMappings()` utility
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)
 - `orchestrator/server/utils/terminal-handler.ts` - Docker stream WebSocket terminal logic (uses ws-utils, exports terminalWsHandler)
@@ -534,6 +542,7 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/app/components/EnvironmentsModal.vue` - Environment list + editor (CRUD)
 - `orchestrator/app/components/SkillsModal.vue` - Skills management modal (list, view built-in, create/edit/delete custom)
 - `orchestrator/app/components/AgentsMdModal.vue` - AGENTS.md entries management modal (same pattern as SkillsModal)
+- `orchestrator/app/components/InitScriptsModal.vue` - Init scripts management modal (list, view built-in, create/edit/delete custom)
 - `orchestrator/app/components/SettingsModal.vue` - System settings viewer (auto-renders categorized sections from `/api/settings`)
 - `orchestrator/app/components/FileDropZone.vue` - Drag-and-drop file zone for uploads
 - `orchestrator/app/components/MountInput.vue` - Form input for a single host bind-mount config
@@ -557,14 +566,14 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/app/composables/useContainers.ts` - Container CRUD + polling
 - `orchestrator/app/composables/useContainerServiceStatus.ts` - Service status polling (5s) for desktop/editor
 - `orchestrator/app/composables/useDomainMappings.ts` - Domain mapping CRUD + polling
-- `orchestrator/app/composables/useInitPresetSync.ts` - Bidirectional sync between init preset dropdown and init script textarea
+- `orchestrator/app/composables/useInitScriptSync.ts` - Bidirectional sync between init script dropdown and init script textarea
 - `orchestrator/app/composables/useDragTab.ts` - Tab drag-and-drop (HTML5 DnD)
 - `orchestrator/app/composables/useEnvironments.ts` - Environment CRUD
 - `orchestrator/app/composables/useSkills.ts` - Skill CRUD
 - `orchestrator/app/composables/useAgentsMd.ts` - AGENTS.md entry CRUD
 - `orchestrator/app/composables/useGitHubRepos.ts` - GitHub repos list, org filter, create repo
 - `orchestrator/app/composables/useGitProviders.ts` - Git provider list
-- `orchestrator/app/composables/useInitPresets.ts` - Init preset list
+- `orchestrator/app/composables/useInitScripts.ts` - Init script CRUD
 - `orchestrator/app/composables/usePolling.ts` - Polling lifecycle helper (start/stop with onMounted/onUnmounted)
 - `orchestrator/app/composables/usePortMappings.ts` - Port mapping CRUD + polling
 - `orchestrator/app/composables/useSidebarResize.ts` - Sidebar drag-to-resize
@@ -574,7 +583,7 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/app/composables/useTmuxTabs.ts` - Tmux window management (fetch, poll, create, close, activate, rename)
 - `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only)
 - `orchestrator/app/composables/useUsage.ts` - Agent usage status polling (60s)
-- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, InitPresetInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone
+- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo, InitScriptInfo) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone
 
 ### Worker
 - `worker/Dockerfile` - Unified worker image (Node.js 22, all agent CLIs, code-server, display stack, Chromium, Playwright, Firefox, microsocks, utility packages, agent user, entrypoint)
@@ -629,7 +638,12 @@ All API routes return JSON only (no HTML partials).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/init-presets` | List available init script presets |
+| GET | `/api/init-scripts` | List all init scripts |
+| POST | `/api/init-scripts` | Create custom init script |
+| GET | `/api/init-scripts/:id` | Get single init script |
+| PUT | `/api/init-scripts/:id` | Update custom init script |
+| DELETE | `/api/init-scripts/:id` | Delete custom init script |
+| GET | `/api/agent-api-domains` | List agent API domains (firewall allowlist) |
 | GET | `/api/git-providers` | List available git providers |
 | GET | `/api/app-types` | List available app types |
 | GET | `/api/package-manager-domains` | List active package manager domains |
