@@ -12,11 +12,15 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  if (!body.subdomain || !body.protocol || !body.workerId || !body.internalPort || !body.baseDomain) {
+  if (!body.protocol || !body.workerId || !body.internalPort || !body.baseDomain) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Missing required fields: subdomain, baseDomain, protocol, workerId, internalPort',
+      statusMessage: 'Missing required fields: baseDomain, protocol, workerId, internalPort',
     });
+  }
+
+  if (body.subdomain === undefined || body.subdomain === null) {
+    body.subdomain = '';
   }
 
   if (!config.baseDomains.includes(body.baseDomain)) {
@@ -43,7 +47,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(body.subdomain)) {
+  if (body.subdomain && !/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(body.subdomain)) {
     throw createError({
       statusCode: 400,
       statusMessage: 'subdomain must be a valid DNS label (alphanumeric and hyphens, no consecutive dots)',

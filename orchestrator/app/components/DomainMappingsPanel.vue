@@ -73,7 +73,7 @@ function resetForm() {
 }
 
 async function handleCreate() {
-  if (!formSubdomain.value || !formWorkerId.value || !formInternalPort.value || !formBaseDomain.value) return;
+  if (!formWorkerId.value || !formInternalPort.value || !formBaseDomain.value) return;
   await createMapping({
     subdomain: formSubdomain.value,
     baseDomain: formBaseDomain.value,
@@ -132,7 +132,7 @@ const challengeColors: Record<string, string> = {
         <input
           v-model="formSubdomain"
           type="text"
-          placeholder="subdomain"
+          placeholder="subdomain (optional)"
           class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
         />
         <select
@@ -212,7 +212,7 @@ const challengeColors: Record<string, string> = {
       >
         {{ getChallengeType(m.baseDomain) === 'dns' ? getDnsProvider(m.baseDomain) : getChallengeType(m.baseDomain) }}
       </span>
-      <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.subdomain }}.{{ m.baseDomain }}</span>
+      <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.subdomain ? `${m.subdomain}.${m.baseDomain}` : m.baseDomain }}</span>
       <svg
         v-if="m.basicAuth"
         class="w-3 h-3 text-amber-500 shrink-0"

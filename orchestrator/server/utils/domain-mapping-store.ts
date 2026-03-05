@@ -23,7 +23,7 @@ export class DomainMappingStore extends JsonStore<string, DomainMapping> {
     for (const existing of this.items.values()) {
       if (existing.subdomain !== mapping.subdomain || existing.baseDomain !== mapping.baseDomain) continue;
 
-      const fullDomain = `${mapping.subdomain}.${mapping.baseDomain}`;
+      const fullDomain = mapping.subdomain ? `${mapping.subdomain}.${mapping.baseDomain}` : mapping.baseDomain;
 
       if (existing.protocol === mapping.protocol) {
         throw new Error(`'${fullDomain}' is already mapped for protocol '${mapping.protocol}'`);

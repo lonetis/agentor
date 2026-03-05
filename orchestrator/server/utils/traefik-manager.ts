@@ -146,7 +146,7 @@ export class TraefikManager {
     }
 
     for (const m of mappings) {
-      const host = `${m.subdomain}.${m.baseDomain}`;
+      const host = m.subdomain ? `${m.subdomain}.${m.baseDomain}` : m.baseDomain;
       const safeId = m.id.replace(/[^a-zA-Z0-9-]/g, '');
 
       if (m.protocol === 'tcp') {

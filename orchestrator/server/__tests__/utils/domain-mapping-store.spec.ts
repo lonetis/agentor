@@ -90,6 +90,44 @@ describe('DomainMappingStore', () => {
     expect(store.list()).toHaveLength(2);
   });
 
+  it('add() empty subdomain maps base domain directly', async () => {
+    const dir = await makeTempDir();
+    const store = new DomainMappingStore(dir);
+    await store.init();
+    await store.add(makeMapping({ id: 'bd1', subdomain: '', baseDomain: 'test.com', protocol: 'https' }));
+    expect(store.list()).toHaveLength(1);
+    expect(store.get('bd1')!.subdomain).toBe('');
+  });
+
+  it('add() empty subdomain same protocol throws with base domain in message', async () => {
+    const dir = await makeTempDir();
+    const store = new DomainMappingStore(dir);
+    await store.init();
+    await store.add(makeMapping({ id: 'bd2', subdomain: '', baseDomain: 'test.com', protocol: 'https' }));
+    await expect(
+      store.add(makeMapping({ id: 'bd3', subdomain: '', baseDomain: 'test.com', protocol: 'https' })),
+    ).rejects.toThrow("'test.com' is already mapped for protocol 'https'");
+  });
+
+  it('add() empty subdomain and non-empty subdomain on same baseDomain is allowed', async () => {
+    const dir = await makeTempDir();
+    const store = new DomainMappingStore(dir);
+    await store.init();
+    await store.add(makeMapping({ id: 'bd4', subdomain: '', baseDomain: 'test.com', protocol: 'https' }));
+    await store.add(makeMapping({ id: 'bd5', subdomain: 'app', baseDomain: 'test.com', protocol: 'https' }));
+    expect(store.list()).toHaveLength(2);
+  });
+
+  it('add() empty subdomain HTTPS + TCP on same baseDomain throws', async () => {
+    const dir = await makeTempDir();
+    const store = new DomainMappingStore(dir);
+    await store.init();
+    await store.add(makeMapping({ id: 'bd6', subdomain: '', baseDomain: 'test.com', protocol: 'https' }));
+    await expect(
+      store.add(makeMapping({ id: 'bd7', subdomain: '', baseDomain: 'test.com', protocol: 'tcp' })),
+    ).rejects.toThrow("'test.com' cannot have both HTTPS and TCP mappings (both use port 443)");
+  });
+
   it('add() same baseDomain with different subdomains is allowed', async () => {
     const dir = await makeTempDir();
     const store = new DomainMappingStore(dir);

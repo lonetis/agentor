@@ -570,6 +570,56 @@ describe('TraefikManager', () => {
       expect(parsed.tcp.routers['tcp-map-tcp'].tls.certResolver).toBe('letsencrypt-dns-route53');
     });
 
+    it('empty subdomain uses base domain as host', async () => {
+      const mapping: DomainMapping = {
+        id: 'map-base',
+        subdomain: '',
+        baseDomain: 'example.com',
+        protocol: 'https',
+        workerId: 'w1',
+        workerName: 'worker-1',
+        internalPort: 3000,
+      };
+      const store = makeMockStore([mapping]);
+      const manager = new TraefikManager(makeConfig(), store);
+      await manager.init();
+
+      const configCall = mockWriteFile.mock.calls.find(
+        (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('traefik-config.json') && c[1] !== '{}'
+      );
+      const parsed = JSON.parse(configCall![1] as string);
+      expect(parsed.http.routers['http-map-base'].rule).toBe('Host(`example.com`)');
+    });
+
+    it('empty subdomain TCP uses base domain as HostSNI', async () => {
+      const config = makeConfig({
+        baseDomains: ['dns.com'],
+        baseDomainConfigs: [{ domain: 'dns.com', challengeType: 'dns', dnsProvider: 'cloudflare' }],
+        dnsProviderConfigs: {
+          cloudflare: { provider: 'cloudflare', envVarNames: [], delay: 0, resolvers: [] },
+        },
+        dashboardBaseDomain: 'dns.com',
+      });
+      const mapping: DomainMapping = {
+        id: 'map-tcp-base',
+        subdomain: '',
+        baseDomain: 'dns.com',
+        protocol: 'tcp',
+        workerId: 'w1',
+        workerName: 'worker-1',
+        internalPort: 5432,
+      };
+      const store = makeMockStore([mapping]);
+      const manager = new TraefikManager(config, store);
+      await manager.init();
+
+      const configCall = mockWriteFile.mock.calls.find(
+        (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('traefik-config.json') && c[1] !== '{}'
+      );
+      const parsed = JSON.parse(configCall![1] as string);
+      expect(parsed.tcp.routers['tcp-map-tcp-base'].rule).toBe('HostSNI(`dns.com`)');
+    });
+
     it('TCP mapping on bare domain gets no TLS', async () => {
       const config = makeConfig({
         baseDomains: ['bare.com'],
