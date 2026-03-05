@@ -471,6 +471,7 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/app/components/DomainMappingsPanel.vue` - Domain mapping CRUD panel (subdomain, protocol, basic auth)
 - `orchestrator/app/components/EnvironmentEditor.vue` - Environment form (resources, network, Docker, scripts)
 - `orchestrator/app/components/EnvironmentsModal.vue` - Environment list + editor (CRUD)
+- `orchestrator/app/components/SettingsModal.vue` - System settings viewer (auto-renders categorized sections from `/api/settings`)
 - `orchestrator/app/components/FileDropZone.vue` - Drag-and-drop file zone for uploads
 - `orchestrator/app/components/MountInput.vue` - Form input for a single host bind-mount config
 - `orchestrator/app/components/PaneContent.vue` - Renders active tab content (Terminal/Desktop/Editor/Apps/Placeholder)
@@ -617,6 +618,7 @@ All API routes return JSON only (no HTML partials).
 | GET | `/api/github/repos` | List authenticated user's GitHub repos |
 | POST | `/api/github/repos` | Create a new GitHub repository |
 | GET | `/api/github/repos/:owner/:repo/branches` | List branches + default branch |
+| GET | `/api/settings` | All system settings (categorized, read-only) |
 | GET | `/api/health` | Health check |
 
 ## API Documentation

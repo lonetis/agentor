@@ -24,6 +24,7 @@ const {
 
 const showCreateModal = ref(false);
 const showEnvironmentsModal = ref(false);
+const showSettingsModal = ref(false);
 
 const { sidebarWidth, isDragging, isCollapsed, isMobile, startDrag, toggleCollapse } = useSidebarResize();
 
@@ -127,6 +128,7 @@ function openEnvironmentsFromModal() {
       @download-workspace="handleDownloadWorkspace"
       @unarchive-worker="handleUnarchive"
       @delete-archived-worker="handleDeleteArchived"
+      @open-settings="showSettingsModal = true"
       @toggle-collapse="toggleCollapse"
     />
 
@@ -176,5 +178,7 @@ function openEnvironmentsFromModal() {
       v-model:open="showEnvironmentsModal"
       :init-presets="initPresets"
     />
+
+    <SettingsModal v-model:open="showSettingsModal" />
   </div>
 </template>
