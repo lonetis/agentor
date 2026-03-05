@@ -25,7 +25,6 @@ beforeEach(() => {
   vi.stubEnv('PACKAGE_MANAGER_DOMAINS', '');
   vi.stubEnv('DATA_DIR', '');
   vi.stubEnv('BASE_DOMAINS', '');
-  vi.stubEnv('BASE_DOMAIN', '');
   vi.stubEnv('DASHBOARD_BASE_DOMAIN', '');
   vi.stubEnv('DASHBOARD_SUBDOMAIN', '');
   vi.stubEnv('ACME_EMAIL', '');

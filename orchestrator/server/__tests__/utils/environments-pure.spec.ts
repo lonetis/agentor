@@ -30,7 +30,6 @@ describe('environments pure logic', () => {
       vi.stubEnv('OPENAI_API_KEY', '');
       vi.stubEnv('GEMINI_API_KEY', '');
       vi.stubEnv('BASE_DOMAINS', '');
-      vi.stubEnv('BASE_DOMAIN', '');
       vi.stubEnv('DASHBOARD_BASE_DOMAIN', '');
     });
 

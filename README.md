@@ -114,7 +114,7 @@ Open **http://localhost:3000**
 | Port | Binding | Purpose |
 |------|---------|---------|
 | `3000` | `127.0.0.1` | Web dashboard (includes proxied desktop and editor access) |
-| `80`, `443` | `0.0.0.0` | Traefik reverse proxy (only when `BASE_DOMAIN` is set) |
+| `80`, `443` | `0.0.0.0` | Traefik reverse proxy (only when `BASE_DOMAINS` is set) |
 | _user-defined_ | `127.0.0.1` or `0.0.0.0` | Port mapper (localhost or external type) |
 
 ## License

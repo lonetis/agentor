@@ -19,7 +19,6 @@ describe('loadConfig', () => {
     vi.stubEnv('PACKAGE_MANAGER_DOMAINS', '');
     vi.stubEnv('DATA_DIR', '');
     vi.stubEnv('BASE_DOMAINS', '');
-    vi.stubEnv('BASE_DOMAIN', '');
     vi.stubEnv('DASHBOARD_BASE_DOMAIN', '');
     vi.stubEnv('DASHBOARD_SUBDOMAIN', '');
     vi.stubEnv('ACME_EMAIL', '');
@@ -92,11 +91,6 @@ describe('loadConfig', () => {
   it('parses BASE_DOMAINS comma-separated', () => {
     vi.stubEnv('BASE_DOMAINS', 'a.com,b.com');
     expect(loadConfig().baseDomains).toEqual(['a.com', 'b.com']);
-  });
-
-  it('BASE_DOMAIN (legacy) also works', () => {
-    vi.stubEnv('BASE_DOMAIN', 'legacy.com');
-    expect(loadConfig().baseDomains).toEqual(['legacy.com']);
   });
 
   it('filters empty/whitespace domains', () => {

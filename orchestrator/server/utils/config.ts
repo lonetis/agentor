@@ -26,7 +26,7 @@ export interface Config {
 export function loadConfig(): Config {
   const pmDomainsEnv = process.env.PACKAGE_MANAGER_DOMAINS?.trim();
 
-  const baseDomains = (process.env.BASE_DOMAINS || process.env.BASE_DOMAIN || '')
+  const baseDomains = (process.env.BASE_DOMAINS || '')
     .split(',').map((d) => d.trim()).filter(Boolean);
 
   const dashboardBaseDomainEnv = process.env.DASHBOARD_BASE_DOMAIN?.trim() || '';
