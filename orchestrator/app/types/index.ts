@@ -22,6 +22,7 @@ export type {
   ExposeApis,
   SkillInfo,
   AgentsMdEntryInfo,
+  CredentialInfo,
 } from '../../shared/types';
 
 export interface GitProviderInfo {

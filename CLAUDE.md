@@ -672,6 +672,7 @@ All API routes return JSON only (no HTML partials).
 | GET | `/api/agents-md/:id` | Get single AGENTS.md entry |
 | PUT | `/api/agents-md/:id` | Update custom AGENTS.md entry |
 | DELETE | `/api/agents-md/:id` | Delete custom AGENTS.md entry |
+| GET | `/api/credentials` | Credential file status per agent (OAuth bind mounts) |
 | GET | `/api/usage` | Agent usage status (OAuth usage windows per agent) |
 | GET | `/api/updates` | Update status (image digests, production mode) |
 | POST | `/api/updates/check` | Trigger manual update check |

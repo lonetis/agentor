@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { InitPresetInfo, EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, SkillInfo, AgentsMdEntryInfo } from '~/types';
+import type { InitPresetInfo, EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, SkillInfo, AgentsMdEntryInfo, CredentialInfo } from '~/types';
 
 const props = defineProps<{
   environment?: EnvironmentInfo;
@@ -27,6 +27,7 @@ const form = reactive({
 });
 
 const systemEnvVars = ref<OrchestratorEnvVar[]>([]);
+const { data: credentials } = useFetch<CredentialInfo[]>('/api/credentials', { default: () => [] });
 
 const { data: allSkills } = useFetch<SkillInfo[]>('/api/skills', { default: () => [] });
 const { data: allAgentsMdEntries } = useFetch<AgentsMdEntryInfo[]>('/api/agents-md', { default: () => [] });
@@ -182,6 +183,28 @@ function handleSave() {
       <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
         Runs a Docker daemon inside the worker container. Requires privileged mode.
       </p>
+    </fieldset>
+
+    <!-- Credentials -->
+    <fieldset v-if="credentials.length > 0">
+      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Credentials</legend>
+      <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+        OAuth credential files shared across all workers. Log in once inside any worker to configure.
+      </p>
+      <div class="space-y-1">
+        <div
+          v-for="cred in credentials"
+          :key="cred.agentId"
+          class="flex items-center gap-2 text-xs font-mono px-2 py-1 bg-gray-100/60 dark:bg-gray-800/50 rounded"
+        >
+          <UIcon name="i-heroicons-key" class="text-gray-400 dark:text-gray-500 w-3 h-3 shrink-0" />
+          <span class="text-gray-500 dark:text-gray-400">.cred/{{ cred.fileName }}</span>
+          <span class="text-gray-400 dark:text-gray-600">&mdash;</span>
+          <span :class="cred.configured ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-600'">
+            {{ cred.configured ? 'configured' : 'not set' }}
+          </span>
+        </div>
+      </div>
     </fieldset>
 
     <!-- Network Access -->

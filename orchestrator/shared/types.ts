@@ -134,3 +134,9 @@ export interface AgentsMdEntryInfo {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface CredentialInfo {
+  agentId: string;
+  fileName: string;
+  configured: boolean;
+}
