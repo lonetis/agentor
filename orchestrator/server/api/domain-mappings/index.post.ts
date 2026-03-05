@@ -33,6 +33,16 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  if (body.protocol === 'https' || body.protocol === 'tcp') {
+    const domainConfig = config.baseDomainConfigs.find((c) => c.domain === body.baseDomain);
+    if (!domainConfig || domainConfig.challengeType === 'none') {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `${body.protocol.toUpperCase()} requires TLS but '${body.baseDomain}' has no ACME challenge configured (use :http or :dns:provider in BASE_DOMAINS)`,
+      });
+    }
+  }
+
   if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(body.subdomain)) {
     throw createError({
       statusCode: 400,

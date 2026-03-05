@@ -137,4 +137,113 @@ describe('loadConfig', () => {
   it('DATA_DIR defaults to /data', () => {
     expect(loadConfig().dataDir).toBe('/data');
   });
+
+  describe('baseDomainConfigs', () => {
+    it('bare domain defaults to challengeType none', () => {
+      vi.stubEnv('BASE_DOMAINS', 'example.com');
+      const config = loadConfig();
+      expect(config.baseDomainConfigs).toEqual([
+        { domain: 'example.com', challengeType: 'none' },
+      ]);
+    });
+
+    it('parses :http challenge type', () => {
+      vi.stubEnv('BASE_DOMAINS', 'example.com:http');
+      const config = loadConfig();
+      expect(config.baseDomainConfigs).toEqual([
+        { domain: 'example.com', challengeType: 'http' },
+      ]);
+    });
+
+    it('parses :dns:provider challenge type', () => {
+      vi.stubEnv('BASE_DOMAINS', 'example.com:dns:cloudflare');
+      vi.stubEnv('ACME_DNS_CLOUDFLARE_VARS', 'CF_DNS_API_TOKEN');
+      vi.stubEnv('CF_DNS_API_TOKEN', 'test-token');
+      const config = loadConfig();
+      expect(config.baseDomainConfigs).toEqual([
+        { domain: 'example.com', challengeType: 'dns', dnsProvider: 'cloudflare' },
+      ]);
+    });
+
+    it('parses mixed challenge types', () => {
+      vi.stubEnv('BASE_DOMAINS', 'a.com:dns:cloudflare,b.com:http,c.com');
+      vi.stubEnv('ACME_DNS_CLOUDFLARE_VARS', 'CF_DNS_API_TOKEN');
+      const config = loadConfig();
+      expect(config.baseDomainConfigs).toEqual([
+        { domain: 'a.com', challengeType: 'dns', dnsProvider: 'cloudflare' },
+        { domain: 'b.com', challengeType: 'http' },
+        { domain: 'c.com', challengeType: 'none' },
+      ]);
+      expect(config.baseDomains).toEqual(['a.com', 'b.com', 'c.com']);
+    });
+
+    it('handles whitespace in entries', () => {
+      vi.stubEnv('BASE_DOMAINS', ' a.com:http , b.com:dns:route53 ');
+      vi.stubEnv('ACME_DNS_ROUTE53_VARS', 'AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY');
+      const config = loadConfig();
+      expect(config.baseDomainConfigs).toEqual([
+        { domain: 'a.com', challengeType: 'http' },
+        { domain: 'b.com', challengeType: 'dns', dnsProvider: 'route53' },
+      ]);
+    });
+
+    it('empty BASE_DOMAINS returns empty configs', () => {
+      vi.stubEnv('BASE_DOMAINS', '');
+      const config = loadConfig();
+      expect(config.baseDomainConfigs).toEqual([]);
+      expect(config.dnsProviderConfigs).toEqual({});
+    });
+  });
+
+  describe('dnsProviderConfigs', () => {
+    it('resolves DNS provider env vars', () => {
+      vi.stubEnv('BASE_DOMAINS', 'example.com:dns:cloudflare');
+      vi.stubEnv('ACME_DNS_CLOUDFLARE_VARS', 'CF_DNS_API_TOKEN,CF_ZONE_API_TOKEN');
+      vi.stubEnv('ACME_DNS_CLOUDFLARE_DELAY', '10');
+      vi.stubEnv('ACME_DNS_CLOUDFLARE_RESOLVERS', '1.1.1.1:53,8.8.8.8:53');
+      const config = loadConfig();
+      expect(config.dnsProviderConfigs).toEqual({
+        cloudflare: {
+          provider: 'cloudflare',
+          envVarNames: ['CF_DNS_API_TOKEN', 'CF_ZONE_API_TOKEN'],
+          delay: 10,
+          resolvers: ['1.1.1.1:53', '8.8.8.8:53'],
+        },
+      });
+    });
+
+    it('handles multiple DNS providers', () => {
+      vi.stubEnv('BASE_DOMAINS', 'a.com:dns:cloudflare,b.com:dns:route53');
+      vi.stubEnv('ACME_DNS_CLOUDFLARE_VARS', 'CF_DNS_API_TOKEN');
+      vi.stubEnv('ACME_DNS_ROUTE53_VARS', 'AWS_ACCESS_KEY_ID');
+      const config = loadConfig();
+      expect(Object.keys(config.dnsProviderConfigs)).toEqual(['cloudflare', 'route53']);
+    });
+
+    it('warns when ACME_DNS_*_VARS is missing', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.stubEnv('BASE_DOMAINS', 'example.com:dns:cloudflare');
+      loadConfig();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('ACME_DNS_CLOUDFLARE_VARS is not set')
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('defaults delay to 0 and resolvers to empty', () => {
+      vi.stubEnv('BASE_DOMAINS', 'example.com:dns:cloudflare');
+      vi.stubEnv('ACME_DNS_CLOUDFLARE_VARS', 'CF_TOKEN');
+      const config = loadConfig();
+      expect(config.dnsProviderConfigs.cloudflare!.delay).toBe(0);
+      expect(config.dnsProviderConfigs.cloudflare!.resolvers).toEqual([]);
+    });
+
+    it('converts hyphenated provider names to uppercase with underscores', () => {
+      vi.stubEnv('BASE_DOMAINS', 'example.com:dns:my-provider');
+      vi.stubEnv('ACME_DNS_MY_PROVIDER_VARS', 'TOKEN');
+      const config = loadConfig();
+      expect(config.dnsProviderConfigs['my-provider']).toBeDefined();
+      expect(config.dnsProviderConfigs['my-provider']!.envVarNames).toEqual(['TOKEN']);
+    });
+  });
 });

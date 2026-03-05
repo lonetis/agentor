@@ -160,17 +160,49 @@ The port mapper runs as a separate Docker container (`agentor-mapper`), managed 
 
 ## Domain Mapping (Traefik)
 
-Domain-based routing via a Traefik reverse proxy container. Optional — requires `BASE_DOMAINS` env var. Supports multiple base domains (comma-separated, e.g. `example.com,example.org`). Each domain mapping specifies which base domain it uses. Supports HTTP, HTTPS, and TCP protocols with Let's Encrypt TLS certificates and optional HTTP basic auth per mapping.
+Domain-based routing via a Traefik reverse proxy container. Optional — requires `BASE_DOMAINS` env var. Supports multiple base domains with per-domain TLS challenge configuration. Each domain mapping specifies which base domain it uses. Supports HTTP, HTTPS, and TCP protocols with optional HTTP basic auth per mapping.
+
+### TLS Challenge Types
+
+Each base domain in `BASE_DOMAINS` specifies its own TLS challenge type:
+
+| Format | Challenge | TLS | Wildcard | Requires |
+|--------|-----------|-----|----------|----------|
+| `domain.com` | none | No | No | Nothing |
+| `domain.com:http` | HTTP-01 | Yes | No | Port 80 publicly accessible |
+| `domain.com:dns:provider` | DNS-01 | Yes | Yes (`*.domain.com`) | DNS provider credentials |
+
+Example: `BASE_DOMAINS=a.com:dns:cloudflare,b.com:http,c.com`
+
+**DNS provider configuration** uses `ACME_DNS_<PROVIDER>_*` env vars (provider name uppercased, hyphens → underscores):
+- `ACME_DNS_<PROVIDER>_VARS` — comma-separated env var names to forward to Traefik container (required)
+- `ACME_DNS_<PROVIDER>_DELAY` — seconds to wait before DNS check (optional)
+- `ACME_DNS_<PROVIDER>_RESOLVERS` — comma-separated DNS resolvers for verification (optional)
+
+**Protocol validation:** HTTPS and TCP mappings require TLS — the API rejects them for bare (no challenge) domains. HTTP protocol mappings work on all domains.
+
+### Certificate Resolvers
+
+Traefik certificate resolvers are created dynamically based on configured challenge types:
+- `letsencrypt` — HTTP-01 (created when any `:http` domain exists)
+- `letsencrypt-dns-<provider>` — DNS-01 per provider (e.g., `letsencrypt-dns-cloudflare`)
+
+DNS-challenged domains get wildcard TLS: `{ certResolver, domains: [{ main, sans: ["*.domain"] }] }`
+
+### Config Drift Detection
+
+On reconcile, `TraefikManager` compares the running container's `Cmd` and DNS-related `Env` entries against expected values (from `buildCmd()`/`buildEnv()`). On drift (e.g., added/removed DNS providers, changed env vars), the container is automatically recreated.
 
 **Architecture:**
 - `DomainMappingStore` (`domain-mapping-store.ts`): Persists mappings to `<DATA_DIR>/domain-mappings.json`, extends `JsonStore<string, DomainMapping>`. Each mapping includes a `baseDomain` field. Uniqueness checked on `subdomain + baseDomain` (same subdomain can exist on different base domains).
-- `TraefikManager` (`traefik-manager.ts`): Manages the `agentor-traefik` container lifecycle. On mapping changes, writes a Traefik file provider config (`traefik-config.json`), then ensures the Traefik container exists. Uses `providers.file.watch=true` so config changes are picked up without container restart. Serialized via promise queue. Routes use per-mapping `baseDomain`, dashboard uses `dashboardBaseDomain` from config.
-- Traefik container: publishes ports 80 (HTTP → HTTPS redirect) and 443 (TLS termination), uses Let's Encrypt ACME HTTP challenge
-- Dashboard subdomain: if `DASHBOARD_SUBDOMAIN` is set, the orchestrator dashboard is accessible at `<DASHBOARD_SUBDOMAIN>.<DASHBOARD_BASE_DOMAIN>` (defaults to first domain in `BASE_DOMAINS`)
+- `TraefikManager` (`traefik-manager.ts`): Manages the `agentor-traefik` container lifecycle. On mapping changes, writes a Traefik file provider config (`traefik-config.json`), then ensures the Traefik container exists. Uses `providers.file.watch=true` so config changes are picked up without container restart. Serialized via promise queue. Routes use per-mapping `baseDomain` + `getTlsConfig()` for per-domain cert resolver selection. Dashboard uses `dashboardBaseDomain` from config. `buildCmd()` constructs Traefik CLI args with per-challenge-type resolvers. `buildEnv()` collects DNS provider env vars. `hasContainerConfigDrift()` detects when running container config diverges from expected.
+- Traefik container: publishes ports 80 and 443, receives DNS provider env vars, uses Let's Encrypt ACME with challenge-specific resolvers
+- Dashboard subdomain: if `DASHBOARD_SUBDOMAIN` is set, the orchestrator dashboard is accessible at `<DASHBOARD_SUBDOMAIN>.<DASHBOARD_BASE_DOMAIN>` (defaults to first domain in `BASE_DOMAINS`). Uses the dashboard domain's challenge type for TLS (or plain HTTP if no challenge).
 
 **Container lifecycle:**
 - Created when mappings exist or dashboard subdomain is configured, removed when both are empty
 - Config-only updates (no container restart needed) — Traefik file provider watches for changes
+- Container recreated on Cmd/Env drift (e.g., adding a DNS provider triggers recreate)
 - Labeled `agentor.managed=traefik`
 - Shares the data volume read-only (`DATA_VOLUME:/data:ro`) for reading `traefik-config.json`
 - Uses a separate named volume (`agentor-traefik-certs`) for Let's Encrypt certificate storage

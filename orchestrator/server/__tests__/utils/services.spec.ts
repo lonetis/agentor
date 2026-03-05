@@ -30,6 +30,8 @@ vi.mock('../../utils/config', () => ({
     traefikImage: 'traefik:v3',
     dashboardAuthUser: '',
     dashboardAuthPassword: '',
+    baseDomainConfigs: [],
+    dnsProviderConfigs: {},
   })),
 }));
 

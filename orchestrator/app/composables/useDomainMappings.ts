@@ -2,7 +2,7 @@ import type { DomainMapping, DomainMapperStatus } from '~/types';
 
 export function useDomainMappings() {
   const mappings = ref<DomainMapping[]>([]);
-  const status = ref<DomainMapperStatus>({ enabled: false, baseDomains: [], totalMappings: 0 });
+  const status = ref<DomainMapperStatus>({ enabled: false, baseDomains: [], baseDomainConfigs: [], totalMappings: 0 });
 
   async function fetchMappings() {
     try {
@@ -16,7 +16,7 @@ export function useDomainMappings() {
     try {
       status.value = await $fetch<DomainMapperStatus>('/api/domain-mapper/status');
     } catch {
-      status.value = { enabled: false, baseDomains: [], totalMappings: 0 };
+      status.value = { enabled: false, baseDomains: [], baseDomainConfigs: [], totalMappings: 0 };
     }
   }
 

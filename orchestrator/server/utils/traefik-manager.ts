@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { writeFile, mkdir, access } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import Docker from 'dockerode';
-import type { Config } from './config';
+import type { Config, BaseDomainConfig } from './config';
 import type { DomainMappingStore, DomainMapping } from './domain-mapping-store';
 
 const TRAEFIK_CONTAINER_NAME = 'agentor-traefik';
@@ -86,16 +86,32 @@ export class TraefikManager {
       if (!info.State.Running) {
         await c.start();
       } else if (this.configFileJustCreated) {
-        // Config file was just created — Traefik likely started before it existed,
-        // causing the file provider to fail fatally. Restart to reinitialize.
         this.configFileJustCreated = false;
         await c.restart();
         console.log('[traefik-manager] restarted Traefik (config file was recreated)');
+      } else if (this.hasContainerConfigDrift(info)) {
+        console.log('[traefik-manager] config drift detected — recreating Traefik container');
+        await this.removeTraefik();
+        await this.createTraefik();
       }
       return;
     }
 
     await this.createTraefik();
+  }
+
+  private getDomainConfig(baseDomain: string): BaseDomainConfig | undefined {
+    return this.config.baseDomainConfigs.find((c) => c.domain === baseDomain);
+  }
+
+  private getTlsConfig(baseDomain: string): Record<string, unknown> | undefined {
+    const dc = this.getDomainConfig(baseDomain);
+    if (!dc || dc.challengeType === 'none') return undefined;
+    if (dc.challengeType === 'http') return { certResolver: 'letsencrypt' };
+    return {
+      certResolver: `letsencrypt-dns-${dc.dnsProvider}`,
+      domains: [{ main: dc.domain, sans: [`*.${dc.domain}`] }],
+    };
   }
 
   private async writeTraefikConfig(mappings: DomainMapping[]): Promise<void> {
@@ -116,11 +132,12 @@ export class TraefikManager {
         dashMiddlewares.push('auth-dashboard');
       }
 
+      const dashTls = this.getTlsConfig(this.config.dashboardBaseDomain);
       config.http.routers['dashboard'] = {
         rule: `Host(\`${dashHost}\`)`,
         service: 'dashboard',
-        entryPoints: ['websecure'],
-        tls: { certResolver: 'letsencrypt' },
+        entryPoints: [dashTls ? 'websecure' : 'web'],
+        ...(dashTls ? { tls: dashTls } : {}),
         ...(dashMiddlewares.length > 0 ? { middlewares: dashMiddlewares } : {}),
       };
       config.http.services['dashboard'] = {
@@ -133,11 +150,12 @@ export class TraefikManager {
       const safeId = m.id.replace(/[^a-zA-Z0-9-]/g, '');
 
       if (m.protocol === 'tcp') {
+        const tls = this.getTlsConfig(m.baseDomain);
         config.tcp.routers[`tcp-${safeId}`] = {
           rule: `HostSNI(\`${host}\`)`,
           service: `tcp-${safeId}`,
           entryPoints: ['websecure'],
-          tls: { certResolver: 'letsencrypt' },
+          ...(tls ? { tls } : {}),
         };
         config.tcp.services[`tcp-${safeId}`] = {
           loadBalancer: { servers: [{ address: `${m.workerName}:${m.internalPort}` }] },
@@ -154,11 +172,12 @@ export class TraefikManager {
         }
 
         const isHttpOnly = m.protocol === 'http';
+        const tls = isHttpOnly ? undefined : this.getTlsConfig(m.baseDomain);
         config.http.routers[`http-${safeId}`] = {
           rule: `Host(\`${host}\`)`,
           service: `http-${safeId}`,
-          entryPoints: [isHttpOnly ? 'web' : 'websecure'],
-          ...(isHttpOnly ? {} : { tls: { certResolver: 'letsencrypt' } }),
+          entryPoints: [tls ? 'websecure' : 'web'],
+          ...(tls ? { tls } : {}),
           ...(middlewares.length > 0 ? { middlewares } : {}),
         };
         config.http.services[`http-${safeId}`] = {
@@ -182,8 +201,71 @@ export class TraefikManager {
     await writeFile(configPath, JSON.stringify(clean, null, 2));
   }
 
+  buildCmd(): string[] {
+    const cmd = [
+      '--entrypoints.web.address=:80',
+      '--entrypoints.websecure.address=:443',
+      '--providers.file.filename=/data/traefik-config.json',
+      '--providers.file.watch=true',
+      '--ping=true',
+    ];
+
+    const hasHttp = this.config.baseDomainConfigs.some((c) => c.challengeType === 'http');
+    if (hasHttp) {
+      cmd.push(
+        '--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web',
+        `--certificatesresolvers.letsencrypt.acme.email=${this.config.acmeEmail}`,
+        '--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json',
+      );
+    }
+
+    for (const [name, pc] of Object.entries(this.config.dnsProviderConfigs)) {
+      const prefix = `--certificatesresolvers.letsencrypt-dns-${name}.acme`;
+      cmd.push(
+        `${prefix}.dnschallenge.provider=${name}`,
+        `${prefix}.email=${this.config.acmeEmail}`,
+        `${prefix}.storage=/letsencrypt/acme.json`,
+      );
+      if (pc.delay) {
+        cmd.push(`${prefix}.dnschallenge.delaybeforecheck=${pc.delay}`);
+      }
+      if (pc.resolvers.length > 0) {
+        cmd.push(`${prefix}.dnschallenge.resolvers=${pc.resolvers.join(',')}`);
+      }
+    }
+
+    return cmd;
+  }
+
+  buildEnv(): string[] {
+    const env: string[] = [];
+    for (const pc of Object.values(this.config.dnsProviderConfigs)) {
+      for (const varName of pc.envVarNames) {
+        const val = process.env[varName] || '';
+        env.push(`${varName}=${val}`);
+      }
+    }
+    return env;
+  }
+
+  private hasContainerConfigDrift(info: Docker.ContainerInspectInfo): boolean {
+    const expectedCmd = this.buildCmd();
+    const actualCmd = info.Config?.Cmd || [];
+    if (JSON.stringify(expectedCmd) !== JSON.stringify(actualCmd)) return true;
+
+    const expectedEnv = this.buildEnv();
+    if (expectedEnv.length === 0) return false;
+
+    const actualEnvSet = new Set(info.Config?.Env || []);
+    for (const e of expectedEnv) {
+      if (!actualEnvSet.has(e)) return true;
+    }
+    return false;
+  }
+
   private async createTraefik(): Promise<void> {
-    if (!this.config.acmeEmail) {
+    const hasAnyCerts = this.config.baseDomainConfigs.some((c) => c.challengeType !== 'none');
+    if (hasAnyCerts && !this.config.acmeEmail) {
       console.warn('[traefik-manager] ACME_EMAIL not configured — TLS certificates will not be issued');
     }
 
@@ -191,21 +273,14 @@ export class TraefikManager {
 
     await this.ensureImage(image);
 
-    const cmd = [
-      '--entrypoints.web.address=:80',
-      '--entrypoints.websecure.address=:443',
-      '--providers.file.filename=/data/traefik-config.json',
-      '--providers.file.watch=true',
-      '--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web',
-      `--certificatesresolvers.letsencrypt.acme.email=${this.config.acmeEmail}`,
-      '--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json',
-      '--ping=true',
-    ];
+    const cmd = this.buildCmd();
+    const env = this.buildEnv();
 
     const container = await this.docker.createContainer({
       Image: image,
       name: TRAEFIK_CONTAINER_NAME,
       Cmd: cmd,
+      ...(env.length > 0 ? { Env: env } : {}),
       ExposedPorts: { '80/tcp': {}, '443/tcp': {} },
       Labels: {
         [TRAEFIK_LABEL]: TRAEFIK_LABEL_VALUE,

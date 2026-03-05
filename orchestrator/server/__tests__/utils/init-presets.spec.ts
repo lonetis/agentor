@@ -26,6 +26,8 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     traefikImage: 'traefik:v3',
     dashboardAuthUser: '',
     dashboardAuthPassword: '',
+    baseDomainConfigs: [],
+    dnsProviderConfigs: {},
     ...overrides,
   };
 }

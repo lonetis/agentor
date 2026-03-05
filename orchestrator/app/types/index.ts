@@ -76,9 +76,18 @@ export interface DomainMapping {
   };
 }
 
+export type ChallengeType = 'none' | 'http' | 'dns';
+
+export interface BaseDomainConfig {
+  domain: string;
+  challengeType: ChallengeType;
+  dnsProvider?: string;
+}
+
 export interface DomainMapperStatus {
   enabled: boolean;
   baseDomains: string[];
+  baseDomainConfigs: BaseDomainConfig[];
   totalMappings: number;
   dashboardUrl?: string;
 }

@@ -70,6 +70,8 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     traefikImage: 'traefik:v3',
     dashboardAuthUser: '',
     dashboardAuthPassword: '',
+    baseDomainConfigs: [{ domain: 'example.com', challengeType: 'http' }],
+    dnsProviderConfigs: {},
     ...overrides,
   };
 }
@@ -343,6 +345,375 @@ describe('TraefikManager', () => {
       await manager.forceRecreate();
       expect(mockContainerRemove).toHaveBeenCalled();
       expect(mockCreateContainer).toHaveBeenCalled();
+    });
+  });
+
+  describe('buildCmd', () => {
+    it('includes HTTP-01 resolver when :http domains exist', () => {
+      const config = makeConfig();
+      const manager = new TraefikManager(config, makeMockStore());
+      const cmd = manager.buildCmd();
+      expect(cmd).toContain('--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web');
+      expect(cmd).toContain('--certificatesresolvers.letsencrypt.acme.email=test@example.com');
+      expect(cmd).toContain('--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json');
+    });
+
+    it('omits HTTP-01 resolver when no :http domains', () => {
+      const config = makeConfig({
+        baseDomainConfigs: [{ domain: 'example.com', challengeType: 'none' }],
+      });
+      const manager = new TraefikManager(config, makeMockStore());
+      const cmd = manager.buildCmd();
+      expect(cmd).not.toContain('--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web');
+    });
+
+    it('adds DNS-01 resolver per provider', () => {
+      const config = makeConfig({
+        baseDomainConfigs: [{ domain: 'example.com', challengeType: 'dns', dnsProvider: 'cloudflare' }],
+        dnsProviderConfigs: {
+          cloudflare: { provider: 'cloudflare', envVarNames: ['CF_TOKEN'], delay: 0, resolvers: [] },
+        },
+      });
+      const manager = new TraefikManager(config, makeMockStore());
+      const cmd = manager.buildCmd();
+      expect(cmd).toContain('--certificatesresolvers.letsencrypt-dns-cloudflare.acme.dnschallenge.provider=cloudflare');
+      expect(cmd).toContain('--certificatesresolvers.letsencrypt-dns-cloudflare.acme.email=test@example.com');
+    });
+
+    it('includes delay and resolvers flags when set', () => {
+      const config = makeConfig({
+        baseDomainConfigs: [{ domain: 'example.com', challengeType: 'dns', dnsProvider: 'route53' }],
+        dnsProviderConfigs: {
+          route53: { provider: 'route53', envVarNames: ['AWS_KEY'], delay: 15, resolvers: ['1.1.1.1:53', '8.8.8.8:53'] },
+        },
+      });
+      const manager = new TraefikManager(config, makeMockStore());
+      const cmd = manager.buildCmd();
+      expect(cmd).toContain('--certificatesresolvers.letsencrypt-dns-route53.acme.dnschallenge.delaybeforecheck=15');
+      expect(cmd).toContain('--certificatesresolvers.letsencrypt-dns-route53.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53');
+    });
+
+    it('omits delay flag when delay is 0', () => {
+      const config = makeConfig({
+        baseDomainConfigs: [{ domain: 'example.com', challengeType: 'dns', dnsProvider: 'cloudflare' }],
+        dnsProviderConfigs: {
+          cloudflare: { provider: 'cloudflare', envVarNames: ['CF_TOKEN'], delay: 0, resolvers: [] },
+        },
+      });
+      const manager = new TraefikManager(config, makeMockStore());
+      const cmd = manager.buildCmd();
+      expect(cmd.some((c) => c.includes('delaybeforecheck'))).toBe(false);
+    });
+
+    it('no resolvers when all domains are bare (no challenge)', () => {
+      const config = makeConfig({
+        baseDomainConfigs: [{ domain: 'example.com', challengeType: 'none' }],
+      });
+      const manager = new TraefikManager(config, makeMockStore());
+      const cmd = manager.buildCmd();
+      expect(cmd.some((c) => c.includes('certificatesresolvers'))).toBe(false);
+    });
+  });
+
+  describe('buildEnv', () => {
+    it('collects env vars from DNS providers', () => {
+      vi.stubEnv('CF_TOKEN', 'my-token');
+      vi.stubEnv('CF_ZONE', 'my-zone');
+      const config = makeConfig({
+        baseDomainConfigs: [{ domain: 'example.com', challengeType: 'dns', dnsProvider: 'cloudflare' }],
+        dnsProviderConfigs: {
+          cloudflare: { provider: 'cloudflare', envVarNames: ['CF_TOKEN', 'CF_ZONE'], delay: 0, resolvers: [] },
+        },
+      });
+      const manager = new TraefikManager(config, makeMockStore());
+      const env = manager.buildEnv();
+      expect(env).toContain('CF_TOKEN=my-token');
+      expect(env).toContain('CF_ZONE=my-zone');
+      vi.unstubAllEnvs();
+    });
+
+    it('returns empty array when no DNS providers', () => {
+      const config = makeConfig();
+      const manager = new TraefikManager(config, makeMockStore());
+      expect(manager.buildEnv()).toEqual([]);
+    });
+  });
+
+  describe('DNS challenge TLS config', () => {
+    it('DNS domain gets wildcard tls in config', async () => {
+      const config = makeConfig({
+        baseDomains: ['dns.com'],
+        baseDomainConfigs: [{ domain: 'dns.com', challengeType: 'dns', dnsProvider: 'cloudflare' }],
+        dnsProviderConfigs: {
+          cloudflare: { provider: 'cloudflare', envVarNames: ['CF_TOKEN'], delay: 0, resolvers: [] },
+        },
+        dashboardBaseDomain: 'dns.com',
+      });
+      const mapping: DomainMapping = {
+        id: 'map-dns',
+        subdomain: 'app',
+        baseDomain: 'dns.com',
+        protocol: 'https',
+        workerId: 'w1',
+        workerName: 'worker-1',
+        internalPort: 3000,
+      };
+      const store = makeMockStore([mapping]);
+      const manager = new TraefikManager(config, store);
+      await manager.init();
+
+      const configCall = mockWriteFile.mock.calls.find(
+        (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('traefik-config.json') && c[1] !== '{}'
+      );
+      const parsed = JSON.parse(configCall![1] as string);
+      expect(parsed.http.routers['http-map-dns'].tls).toEqual({
+        certResolver: 'letsencrypt-dns-cloudflare',
+        domains: [{ main: 'dns.com', sans: ['*.dns.com'] }],
+      });
+    });
+
+    it('bare domain gets no TLS on HTTPS mapping', async () => {
+      const config = makeConfig({
+        baseDomains: ['bare.com'],
+        baseDomainConfigs: [{ domain: 'bare.com', challengeType: 'none' }],
+        dashboardBaseDomain: 'bare.com',
+      });
+      const mapping: DomainMapping = {
+        id: 'map-bare',
+        subdomain: 'app',
+        baseDomain: 'bare.com',
+        protocol: 'https',
+        workerId: 'w1',
+        workerName: 'worker-1',
+        internalPort: 3000,
+      };
+      const store = makeMockStore([mapping]);
+      const manager = new TraefikManager(config, store);
+      await manager.init();
+
+      const configCall = mockWriteFile.mock.calls.find(
+        (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('traefik-config.json') && c[1] !== '{}'
+      );
+      const parsed = JSON.parse(configCall![1] as string);
+      // No TLS for bare domain — falls back to web entrypoint
+      expect(parsed.http.routers['http-map-bare'].tls).toBeUndefined();
+      expect(parsed.http.routers['http-map-bare'].entryPoints).toEqual(['web']);
+    });
+
+    it('dashboard uses web entrypoint when domain has no challenge', async () => {
+      const config = makeConfig({
+        baseDomains: ['bare.com'],
+        baseDomainConfigs: [{ domain: 'bare.com', challengeType: 'none' }],
+        dashboardBaseDomain: 'bare.com',
+        dashboardSubdomain: 'dash',
+      });
+      const store = makeMockStore([]);
+      const manager = new TraefikManager(config, store);
+      await manager.init();
+
+      const configCall = mockWriteFile.mock.calls.find(
+        (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('traefik-config.json') && c[1] !== '{}'
+      );
+      const parsed = JSON.parse(configCall![1] as string);
+      expect(parsed.http.routers['dashboard'].entryPoints).toEqual(['web']);
+      expect(parsed.http.routers['dashboard'].tls).toBeUndefined();
+    });
+
+    it('dashboard uses DNS TLS when domain has DNS challenge', async () => {
+      const config = makeConfig({
+        baseDomains: ['dns.com'],
+        baseDomainConfigs: [{ domain: 'dns.com', challengeType: 'dns', dnsProvider: 'cloudflare' }],
+        dnsProviderConfigs: {
+          cloudflare: { provider: 'cloudflare', envVarNames: [], delay: 0, resolvers: [] },
+        },
+        dashboardBaseDomain: 'dns.com',
+        dashboardSubdomain: 'dash',
+      });
+      const store = makeMockStore([]);
+      const manager = new TraefikManager(config, store);
+      await manager.init();
+
+      const configCall = mockWriteFile.mock.calls.find(
+        (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('traefik-config.json') && c[1] !== '{}'
+      );
+      const parsed = JSON.parse(configCall![1] as string);
+      expect(parsed.http.routers['dashboard'].tls.certResolver).toBe('letsencrypt-dns-cloudflare');
+      expect(parsed.http.routers['dashboard'].entryPoints).toEqual(['websecure']);
+    });
+
+    it('TCP mapping gets TLS from DNS provider', async () => {
+      const config = makeConfig({
+        baseDomains: ['dns.com'],
+        baseDomainConfigs: [{ domain: 'dns.com', challengeType: 'dns', dnsProvider: 'route53' }],
+        dnsProviderConfigs: {
+          route53: { provider: 'route53', envVarNames: [], delay: 0, resolvers: [] },
+        },
+        dashboardBaseDomain: 'dns.com',
+      });
+      const mapping: DomainMapping = {
+        id: 'map-tcp',
+        subdomain: 'db',
+        baseDomain: 'dns.com',
+        protocol: 'tcp',
+        workerId: 'w1',
+        workerName: 'worker-1',
+        internalPort: 5432,
+      };
+      const store = makeMockStore([mapping]);
+      const manager = new TraefikManager(config, store);
+      await manager.init();
+
+      const configCall = mockWriteFile.mock.calls.find(
+        (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('traefik-config.json') && c[1] !== '{}'
+      );
+      const parsed = JSON.parse(configCall![1] as string);
+      expect(parsed.tcp.routers['tcp-map-tcp'].tls.certResolver).toBe('letsencrypt-dns-route53');
+    });
+
+    it('TCP mapping on bare domain gets no TLS', async () => {
+      const config = makeConfig({
+        baseDomains: ['bare.com'],
+        baseDomainConfigs: [{ domain: 'bare.com', challengeType: 'none' }],
+        dashboardBaseDomain: 'bare.com',
+      });
+      const mapping: DomainMapping = {
+        id: 'map-tcp-bare',
+        subdomain: 'db',
+        baseDomain: 'bare.com',
+        protocol: 'tcp',
+        workerId: 'w1',
+        workerName: 'worker-1',
+        internalPort: 5432,
+      };
+      const store = makeMockStore([mapping]);
+      const manager = new TraefikManager(config, store);
+      await manager.init();
+
+      const configCall = mockWriteFile.mock.calls.find(
+        (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('traefik-config.json') && c[1] !== '{}'
+      );
+      const parsed = JSON.parse(configCall![1] as string);
+      expect(parsed.tcp.routers['tcp-map-tcp-bare'].tls).toBeUndefined();
+    });
+  });
+
+  describe('config drift detection', () => {
+    it('recreates container when Cmd changes', async () => {
+      // Config file already exists — no configFileJustCreated interference
+      mockAccess.mockResolvedValue(undefined);
+      const config = makeConfig({
+        baseDomainConfigs: [
+          { domain: 'example.com', challengeType: 'http' },
+          { domain: 'dns.com', challengeType: 'dns', dnsProvider: 'cloudflare' },
+        ],
+        baseDomains: ['example.com', 'dns.com'],
+        dnsProviderConfigs: {
+          cloudflare: { provider: 'cloudflare', envVarNames: ['CF_TOKEN'], delay: 0, resolvers: [] },
+        },
+        dashboardSubdomain: 'dash',
+      });
+      const store = makeMockStore([]);
+      const manager = new TraefikManager(config, store);
+
+      // Simulate existing container with old Cmd
+      mockListContainers.mockResolvedValue([{ Id: 'traefik-1' }]);
+      mockContainerInspect.mockResolvedValue({
+        State: { Running: true },
+        Config: {
+          Cmd: ['--entrypoints.web.address=:80', '--old-flag'],
+          Env: [],
+        },
+      });
+
+      await manager.init();
+      // Should have removed and recreated
+      expect(mockContainerRemove).toHaveBeenCalled();
+      expect(mockCreateContainer).toHaveBeenCalled();
+    });
+
+    it('does not recreate when Cmd matches', async () => {
+      mockAccess.mockResolvedValue(undefined);
+      const config = makeConfig({ dashboardSubdomain: 'dash' });
+      const store = makeMockStore([]);
+      const manager = new TraefikManager(config, store);
+
+      const expectedCmd = manager.buildCmd();
+      mockListContainers.mockResolvedValue([{ Id: 'traefik-1' }]);
+      mockContainerInspect.mockResolvedValue({
+        State: { Running: true },
+        Config: {
+          Cmd: expectedCmd,
+          Env: [],
+        },
+      });
+
+      await manager.reconcile();
+      expect(mockContainerRemove).not.toHaveBeenCalled();
+      expect(mockCreateContainer).not.toHaveBeenCalled();
+    });
+
+    it('recreates when DNS env vars differ', async () => {
+      mockAccess.mockResolvedValue(undefined);
+      vi.stubEnv('CF_TOKEN', 'new-value');
+      const config = makeConfig({
+        baseDomainConfigs: [{ domain: 'example.com', challengeType: 'dns', dnsProvider: 'cloudflare' }],
+        dnsProviderConfigs: {
+          cloudflare: { provider: 'cloudflare', envVarNames: ['CF_TOKEN'], delay: 0, resolvers: [] },
+        },
+        dashboardSubdomain: 'dash',
+      });
+      const store = makeMockStore([]);
+      const manager = new TraefikManager(config, store);
+
+      const expectedCmd = manager.buildCmd();
+      mockListContainers.mockResolvedValue([{ Id: 'traefik-1' }]);
+      mockContainerInspect.mockResolvedValue({
+        State: { Running: true },
+        Config: {
+          Cmd: expectedCmd,
+          Env: ['CF_TOKEN=old-value'],
+        },
+      });
+
+      await manager.reconcile();
+      expect(mockContainerRemove).toHaveBeenCalled();
+      expect(mockCreateContainer).toHaveBeenCalled();
+      vi.unstubAllEnvs();
+    });
+  });
+
+  describe('createTraefik with DNS', () => {
+    it('passes Env to container when DNS providers configured', async () => {
+      vi.stubEnv('CF_TOKEN', 'test-token');
+      const config = makeConfig({
+        baseDomains: ['dns.com'],
+        baseDomainConfigs: [{ domain: 'dns.com', challengeType: 'dns', dnsProvider: 'cloudflare' }],
+        dnsProviderConfigs: {
+          cloudflare: { provider: 'cloudflare', envVarNames: ['CF_TOKEN'], delay: 0, resolvers: [] },
+        },
+        dashboardBaseDomain: 'dns.com',
+        dashboardSubdomain: 'dash',
+      });
+      const store = makeMockStore([]);
+      const manager = new TraefikManager(config, store);
+
+      await manager.init();
+
+      const createCall = mockCreateContainer.mock.calls[0]![0];
+      expect(createCall.Env).toContain('CF_TOKEN=test-token');
+      expect(createCall.Cmd.some((c: string) => c.includes('letsencrypt-dns-cloudflare'))).toBe(true);
+      vi.unstubAllEnvs();
+    });
+
+    it('omits Env when no DNS providers', async () => {
+      const store = makeMockStore([]);
+      const config = makeConfig({ dashboardSubdomain: 'dash' });
+      const manager = new TraefikManager(config, store);
+
+      await manager.init();
+
+      const createCall = mockCreateContainer.mock.calls[0]![0];
+      expect(createCall.Env).toBeUndefined();
     });
   });
 });

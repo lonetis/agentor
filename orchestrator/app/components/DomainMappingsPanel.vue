@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ContainerInfo } from '~/types';
+import type { ContainerInfo, ChallengeType } from '~/types';
 
 const props = defineProps<{
   containers: ContainerInfo[];
@@ -28,6 +28,37 @@ watch(() => status.value.baseDomains, (domains) => {
 const runningContainers = computed(() =>
   props.containers.filter((c) => c.status === 'running')
 );
+
+function getChallengeType(baseDomain: string): ChallengeType {
+  const dc = status.value.baseDomainConfigs.find((c) => c.domain === baseDomain);
+  return dc?.challengeType ?? 'none';
+}
+
+function getDnsProvider(baseDomain: string): string | undefined {
+  const dc = status.value.baseDomainConfigs.find((c) => c.domain === baseDomain);
+  return dc?.dnsProvider;
+}
+
+const selectedDomainHasTls = computed(() => {
+  if (!formBaseDomain.value) return false;
+  return getChallengeType(formBaseDomain.value) !== 'none';
+});
+
+const availableProtocols = computed(() => {
+  const hasTls = selectedDomainHasTls.value;
+  return [
+    { value: 'http' as const, label: 'http', disabled: false },
+    { value: 'https' as const, label: 'https', disabled: !hasTls },
+    { value: 'tcp' as const, label: 'tcp', disabled: !hasTls },
+  ];
+});
+
+// Reset protocol if it becomes invalid when base domain changes
+watch(selectedDomainHasTls, (hasTls) => {
+  if (!hasTls && (formProtocol.value === 'https' || formProtocol.value === 'tcp')) {
+    formProtocol.value = 'http';
+  }
+});
 
 function resetForm() {
   formSubdomain.value = '';
@@ -61,6 +92,12 @@ const protocolColors: Record<string, string> = {
   https: 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300',
   tcp: 'bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300',
 };
+
+const challengeColors: Record<string, string> = {
+  none: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+  http: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300',
+  dns: 'bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300',
+};
 </script>
 
 <template>
@@ -72,9 +109,14 @@ const protocolColors: Record<string, string> = {
           v-model="formProtocol"
           class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs shrink-0"
         >
-          <option value="http">http</option>
-          <option value="https">https</option>
-          <option value="tcp">tcp</option>
+          <option
+            v-for="p in availableProtocols"
+            :key="p.value"
+            :value="p.value"
+            :disabled="p.disabled"
+          >
+            {{ p.label }}{{ p.disabled ? ' (no TLS)' : '' }}
+          </option>
         </select>
         <select
           v-model="formWorkerId"
@@ -98,7 +140,7 @@ const protocolColors: Record<string, string> = {
           v-model="formBaseDomain"
           class="bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 rounded px-1 py-1 text-[10px] shrink-0"
         >
-          <option v-for="d in status.baseDomains" :key="d" :value="d">.{{ d }}</option>
+          <option v-for="d in status.baseDomains" :key="d" :value="d">.{{ d }} ({{ getChallengeType(d) }}{{ getDnsProvider(d) ? ':' + getDnsProvider(d) : '' }})</option>
         </select>
         <span v-else class="text-gray-400 dark:text-gray-500 text-[10px] shrink-0">.{{ status.baseDomains[0] }}</span>
       </div>
@@ -162,6 +204,13 @@ const protocolColors: Record<string, string> = {
         :class="protocolColors[m.protocol]"
       >
         {{ m.protocol }}
+      </span>
+      <span
+        class="px-1 rounded text-[10px] shrink-0"
+        :class="challengeColors[getChallengeType(m.baseDomain)]"
+        :title="getDnsProvider(m.baseDomain) ? `dns:${getDnsProvider(m.baseDomain)}` : getChallengeType(m.baseDomain)"
+      >
+        {{ getChallengeType(m.baseDomain) === 'dns' ? getDnsProvider(m.baseDomain) : getChallengeType(m.baseDomain) }}
       </span>
       <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.subdomain }}.{{ m.baseDomain }}</span>
       <svg
