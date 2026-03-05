@@ -14,6 +14,7 @@ export type {
   UpdatableImage,
   UpdateStatus,
   ApplyResult,
+  PruneResult,
   AgentAuthType,
   UsageWindow,
   AgentUsageInfo,

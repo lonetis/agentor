@@ -83,6 +83,11 @@ export interface ApplyResult {
   errors: string[];
 }
 
+export interface PruneResult {
+  imagesDeleted: number;
+  spaceReclaimed: number;
+}
+
 export type AgentAuthType = 'oauth' | 'api-key' | 'none';
 
 export interface UsageWindow {

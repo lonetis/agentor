@@ -5,14 +5,17 @@ const {
   status,
   isChecking,
   isApplying,
+  isPruning,
   isRestarting,
   applyErrors,
   applyingImages,
+  lastPruneResult,
   updatesAvailable,
   isProductionMode,
   checkNow,
   applyUpdates,
   applyImage,
+  pruneImages,
 } = useUpdates();
 
 function shortDigest(digest: string): string {
@@ -45,6 +48,13 @@ const imageList = computed(() =>
 );
 
 const anyApplyingImage = computed(() => applyingImages.value.size > 0);
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / 1024 ** i).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
+}
 </script>
 
 <template>
@@ -157,6 +167,23 @@ const anyApplyingImage = computed(() => applyingImages.value.size > 0);
         >
           {{ isChecking ? 'Checking...' : 'Check for updates' }}
         </button>
+      </div>
+
+      <!-- Prune unused images -->
+      <div v-if="status" class="mt-2 flex items-center justify-between">
+        <button
+          class="text-[10px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 disabled:opacity-50"
+          :disabled="isPruning || isApplying || anyApplyingImage"
+          @click="pruneImages"
+        >
+          {{ isPruning ? 'Pruning...' : 'Prune unused images' }}
+        </button>
+        <span
+          v-if="lastPruneResult"
+          class="text-[10px] text-gray-400 dark:text-gray-500"
+        >
+          {{ lastPruneResult.imagesDeleted }} removed, {{ formatBytes(lastPruneResult.spaceReclaimed) }} freed
+        </span>
       </div>
     </template>
   </div>

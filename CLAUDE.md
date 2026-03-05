@@ -478,7 +478,7 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/app.config.ts` - App-level configuration
 
 ### Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo)
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo)
 
 ### Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build
@@ -676,6 +676,7 @@ All API routes return JSON only (no HTML partials).
 | GET | `/api/updates` | Update status (image digests, production mode) |
 | POST | `/api/updates/check` | Trigger manual update check |
 | POST | `/api/updates/apply` | Pull updated images, recreate mapper/orchestrator |
+| POST | `/api/updates/prune` | Prune unused Docker images to reclaim disk space |
 | GET | `/desktop/:containerId/**` | Reverse proxy to worker's noVNC (port 6080) |
 | GET | `/editor/:containerId/**` | Reverse proxy to worker's code-server (port 8443) |
 | WS | `/ws/desktop/:containerId` | WebSocket relay to worker's websockify (VNC) |

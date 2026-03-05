@@ -1,6 +1,6 @@
 import Docker from 'dockerode';
 import type { Config } from './config';
-import type { ImageUpdateInfo, UpdateStatus, ApplyResult, UpdatableImage } from '../../shared/types';
+import type { ImageUpdateInfo, UpdateStatus, ApplyResult, UpdatableImage, PruneResult } from '../../shared/types';
 
 interface ImageRef {
   registry: string;
@@ -422,6 +422,14 @@ export class UpdateChecker {
 
     await swapper.start();
     console.log('[update-checker] swapper started — orchestrator will be replaced shortly');
+  }
+
+  async pruneImages(): Promise<PruneResult> {
+    const res = await this.docker.pruneImages({ filters: { dangling: ['false'] } });
+    return {
+      imagesDeleted: res.ImagesDeleted?.length ?? 0,
+      spaceReclaimed: res.SpaceReclaimed ?? 0,
+    };
   }
 
   private async removeContainerIfExists(name: string): Promise<void> {
