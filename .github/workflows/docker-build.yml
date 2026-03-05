@@ -26,10 +26,13 @@ jobs:
           filters: |
             orchestrator:
               - 'orchestrator/**'
+              - '.github/workflows/docker-build.yml'
             mapper:
               - 'mapper/**'
+              - '.github/workflows/docker-build.yml'
             worker:
               - 'worker/**'
+              - '.github/workflows/docker-build.yml'
 
   build-orchestrator:
     needs: changes
