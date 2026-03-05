@@ -20,7 +20,7 @@ export type {
   AgentUsageStatus,
   ExposeApis,
   SkillInfo,
-  InstructionInfo,
+  AgentsMdEntryInfo,
 } from '../../shared/types';
 
 export interface GitProviderInfo {
@@ -109,7 +109,7 @@ export interface EnvironmentInfo {
   initScript: string;
   exposeApis: ExposeApisType;
   enabledSkillIds: string[] | null;
-  enabledInstructionIds: string[] | null;
+  enabledAgentsMdIds: string[] | null;
   createdAt: string;
   updatedAt: string;
 }

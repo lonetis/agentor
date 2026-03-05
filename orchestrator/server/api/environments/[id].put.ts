@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
   if (body.initScript !== undefined) update.initScript = body.initScript;
   if (body.exposeApis !== undefined) update.exposeApis = body.exposeApis;
   if (body.enabledSkillIds !== undefined) update.enabledSkillIds = body.enabledSkillIds;
-  if (body.enabledInstructionIds !== undefined) update.enabledInstructionIds = body.enabledInstructionIds;
+  if (body.enabledAgentsMdIds !== undefined) update.enabledAgentsMdIds = body.enabledAgentsMdIds;
 
   const store = useEnvironmentStore();
 

@@ -98,7 +98,7 @@ _done agents "Agent setup"
 _log "Agent setup: done"
 
 # ==========================================================================
-# Phase 1b: Platform setup (instructions + skills for agents)
+# Phase 1b: Platform setup (AGENTS.md + skills for agents)
 # Only runs on first startup (sentinel prevents re-running on restart).
 # ==========================================================================
 PLATFORM_SENTINEL="/workspace/.agentor-platform-init"
@@ -106,34 +106,34 @@ if [ ! -f "$PLATFORM_SENTINEL" ]; then
     _step platform "Platform setup"
     _log "Platform setup: start"
 
-    # --- Instructions ---
-    if [ -n "$INSTRUCTIONS_B64" ]; then
-        INSTRUCTIONS_MD=$(echo -n "$INSTRUCTIONS_B64" | base64 -d 2>/dev/null) || INSTRUCTIONS_MD=""
-        if [ -n "$INSTRUCTIONS_MD" ]; then
+    # --- AGENTS.md ---
+    if [ -n "$AGENTS_MD_B64" ]; then
+        AGENTS_MD_CONTENT=$(echo -n "$AGENTS_MD_B64" | base64 -d 2>/dev/null) || AGENTS_MD_CONTENT=""
+        if [ -n "$AGENTS_MD_CONTENT" ]; then
             # Claude: append to ~/.claude/CLAUDE.md
             mkdir -p /home/agent/.claude
             if [ -f /home/agent/.claude/CLAUDE.md ]; then
-                echo -e "\n\n$INSTRUCTIONS_MD" >> /home/agent/.claude/CLAUDE.md
+                echo -e "\n\n$AGENTS_MD_CONTENT" >> /home/agent/.claude/CLAUDE.md
             else
-                echo "$INSTRUCTIONS_MD" > /home/agent/.claude/CLAUDE.md
+                echo "$AGENTS_MD_CONTENT" > /home/agent/.claude/CLAUDE.md
             fi
 
             # Codex: write to ~/.codex/AGENTS.md
             mkdir -p /home/agent/.codex
             if [ -f /home/agent/.codex/AGENTS.md ]; then
-                echo -e "\n\n$INSTRUCTIONS_MD" >> /home/agent/.codex/AGENTS.md
+                echo -e "\n\n$AGENTS_MD_CONTENT" >> /home/agent/.codex/AGENTS.md
             else
-                echo "$INSTRUCTIONS_MD" > /home/agent/.codex/AGENTS.md
+                echo "$AGENTS_MD_CONTENT" > /home/agent/.codex/AGENTS.md
             fi
 
             # Gemini: write to ~/.gemini/GEMINI.md
             mkdir -p /home/agent/.gemini
             if [ -f /home/agent/.gemini/GEMINI.md ]; then
-                echo -e "\n\n$INSTRUCTIONS_MD" >> /home/agent/.gemini/GEMINI.md
+                echo -e "\n\n$AGENTS_MD_CONTENT" >> /home/agent/.gemini/GEMINI.md
             else
-                echo "$INSTRUCTIONS_MD" > /home/agent/.gemini/GEMINI.md
+                echo "$AGENTS_MD_CONTENT" > /home/agent/.gemini/GEMINI.md
             fi
-            _log "Platform setup: wrote instructions to agent paths"
+            _log "Platform setup: wrote AGENTS.md to agent paths"
         fi
     fi
 

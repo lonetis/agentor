@@ -17,7 +17,7 @@ export interface Environment {
   initScript: string;
   exposeApis: ExposeApis;
   enabledSkillIds: string[] | null;
-  enabledInstructionIds: string[] | null;
+  enabledAgentsMdIds: string[] | null;
   createdAt: string;
   updatedAt: string;
 }

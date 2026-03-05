@@ -11,7 +11,7 @@ import type { EnvironmentStore } from './environments';
 import type { WorkerStore, WorkerRecord } from './worker-store';
 import type { CredentialMountManager } from './credential-mounts';
 import type { SkillStore } from './skill-store';
-import type { InstructionStore } from './instruction-store';
+import type { AgentsMdStore } from './agents-md-store';
 import type { NetworkMode, ExposeApis, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest } from '../../shared/types';
 
 function parseLabelFloat(value: string | undefined): number | undefined {
@@ -30,7 +30,7 @@ interface ResolvedEnvConfig {
   customEnvVars?: string[];
   dockerEnabled?: boolean;
   environmentName?: string;
-  instructionsB64?: string;
+  agentsMdB64?: string;
   skillsB64?: string;
   exposeApis?: ExposeApis;
 }
@@ -43,7 +43,7 @@ export class ContainerManager {
   private workerStore?: WorkerStore;
   private credentialMountManager?: CredentialMountManager;
   private skillStore?: SkillStore;
-  private instructionStore?: InstructionStore;
+  private agentsMdStore?: AgentsMdStore;
 
   constructor(dockerService: DockerService, config: Config) {
     this.dockerService = dockerService;
@@ -66,25 +66,25 @@ export class ContainerManager {
     this.skillStore = store;
   }
 
-  setInstructionStore(store: InstructionStore): void {
-    this.instructionStore = store;
+  setAgentsMdStore(store: AgentsMdStore): void {
+    this.agentsMdStore = store;
   }
 
-  private resolveSkillsAndInstructions(
+  private resolveSkillsAndAgentsMd(
     enabledSkillIds: string[] | null | undefined,
-    enabledInstructionIds: string[] | null | undefined,
+    enabledAgentsMdIds: string[] | null | undefined,
     exposeApis: ExposeApis,
-  ): { skillsB64?: string; instructionsB64?: string } {
-    let instructionsB64: string | undefined;
-    if (this.instructionStore) {
-      const allInstructions = this.instructionStore.list();
-      const enabledInstructions = enabledInstructionIds === null || enabledInstructionIds === undefined
-        ? allInstructions
-        : allInstructions.filter((i) => enabledInstructionIds!.includes(i.id));
+  ): { skillsB64?: string; agentsMdB64?: string } {
+    let agentsMdB64: string | undefined;
+    if (this.agentsMdStore) {
+      const allEntries = this.agentsMdStore.list();
+      const enabledEntries = enabledAgentsMdIds === null || enabledAgentsMdIds === undefined
+        ? allEntries
+        : allEntries.filter((i) => enabledAgentsMdIds!.includes(i.id));
 
-      if (enabledInstructions.length > 0) {
-        const merged = enabledInstructions.map((i) => `# ${i.name}\n\n${i.content}`).join('\n\n---\n\n');
-        instructionsB64 = Buffer.from(merged).toString('base64');
+      if (enabledEntries.length > 0) {
+        const merged = enabledEntries.map((i) => `# ${i.name}\n\n${i.content}`).join('\n\n---\n\n');
+        agentsMdB64 = Buffer.from(merged).toString('base64');
       }
     }
 
@@ -111,16 +111,16 @@ export class ContainerManager {
       }
     }
 
-    return { skillsB64, instructionsB64 };
+    return { skillsB64, agentsMdB64 };
   }
 
   private resolveEnvironmentConfig(environmentId?: string): ResolvedEnvConfig {
-    // Default environment: all skills, all instructions, all APIs exposed
+    // Default environment: all skills, all AGENTS.md entries, all APIs exposed
     const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
 
     if (!environmentId || !this.environmentStore) {
-      const { skillsB64, instructionsB64 } = this.resolveSkillsAndInstructions(null, null, defaultExposeApis);
-      return { instructionsB64, skillsB64, exposeApis: defaultExposeApis };
+      const { skillsB64, agentsMdB64 } = this.resolveSkillsAndAgentsMd(null, null, defaultExposeApis);
+      return { agentsMdB64, skillsB64, exposeApis: defaultExposeApis };
     }
 
     const env = this.environmentStore.get(environmentId);
@@ -152,8 +152,8 @@ export class ContainerManager {
     }
 
     const exposeApis: ExposeApis = env.exposeApis ?? defaultExposeApis;
-    const { skillsB64, instructionsB64 } = this.resolveSkillsAndInstructions(
-      env.enabledSkillIds, env.enabledInstructionIds, exposeApis,
+    const { skillsB64, agentsMdB64 } = this.resolveSkillsAndAgentsMd(
+      env.enabledSkillIds, env.enabledAgentsMdIds, exposeApis,
     );
 
     return {
@@ -166,7 +166,7 @@ export class ContainerManager {
       customEnvVars: customEnvVars.length > 0 ? customEnvVars : undefined,
       dockerEnabled: env.dockerEnabled ?? true,
       environmentName: env.name,
-      instructionsB64,
+      agentsMdB64,
       skillsB64,
       exposeApis,
     };
@@ -273,7 +273,7 @@ export class ContainerManager {
       credentialBinds: this.credentialMountManager?.getBindMounts(),
       environmentId: request.environmentId,
       environmentName: envConfig.environmentName,
-      instructionsB64: envConfig.instructionsB64,
+      agentsMdB64: envConfig.agentsMdB64,
       skillsB64: envConfig.skillsB64,
       exposeApis: envConfig.exposeApis,
     });
@@ -426,7 +426,7 @@ export class ContainerManager {
       credentialBinds: this.credentialMountManager?.getBindMounts(),
       environmentId: worker.environmentId,
       environmentName: envConfig.environmentName || worker.environmentName,
-      instructionsB64: envConfig.instructionsB64,
+      agentsMdB64: envConfig.agentsMdB64,
       skillsB64: envConfig.skillsB64,
       exposeApis: envConfig.exposeApis,
     });

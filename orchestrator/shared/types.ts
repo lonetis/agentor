@@ -121,7 +121,7 @@ export interface SkillInfo {
   updatedAt: string;
 }
 
-export interface InstructionInfo {
+export interface AgentsMdEntryInfo {
   id: string;
   name: string;
   content: string;

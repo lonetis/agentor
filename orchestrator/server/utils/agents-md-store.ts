@@ -1,8 +1,8 @@
 import { nanoid } from 'nanoid';
 import { JsonStore } from './json-store';
-import type { BuiltInInstruction } from './built-in-content';
+import type { BuiltInAgentsMdEntry } from './built-in-content';
 
-export interface Instruction {
+export interface AgentsMdEntry {
   id: string;
   name: string;
   content: string;
@@ -11,21 +11,21 @@ export interface Instruction {
   updatedAt: string;
 }
 
-export class InstructionStore extends JsonStore<string, Instruction> {
+export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
   constructor(dataDir: string) {
-    super(dataDir, 'instructions.json', (i) => i.id);
+    super(dataDir, 'agents-md.json', (i) => i.id);
   }
 
-  override list(): Instruction[] {
+  override list(): AgentsMdEntry[] {
     return super.list().sort((a, b) => {
       if (a.builtIn !== b.builtIn) return a.builtIn ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
   }
 
-  async create(data: { name: string; content: string }): Promise<Instruction> {
+  async create(data: { name: string; content: string }): Promise<AgentsMdEntry> {
     const now = new Date().toISOString();
-    const instruction: Instruction = {
+    const entry: AgentsMdEntry = {
       id: nanoid(12),
       name: data.name,
       content: data.content,
@@ -33,16 +33,16 @@ export class InstructionStore extends JsonStore<string, Instruction> {
       createdAt: now,
       updatedAt: now,
     };
-    this.items.set(instruction.id, instruction);
+    this.items.set(entry.id, entry);
     await this.persist();
-    return instruction;
+    return entry;
   }
 
-  async update(id: string, data: { name?: string; content?: string }): Promise<Instruction> {
+  async update(id: string, data: { name?: string; content?: string }): Promise<AgentsMdEntry> {
     const existing = this.items.get(id);
-    if (!existing) throw new Error(`Instruction not found: ${id}`);
-    if (existing.builtIn) throw new Error('Cannot modify built-in instructions');
-    const updated: Instruction = {
+    if (!existing) throw new Error(`AGENTS.md entry not found: ${id}`);
+    if (existing.builtIn) throw new Error('Cannot modify built-in AGENTS.md entries');
+    const updated: AgentsMdEntry = {
       ...existing,
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.content !== undefined ? { content: data.content } : {}),
@@ -55,13 +55,13 @@ export class InstructionStore extends JsonStore<string, Instruction> {
 
   async delete(id: string): Promise<void> {
     const existing = this.items.get(id);
-    if (!existing) throw new Error(`Instruction not found: ${id}`);
-    if (existing.builtIn) throw new Error('Cannot delete built-in instructions');
+    if (!existing) throw new Error(`AGENTS.md entry not found: ${id}`);
+    if (existing.builtIn) throw new Error('Cannot delete built-in AGENTS.md entries');
     this.items.delete(id);
     await this.persist();
   }
 
-  async seedBuiltIns(items: BuiltInInstruction[]): Promise<void> {
+  async seedBuiltIns(items: BuiltInAgentsMdEntry[]): Promise<void> {
     let changed = false;
     const now = new Date().toISOString();
     for (const item of items) {

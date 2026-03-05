@@ -25,7 +25,7 @@ const {
 const showCreateModal = ref(false);
 const showEnvironmentsModal = ref(false);
 const showSkillsModal = ref(false);
-const showInstructionsModal = ref(false);
+const showAgentsMdModal = ref(false);
 const showSettingsModal = ref(false);
 
 const { sidebarWidth, isDragging, isCollapsed, isMobile, startDrag, toggleCollapse } = useSidebarResize();
@@ -120,7 +120,7 @@ function openEnvironmentsFromModal() {
       @new-worker="showCreateModal = true"
       @manage-environments="showEnvironmentsModal = true"
       @manage-skills="showSkillsModal = true"
-      @manage-instructions="showInstructionsModal = true"
+      @manage-agents-md="showAgentsMdModal = true"
       @open-terminal="(cid) => handleOpenTab(cid, 'terminal')"
       @open-desktop="(cid) => handleOpenTab(cid, 'desktop')"
       @open-apps="(cid) => handleOpenTab(cid, 'apps')"
@@ -184,7 +184,7 @@ function openEnvironmentsFromModal() {
     />
 
     <SkillsModal v-model:open="showSkillsModal" />
-    <InstructionsModal v-model:open="showInstructionsModal" />
+    <AgentsMdModal v-model:open="showAgentsMdModal" />
     <SettingsModal v-model:open="showSettingsModal" />
   </div>
 </template>

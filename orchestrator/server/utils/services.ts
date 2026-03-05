@@ -13,7 +13,7 @@ import { UpdateChecker } from './update-checker';
 import { UsageChecker } from './usage-checker';
 import { CredentialMountManager } from './credential-mounts';
 import { SkillStore } from './skill-store';
-import { InstructionStore } from './instruction-store';
+import { AgentsMdStore } from './agents-md-store';
 
 function singleton<T>(factory: () => T): () => T {
   let instance: T | undefined;
@@ -39,7 +39,7 @@ export const useCredentialMountManager = singleton(
   () => new CredentialMountManager(new Docker({ socketPath: '/var/run/docker.sock' }))
 );
 export const useSkillStore = singleton(() => new SkillStore(useConfig().dataDir));
-export const useInstructionStore = singleton(() => new InstructionStore(useConfig().dataDir));
+export const useAgentsMdStore = singleton(() => new AgentsMdStore(useConfig().dataDir));
 
 /**
  * Removes all port and domain mappings for a worker and reconciles the

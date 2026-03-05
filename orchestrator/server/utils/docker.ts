@@ -44,7 +44,7 @@ export class DockerService {
     credentialBinds?: string[];
     environmentId?: string;
     environmentName?: string;
-    instructionsB64?: string;
+    agentsMdB64?: string;
     skillsB64?: string;
     exposeApis?: ExposeApis;
   }): Promise<Docker.Container> {
@@ -87,8 +87,8 @@ export class DockerService {
     // Orchestrator API access
     env.push('ORCHESTRATOR_URL=http://agentor-orchestrator:3000');
     env.push(`WORKER_CONTAINER_NAME=${opts.name}`);
-    if (opts.instructionsB64) {
-      env.push(`INSTRUCTIONS_B64=${opts.instructionsB64}`);
+    if (opts.agentsMdB64) {
+      env.push(`AGENTS_MD_B64=${opts.agentsMdB64}`);
     }
     if (opts.skillsB64) {
       env.push(`SKILLS_B64=${opts.skillsB64}`);

@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
     initScript: body.initScript || '',
     exposeApis: body.exposeApis ?? { portMappings: true, domainMappings: true, usage: true },
     enabledSkillIds: body.enabledSkillIds ?? null,
-    enabledInstructionIds: body.enabledInstructionIds ?? null,
+    enabledAgentsMdIds: body.enabledAgentsMdIds ?? null,
   });
 
   setResponseStatus(event, 201);

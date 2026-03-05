@@ -130,7 +130,7 @@ async function handleDelete(id: string) {
               initScript: '',
               exposeApis: { portMappings: true, domainMappings: true, usage: true },
               enabledSkillIds: null,
-              enabledInstructionIds: null,
+              enabledAgentsMdIds: null,
               createdAt: '',
               updatedAt: '',
             } : editingEnvironment"

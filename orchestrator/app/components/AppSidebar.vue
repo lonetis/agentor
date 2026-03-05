@@ -12,7 +12,7 @@ const emit = defineEmits<{
   newWorker: [];
   manageEnvironments: [];
   manageSkills: [];
-  manageInstructions: [];
+  manageAgentsMd: [];
   openTerminal: [containerId: string];
   openDesktop: [containerId: string];
   openApps: [containerId: string];
@@ -96,8 +96,8 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         <UButton class="flex-1" color="neutral" variant="outline" size="sm" @click="emit('manageSkills')">
           Skills
         </UButton>
-        <UButton class="flex-1" color="neutral" variant="outline" size="sm" @click="emit('manageInstructions')">
-          Instructions
+        <UButton class="flex-1" color="neutral" variant="outline" size="sm" @click="emit('manageAgentsMd')">
+          AGENTS.md
         </UButton>
       </div>
     </div>

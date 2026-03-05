@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { InitPresetInfo, EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, SkillInfo, InstructionInfo } from '~/types';
+import type { InitPresetInfo, EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, SkillInfo, AgentsMdEntryInfo } from '~/types';
 
 const props = defineProps<{
   initPresets: InitPresetInfo[];
@@ -25,7 +25,7 @@ const form = reactive({
   initScript: '',
   exposeApis: { portMappings: true, domainMappings: true, usage: true } as ExposeApis,
   enabledSkillIds: null as string[] | null,
-  enabledInstructionIds: null as string[] | null,
+  enabledAgentsMdIds: null as string[] | null,
 });
 
 const { selectedPreset, presetOptions } = useInitPresetSync(
@@ -36,7 +36,7 @@ const { selectedPreset, presetOptions } = useInitPresetSync(
 const systemEnvVars = ref<OrchestratorEnvVar[]>([]);
 
 const { data: allSkills } = useFetch<SkillInfo[]>('/api/skills', { default: () => [] });
-const { data: allInstructions } = useFetch<InstructionInfo[]>('/api/instructions', { default: () => [] });
+const { data: allAgentsMdEntries } = useFetch<AgentsMdEntryInfo[]>('/api/agents-md', { default: () => [] });
 
 // Track "all selected" toggle state
 const allSkillsSelected = computed({
@@ -45,10 +45,10 @@ const allSkillsSelected = computed({
     form.enabledSkillIds = v ? null : allSkills.value.map((s) => s.id);
   },
 });
-const allInstructionsSelected = computed({
-  get: () => form.enabledInstructionIds === null,
+const allEntriesSelected = computed({
+  get: () => form.enabledAgentsMdIds === null,
   set: (v: boolean) => {
-    form.enabledInstructionIds = v ? null : allInstructions.value.map((i) => i.id);
+    form.enabledAgentsMdIds = v ? null : allAgentsMdEntries.value.map((i) => i.id);
   },
 });
 
@@ -68,18 +68,18 @@ function toggleSkill(id: string) {
   }
 }
 
-function isInstructionEnabled(id: string): boolean {
-  return form.enabledInstructionIds === null || form.enabledInstructionIds.includes(id);
+function isEntryEnabled(id: string): boolean {
+  return form.enabledAgentsMdIds === null || form.enabledAgentsMdIds.includes(id);
 }
-function toggleInstruction(id: string) {
-  if (form.enabledInstructionIds === null) {
-    form.enabledInstructionIds = allInstructions.value.map((i) => i.id).filter((iid) => iid !== id);
-  } else if (form.enabledInstructionIds.includes(id)) {
-    form.enabledInstructionIds = form.enabledInstructionIds.filter((iid) => iid !== id);
+function toggleEntry(id: string) {
+  if (form.enabledAgentsMdIds === null) {
+    form.enabledAgentsMdIds = allAgentsMdEntries.value.map((i) => i.id).filter((iid) => iid !== id);
+  } else if (form.enabledAgentsMdIds.includes(id)) {
+    form.enabledAgentsMdIds = form.enabledAgentsMdIds.filter((iid) => iid !== id);
   } else {
-    form.enabledInstructionIds = [...form.enabledInstructionIds, id];
-    if (form.enabledInstructionIds.length === allInstructions.value.length) {
-      form.enabledInstructionIds = null;
+    form.enabledAgentsMdIds = [...form.enabledAgentsMdIds, id];
+    if (form.enabledAgentsMdIds.length === allAgentsMdEntries.value.length) {
+      form.enabledAgentsMdIds = null;
     }
   }
 }
@@ -127,7 +127,7 @@ function initForm() {
     form.initScript = props.environment.initScript;
     form.exposeApis = props.environment.exposeApis ?? { portMappings: true, domainMappings: true, usage: true };
     form.enabledSkillIds = props.environment.enabledSkillIds ?? null;
-    form.enabledInstructionIds = props.environment.enabledInstructionIds ?? null;
+    form.enabledAgentsMdIds = props.environment.enabledAgentsMdIds ?? null;
   }
   fetchSystemEnvVars();
 }
@@ -155,7 +155,7 @@ function handleSave() {
     initScript: form.initScript,
     exposeApis: form.exposeApis,
     enabledSkillIds: form.enabledSkillIds,
-    enabledInstructionIds: form.enabledInstructionIds,
+    enabledAgentsMdIds: form.enabledAgentsMdIds,
   });
 }
 </script>
@@ -344,29 +344,29 @@ function handleSave() {
       </div>
     </fieldset>
 
-    <!-- Instructions -->
-    <fieldset v-if="allInstructions.length > 0">
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Instructions</legend>
+    <!-- AGENTS.md -->
+    <fieldset v-if="allAgentsMdEntries.length > 0">
+      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">AGENTS.md</legend>
       <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
-        Select which instructions are injected into agents in this environment.
+        Select which AGENTS.md entries are injected into agents in this environment.
       </p>
       <div class="mb-2">
         <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
-          <UCheckbox :model-value="allInstructionsSelected" @update:model-value="allInstructionsSelected = !!$event" :disabled="readOnly" />
+          <UCheckbox :model-value="allEntriesSelected" @update:model-value="allEntriesSelected = !!$event" :disabled="readOnly" />
           Select All
         </label>
       </div>
       <div class="space-y-1.5 pl-1">
         <label
-          v-for="instruction in allInstructions"
-          :key="instruction.id"
+          v-for="entry in allAgentsMdEntries"
+          :key="entry.id"
           class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
           :class="readOnly ? 'cursor-default' : 'cursor-pointer'"
         >
-          <UCheckbox :model-value="isInstructionEnabled(instruction.id)" @update:model-value="toggleInstruction(instruction.id)" :disabled="readOnly" />
-          {{ instruction.name }}
+          <UCheckbox :model-value="isEntryEnabled(entry.id)" @update:model-value="toggleEntry(entry.id)" :disabled="readOnly" />
+          {{ entry.name }}
           <span
-            v-if="instruction.builtIn"
+            v-if="entry.builtIn"
             class="px-1 py-0.5 rounded text-[9px] font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
           >
             Built-in
