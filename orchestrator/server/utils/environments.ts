@@ -14,7 +14,6 @@ export interface Environment {
   dockerEnabled: boolean;
   envVars: string;
   setupScript: string;
-  initScript: string;
   exposeApis: ExposeApis;
   enabledSkillIds: string[] | null;
   enabledAgentsMdIds: string[] | null;

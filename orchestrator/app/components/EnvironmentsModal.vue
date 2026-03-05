@@ -1,9 +1,5 @@
 <script setup lang="ts">
-import type { InitPresetInfo, EnvironmentInfo } from '~/types';
-
-const props = defineProps<{
-  initPresets: InitPresetInfo[];
-}>();
+import type { EnvironmentInfo } from '~/types';
 
 const open = defineModel<boolean>('open', { default: false });
 
@@ -115,7 +111,6 @@ async function handleDelete(id: string) {
         <!-- Inline editor -->
         <div v-if="showEditor" class="border border-gray-300 dark:border-gray-700 rounded-lg p-4">
           <EnvironmentEditor
-            :init-presets="initPresets"
             :environment="viewingDefault ? {
               id: '',
               name: 'Default',
@@ -127,7 +122,6 @@ async function handleDelete(id: string) {
               dockerEnabled: true,
               envVars: '',
               setupScript: '',
-              initScript: '',
               exposeApis: { portMappings: true, domainMappings: true, usage: true },
               enabledSkillIds: null,
               enabledAgentsMdIds: null,

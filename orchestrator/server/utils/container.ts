@@ -26,7 +26,6 @@ interface ResolvedEnvConfig {
   networkMode?: NetworkMode;
   allowedDomains?: string[];
   setupScriptB64?: string;
-  initScriptB64?: string;
   customEnvVars?: string[];
   dockerEnabled?: boolean;
   environmentName?: string;
@@ -162,7 +161,6 @@ export class ContainerManager {
       networkMode: env.networkMode,
       allowedDomains: domains.length > 0 ? domains : undefined,
       setupScriptB64: env.setupScript ? Buffer.from(env.setupScript).toString('base64') : undefined,
-      initScriptB64: env.initScript ? Buffer.from(env.initScript).toString('base64') : undefined,
       customEnvVars: customEnvVars.length > 0 ? customEnvVars : undefined,
       dockerEnabled: env.dockerEnabled ?? true,
       environmentName: env.name,
@@ -232,16 +230,8 @@ export class ContainerManager {
   async create(request: CreateContainerRequest): Promise<ContainerInfo> {
     const envConfig = this.resolveEnvironmentConfig(request.environmentId);
 
-    // Init script priority: worker > environment
-    let initScriptB64: string | undefined;
     const workerScript = request.initScript?.trim();
-    const envScript = envConfig.initScriptB64; // already base64 if set
-
-    if (workerScript) {
-      initScriptB64 = Buffer.from(workerScript).toString('base64');
-    } else if (envScript) {
-      initScriptB64 = envScript;
-    }
+    const initScriptB64 = workerScript ? Buffer.from(workerScript).toString('base64') : undefined;
 
     const name = request.name || this.generateName();
 
@@ -420,7 +410,6 @@ export class ContainerManager {
       networkMode: envConfig.networkMode || worker.networkMode,
       allowedDomains: envConfig.allowedDomains,
       setupScriptB64: envConfig.setupScriptB64,
-      initScriptB64: envConfig.initScriptB64,
       customEnvVars: allCustomEnvVars.length > 0 ? allCustomEnvVars : undefined,
       dockerEnabled,
       credentialBinds: this.credentialMountManager?.getBindMounts(),

@@ -29,7 +29,6 @@ test.describe('Create Worker Modal — Advanced', () => {
       dockerEnabled: true,
       envVars: '',
       setupScript: '',
-      initScript: '',
     });
 
     await goToDashboard(page);

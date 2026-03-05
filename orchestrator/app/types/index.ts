@@ -107,7 +107,6 @@ export interface EnvironmentInfo {
   dockerEnabled: boolean;
   envVars: string;
   setupScript: string;
-  initScript: string;
   exposeApis: ExposeApisType;
   enabledSkillIds: string[] | null;
   enabledAgentsMdIds: string[] | null;

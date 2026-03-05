@@ -180,7 +180,6 @@ function openEnvironmentsFromModal() {
 
     <EnvironmentsModal
       v-model:open="showEnvironmentsModal"
-      :init-presets="initPresets"
     />
 
     <SkillsModal v-model:open="showSkillsModal" />

@@ -2,7 +2,6 @@
 import type { InitPresetInfo, EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, SkillInfo, AgentsMdEntryInfo } from '~/types';
 
 const props = defineProps<{
-  initPresets: InitPresetInfo[];
   environment?: EnvironmentInfo;
   readOnly?: boolean;
 }>();
@@ -22,16 +21,10 @@ const form = reactive({
   dockerEnabled: true,
   envVars: '',
   setupScript: '',
-  initScript: '',
   exposeApis: { portMappings: true, domainMappings: true, usage: true } as ExposeApis,
   enabledSkillIds: null as string[] | null,
   enabledAgentsMdIds: null as string[] | null,
 });
-
-const { selectedPreset, presetOptions } = useInitPresetSync(
-  computed(() => props.initPresets),
-  toRef(form, 'initScript'),
-);
 
 const systemEnvVars = ref<OrchestratorEnvVar[]>([]);
 
@@ -93,12 +86,13 @@ const networkModeOptions = [
 ];
 
 const { data: packageManagerDomains } = useFetch<string[]>('/api/package-manager-domains', { default: () => [] });
+const { data: initPresets } = useFetch<InitPresetInfo[]>('/api/init-presets', { default: () => [] });
 const showPmDomains = ref(false);
 const showAgentDomains = ref(false);
 
 const allApiDomains = computed(() => {
   const domains = new Set<string>();
-  for (const p of props.initPresets) {
+  for (const p of initPresets.value) {
     for (const d of p.apiDomains) domains.add(d);
   }
   return [...domains].sort();
@@ -124,7 +118,6 @@ function initForm() {
     form.dockerEnabled = props.environment.dockerEnabled ?? true;
     form.envVars = props.environment.envVars;
     form.setupScript = props.environment.setupScript;
-    form.initScript = props.environment.initScript;
     form.exposeApis = props.environment.exposeApis ?? { portMappings: true, domainMappings: true, usage: true };
     form.enabledSkillIds = props.environment.enabledSkillIds ?? null;
     form.enabledAgentsMdIds = props.environment.enabledAgentsMdIds ?? null;
@@ -152,7 +145,6 @@ function handleSave() {
     dockerEnabled: form.dockerEnabled,
     envVars: form.envVars,
     setupScript: form.setupScript,
-    initScript: form.initScript,
     exposeApis: form.exposeApis,
     enabledSkillIds: form.enabledSkillIds,
     enabledAgentsMdIds: form.enabledAgentsMdIds,
@@ -417,20 +409,6 @@ function handleSave() {
         class="w-full font-mono text-xs"
         :disabled="readOnly"
       />
-    </UFormField>
-
-    <!-- Init Script -->
-    <UFormField label="Init Script" hint="Script to run in tmux on startup">
-      <div class="space-y-2">
-        <USelect v-model="selectedPreset" :items="presetOptions" class="w-full" :disabled="readOnly" />
-        <UTextarea
-          v-model="form.initScript"
-          :rows="4"
-          placeholder="#!/bin/bash&#10;# Script to run in tmux on startup"
-          class="w-full font-mono text-xs"
-          :disabled="readOnly"
-        />
-      </div>
     </UFormField>
 
     <!-- Actions -->

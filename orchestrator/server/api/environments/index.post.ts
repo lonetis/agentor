@@ -41,7 +41,6 @@ export default defineEventHandler(async (event) => {
     dockerEnabled: body.dockerEnabled ?? true,
     envVars: body.envVars || '',
     setupScript: body.setupScript || '',
-    initScript: body.initScript || '',
     exposeApis: body.exposeApis ?? { portMappings: true, domainMappings: true, usage: true },
     enabledSkillIds: body.enabledSkillIds ?? null,
     enabledAgentsMdIds: body.enabledAgentsMdIds ?? null,

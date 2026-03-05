@@ -99,15 +99,13 @@ test.describe('Environments API', () => {
       createdEnvIds.push(body.id);
     });
 
-    test('stores setupScript and initScript', async ({ request }) => {
+    test('stores setupScript', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.createEnvironment({
         name: 'Scripts Test',
         setupScript: 'echo setup',
-        initScript: 'echo init',
       });
       expect(body.setupScript).toBe('echo setup');
-      expect(body.initScript).toBe('echo init');
       createdEnvIds.push(body.id);
     });
 
@@ -466,7 +464,6 @@ test.describe('Environments API', () => {
         memoryLimit: '16g',
         envVars: 'MY_VAR=hello\nOTHER=world',
         setupScript: '#!/bin/bash\necho setup',
-        initScript: '#!/bin/bash\necho init',
       });
       createdEnvIds.push(body.id);
 
@@ -480,7 +477,6 @@ test.describe('Environments API', () => {
       expect(body.memoryLimit).toBe('16g');
       expect(body.envVars).toBe('MY_VAR=hello\nOTHER=world');
       expect(body.setupScript).toBe('#!/bin/bash\necho setup');
-      expect(body.initScript).toBe('#!/bin/bash\necho init');
       expect(typeof body.id).toBe('string');
       expect(typeof body.createdAt).toBe('string');
       expect(typeof body.updatedAt).toBe('string');

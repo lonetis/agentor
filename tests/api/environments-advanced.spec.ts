@@ -23,7 +23,6 @@ test.describe('Environments API — Advanced', () => {
           dockerEnabled: true,
           envVars: '',
           setupScript: '',
-          initScript: '',
         });
         expect(status).toBe(201);
         expect(body.networkMode).toBe(mode);
@@ -46,7 +45,6 @@ test.describe('Environments API — Advanced', () => {
         dockerEnabled: false,
         envVars,
         setupScript: '',
-        initScript: '',
       });
       expect(status).toBe(201);
       expect(body.envVars).toBe(envVars);
@@ -66,7 +64,6 @@ test.describe('Environments API — Advanced', () => {
         dockerEnabled: true,
         envVars: 'FOO=bar',
         setupScript: 'echo setup',
-        initScript: 'echo init',
       });
 
       const { status, body: updated } = await api.updateEnvironment(created.id, {
@@ -113,7 +110,6 @@ test.describe('Environments API — Advanced', () => {
         dockerEnabled: true,
         envVars: '',
         setupScript: '',
-        initScript: '',
       });
 
       const { status: delStatus } = await api.deleteEnvironment(created.id);
@@ -138,7 +134,6 @@ test.describe('Environments API — Advanced', () => {
         dockerEnabled: false,
         envVars: '',
         setupScript: '',
-        initScript: '',
       });
       expect(status).toBe(201);
       expect(body.cpuLimit).toBe(4.5);

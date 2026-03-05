@@ -42,7 +42,6 @@ export default defineEventHandler(async (event) => {
   if (body.dockerEnabled !== undefined) update.dockerEnabled = body.dockerEnabled;
   if (body.envVars !== undefined) update.envVars = body.envVars;
   if (body.setupScript !== undefined) update.setupScript = body.setupScript;
-  if (body.initScript !== undefined) update.initScript = body.initScript;
   if (body.exposeApis !== undefined) update.exposeApis = body.exposeApis;
   if (body.enabledSkillIds !== undefined) update.enabledSkillIds = body.enabledSkillIds;
   if (body.enabledAgentsMdIds !== undefined) update.enabledAgentsMdIds = body.enabledAgentsMdIds;

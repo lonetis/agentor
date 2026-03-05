@@ -33,7 +33,6 @@ defineRouteMeta({
               dockerEnabled: { type: 'boolean' },
               envVars: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, value: { type: 'string' } } } },
               setupScript: { type: 'string' },
-              initScript: { type: 'string' },
             },
           },
         },

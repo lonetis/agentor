@@ -339,7 +339,7 @@ Platform setup runs only on first container startup (sentinel file `/workspace/.
 
 ## Environment System
 
-Environments bundle per-worker configuration: CPU/memory limits, network access policy, Docker-in-Docker toggle, custom env vars, setup script (pre-agent), init script (agent launch script via preset or custom), API exposure flags, and skill/AGENTS.md selections. Managed via `orchestrator/server/utils/environments.ts` (`EnvironmentStore`), stored as JSON in `<DATA_DIR>/environments.json`.
+Environments bundle per-worker configuration: CPU/memory limits, network access policy, Docker-in-Docker toggle, custom env vars, setup script (pre-agent), API exposure flags, and skill/AGENTS.md selections. The init script (which agent to launch) is configured per-worker at creation time via the Create Worker modal, not in environments. Managed via `orchestrator/server/utils/environments.ts` (`EnvironmentStore`), stored as JSON in `<DATA_DIR>/environments.json`.
 
 ### Network Firewall
 

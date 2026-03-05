@@ -207,7 +207,6 @@ describe('ContainerManager', () => {
           dockerEnabled: true,
           envVars: '',
           setupScript: '',
-          initScript: '',
           cpuLimit: 0,
           memoryLimit: '',
         },
@@ -233,7 +232,6 @@ describe('ContainerManager', () => {
           dockerEnabled: true,
           envVars: '',
           setupScript: '',
-          initScript: '',
           cpuLimit: 0,
           memoryLimit: '',
         },
@@ -260,7 +258,6 @@ describe('ContainerManager', () => {
           dockerEnabled: true,
           envVars: '',
           setupScript: '',
-          initScript: '',
           cpuLimit: 0,
           memoryLimit: '',
         },
@@ -288,54 +285,22 @@ describe('ContainerManager', () => {
       );
     });
 
-    it('uses environment init script when worker has none', async () => {
-      const envStore = makeMockEnvironmentStore({
-        'env-1': {
-          id: 'env-1',
-          name: 'Test',
-          networkMode: 'full' as NetworkMode,
-          allowedDomains: [],
-          includePackageManagerDomains: false,
-          dockerEnabled: true,
-          envVars: '',
-          setupScript: '',
-          initScript: '#!/bin/bash\nclaude',
-          cpuLimit: 0,
-          memoryLimit: '',
-        },
-      });
-      manager.setEnvironmentStore(envStore);
+    it('uses worker-level init script', async () => {
       const workerStore = makeMockWorkerStore();
       manager.setWorkerStore(workerStore as any);
 
-      await manager.create({ environmentId: 'env-1' });
-      const call = (dockerService.createWorkerContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(call.initScriptB64).toBe(Buffer.from('#!/bin/bash\nclaude').toString('base64'));
-    });
-
-    it('worker init script overrides environment', async () => {
-      const envStore = makeMockEnvironmentStore({
-        'env-1': {
-          id: 'env-1',
-          name: 'Test',
-          networkMode: 'full' as NetworkMode,
-          allowedDomains: [],
-          includePackageManagerDomains: false,
-          dockerEnabled: true,
-          envVars: '',
-          setupScript: '',
-          initScript: '#!/bin/bash\nclaude',
-          cpuLimit: 0,
-          memoryLimit: '',
-        },
-      });
-      manager.setEnvironmentStore(envStore);
-      const workerStore = makeMockWorkerStore();
-      manager.setWorkerStore(workerStore as any);
-
-      await manager.create({ environmentId: 'env-1', initScript: '#!/bin/bash\ncodex' });
+      await manager.create({ initScript: '#!/bin/bash\ncodex' });
       const call = (dockerService.createWorkerContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(call.initScriptB64).toBe(Buffer.from('#!/bin/bash\ncodex').toString('base64'));
+    });
+
+    it('no init script when worker does not provide one', async () => {
+      const workerStore = makeMockWorkerStore();
+      manager.setWorkerStore(workerStore as any);
+
+      await manager.create({});
+      const call = (dockerService.createWorkerContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.initScriptB64).toBeUndefined();
     });
 
     it('registers in WorkerStore', async () => {
@@ -788,7 +753,6 @@ describe('ContainerManager', () => {
           dockerEnabled: true,
           envVars: '# comment\nFOO=bar\n\n  # another comment\nBAZ=qux\ninvalid_no_equals',
           setupScript: '',
-          initScript: '',
           cpuLimit: 0,
           memoryLimit: '',
         },
@@ -817,7 +781,6 @@ describe('ContainerManager', () => {
           dockerEnabled: true,
           envVars: '',
           setupScript: '',
-          initScript: '',
           cpuLimit: 0,
           memoryLimit: '',
         },

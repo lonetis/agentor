@@ -57,7 +57,6 @@ test.describe('Environments Modal — Advanced', () => {
       dockerEnabled: true,
       envVars: '',
       setupScript: '',
-      initScript: '',
     });
 
     await goToDashboard(page);
@@ -87,7 +86,6 @@ test.describe('Environments Modal — Advanced', () => {
       dockerEnabled: true,
       envVars: '',
       setupScript: '',
-      initScript: '',
     });
 
     await goToDashboard(page);
