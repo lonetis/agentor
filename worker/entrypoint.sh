@@ -101,7 +101,7 @@ _log "Agent setup: done"
 # Phase 1b: Platform setup (AGENTS.md + skills for agents)
 # Only runs on first startup (sentinel prevents re-running on restart).
 # ==========================================================================
-PLATFORM_SENTINEL="/workspace/.agentor-platform-init"
+PLATFORM_SENTINEL="/home/agent/.agentor-platform-init"
 if [ ! -f "$PLATFORM_SENTINEL" ]; then
     _step platform "Platform setup"
     _log "Platform setup: start"

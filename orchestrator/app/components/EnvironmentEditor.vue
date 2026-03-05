@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { InitPresetInfo, EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, SkillInfo, AgentsMdEntryInfo, CredentialInfo } from '~/types';
+import type { EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, SkillInfo, AgentsMdEntryInfo, CredentialInfo } from '~/types';
 
 const props = defineProps<{
   environment?: EnvironmentInfo;
@@ -87,17 +87,9 @@ const networkModeOptions = [
 ];
 
 const { data: packageManagerDomains } = useFetch<string[]>('/api/package-manager-domains', { default: () => [] });
-const { data: initPresets } = useFetch<InitPresetInfo[]>('/api/init-presets', { default: () => [] });
+const { data: agentApiDomains } = useFetch<string[]>('/api/agent-api-domains', { default: () => [] });
 const showPmDomains = ref(false);
 const showAgentDomains = ref(false);
-
-const allApiDomains = computed(() => {
-  const domains = new Set<string>();
-  for (const p of initPresets.value) {
-    for (const d of p.apiDomains) domains.add(d);
-  }
-  return [...domains].sort();
-});
 
 async function fetchSystemEnvVars() {
   try {
@@ -279,7 +271,7 @@ function handleSave() {
 
       <!-- Agent API domains (always allowed in restricted modes) -->
       <div
-        v-if="form.networkMode !== 'full' && form.networkMode !== 'block-all' && allApiDomains.length > 0"
+        v-if="form.networkMode !== 'full' && form.networkMode !== 'block-all' && agentApiDomains.length > 0"
         class="mt-2"
       >
         <button
@@ -291,12 +283,12 @@ function handleSave() {
             :name="showAgentDomains ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'"
             class="w-3 h-3"
           />
-          {{ allApiDomains.length }} agent API domains
+          {{ agentApiDomains.length }} agent API domains
           <span class="text-gray-400 dark:text-gray-600">(always allowed so the agent can reach its model)</span>
         </button>
         <div v-if="showAgentDomains" class="mt-1.5 max-h-48 overflow-y-auto rounded border border-gray-300 dark:border-gray-700 bg-gray-100/60 dark:bg-gray-800/50 p-2">
           <div
-            v-for="domain in allApiDomains"
+            v-for="domain in agentApiDomains"
             :key="domain"
             class="text-xs font-mono text-gray-500 dark:text-gray-400 leading-5"
           >

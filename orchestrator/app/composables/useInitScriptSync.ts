@@ -1,7 +1,7 @@
-import type { InitPresetInfo } from '~/types';
+import type { InitScriptInfo } from '~/types';
 
-export function useInitPresetSync(
-  initPresets: Ref<InitPresetInfo[]> | ComputedRef<InitPresetInfo[]>,
+export function useInitScriptSync(
+  initScripts: Ref<InitScriptInfo[]> | ComputedRef<InitScriptInfo[]>,
   initScript: Ref<string>,
 ) {
   const selectedPreset = ref('none');
@@ -9,7 +9,7 @@ export function useInitPresetSync(
 
   const presetOptions = computed(() => [
     { label: 'None', value: 'none' },
-    ...initPresets.value.map((p) => ({ label: p.displayName, value: p.id })),
+    ...initScripts.value.map((p) => ({ label: p.name, value: p.id })),
     { label: 'Custom', value: 'custom' },
   ]);
 
@@ -19,8 +19,8 @@ export function useInitPresetSync(
     if (val === 'none') {
       initScript.value = '';
     } else if (val !== 'custom') {
-      const preset = initPresets.value.find((p) => p.id === val);
-      if (preset) initScript.value = preset.script;
+      const script = initScripts.value.find((p) => p.id === val);
+      if (script) initScript.value = script.content;
     }
     nextTick(() => { suppressScriptSync = false; });
   });
@@ -33,7 +33,7 @@ export function useInitPresetSync(
       selectedPreset.value = 'none';
       return;
     }
-    const match = initPresets.value.find((p) => p.script === trimmed);
+    const match = initScripts.value.find((p) => p.content === trimmed);
     selectedPreset.value = match ? match.id : 'custom';
   });
 

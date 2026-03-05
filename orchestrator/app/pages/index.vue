@@ -3,7 +3,6 @@ import type { CreateContainerRequest } from '~/types';
 
 useHead({ title: 'Agentor' });
 
-const { initPresets } = useInitPresets();
 const { gitProviders } = useGitProviders();
 const { containers, refresh: refreshContainers, createContainer, stopContainer, restartContainer, removeContainer } = useContainers();
 const { archivedWorkers, refresh: refreshArchived, archiveWorker, unarchiveWorker, deleteArchivedWorker } = useArchivedWorkers();
@@ -26,6 +25,7 @@ const showCreateModal = ref(false);
 const showEnvironmentsModal = ref(false);
 const showSkillsModal = ref(false);
 const showAgentsMdModal = ref(false);
+const showInitScriptsModal = ref(false);
 const showSettingsModal = ref(false);
 
 const { sidebarWidth, isDragging, isCollapsed, isMobile, startDrag, toggleCollapse } = useSidebarResize();
@@ -95,6 +95,13 @@ function openEnvironmentsFromModal() {
   }, 350);
 }
 
+function openInitScriptsFromModal() {
+  showCreateModal.value = false;
+  setTimeout(() => {
+    showInitScriptsModal.value = true;
+  }, 350);
+}
+
 </script>
 
 <template>
@@ -121,6 +128,7 @@ function openEnvironmentsFromModal() {
       @manage-environments="showEnvironmentsModal = true"
       @manage-skills="showSkillsModal = true"
       @manage-agents-md="showAgentsMdModal = true"
+      @manage-init-scripts="showInitScriptsModal = true"
       @open-terminal="(cid) => handleOpenTab(cid, 'terminal')"
       @open-desktop="(cid) => handleOpenTab(cid, 'desktop')"
       @open-apps="(cid) => handleOpenTab(cid, 'apps')"
@@ -172,10 +180,10 @@ function openEnvironmentsFromModal() {
 
     <CreateContainerModal
       v-model:open="showCreateModal"
-      :init-presets="initPresets"
       :git-providers="gitProviders"
       @create="handleCreate"
       @manage-environments="openEnvironmentsFromModal"
+      @manage-init-scripts="openInitScriptsFromModal"
     />
 
     <EnvironmentsModal
@@ -184,6 +192,7 @@ function openEnvironmentsFromModal() {
 
     <SkillsModal v-model:open="showSkillsModal" />
     <AgentsMdModal v-model:open="showAgentsMdModal" />
+    <InitScriptsModal v-model:open="showInitScriptsModal" />
     <SettingsModal v-model:open="showSettingsModal" />
   </div>
 </template>

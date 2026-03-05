@@ -13,11 +13,11 @@ defineRouteMeta({
   },
 });
 
-import { useConfig, useCredentialMountManager } from '../utils/services';
-import { listInitPresets } from '../utils/init-presets';
+import { useConfig, useCredentialMountManager, useInitScriptStore } from '../utils/services';
 import { listGitProviders } from '../utils/git-providers';
 import { listAppTypes } from '../utils/apps';
 import { AGENT_CREDENTIAL_MAPPINGS } from '../utils/credential-mounts';
+import { listAgentConfigs } from '../utils/agent-config';
 import type { Config } from '../utils/config';
 
 interface SettingItem {
@@ -82,14 +82,14 @@ export default defineEventHandler(async () => {
 
   // API keys
   const seen = new Set<string>();
-  for (const preset of listInitPresets()) {
-    for (const [envName, configKey] of Object.entries(preset.envVars)) {
+  for (const agent of listAgentConfigs()) {
+    for (const [envName, configKey] of Object.entries(agent.envVars)) {
       if (seen.has(envName)) continue;
       seen.add(envName);
       const value = config[configKey as keyof Config] as string;
       authItems.push({
         key: envName,
-        label: `${preset.displayName} API Key`,
+        label: `${agent.displayName} API Key`,
         value: statusValue(!!value),
         type: 'status',
         sensitive: true,
@@ -230,26 +230,20 @@ export default defineEventHandler(async () => {
     ],
   });
 
-  // --- Init Presets ---
-  const presetItems: SettingItem[] = [];
-  for (const preset of listInitPresets()) {
-    presetItems.push({
-      key: `preset.${preset.id}`,
-      label: preset.displayName,
-      value: preset.script.replace('#!/bin/bash\n', ''),
+  // --- Init Scripts ---
+  const scriptItems: SettingItem[] = [];
+  for (const script of useInitScriptStore().list()) {
+    scriptItems.push({
+      key: `init-script.${script.id}`,
+      label: `${script.name}${script.builtIn ? '' : ' (custom)'}`,
+      value: script.content.replace('#!/bin/bash\n', ''),
       type: 'string',
-    });
-    presetItems.push({
-      key: `preset.${preset.id}.domains`,
-      label: `${preset.displayName} API Domains`,
-      value: preset.apiDomains,
-      type: 'list',
     });
   }
   sections.push({
-    id: 'init-presets',
-    label: 'Init Presets',
-    items: presetItems,
+    id: 'init-scripts',
+    label: 'Init Scripts',
+    items: scriptItems,
   });
 
   // --- App Types ---

@@ -3,11 +3,6 @@ import type { Config } from '../../utils/config';
 import type { ContainerInfo, NetworkMode } from '../../../shared/types';
 
 // Mock external dependencies used by container.ts
-vi.mock('../../utils/init-presets', () => ({
-  getAllApiDomains: vi.fn(() => ['api.anthropic.com', 'api.openai.com']),
-  getAllAgentEnvVars: vi.fn(() => []),
-}));
-
 vi.mock('../../utils/git-providers', () => ({
   getAllGitCloneDomains: vi.fn(() => ['github.com']),
   listGitProviders: vi.fn(() => []),
@@ -15,6 +10,11 @@ vi.mock('../../utils/git-providers', () => ({
 
 vi.mock('../../utils/environments', () => ({
   getPackageManagerDomains: vi.fn(() => ['registry.npmjs.org', 'pypi.org']),
+}));
+
+vi.mock('../../utils/agent-config', () => ({
+  getAllAgentApiDomains: vi.fn(() => ['api.anthropic.com', 'api.openai.com']),
+  getAllAgentEnvVars: vi.fn(() => []),
 }));
 
 vi.mock('../../utils/apps', () => ({

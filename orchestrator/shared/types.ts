@@ -140,3 +140,12 @@ export interface CredentialInfo {
   fileName: string;
   configured: boolean;
 }
+
+export interface InitScriptInfo {
+  id: string;
+  name: string;
+  content: string;
+  builtIn: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

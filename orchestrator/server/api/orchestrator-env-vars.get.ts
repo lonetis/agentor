@@ -14,8 +14,8 @@ defineRouteMeta({
 });
 
 import { useConfig } from '../utils/services';
-import { listInitPresets } from '../utils/init-presets';
 import { listGitProviders } from '../utils/git-providers';
+import { listAgentConfigs } from '../utils/agent-config';
 import type { Config } from '../utils/config';
 
 export default defineEventHandler(() => {
@@ -28,8 +28,8 @@ export default defineEventHandler(() => {
   }
 
   const seen = new Set<string>();
-  for (const preset of listInitPresets()) {
-    for (const [envName, configKey] of Object.entries(preset.envVars)) {
+  for (const agent of listAgentConfigs()) {
+    for (const [envName, configKey] of Object.entries(agent.envVars)) {
       if (seen.has(envName)) continue;
       seen.add(envName);
       const value = config[configKey as keyof Config];

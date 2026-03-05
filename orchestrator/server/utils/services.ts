@@ -14,6 +14,7 @@ import { UsageChecker } from './usage-checker';
 import { CredentialMountManager } from './credential-mounts';
 import { SkillStore } from './skill-store';
 import { AgentsMdStore } from './agents-md-store';
+import { InitScriptStore } from './init-script-store';
 
 function singleton<T>(factory: () => T): () => T {
   let instance: T | undefined;
@@ -40,6 +41,7 @@ export const useCredentialMountManager = singleton(
 );
 export const useSkillStore = singleton(() => new SkillStore(useConfig().dataDir));
 export const useAgentsMdStore = singleton(() => new AgentsMdStore(useConfig().dataDir));
+export const useInitScriptStore = singleton(() => new InitScriptStore(useConfig().dataDir));
 
 /**
  * Removes all port and domain mappings for a worker and reconciles the

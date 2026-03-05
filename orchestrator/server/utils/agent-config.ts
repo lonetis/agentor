@@ -1,18 +1,16 @@
 import type { Config } from './config';
 
-export interface InitPreset {
+interface AgentConfig {
   id: string;
   displayName: string;
-  script: string;
   apiDomains: string[];
-  envVars: Record<string, string>;
+  envVars: Record<string, string>; // env var name → config key
 }
 
-export const INIT_PRESETS: Record<string, InitPreset> = {
-  claude: {
+const AGENT_CONFIGS: AgentConfig[] = [
+  {
     id: 'claude',
     displayName: 'Claude',
-    script: '#!/bin/bash\nclaude --dangerously-skip-permissions',
     apiDomains: [
       'api.anthropic.com',
       'claude.ai',
@@ -21,14 +19,11 @@ export const INIT_PRESETS: Record<string, InitPreset> = {
       'sentry.io',
       'storage.googleapis.com',
     ],
-    envVars: {
-      ANTHROPIC_API_KEY: 'anthropicApiKey',
-    },
+    envVars: { ANTHROPIC_API_KEY: 'anthropicApiKey' },
   },
-  codex: {
+  {
     id: 'codex',
     displayName: 'Codex',
-    script: '#!/bin/bash\ncodex --dangerously-bypass-approvals-and-sandbox',
     apiDomains: [
       'api.openai.com',
       'chatgpt.com',
@@ -37,14 +32,11 @@ export const INIT_PRESETS: Record<string, InitPreset> = {
       'ab.chatgpt.com',
       'sentry.io',
     ],
-    envVars: {
-      OPENAI_API_KEY: 'openaiApiKey',
-    },
+    envVars: { OPENAI_API_KEY: 'openaiApiKey' },
   },
-  gemini: {
+  {
     id: 'gemini',
     displayName: 'Gemini',
-    script: '#!/bin/bash\ngemini --yolo',
     apiDomains: [
       'generativelanguage.googleapis.com',
       'accounts.google.com',
@@ -54,22 +46,18 @@ export const INIT_PRESETS: Record<string, InitPreset> = {
       'registry.npmjs.org',
       'github.com',
     ],
-    envVars: {
-      GEMINI_API_KEY: 'geminiApiKey',
-    },
+    envVars: { GEMINI_API_KEY: 'geminiApiKey' },
   },
-};
+];
 
-export function listInitPresets(): InitPreset[] {
-  return Object.values(INIT_PRESETS);
+export function listAgentConfigs(): AgentConfig[] {
+  return AGENT_CONFIGS;
 }
 
-export function getAllApiDomains(): string[] {
+export function getAllAgentApiDomains(): string[] {
   const domains = new Set<string>();
-  for (const preset of Object.values(INIT_PRESETS)) {
-    for (const d of preset.apiDomains) {
-      domains.add(d);
-    }
+  for (const agent of AGENT_CONFIGS) {
+    for (const d of agent.apiDomains) domains.add(d);
   }
   return [...domains];
 }
@@ -77,14 +65,12 @@ export function getAllApiDomains(): string[] {
 export function getAllAgentEnvVars(config: Config): string[] {
   const vars: string[] = [];
   const seen = new Set<string>();
-  for (const preset of Object.values(INIT_PRESETS)) {
-    for (const [envName, configKey] of Object.entries(preset.envVars)) {
+  for (const agent of AGENT_CONFIGS) {
+    for (const [envName, configKey] of Object.entries(agent.envVars)) {
       if (seen.has(envName)) continue;
       seen.add(envName);
       const value = config[configKey as keyof Config];
-      if (value) {
-        vars.push(`${envName}=${value}`);
-      }
+      if (value) vars.push(`${envName}=${value}`);
     }
   }
   return vars;
