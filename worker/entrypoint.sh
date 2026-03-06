@@ -83,8 +83,29 @@ tmux set-option -w -t "main:$WINDOW_NAME" automatic-rename off
 _log "Tmux: ready"
 
 # ==========================================================================
+# Phase 0b: Export env vars from structured JSON payloads
+# EXPOSE_* flags are needed by skills at runtime; custom env vars from the
+# environment config are exported so they're available in all subsequent phases.
+# ==========================================================================
+export EXPOSE_PORT_MAPPINGS=$(echo "$ENVIRONMENT" | jq -r 'if .exposeApis.portMappings == null then true else .exposeApis.portMappings end')
+export EXPOSE_DOMAIN_MAPPINGS=$(echo "$ENVIRONMENT" | jq -r 'if .exposeApis.domainMappings == null then true else .exposeApis.domainMappings end')
+export EXPOSE_USAGE=$(echo "$ENVIRONMENT" | jq -r 'if .exposeApis.usage == null then true else .exposeApis.usage end')
+tmux set-environment -g EXPOSE_PORT_MAPPINGS "$EXPOSE_PORT_MAPPINGS"
+tmux set-environment -g EXPOSE_DOMAIN_MAPPINGS "$EXPOSE_DOMAIN_MAPPINGS"
+tmux set-environment -g EXPOSE_USAGE "$EXPOSE_USAGE"
+
+# Export custom env vars from ENVIRONMENT.envVars
+ENV_VARS=$(echo "$ENVIRONMENT" | jq -r '.envVars // ""')
+while IFS= read -r line; do
+    trimmed=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [[ -z "$trimmed" || "$trimmed" == \#* ]] && continue
+    [[ "$trimmed" == *=* ]] && export "$trimmed" && tmux set-environment -g "${trimmed%%=*}" "${trimmed#*=}"
+done <<< "$ENV_VARS"
+
+# ==========================================================================
 # Phase 1: Agent setup
-# All setup scripts configure auth credentials and CLI settings.
+# All setup scripts configure auth credentials, CLI settings, and platform
+# files (skills, AGENTS.md) — each agent handles its own paths/formats.
 # ==========================================================================
 _step agents "Agent setup"
 _log "Agent setup: start"
@@ -94,97 +115,21 @@ for setup_script in /home/agent/agents/*/setup.sh; do
         "$setup_script" || echo "[agent] Warning: $AGENT_NAME setup failed, continuing"
     fi
 done
+
+# Touch sentinel after all agent scripts have run (they check it internally)
+PLATFORM_SENTINEL="/home/agent/.agentor-platform-init"
+if [ ! -f "$PLATFORM_SENTINEL" ]; then
+    touch "$PLATFORM_SENTINEL"
+    _log "Platform setup: sentinel created"
+fi
+
 _done agents "Agent setup"
 _log "Agent setup: done"
 
 # ==========================================================================
-# Phase 1b: Platform setup (AGENTS.md + skills for agents)
-# Only runs on first startup (sentinel prevents re-running on restart).
-# ==========================================================================
-PLATFORM_SENTINEL="/home/agent/.agentor-platform-init"
-if [ ! -f "$PLATFORM_SENTINEL" ]; then
-    _step platform "Platform setup"
-    _log "Platform setup: start"
-
-    # --- AGENTS.md ---
-    if [ -n "$AGENTS_MD_B64" ]; then
-        AGENTS_MD_CONTENT=$(echo -n "$AGENTS_MD_B64" | base64 -d 2>/dev/null) || AGENTS_MD_CONTENT=""
-        if [ -n "$AGENTS_MD_CONTENT" ]; then
-            # Claude: append to ~/.claude/CLAUDE.md
-            mkdir -p /home/agent/.claude
-            if [ -f /home/agent/.claude/CLAUDE.md ]; then
-                echo -e "\n\n$AGENTS_MD_CONTENT" >> /home/agent/.claude/CLAUDE.md
-            else
-                echo "$AGENTS_MD_CONTENT" > /home/agent/.claude/CLAUDE.md
-            fi
-
-            # Codex: write to ~/.codex/AGENTS.md
-            mkdir -p /home/agent/.codex
-            if [ -f /home/agent/.codex/AGENTS.md ]; then
-                echo -e "\n\n$AGENTS_MD_CONTENT" >> /home/agent/.codex/AGENTS.md
-            else
-                echo "$AGENTS_MD_CONTENT" > /home/agent/.codex/AGENTS.md
-            fi
-
-            # Gemini: write to ~/.gemini/GEMINI.md
-            mkdir -p /home/agent/.gemini
-            if [ -f /home/agent/.gemini/GEMINI.md ]; then
-                echo -e "\n\n$AGENTS_MD_CONTENT" >> /home/agent/.gemini/GEMINI.md
-            else
-                echo "$AGENTS_MD_CONTENT" > /home/agent/.gemini/GEMINI.md
-            fi
-            _log "Platform setup: wrote AGENTS.md to agent paths"
-        fi
-    fi
-
-    # --- Skills ---
-    if [ -n "$SKILLS_B64" ]; then
-        SKILLS_JSON=$(echo -n "$SKILLS_B64" | base64 -d 2>/dev/null) || SKILLS_JSON=""
-        if [ -n "$SKILLS_JSON" ]; then
-            SKILL_COUNT=$(echo "$SKILLS_JSON" | jq -r 'length' 2>/dev/null || echo 0)
-            for i in $(seq 0 $((SKILL_COUNT - 1))); do
-                SKILL_NAME=$(echo "$SKILLS_JSON" | jq -r ".[$i].name")
-                SKILL_CONTENT=$(echo "$SKILLS_JSON" | jq -r ".[$i].content")
-                # Safe directory name: lowercase, replace spaces/special with hyphens
-                SAFE_NAME=$(echo "$SKILL_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
-
-                # Claude: ~/.claude/skills/agentor-<safe-name>/SKILL.md
-                # Content already includes YAML frontmatter — write directly
-                CLAUDE_SKILL_DIR="/home/agent/.claude/skills/agentor-${SAFE_NAME}"
-                mkdir -p "$CLAUDE_SKILL_DIR"
-                echo "$SKILL_CONTENT" > "$CLAUDE_SKILL_DIR/SKILL.md"
-
-                # Codex: ~/.agents/skills/agentor-<safe-name>/SKILL.md
-                CODEX_SKILL_DIR="/home/agent/.agents/skills/agentor-${SAFE_NAME}"
-                mkdir -p "$CODEX_SKILL_DIR"
-                echo "$SKILL_CONTENT" > "$CODEX_SKILL_DIR/SKILL.md"
-
-                # Gemini: ~/.gemini/commands/agentor-<safe-name>.toml
-                # Strip YAML frontmatter for Gemini TOML format
-                BODY_CONTENT=$(echo "$SKILL_CONTENT" | sed -n '/^---$/,/^---$/!p' | sed '/./,$!d')
-                mkdir -p /home/agent/.gemini/commands
-                ESCAPED_BODY=$(echo "$BODY_CONTENT" | sed 's/\\/\\\\/g')
-                cat > "/home/agent/.gemini/commands/agentor-${SAFE_NAME}.toml" <<TOMLEOF
-description = "${SKILL_NAME}"
-prompt = """
-${ESCAPED_BODY}
-"""
-TOMLEOF
-            done
-            _log "Platform setup: wrote $SKILL_COUNT skills to agent paths"
-        fi
-    fi
-
-    touch "$PLATFORM_SENTINEL"
-    _done platform "Platform setup"
-    _log "Platform setup: done"
-else
-    _skip platform "Platform setup"
-fi
-
-# ==========================================================================
 # Phase 2: Docker daemon (DinD, opt-in)
 # ==========================================================================
+DOCKER_ENABLED=$(echo "$ENVIRONMENT" | jq -r '.dockerEnabled // false')
 if [ "$DOCKER_ENABLED" = "true" ]; then
     _step docker "Docker daemon"
     _log "DinD: starting dockerd..."
@@ -304,7 +249,8 @@ clone_repo() {
     esac
 }
 
-if [ -n "$REPOS" ]; then
+REPOS_JSON=$(echo "$WORKER" | jq -r '.repos // empty')
+if [ -n "$REPOS_JSON" ] && [ "$REPOS_JSON" != "null" ] && [ "$(echo "$REPOS_JSON" | jq 'length')" -gt 0 ]; then
     _step repos "Cloning repositories"
     _log "Repo clone: start"
     CLONE_PIDS=()
@@ -318,7 +264,7 @@ if [ -n "$REPOS" ]; then
         CLONE_PIDS+=($!)
         CLONE_URLS+=("$URL")
         REPO_COUNT=$((REPO_COUNT + 1))
-    done < <(echo "$REPOS" | jq -c '.[]')
+    done < <(echo "$REPOS_JSON" | jq -c '.[]')
     FAILED_REPOS=()
     for i in "${!CLONE_PIDS[@]}"; do
         if ! wait "${CLONE_PIDS[$i]}" 2>/dev/null; then
@@ -342,7 +288,7 @@ fi
 # Phase 6: Network Firewall (dnsmasq + ipset + iptables)
 # Activates after all network operations are done.
 # ==========================================================================
-FIREWALL_MODE="${NETWORK_MODE:-full}"
+FIREWALL_MODE=$(echo "$ENVIRONMENT" | jq -r '.networkMode // "full"')
 
 if [ "$FIREWALL_MODE" != "full" ]; then
     _step firewall "Network firewall"
@@ -355,10 +301,12 @@ if [ "$FIREWALL_MODE" != "full" ]; then
     sudo iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT
     sudo iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
+    ALLOWED_DOMAINS=$(echo "$ENVIRONMENT" | jq -r '.allowedDomains // empty')
+
     if [ "$FIREWALL_MODE" = "block-all" ]; then
         _done firewall "Network firewall (block-all)"
         _log "Firewall: block-all — all outbound blocked"
-    elif [ "$FIREWALL_MODE" = "block" ] && [ -z "$ALLOWED_DOMAINS" ]; then
+    elif [ "$FIREWALL_MODE" = "block" ] && { [ -z "$ALLOWED_DOMAINS" ] || [ "$ALLOWED_DOMAINS" = "null" ] || [ "$(echo "$ALLOWED_DOMAINS" | jq 'length')" -eq 0 ]; }; then
         _done firewall "Network firewall (block)"
         _log "Firewall: block — all outbound blocked"
     else
@@ -376,7 +324,7 @@ bind-interfaces
 server=127.0.0.11
 DNSCONF
 
-        if [ -n "$ALLOWED_DOMAINS" ]; then
+        if [ -n "$ALLOWED_DOMAINS" ] && [ "$ALLOWED_DOMAINS" != "null" ]; then
             while IFS= read -r domain; do
                 domain=$(echo "$domain" | sed 's/^\*\././')
                 echo "ipset=/${domain}/allowed_ips" | sudo tee -a "$DNSMASQ_CONF" > /dev/null
@@ -402,20 +350,11 @@ fi
 # Phase 7: User setup script
 # Runs after firewall activation, before agent launch.
 # ==========================================================================
-if [ -n "$SETUP_SCRIPT_B64" ]; then
+SETUP_SCRIPT=$(echo "$ENVIRONMENT" | jq -r '.setupScript // ""')
+if [ -n "$SETUP_SCRIPT" ]; then
     _step setup "Setup script"
     _log "Setup script: start"
-    SETUP_SCRIPT=$(echo -n "$SETUP_SCRIPT_B64" | base64 -d 2>/dev/null) || {
-        echo "[setup] Warning: failed to decode setup script (invalid base64)"
-        SETUP_SCRIPT=""
-    }
-    SETUP_FILE=$(mktemp /tmp/setup-XXXXXX.sh)
-    trap 'rm -f "$SETUP_FILE"' EXIT
-    echo "$SETUP_SCRIPT" > "$SETUP_FILE"
-    chmod +x "$SETUP_FILE"
-    bash "$SETUP_FILE" 2>&1 || echo "[setup] Warning: setup script exited with error"
-    rm -f "$SETUP_FILE"
-    trap - EXIT
+    /home/agent/setup.sh 2>&1 || echo "[setup] Warning: setup script exited with error"
     _done setup "Setup script"
     _log "Setup script: done"
 else
@@ -430,29 +369,13 @@ fi
 _ready
 sleep 0.6
 
-# Determine the shell pane command (init script or plain bash)
-PANE_CMD="bash"
-if [ -n "$INIT_SCRIPT_B64" ]; then
-    INIT_SCRIPT=$(echo -n "$INIT_SCRIPT_B64" | base64 -d 2>/dev/null) || {
-        echo "[init] Warning: failed to decode init script (invalid base64)"
-        INIT_SCRIPT=""
-    }
-    if [ -n "$INIT_SCRIPT" ]; then
-        INIT_FILE="/home/agent/init-script.sh"
-        echo "$INIT_SCRIPT" > "$INIT_FILE"
-        chmod +x "$INIT_FILE"
-        PANE_CMD="bash $INIT_FILE"
-        _log "Init script: prepared at $INIT_FILE"
-    fi
-fi
-
 # Configure pane persistence — respawn a clean shell on exit (never re-run init script)
 tmux set-option -w -t "main:$WINDOW_NAME" remain-on-exit on
 tmux set-hook -t main pane-died \
     "if-shell -F '#{==:#{window_name},main}' 'respawn-pane -k -c /workspace bash'"
 
-# Replace loading screen with the shell pane command (init script runs once)
-tmux respawn-pane -k -t "main:$WINDOW_NAME" -c /workspace $PANE_CMD
+# Replace loading screen with init.sh (runs init script or falls back to bash)
+tmux respawn-pane -k -t "main:$WINDOW_NAME" -c /workspace "bash /home/agent/init.sh"
 
 _log "Startup complete"
 

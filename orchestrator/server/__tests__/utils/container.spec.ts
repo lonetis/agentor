@@ -242,9 +242,9 @@ describe('ContainerManager', () => {
 
       await manager.create({ environmentId: 'env-1' });
       const call = (dockerService.createWorkerContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(call.allowedDomains).toContain('registry.npmjs.org');
-      expect(call.allowedDomains).toContain('api.anthropic.com');
-      expect(call.allowedDomains).toContain('github.com');
+      expect(call.environmentJson.allowedDomains).toContain('registry.npmjs.org');
+      expect(call.environmentJson.allowedDomains).toContain('api.anthropic.com');
+      expect(call.environmentJson.allowedDomains).toContain('github.com');
     });
 
     it('custom adds user domains + optionally PM domains', async () => {
@@ -268,9 +268,9 @@ describe('ContainerManager', () => {
 
       await manager.create({ environmentId: 'env-1' });
       const call = (dockerService.createWorkerContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(call.allowedDomains).toContain('my-domain.com');
-      expect(call.allowedDomains).toContain('registry.npmjs.org');
-      expect(call.allowedDomains).toContain('api.anthropic.com');
+      expect(call.environmentJson.allowedDomains).toContain('my-domain.com');
+      expect(call.environmentJson.allowedDomains).toContain('registry.npmjs.org');
+      expect(call.environmentJson.allowedDomains).toContain('api.anthropic.com');
     });
   });
 
@@ -291,7 +291,7 @@ describe('ContainerManager', () => {
 
       await manager.create({ initScript: '#!/bin/bash\ncodex' });
       const call = (dockerService.createWorkerContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(call.initScriptB64).toBe(Buffer.from('#!/bin/bash\ncodex').toString('base64'));
+      expect(call.workerJson.initScript).toBe('#!/bin/bash\ncodex');
     });
 
     it('no init script when worker does not provide one', async () => {
@@ -300,7 +300,7 @@ describe('ContainerManager', () => {
 
       await manager.create({});
       const call = (dockerService.createWorkerContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(call.initScriptB64).toBeUndefined();
+      expect(call.workerJson.initScript).toBe('');
     });
 
     it('registers in WorkerStore', async () => {
@@ -763,11 +763,9 @@ describe('ContainerManager', () => {
 
       await manager.create({ environmentId: 'env-1' });
       const call = (dockerService.createWorkerContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      // Should include FOO=bar and BAZ=qux but not comments or empty lines or invalid_no_equals
-      expect(call.customEnvVars).toContain('FOO=bar');
-      expect(call.customEnvVars).toContain('BAZ=qux');
-      expect(call.customEnvVars).not.toContain('# comment');
-      expect(call.customEnvVars).not.toContain('invalid_no_equals');
+      // envVars is now passed as raw string in the ENVIRONMENT JSON payload — entrypoint parses it
+      expect(call.environmentJson.envVars).toContain('FOO=bar');
+      expect(call.environmentJson.envVars).toContain('BAZ=qux');
     });
 
     it('block mode adds API and git domains', async () => {
@@ -792,9 +790,9 @@ describe('ContainerManager', () => {
       await manager.create({ environmentId: 'env-1' });
       const call = (dockerService.createWorkerContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
       // block mode should have API + git domains (not PM domains)
-      expect(call.allowedDomains).toContain('api.anthropic.com');
-      expect(call.allowedDomains).toContain('github.com');
-      expect(call.allowedDomains).not.toContain('registry.npmjs.org');
+      expect(call.environmentJson.allowedDomains).toContain('api.anthropic.com');
+      expect(call.environmentJson.allowedDomains).toContain('github.com');
+      expect(call.environmentJson.allowedDomains).not.toContain('registry.npmjs.org');
     });
   });
 

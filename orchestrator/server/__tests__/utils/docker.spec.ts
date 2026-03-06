@@ -58,6 +58,7 @@ vi.mock('dockerode', () => {
 });
 
 import { DockerService } from '../../utils/docker';
+import type { EnvironmentJsonPayload, SkillJsonEntry, AgentsMdJsonEntry, WorkerJsonPayload } from '../../utils/docker';
 import type { Config } from '../../utils/config';
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
@@ -90,6 +91,48 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
   };
 }
 
+const defaultEnvironmentJson: EnvironmentJsonPayload = {
+  networkMode: 'full',
+  allowedDomains: [],
+  dockerEnabled: false,
+  setupScript: '',
+  envVars: '',
+  exposeApis: { portMappings: true, domainMappings: true, usage: true },
+};
+
+const defaultWorkerJson: WorkerJsonPayload = {
+  name: 'test',
+  displayName: '',
+  repos: [],
+  initScript: '',
+};
+
+function makeOpts(overrides: Record<string, unknown> = {}): {
+  name: string;
+  displayName?: string;
+  cpuLimit?: number;
+  memoryLimit?: string;
+  mounts?: { source: string; target: string; readOnly?: boolean }[];
+  dockerEnabled?: boolean;
+  credentialBinds?: string[];
+  environmentId?: string;
+  environmentName?: string;
+  environmentJson: EnvironmentJsonPayload;
+  skillsJson: SkillJsonEntry[];
+  agentsMdJson: AgentsMdJsonEntry[];
+  workerJson: WorkerJsonPayload;
+} {
+  const name = (overrides.name as string) ?? 'test';
+  return {
+    name,
+    environmentJson: { ...defaultEnvironmentJson },
+    skillsJson: [],
+    agentsMdJson: [],
+    workerJson: { ...defaultWorkerJson, name },
+    ...overrides,
+  } as ReturnType<typeof makeOpts>;
+}
+
 describe('DockerService', () => {
   let service: DockerService;
 
@@ -117,105 +160,117 @@ describe('DockerService', () => {
 
   describe('createWorkerContainer', () => {
     it('sets correct labels', async () => {
-      await service.createWorkerContainer({ name: 'test-worker' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ name: 'test-worker' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.Labels['agentor.managed']).toBe('true');
       expect(call.Labels['agentor.created']).toBeDefined();
     });
 
-    it('passes repos as JSON in env var', async () => {
+    it('passes repos in WORKER JSON env var', async () => {
       const repos = [{ provider: 'github', url: 'https://github.com/test/repo' }];
-      await service.createWorkerContainer({ name: 'test-worker', repos });
-      const call = mockCreateContainer.mock.calls[0][0];
-      expect(call.Env).toContain(`REPOS=${JSON.stringify(repos)}`);
+      await service.createWorkerContainer(makeOpts({
+        name: 'test-worker',
+        workerJson: { ...defaultWorkerJson, name: 'test-worker', repos },
+      }));
+      const call = mockCreateContainer.mock.calls[0]![0];
+      const workerEnv = call.Env.find((e: string) => e.startsWith('WORKER='));
+      const parsed = JSON.parse(workerEnv!.substring(7));
+      expect(parsed.repos).toEqual(repos);
     });
 
     it('adds workspace volume bind', async () => {
-      await service.createWorkerContainer({ name: 'my-worker' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ name: 'my-worker' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Binds).toContain('my-worker-workspace:/workspace');
     });
 
     it('adds docker volume when dockerEnabled', async () => {
-      await service.createWorkerContainer({ name: 'my-worker', dockerEnabled: true });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ name: 'my-worker', dockerEnabled: true }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Binds).toContain('my-worker-docker:/var/lib/docker');
     });
 
     it('adds NET_ADMIN cap for restricted network mode', async () => {
-      await service.createWorkerContainer({ name: 'test', networkMode: 'block' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({
+        environmentJson: { ...defaultEnvironmentJson, networkMode: 'block' },
+      }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.CapAdd).toEqual(['NET_ADMIN']);
     });
 
     it('does not add NET_ADMIN when dockerEnabled (privileged implies all caps)', async () => {
-      await service.createWorkerContainer({ name: 'test', networkMode: 'block', dockerEnabled: true });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({
+        dockerEnabled: true,
+        environmentJson: { ...defaultEnvironmentJson, networkMode: 'block' },
+      }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.CapAdd ?? []).toEqual([]);
       expect(call.HostConfig.Privileged).toBe(true);
     });
 
     it('sets privileged mode for dockerEnabled', async () => {
-      await service.createWorkerContainer({ name: 'test', dockerEnabled: true });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ dockerEnabled: true }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Privileged).toBe(true);
     });
 
     it('merges credential binds', async () => {
       const creds = ['/host/cred/claude.json:/home/agent/.claude/.credentials.json'];
-      await service.createWorkerContainer({ name: 'test', credentialBinds: creds });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ credentialBinds: creds }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Binds).toContain(creds[0]);
     });
 
     it('sets correct Memory for 512m limit', async () => {
-      await service.createWorkerContainer({ name: 'test', memoryLimit: '512m' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ memoryLimit: '512m' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Memory).toBe(512 * 1024 * 1024);
     });
 
     it('sets correct Memory for 2g limit', async () => {
-      await service.createWorkerContainer({ name: 'test', memoryLimit: '2g' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ memoryLimit: '2g' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Memory).toBe(2 * 1024 * 1024 * 1024);
     });
 
     it('sets correct Memory for 1024k limit', async () => {
-      await service.createWorkerContainer({ name: 'test', memoryLimit: '1024k' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ memoryLimit: '1024k' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Memory).toBe(1024 * 1024);
     });
 
     it('throws for invalid memory limit', async () => {
       await expect(
-        service.createWorkerContainer({ name: 'test', memoryLimit: 'invalid' })
+        service.createWorkerContainer(makeOpts({ memoryLimit: 'invalid' }))
       ).rejects.toThrow('Invalid memory limit');
     });
 
     it('sets display-name label when provided', async () => {
-      await service.createWorkerContainer({ name: 'test', displayName: 'My Worker' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ displayName: 'My Worker' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.Labels['agentor.display-name']).toBe('My Worker');
     });
 
     it('stores repos in labels as JSON', async () => {
       const repos = [{ provider: 'github', url: 'https://github.com/test/repo' }];
-      await service.createWorkerContainer({ name: 'test', repos });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({
+        workerJson: { ...defaultWorkerJson, repos },
+      }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.Labels['agentor.repos']).toBe(JSON.stringify(repos));
     });
 
-    it('passes environment and network vars', async () => {
-      await service.createWorkerContainer({
-        name: 'test',
-        networkMode: 'custom',
-        allowedDomains: ['example.com'],
+    it('passes environment JSON and labels', async () => {
+      await service.createWorkerContainer(makeOpts({
+        environmentJson: { ...defaultEnvironmentJson, networkMode: 'custom', allowedDomains: ['example.com'] },
         environmentId: 'env-1',
         environmentName: 'Test Env',
-      });
-      const call = mockCreateContainer.mock.calls[0][0];
-      expect(call.Env).toContain('NETWORK_MODE=custom');
-      expect(call.Env).toContain('ALLOWED_DOMAINS=["example.com"]');
+      }));
+      const call = mockCreateContainer.mock.calls[0]![0];
+      const envJson = call.Env.find((e: string) => e.startsWith('ENVIRONMENT='));
+      const parsed = JSON.parse(envJson!.substring(12));
+      expect(parsed.networkMode).toBe('custom');
+      expect(parsed.allowedDomains).toEqual(['example.com']);
       expect(call.Labels['agentor.environment-id']).toBe('env-1');
       expect(call.Labels['agentor.environment-name']).toBe('Test Env');
     });
@@ -521,96 +576,86 @@ describe('DockerService', () => {
 
   describe('parseMemoryLimit', () => {
     it('handles bytes (b)', async () => {
-      await service.createWorkerContainer({ name: 'test', memoryLimit: '1024b' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ memoryLimit: '1024b' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Memory).toBe(1024);
     });
 
     it('handles kilobytes (kb)', async () => {
-      await service.createWorkerContainer({ name: 'test', memoryLimit: '10kb' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ memoryLimit: '10kb' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Memory).toBe(10 * 1024);
     });
 
     it('handles megabytes (mb)', async () => {
-      await service.createWorkerContainer({ name: 'test', memoryLimit: '256mb' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ memoryLimit: '256mb' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Memory).toBe(256 * 1024 * 1024);
     });
 
     it('handles gigabytes (gb)', async () => {
-      await service.createWorkerContainer({ name: 'test', memoryLimit: '4gb' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ memoryLimit: '4gb' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Memory).toBe(4 * 1024 * 1024 * 1024);
     });
 
     it('handles decimal values', async () => {
-      await service.createWorkerContainer({ name: 'test', memoryLimit: '1.5g' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ memoryLimit: '1.5g' }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Memory).toBe(Math.floor(1.5 * 1024 * 1024 * 1024));
     });
   });
 
   describe('createWorkerContainer additional scenarios', () => {
     it('sets NanoCpus for CPU limit', async () => {
-      await service.createWorkerContainer({ name: 'test', cpuLimit: 2 });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({ cpuLimit: 2 }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.NanoCpus).toBe(2e9);
     });
 
-    it('passes custom env vars', async () => {
-      await service.createWorkerContainer({
-        name: 'test',
-        customEnvVars: ['MY_VAR=hello', 'OTHER=world'],
-      });
-      const call = mockCreateContainer.mock.calls[0][0];
-      expect(call.Env).toContain('MY_VAR=hello');
-      expect(call.Env).toContain('OTHER=world');
+    it('includes setup script in ENVIRONMENT JSON', async () => {
+      await service.createWorkerContainer(makeOpts({
+        environmentJson: { ...defaultEnvironmentJson, setupScript: 'apt-get install -y curl' },
+      }));
+      const call = mockCreateContainer.mock.calls[0]![0];
+      const envJson = call.Env.find((e: string) => e.startsWith('ENVIRONMENT='));
+      const parsed = JSON.parse(envJson!.substring(12));
+      expect(parsed.setupScript).toBe('apt-get install -y curl');
     });
 
-    it('passes setup script as base64', async () => {
-      await service.createWorkerContainer({
-        name: 'test',
-        setupScriptB64: 'c2V0dXA=',
-      });
-      const call = mockCreateContainer.mock.calls[0][0];
-      expect(call.Env).toContain('SETUP_SCRIPT_B64=c2V0dXA=');
-    });
-
-    it('passes init script as base64', async () => {
-      await service.createWorkerContainer({
-        name: 'test',
-        initScriptB64: 'aW5pdA==',
-      });
-      const call = mockCreateContainer.mock.calls[0][0];
-      expect(call.Env).toContain('INIT_SCRIPT_B64=aW5pdA==');
+    it('includes init script in WORKER JSON', async () => {
+      await service.createWorkerContainer(makeOpts({
+        workerJson: { ...defaultWorkerJson, initScript: 'claude --dangerously-skip-permissions' },
+      }));
+      const call = mockCreateContainer.mock.calls[0]![0];
+      const workerEnv = call.Env.find((e: string) => e.startsWith('WORKER='));
+      const parsed = JSON.parse(workerEnv!.substring(7));
+      expect(parsed.initScript).toBe('claude --dangerously-skip-permissions');
     });
 
     it('adds bind mounts from mounts config', async () => {
-      await service.createWorkerContainer({
-        name: 'test',
+      await service.createWorkerContainer(makeOpts({
         mounts: [
           { source: '/host/data', target: '/data', readOnly: true },
           { source: '/host/config', target: '/config', readOnly: false },
         ],
-      });
-      const call = mockCreateContainer.mock.calls[0][0];
+      }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Binds).toContain('/host/data:/data:ro');
       expect(call.HostConfig.Binds).toContain('/host/config:/config');
     });
 
     it('does not set network-mode label for full mode', async () => {
-      await service.createWorkerContainer({
-        name: 'test',
-        networkMode: 'full',
-      });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts({
+        environmentJson: { ...defaultEnvironmentJson, networkMode: 'full' },
+      }));
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.Labels['agentor.network-mode']).toBeUndefined();
     });
 
     it('no Memory or NanoCpus when limits are zero/empty', async () => {
-      await service.createWorkerContainer({ name: 'test' });
-      const call = mockCreateContainer.mock.calls[0][0];
+      await service.createWorkerContainer(makeOpts());
+      const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.NanoCpus).toBeUndefined();
       expect(call.HostConfig.Memory).toBeUndefined();
     });

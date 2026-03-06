@@ -65,6 +65,14 @@ The detail modal auto-displays all `agentor.*` labels (except internal ones like
 
 A single Docker image (`agentor-worker`, built from `worker/`) contains all agent CLIs and their setup scripts. OAuth/subscription credentials are stored as JSON files in `.cred/` on the host and bind-mounted directly into worker containers at the correct paths (e.g., `.cred/claude.json` → `/home/agent/.claude/.credentials.json`). All workers share the same credential files, so users only need to log in once inside any worker after installation — the credentials are written back automatically and propagate to all workers. Copying OAuth tokens from a local machine is not supported because refresh token rotation would cause the local and worker tokens to go out of sync. API keys (always-valid, no rotation) remain in `.env`. On container startup, ALL agent setup scripts run to configure settings for every installed agent. Users start agents via init script presets or manually in the terminal.
 
+**Structured JSON env vars** — the orchestrator passes 4 JSON env vars to workers instead of 20+ individual variables:
+- `ENVIRONMENT` — network mode, allowed domains, dockerEnabled, setupScript, envVars, exposeApis
+- `SKILLS` — array of `{ name, content }` entries
+- `AGENTS_MD` — array of `{ name, content }` entries
+- `WORKER` — name, displayName, repos, initScript
+
+Individual env vars that CLIs read directly remain as-is: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`.
+
 ### Init Script System
 
 Init scripts are managed via `InitScriptStore` (`orchestrator/server/utils/init-script-store.ts`), stored as JSON in `<DATA_DIR>/init-scripts.json`. Built-in init script files live in `orchestrator/server/built-in/init-scripts/` as plain `.sh` files — the filename (without extension) is both the ID and the name. Custom scripts can be created via the Init Scripts modal in the sidebar. Init scripts are just bash scripts — they are not tied to any specific agent.
@@ -80,13 +88,15 @@ The UI provides a dropdown to select a script, which populates an editable init 
 
 **Adding a new agent** requires:
 1. Install the CLI in `worker/Dockerfile`
-2. Create `worker/agents/<agent-id>/setup.sh` (settings/config, runs on every container start)
+2. Create `worker/agents/<agent-id>/setup.sh` (auth/settings + skills/AGENTS.md writing — reads from `SKILLS` and `AGENTS_MD` JSON env vars)
 3. Create `worker/agents/<agent-id>/git-identity` (two lines: name, email — used by the git wrapper)
 4. Add an agent config entry in `orchestrator/server/utils/agent-config.ts` (API domains, env vars)
 5. Add a built-in init script file in `orchestrator/server/built-in/init-scripts/`
 6. Add a credential mapping in `orchestrator/server/utils/credential-mounts.ts` (`AGENT_CREDENTIAL_MAPPINGS`)
 7. Add a template file in `.cred.example/` and document in `.cred.example/README`
 8. Rebuild the worker image
+
+No entrypoint changes needed — agent setup scripts handle all agent-specific logic (auth, settings, skills, AGENTS.md).
 
 ### Worker image contents
 
@@ -101,7 +111,8 @@ The unified worker image (`worker/`) provides:
 - Network firewall: dnsmasq, ipset, iptables (for environment network policies)
 - App management scripts in `/home/agent/apps/` (chromium/manage.sh, socks5/manage.sh)
 - Shared `agent` user (uid 1000) with passwordless sudo
-- Common entrypoint: tmux session, agent setups, docker daemon, display stack, code-server, git auth, repo clone, network firewall, setup/init scripts, launch
+- Helper scripts: `memfd-exec.py` (memfd script executor), `setup.sh` (setup script runner), `init.sh` (init script runner)
+- Common entrypoint: tmux session, env var export, agent setups (+ platform files), docker daemon, display stack, code-server, git auth, repo clone, network firewall, setup script (memfd), init script (memfd), launch
 
 ### Pre-installed agents:
 - **Claude**: Anthropic Claude Code CLI (`worker/agents/claude/`)
@@ -277,8 +288,8 @@ Workers support running Docker inside the container, enabled per-environment via
 - The volume is automatically cleaned up when the worker container is removed
 
 **Architecture:**
-- Orchestrator mounts a named volume `<container-name>-docker` at `/var/lib/docker` and passes `DOCKER_ENABLED=true` env var
-- Entrypoint cleans stale PID files/sockets, writes `/etc/docker/daemon.json`, starts `sudo dockerd` in background
+- Orchestrator mounts a named volume `<container-name>-docker` at `/var/lib/docker` and sets `dockerEnabled: true` in the `ENVIRONMENT` JSON env var
+- Entrypoint reads `ENVIRONMENT.dockerEnabled` via jq, cleans stale PID files/sockets, writes `/etc/docker/daemon.json`, starts `sudo dockerd` in background
 - Waits up to 30s for `/var/run/docker.sock` to appear
 - Inner Docker uses its own bridge network (`172.17.0.0/16`), which is allowed by the existing firewall rules
 - On container removal, orchestrator also removes the `-docker` volume
@@ -290,6 +301,8 @@ Workers support optional host bind-mounts configured at creation time. Each moun
 ## Skills & AGENTS.md
 
 Skills and AGENTS.md entries are content documents injected into worker containers to provide agents with structured knowledge. Both follow open standards: skills follow the [Agent Skills](https://agentskills.io/) format, AGENTS.md entries follow the [AGENTS.md](https://agents.md/) standard. Built-in content is stored as markdown files in `orchestrator/server/built-in/` and loaded dynamically via Nitro's `serverAssets` + `useStorage()`. The filename (without extension) is the ID.
+
+The orchestrator passes skills and AGENTS.md entries as structured JSON env vars (`SKILLS` and `AGENTS_MD`) to worker containers. Each agent's `setup.sh` reads these env vars and writes files to agent-specific paths on first startup (sentinel-gated). No agent-specific logic in the entrypoint.
 
 ### Skills
 
@@ -332,15 +345,13 @@ Both skills and AGENTS.md entries are selected per-environment:
 Workers can call orchestrator APIs over the Docker network. The orchestrator passes these env vars to every worker:
 - `ORCHESTRATOR_URL=http://agentor-orchestrator:3000`
 - `WORKER_CONTAINER_NAME=<container-name>`
-- `EXPOSE_PORT_MAPPINGS=true/false`
-- `EXPOSE_DOMAIN_MAPPINGS=true/false`
-- `EXPOSE_USAGE=true/false`
+- `EXPOSE_PORT_MAPPINGS`, `EXPOSE_DOMAIN_MAPPINGS`, `EXPOSE_USAGE` — exported by the entrypoint from `ENVIRONMENT.exposeApis`
 
 Port mapping and domain mapping create endpoints also accept `workerName` as an alternative to `workerId`, so agents can use `$WORKER_CONTAINER_NAME` directly.
 
 No firewall changes needed — the orchestrator is on the same Docker bridge network (`agentor-net`), and existing firewall rules allow private network ranges.
 
-Platform setup runs only on first container startup (sentinel file `/home/agent/.agentor-platform-init`). On restart, user modifications to skill/AGENTS.md files are preserved.
+Platform setup (skills + AGENTS.md writing) runs only on first container startup (sentinel file `/home/agent/.agentor-platform-init`), handled by each agent's `setup.sh`. On restart, user modifications to skill/AGENTS.md files are preserved.
 
 ## Environment System
 
@@ -367,16 +378,16 @@ Architecture: dnsmasq resolves allowed domains and adds IPs to a kernel ipset vi
 Fully synchronous — every phase runs foreground and completes before the next begins. The tmux pane runs an animated loading screen (`loading-screen.sh`) that renders at ~12fps with braille spinner animation, per-step timing, and a colored progress bar. The entrypoint writes events to `/tmp/worker-events` (append-only log: `STEP_ID|STATUS|LABEL[|ELAPSED_MS]`), and the loading screen re-parses and redraws every frame. Millisecond-precision timing logs (`[+Nms]`) are also emitted to stdout via `/proc/uptime`.
 
 0. **Tmux session** with animated loading screen (`bash /home/agent/loading-screen.sh`)
-1. **Agent setup** — all `agents/*/setup.sh` scripts (CLI config, settings — OAuth credentials are bind-mounted)
-1b. **Platform setup** — writes AGENTS.md + skills to agent-specific paths (first startup only, sentinel `/home/agent/.agentor-platform-init`)
-2. **Docker daemon** — if `DOCKER_ENABLED=true`: start dockerd, wait for socket (up to 30s); otherwise skipped
+0b. **Export env vars** — `EXPOSE_*` flags from `ENVIRONMENT.exposeApis`, custom env vars from `ENVIRONMENT.envVars` (exported + set in tmux environment)
+1. **Agent setup** — all `agents/*/setup.sh` scripts (CLI config, settings, skills + AGENTS.md on first startup — OAuth credentials are bind-mounted). Sentinel file touched after all scripts complete.
+2. **Docker daemon** — if `ENVIRONMENT.dockerEnabled`: start dockerd, wait for socket (up to 30s); otherwise skipped
 3. **Display stack** — Xvfb + fluxbox + x11vnc + websockify/noVNC, wait for each service
-4. **Code editor** — code-server on port 8443 (`--auth none --bind-addr 0.0.0.0:8443`), wait for port ready
-5. **Git authentication** — if `GITHUB_TOKEN`: `gh auth login` + `gh auth setup-git`; otherwise skipped
-6. **Repository clone** — if `REPOS`: parallel clone per repo, wait for all; otherwise skipped
-7. **Network firewall** — dnsmasq + ipset + iptables (runs after all network ops complete); skipped for `full` mode
-8. **User setup script** — `SETUP_SCRIPT_B64`, runs under firewall
-9. **Launch** — `tmux respawn-pane -k` replaces loading screen; init script runs as the pane command (`bash $INIT_FILE`), not via `send-keys`. When the agent exits, `remain-on-exit` + `pane-died` hook respawn a clean shell.
+3b. **Code editor** — code-server on port 8443 (`--auth none --bind-addr 0.0.0.0:8443`), wait for port ready
+4. **Git authentication** — if `GITHUB_TOKEN`: `gh auth login` + `gh auth setup-git`; otherwise skipped
+5. **Repository clone** — if `WORKER.repos`: parallel clone per repo, wait for all; otherwise skipped
+6. **Network firewall** — reads `ENVIRONMENT.networkMode` + `.allowedDomains` via jq; dnsmasq + ipset + iptables; skipped for `full` mode
+7. **User setup script** — runs `/home/agent/setup.sh` which reads `ENVIRONMENT.setupScript` and executes via memfd (no temp files)
+8. **Launch** — `tmux respawn-pane -k` replaces loading screen; `/home/agent/init.sh` reads `WORKER.initScript` and executes via memfd (or falls back to bash). When the agent exits, `remain-on-exit` + `pane-died` hook respawn a clean shell.
 
 ## Tmux Tab Integration
 
@@ -587,14 +598,17 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 
 ### Worker
 - `worker/Dockerfile` - Unified worker image (Node.js 22, all agent CLIs, code-server, display stack, Chromium, Playwright, Firefox, microsocks, utility packages, agent user, entrypoint)
-- `worker/entrypoint.sh` - Entrypoint (tmux, agent setups, platform setup, docker daemon, display stack, code-server, git auth, repo clone, firewall, setup script, launch)
+- `worker/entrypoint.sh` - Entrypoint (tmux, env var export, agent setups, docker daemon, display stack, code-server, git auth, repo clone, firewall, setup script, launch)
 - `worker/loading-screen.sh` - Animated startup display (braille spinner, progress bar, per-step timing)
+- `worker/memfd-exec.py` - Script executor via memfd_create (no temp files on disk, supports any shebang)
+- `worker/setup.sh` - Runs ENVIRONMENT.setupScript via memfd (called by entrypoint Phase 7)
+- `worker/init.sh` - Runs WORKER.initScript via memfd or falls back to bash (tmux pane command)
 - `worker/git-wrapper.sh` - Process-tree-aware git identity wrapper (installed at /usr/local/bin/git)
 - `worker/apps/chromium/manage.sh` - Chromium app manager (start/stop/list via docker exec)
 - `worker/apps/socks5/manage.sh` - SOCKS5 proxy app manager
-- `worker/agents/claude/setup.sh` - Claude auth + config
-- `worker/agents/codex/setup.sh` - Codex auth + config
-- `worker/agents/gemini/setup.sh` - Gemini auth + config
+- `worker/agents/claude/setup.sh` - Claude auth + config + skills/AGENTS.md writing (reads SKILLS/AGENTS_MD JSON env vars)
+- `worker/agents/codex/setup.sh` - Codex auth + config + skills/AGENTS.md writing
+- `worker/agents/gemini/setup.sh` - Gemini auth + config + skills/AGENTS.md writing
 - `worker/agents/*/git-identity` - Per-agent git identity (two lines: name, email)
 
 ## Gotchas

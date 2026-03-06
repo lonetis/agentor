@@ -131,6 +131,9 @@ RUN userdel -r ubuntu 2>/dev/null || true && \
 
 COPY --chmod=755 entrypoint.sh /home/agent/entrypoint.sh
 COPY --chmod=755 loading-screen.sh /home/agent/loading-screen.sh
+COPY --chmod=755 memfd-exec.py /home/agent/memfd-exec.py
+COPY --chmod=755 setup.sh /home/agent/setup.sh
+COPY --chmod=755 init.sh /home/agent/init.sh
 COPY --chmod=755 apps/ /home/agent/apps/
 
 # Git identity wrapper — shadows /usr/bin/git, detects the calling agent

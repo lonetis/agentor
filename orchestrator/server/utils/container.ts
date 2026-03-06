@@ -3,9 +3,10 @@ import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generato
 import type { Config } from './config';
 import { getAppType } from './apps';
 import { DockerService } from './docker';
+import type { EnvironmentJsonPayload, SkillJsonEntry, AgentsMdJsonEntry, WorkerJsonPayload } from './docker';
 import type { AppInstanceInfo, RepoConfig, TmuxWindow } from '../../shared/types';
 import { getAllGitCloneDomains } from './git-providers';
-import { getAllAgentApiDomains, getAllAgentEnvVars } from './agent-config';
+import { getAllAgentApiDomains } from './agent-config';
 import { getPackageManagerDomains } from './environments';
 import type { EnvironmentStore } from './environments';
 import type { WorkerStore, WorkerRecord } from './worker-store';
@@ -23,15 +24,11 @@ function parseLabelFloat(value: string | undefined): number | undefined {
 interface ResolvedEnvConfig {
   cpuLimit?: number;
   memoryLimit?: string;
-  networkMode?: NetworkMode;
-  allowedDomains?: string[];
-  setupScriptB64?: string;
-  customEnvVars?: string[];
   dockerEnabled?: boolean;
   environmentName?: string;
-  agentsMdB64?: string;
-  skillsB64?: string;
-  exposeApis?: ExposeApis;
+  environmentJson: EnvironmentJsonPayload;
+  skillsJson: SkillJsonEntry[];
+  agentsMdJson: AgentsMdJsonEntry[];
 }
 
 export class ContainerManager {
@@ -72,21 +69,20 @@ export class ContainerManager {
     enabledSkillIds: string[] | null | undefined,
     enabledAgentsMdIds: string[] | null | undefined,
     exposeApis: ExposeApis,
-  ): { skillsB64?: string; agentsMdB64?: string } {
-    let agentsMdB64: string | undefined;
+  ): { skillsJson: SkillJsonEntry[]; agentsMdJson: AgentsMdJsonEntry[] } {
+    const agentsMdJson: AgentsMdJsonEntry[] = [];
     if (this.agentsMdStore) {
       const allEntries = this.agentsMdStore.list();
       const enabledEntries = enabledAgentsMdIds === null || enabledAgentsMdIds === undefined
         ? allEntries
         : allEntries.filter((i) => enabledAgentsMdIds!.includes(i.id));
 
-      if (enabledEntries.length > 0) {
-        const merged = enabledEntries.map((i) => `# ${i.name}\n\n${i.content}`).join('\n\n---\n\n');
-        agentsMdB64 = Buffer.from(merged).toString('base64');
+      for (const entry of enabledEntries) {
+        agentsMdJson.push({ name: entry.name, content: entry.content });
       }
     }
 
-    let skillsB64: string | undefined;
+    const skillsJson: SkillJsonEntry[] = [];
     if (this.skillStore) {
       const allSkills = this.skillStore.list();
       let enabledSkills = enabledSkillIds === null || enabledSkillIds === undefined
@@ -103,20 +99,31 @@ export class ContainerManager {
         return !apiKey || exposeApis[apiKey];
       });
 
-      if (enabledSkills.length > 0) {
-        const serialized = JSON.stringify(enabledSkills.map((s) => ({ name: s.name, content: s.content })));
-        skillsB64 = Buffer.from(serialized).toString('base64');
+      for (const skill of enabledSkills) {
+        skillsJson.push({ name: skill.name, content: skill.content });
       }
     }
 
-    return { skillsB64, agentsMdB64 };
+    return { skillsJson, agentsMdJson };
   }
 
   private resolveEnvironmentConfig(environmentId?: string): ResolvedEnvConfig {
+    const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
+
     if (!this.environmentStore) {
-      const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
-      const { skillsB64, agentsMdB64 } = this.resolveSkillsAndAgentsMd(null, null, defaultExposeApis);
-      return { agentsMdB64, skillsB64, exposeApis: defaultExposeApis };
+      const { skillsJson, agentsMdJson } = this.resolveSkillsAndAgentsMd(null, null, defaultExposeApis);
+      return {
+        environmentJson: {
+          networkMode: 'full',
+          allowedDomains: [],
+          dockerEnabled: true,
+          setupScript: '',
+          envVars: '',
+          exposeApis: defaultExposeApis,
+        },
+        skillsJson,
+        agentsMdJson,
+      };
     }
 
     const resolvedId = environmentId || 'default';
@@ -138,33 +145,28 @@ export class ContainerManager {
       domains.push(...getAllGitCloneDomains());
     }
 
-    const customEnvVars: string[] = [];
-    if (env.envVars) {
-      for (const line of env.envVars.split('\n')) {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
-          customEnvVars.push(trimmed);
-        }
-      }
-    }
-
-    const exposeApis: ExposeApis = env.exposeApis ?? { portMappings: true, domainMappings: true, usage: true };
-    const { skillsB64, agentsMdB64 } = this.resolveSkillsAndAgentsMd(
+    const exposeApis: ExposeApis = env.exposeApis ?? defaultExposeApis;
+    const { skillsJson, agentsMdJson } = this.resolveSkillsAndAgentsMd(
       env.enabledSkillIds, env.enabledAgentsMdIds, exposeApis,
     );
+
+    const dockerEnabled = env.dockerEnabled ?? true;
 
     return {
       cpuLimit: env.cpuLimit != null ? env.cpuLimit : undefined,
       memoryLimit: env.memoryLimit || undefined,
-      networkMode: env.networkMode,
-      allowedDomains: domains.length > 0 ? domains : undefined,
-      setupScriptB64: env.setupScript ? Buffer.from(env.setupScript).toString('base64') : undefined,
-      customEnvVars: customEnvVars.length > 0 ? customEnvVars : undefined,
-      dockerEnabled: env.dockerEnabled ?? true,
+      dockerEnabled,
       environmentName: env.name,
-      agentsMdB64,
-      skillsB64,
-      exposeApis,
+      environmentJson: {
+        networkMode: env.networkMode || 'full',
+        allowedDomains: domains,
+        dockerEnabled,
+        setupScript: env.setupScript || '',
+        envVars: env.envVars || '',
+        exposeApis,
+      },
+      skillsJson,
+      agentsMdJson,
     };
   }
 
@@ -228,42 +230,34 @@ export class ContainerManager {
   async create(request: CreateContainerRequest): Promise<ContainerInfo> {
     const envConfig = this.resolveEnvironmentConfig(request.environmentId);
 
-    const workerScript = request.initScript?.trim();
-    const initScriptB64 = workerScript ? Buffer.from(workerScript).toString('base64') : undefined;
-
     const name = request.name || this.generateName();
-
     const repos = request.repos?.filter((r) => r.url) || [];
 
     const cpuLimit = envConfig.cpuLimit ?? request.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
     const memoryLimit = envConfig.memoryLimit || request.memoryLimit || this.config.defaultMemoryLimit || undefined;
     const dockerEnabled = envConfig.dockerEnabled ?? true;
 
-    // Merge all agent env vars with environment custom env vars
-    const allCustomEnvVars = [
-      ...(getAllAgentEnvVars(this.config)),
-      ...(envConfig.customEnvVars || []),
-    ];
+    const workerJson: WorkerJsonPayload = {
+      name,
+      displayName: request.displayName || '',
+      repos,
+      initScript: request.initScript?.trim() || '',
+    };
 
     const container = await this.dockerService.createWorkerContainer({
       name,
       displayName: request.displayName || undefined,
-      repos: repos.length > 0 ? repos : undefined,
       cpuLimit,
       memoryLimit,
       mounts: request.mounts,
-      networkMode: envConfig.networkMode,
-      allowedDomains: envConfig.allowedDomains,
-      setupScriptB64: envConfig.setupScriptB64,
-      initScriptB64,
-      customEnvVars: allCustomEnvVars.length > 0 ? allCustomEnvVars : undefined,
       dockerEnabled,
       credentialBinds: this.credentialMountManager?.getBindMounts(),
       environmentId: request.environmentId,
       environmentName: envConfig.environmentName,
-      agentsMdB64: envConfig.agentsMdB64,
-      skillsB64: envConfig.skillsB64,
-      exposeApis: envConfig.exposeApis,
+      environmentJson: envConfig.environmentJson,
+      skillsJson: envConfig.skillsJson,
+      agentsMdJson: envConfig.agentsMdJson,
+      workerJson,
     });
 
     const image = this.config.workerImagePrefix + this.config.workerImage;
@@ -293,7 +287,7 @@ export class ContainerManager {
         repos: repos.length > 0 ? repos : undefined,
         cpuLimit,
         memoryLimit,
-        networkMode: envConfig.networkMode,
+        networkMode: envConfig.environmentJson.networkMode as NetworkMode,
         dockerEnabled,
         image,
         imageId: '',
@@ -383,7 +377,19 @@ export class ContainerManager {
     }
 
     // Resolve environment config (graceful fallback if environment was deleted)
-    let envConfig: ResolvedEnvConfig = {};
+    const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
+    let envConfig: ResolvedEnvConfig = {
+      environmentJson: {
+        networkMode: worker.networkMode || 'full',
+        allowedDomains: [],
+        dockerEnabled: worker.dockerEnabled ?? true,
+        setupScript: '',
+        envVars: '',
+        exposeApis: defaultExposeApis,
+      },
+      skillsJson: [],
+      agentsMdJson: [],
+    };
     try {
       envConfig = this.resolveEnvironmentConfig(worker.environmentId);
     } catch {
@@ -394,28 +400,27 @@ export class ContainerManager {
     const memoryLimit = envConfig.memoryLimit || worker.memoryLimit || this.config.defaultMemoryLimit || undefined;
     const dockerEnabled = envConfig.dockerEnabled ?? worker.dockerEnabled ?? true;
 
-    const allCustomEnvVars = [
-      ...(getAllAgentEnvVars(this.config)),
-      ...(envConfig.customEnvVars || []),
-    ];
+    // Unarchived workers don't re-run init scripts (sentinel file exists)
+    const workerJson: WorkerJsonPayload = {
+      name: worker.name,
+      displayName: worker.displayName || '',
+      repos: worker.repos || [],
+      initScript: '',
+    };
 
     const container = await this.dockerService.createWorkerContainer({
       name: worker.name,
       displayName: worker.displayName,
-      repos: worker.repos,
       cpuLimit,
       memoryLimit,
-      networkMode: envConfig.networkMode || worker.networkMode,
-      allowedDomains: envConfig.allowedDomains,
-      setupScriptB64: envConfig.setupScriptB64,
-      customEnvVars: allCustomEnvVars.length > 0 ? allCustomEnvVars : undefined,
       dockerEnabled,
       credentialBinds: this.credentialMountManager?.getBindMounts(),
       environmentId: worker.environmentId,
       environmentName: envConfig.environmentName || worker.environmentName,
-      agentsMdB64: envConfig.agentsMdB64,
-      skillsB64: envConfig.skillsB64,
-      exposeApis: envConfig.exposeApis,
+      environmentJson: envConfig.environmentJson,
+      skillsJson: envConfig.skillsJson,
+      agentsMdJson: envConfig.agentsMdJson,
+      workerJson,
     });
 
     await this.workerStore.unarchive(worker.name, container.id);

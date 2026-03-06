@@ -3,7 +3,34 @@ import type { Duplex } from 'node:stream';
 import type { Config } from './config';
 import { getAppType } from './apps';
 import { listGitProviders } from './git-providers';
-import type { NetworkMode, ExposeApis, MountConfig, RepoConfig, TmuxWindow, AppInstanceInfo } from '../../shared/types';
+import { getAllAgentEnvVars } from './agent-config';
+import type { MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ExposeApis } from '../../shared/types';
+
+export interface EnvironmentJsonPayload {
+  networkMode: string;
+  allowedDomains: string[];
+  dockerEnabled: boolean;
+  setupScript: string;
+  envVars: string;
+  exposeApis: ExposeApis;
+}
+
+export interface SkillJsonEntry {
+  name: string;
+  content: string;
+}
+
+export interface AgentsMdJsonEntry {
+  name: string;
+  content: string;
+}
+
+export interface WorkerJsonPayload {
+  name: string;
+  displayName: string;
+  repos: { provider: string; url: string; branch?: string }[];
+  initScript: string;
+}
 
 const MANAGED_LABEL = 'agentor.managed';
 
@@ -31,30 +58,32 @@ export class DockerService {
   async createWorkerContainer(opts: {
     name: string;
     displayName?: string;
-    repos?: RepoConfig[];
     cpuLimit?: number;
     memoryLimit?: string;
     mounts?: MountConfig[];
-    networkMode?: NetworkMode;
-    allowedDomains?: string[];
-    setupScriptB64?: string;
-    initScriptB64?: string;
-    customEnvVars?: string[];
     dockerEnabled?: boolean;
     credentialBinds?: string[];
     environmentId?: string;
     environmentName?: string;
-    agentsMdB64?: string;
-    skillsB64?: string;
-    exposeApis?: ExposeApis;
+    environmentJson: EnvironmentJsonPayload;
+    skillsJson: SkillJsonEntry[];
+    agentsMdJson: AgentsMdJsonEntry[];
+    workerJson: WorkerJsonPayload;
   }): Promise<Docker.Container> {
     const env: string[] = [];
 
-    if (opts.repos?.length) {
-      env.push(`REPOS=${JSON.stringify(opts.repos)}`);
+    // 4 structured JSON env vars
+    env.push(`ENVIRONMENT=${JSON.stringify(opts.environmentJson)}`);
+    env.push(`SKILLS=${JSON.stringify(opts.skillsJson)}`);
+    env.push(`AGENTS_MD=${JSON.stringify(opts.agentsMdJson)}`);
+    env.push(`WORKER=${JSON.stringify(opts.workerJson)}`);
+
+    // Individual: agent API keys (CLIs read directly from env)
+    for (const v of getAllAgentEnvVars(this.config)) {
+      env.push(v);
     }
 
-    // Pass token env vars for all configured git providers
+    // Individual: git provider tokens (gh CLI reads directly from env)
     for (const provider of listGitProviders()) {
       const token = this.config[provider.tokenConfigKey as keyof Config];
       if (token) {
@@ -62,42 +91,9 @@ export class DockerService {
       }
     }
 
-    // Environment-specific env vars
-    if (opts.networkMode) {
-      env.push(`NETWORK_MODE=${opts.networkMode}`);
-    }
-    if (opts.allowedDomains?.length) {
-      env.push(`ALLOWED_DOMAINS=${JSON.stringify(opts.allowedDomains)}`);
-    }
-    if (opts.setupScriptB64) {
-      env.push(`SETUP_SCRIPT_B64=${opts.setupScriptB64}`);
-    }
-    if (opts.initScriptB64) {
-      env.push(`INIT_SCRIPT_B64=${opts.initScriptB64}`);
-    }
-    if (opts.dockerEnabled) {
-      env.push('DOCKER_ENABLED=true');
-    }
-    if (opts.customEnvVars?.length) {
-      for (const v of opts.customEnvVars) {
-        env.push(v);
-      }
-    }
-
     // Orchestrator API access
     env.push('ORCHESTRATOR_URL=http://agentor-orchestrator:3000');
     env.push(`WORKER_CONTAINER_NAME=${opts.name}`);
-    if (opts.agentsMdB64) {
-      env.push(`AGENTS_MD_B64=${opts.agentsMdB64}`);
-    }
-    if (opts.skillsB64) {
-      env.push(`SKILLS_B64=${opts.skillsB64}`);
-    }
-    if (opts.exposeApis) {
-      env.push(`EXPOSE_PORT_MAPPINGS=${opts.exposeApis.portMappings}`);
-      env.push(`EXPOSE_DOMAIN_MAPPINGS=${opts.exposeApis.domainMappings}`);
-      env.push(`EXPOSE_USAGE=${opts.exposeApis.usage}`);
-    }
 
     const memBytes = opts.memoryLimit ? this.parseMemoryLimit(opts.memoryLimit) : 0;
     const nanoCpus = opts.cpuLimit ? Math.floor(opts.cpuLimit * 1e9) : 0;
@@ -126,8 +122,11 @@ export class DockerService {
 
     // Add CAP_NET_ADMIN when network restrictions are needed (for iptables)
     // Docker-in-Docker requires --privileged (which implies all caps)
-    const needsNetAdmin = opts.networkMode && opts.networkMode !== 'full';
+    const networkMode = opts.environmentJson.networkMode;
+    const needsNetAdmin = networkMode && networkMode !== 'full';
     const capAdd = needsNetAdmin && !opts.dockerEnabled ? ['NET_ADMIN'] : [];
+
+    const repos = opts.workerJson.repos;
 
     const container = await this.docker.createContainer({
       Image: image,
@@ -139,10 +138,10 @@ export class DockerService {
         [MANAGED_LABEL]: 'true',
         'agentor.created': new Date().toISOString(),
         ...(opts.displayName ? { 'agentor.display-name': opts.displayName } : {}),
-        ...(opts.repos?.length ? { 'agentor.repos': JSON.stringify(opts.repos) } : {}),
+        ...(repos?.length ? { 'agentor.repos': JSON.stringify(repos) } : {}),
         ...(opts.cpuLimit ? { 'agentor.cpu-limit': String(opts.cpuLimit) } : {}),
         ...(opts.memoryLimit ? { 'agentor.memory-limit': opts.memoryLimit } : {}),
-        ...(opts.networkMode && opts.networkMode !== 'full' ? { 'agentor.network-mode': opts.networkMode } : {}),
+        ...(networkMode && networkMode !== 'full' ? { 'agentor.network-mode': networkMode } : {}),
         ...(opts.dockerEnabled ? { 'agentor.docker-enabled': 'true' } : {}),
         ...(opts.environmentId ? { 'agentor.environment-id': opts.environmentId } : {}),
         ...(opts.environmentName ? { 'agentor.environment-name': opts.environmentName } : {}),
