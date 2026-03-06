@@ -20,6 +20,15 @@ os.write(fd, script)
 path = f"/proc/self/fd/{fd}"
 os.chmod(path, 0o700)
 
+# Restore stdin to the real terminal so interactive programs (CLIs) work.
+# stdin was consumed by the pipe; reopen /dev/tty as fd 0.
+try:
+    tty_fd = os.open("/dev/tty", os.O_RDWR)
+    os.dup2(tty_fd, 0)
+    os.close(tty_fd)
+except OSError:
+    pass  # no TTY available (non-interactive context)
+
 if script.startswith(b"#!"):
     os.execv(path, [path] + sys.argv[1:])
 else:
