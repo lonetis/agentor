@@ -4,20 +4,20 @@ import type { TmuxWindow } from '~/types';
 
 const props = defineProps<{
   windows: TmuxWindow[];
-  activeWindowName: string | null;
-  defaultWindow: string;
+  activeWindowIndex: number | null;
+  defaultWindowIndex: number;
 }>();
 
 const emit = defineEmits<{
-  activate: [name: string];
-  close: [name: string];
+  activate: [index: number];
+  close: [index: number];
   create: [name?: string];
-  rename: [oldName: string, newName: string];
+  rename: [index: number, newName: string];
 }>();
 
 const placeholderName = ref(generatePlaceholder());
 const newTabName = ref('');
-const editingTab = ref<string | null>(null);
+const editingTab = ref<number | null>(null);
 const editingName = ref('');
 const editInputRef = ref<HTMLInputElement[]>([]);
 
@@ -29,26 +29,27 @@ function sanitizeName(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, '-');
 }
 
-function onTabClick(name: string) {
-  if (editingTab.value === name) return;
-  if (name === props.activeWindowName && name !== props.defaultWindow) {
-    editingTab.value = name;
-    editingName.value = name;
+function onTabClick(w: TmuxWindow) {
+  if (editingTab.value === w.index) return;
+  if (w.index === props.activeWindowIndex && w.index !== props.defaultWindowIndex) {
+    editingTab.value = w.index;
+    editingName.value = w.name;
     nextTick(() => editInputRef.value[0]?.select());
   } else {
-    emit('activate', name);
+    emit('activate', w.index);
   }
 }
 
 function commitRename() {
-  const oldName = editingTab.value;
+  const index = editingTab.value;
   const newName = sanitizeName(editingName.value.trim());
   editingTab.value = null;
 
-  if (!oldName || !newName || newName === oldName) return;
-  if (props.windows.some((w) => w.name === newName)) return;
+  if (index == null || !newName) return;
+  const win = props.windows.find((w) => w.index === index);
+  if (!win || newName === win.name) return;
 
-  emit('rename', oldName, newName);
+  emit('rename', index, newName);
 }
 
 function cancelRename() {
@@ -83,16 +84,16 @@ function onCreateKeydown(e: KeyboardEvent) {
   }
 }
 
-function onMiddleClick(event: MouseEvent, name: string) {
+function onMiddleClick(event: MouseEvent, w: TmuxWindow) {
   if (event.button !== 1) return;
   event.preventDefault();
-  tryClose(name);
+  tryClose(w);
 }
 
-function tryClose(name: string) {
-  if (name === props.defaultWindow) return;
-  if (!confirm(`Close terminal '${name}'? The shell session will be terminated.`)) return;
-  emit('close', name);
+function tryClose(w: TmuxWindow) {
+  if (w.index === props.defaultWindowIndex) return;
+  if (!confirm(`Close terminal '${w.name}'? The shell session will be terminated.`)) return;
+  emit('close', w.index);
 }
 </script>
 
@@ -101,14 +102,14 @@ function tryClose(name: string) {
     <div class="tmux-tabs-scroll">
       <button
         v-for="w in windows"
-        :key="w.name"
+        :key="w.index"
         class="tmux-tab"
-        :class="{ active: w.name === activeWindowName }"
-        @click="onTabClick(w.name)"
-        @mousedown="onMiddleClick($event, w.name)"
+        :class="{ active: w.index === activeWindowIndex }"
+        @click="onTabClick(w)"
+        @mousedown="onMiddleClick($event, w)"
       >
         <input
-          v-if="editingTab === w.name"
+          v-if="editingTab === w.index"
           ref="editInputRef"
           :value="editingName"
           class="tmux-tab-edit"
@@ -119,9 +120,9 @@ function tryClose(name: string) {
         />
         <span v-else class="tmux-tab-name">{{ w.name }}</span>
         <span
-          v-if="w.name !== defaultWindow && editingTab !== w.name"
+          v-if="w.index !== defaultWindowIndex && editingTab !== w.index"
           class="tmux-tab-close"
-          @click.stop="tryClose(w.name)"
+          @click.stop="tryClose(w)"
         >
           &times;
         </span>

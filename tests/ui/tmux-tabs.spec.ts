@@ -33,6 +33,7 @@ test.describe.serial('Tmux Tabs', () => {
     const { status, body } = await api.createPane(containerId, 'test-tab');
     expect(status).toBe(201);
     expect(body.name).toBe('test-tab');
+    expect(typeof body.index).toBe('number');
 
     // Verify it appears in the list
     const { body: windows } = await api.listPanes(containerId);
@@ -48,45 +49,55 @@ test.describe.serial('Tmux Tabs', () => {
     expect(body.name.startsWith('shell-')).toBe(true);
 
     // Cleanup
-    await api.deletePane(containerId, body.name);
+    await api.deletePane(containerId, body.index);
   });
 
   test('API: rename a tmux window', async ({ request }) => {
     const api = new ApiClient(request);
-    const { status } = await api.renamePane(containerId, 'test-tab', 'renamed-tab');
+    // Find the test-tab we created earlier
+    const { body: windows } = await api.listPanes(containerId);
+    const testTab = windows.find((w: { name: string }) => w.name === 'test-tab');
+    expect(testTab).toBeTruthy();
+
+    const { status } = await api.renamePane(containerId, testTab.index, 'renamed-tab');
     expect(status).toBe(200);
 
-    const { body: windows } = await api.listPanes(containerId);
-    const found = windows.find((w: { name: string }) => w.name === 'renamed-tab');
+    const { body: updatedWindows } = await api.listPanes(containerId);
+    const found = updatedWindows.find((w: { name: string }) => w.name === 'renamed-tab');
     expect(found).toBeTruthy();
-    const old = windows.find((w: { name: string }) => w.name === 'test-tab');
+    const old = updatedWindows.find((w: { name: string }) => w.name === 'test-tab');
     expect(old).toBeFalsy();
   });
 
   test('API: close a tmux window', async ({ request }) => {
     const api = new ApiClient(request);
-    const { status } = await api.deletePane(containerId, 'renamed-tab');
+    // Find the renamed-tab
+    const { body: windows } = await api.listPanes(containerId);
+    const renamedTab = windows.find((w: { name: string }) => w.name === 'renamed-tab');
+    expect(renamedTab).toBeTruthy();
+
+    const { status } = await api.deletePane(containerId, renamedTab.index);
     expect(status).toBe(200);
 
-    const { body: windows } = await api.listPanes(containerId);
-    const found = windows.find((w: { name: string }) => w.name === 'renamed-tab');
+    const { body: updatedWindows } = await api.listPanes(containerId);
+    const found = updatedWindows.find((w: { name: string }) => w.name === 'renamed-tab');
     expect(found).toBeFalsy();
   });
 
   test('API: cannot close the main tmux window', async ({ request }) => {
     const api = new ApiClient(request);
-    const { status } = await api.deletePane(containerId, 'main');
+    const { status } = await api.deletePane(containerId, 0);
     expect(status).toBeGreaterThanOrEqual(400);
   });
 
   test('API: rename with invalid characters returns error', async ({ request }) => {
     const api = new ApiClient(request);
     // Create a window first
-    await api.createPane(containerId, 'temp-win');
-    const { status } = await api.renamePane(containerId, 'temp-win', 'invalid name!');
+    const { body: created } = await api.createPane(containerId, 'temp-win');
+    const { status } = await api.renamePane(containerId, created.index, 'invalid name!');
     expect(status).toBeGreaterThanOrEqual(400);
     // Cleanup
-    await api.deletePane(containerId, 'temp-win');
+    await api.deletePane(containerId, created.index);
   });
 
   test('UI: terminal opens when clicking container', async ({ page }) => {

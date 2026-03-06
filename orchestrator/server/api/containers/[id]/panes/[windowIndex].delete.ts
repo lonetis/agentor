@@ -6,7 +6,7 @@ defineRouteMeta({
     operationId: 'deleteTmuxWindow',
     parameters: [
       { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' },
-      { name: 'windowName', in: 'path', required: true, schema: { type: 'string' }, description: 'Window name to delete' },
+      { name: 'windowIndex', in: 'path', required: true, schema: { type: 'integer' }, description: 'Tmux window index to delete' },
     ],
     responses: {
       200: { description: 'Window deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
@@ -16,19 +16,17 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../../../utils/services';
-import { WINDOW_NAME_RE } from '../../../../utils/validation';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
-  const windowName = getRouterParam(event, 'windowName')!;
-
-  if (!WINDOW_NAME_RE.test(windowName)) {
-    throw createError({ statusCode: 400, statusMessage: 'windowName must be alphanumeric, dashes, or underscores' });
+  const windowIndex = parseInt(getRouterParam(event, 'windowIndex')!, 10);
+  if (Number.isNaN(windowIndex) || windowIndex < 0) {
+    throw createError({ statusCode: 400, statusMessage: 'windowIndex must be a non-negative integer' });
   }
 
   const containerManager = useContainerManager();
   try {
-    await containerManager.killTmuxWindow(id, windowName);
+    await containerManager.killTmuxWindow(id, windowIndex);
   } catch (err: unknown) {
     if (err instanceof Error && err.message === 'Cannot kill the main tmux window') {
       throw createError({ statusCode: 403, statusMessage: err.message });

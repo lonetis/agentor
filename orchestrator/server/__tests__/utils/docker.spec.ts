@@ -556,7 +556,7 @@ describe('DockerService', () => {
   });
 
   describe('execAttachTmuxWindow', () => {
-    it('sanitizes window name and returns exec + stream', async () => {
+    it('uses window index and returns exec + stream', async () => {
       const { Duplex } = await import('node:stream');
       const mockStream = new Duplex({
         read() {},
@@ -568,9 +568,13 @@ describe('DockerService', () => {
         start: vi.fn().mockResolvedValue(mockStream),
       });
 
-      const result = await service.execAttachTmuxWindow('container-id', 'my-shell');
+      const result = await service.execAttachTmuxWindow('container-id', 3);
       expect(result.exec.id).toBe('exec-attach');
       expect(result.stream).toBe(mockStream);
+
+      // Verify the tmux command uses the numeric index
+      const cmd = mockContainerExec.mock.calls[0]![0].Cmd;
+      expect(cmd[2]).toContain('$SID:3');
     });
   });
 

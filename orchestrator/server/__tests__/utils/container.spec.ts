@@ -407,8 +407,8 @@ describe('ContainerManager', () => {
   });
 
   describe('killTmuxWindow', () => {
-    it('throws for main window', async () => {
-      await expect(manager.killTmuxWindow('c1', 'main')).rejects.toThrow(
+    it('throws for main window (index 0)', async () => {
+      await expect(manager.killTmuxWindow('c1', 0)).rejects.toThrow(
         'Cannot kill the main tmux window'
       );
     });
@@ -526,22 +526,40 @@ describe('ContainerManager', () => {
   });
 
   describe('createTmuxWindow', () => {
-    it('creates window with custom name', async () => {
-      const name = await manager.createTmuxWindow('c1', 'my-tab');
-      expect(name).toBe('my-tab');
+    it('creates window with custom name and returns TmuxWindow', async () => {
+      (dockerService.execListTmuxWindows as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { index: 0, name: 'main', active: false },
+        { index: 1, name: 'my-tab', active: true },
+      ]);
+      const result = await manager.createTmuxWindow('c1', 'my-tab');
+      expect(result.name).toBe('my-tab');
+      expect(result.index).toBe(1);
       expect(dockerService.execTmux).toHaveBeenCalledWith('c1', ['new-window', '-t', 'main:', '-n', 'my-tab']);
     });
 
     it('generates name when not provided', async () => {
-      const name = await manager.createTmuxWindow('c1');
-      expect(name).toMatch(/^shell-/);
+      // Mock execListTmuxWindows to return a window matching any shell-* name
+      (dockerService.execListTmuxWindows as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+        // Peek at what name was passed to execTmux
+        const tmuxCall = (dockerService.execTmux as ReturnType<typeof vi.fn>).mock.calls.find(
+          (c: string[][]) => c[1]?.[0] === 'new-window',
+        );
+        const windowName = tmuxCall?.[1]?.[4] ?? 'shell-xxxx';
+        return [
+          { index: 0, name: 'main', active: false },
+          { index: 1, name: windowName, active: true },
+        ];
+      });
+      const result = await manager.createTmuxWindow('c1');
+      expect(result.name).toMatch(/^shell-/);
+      expect(result.index).toBe(1);
     });
   });
 
   describe('renameTmuxWindow', () => {
-    it('renames a tmux window', async () => {
-      await manager.renameTmuxWindow('c1', 'old-name', 'new-name');
-      expect(dockerService.execTmux).toHaveBeenCalledWith('c1', ['rename-window', '-t', 'main:old-name', 'new-name']);
+    it('renames a tmux window by index', async () => {
+      await manager.renameTmuxWindow('c1', 2, 'new-name');
+      expect(dockerService.execTmux).toHaveBeenCalledWith('c1', ['rename-window', '-t', 'main:2', 'new-name']);
     });
   });
 

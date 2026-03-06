@@ -51,7 +51,7 @@ describe('terminalWsHandler', () => {
       expect(peer.close).toHaveBeenCalled();
     });
 
-    it('connects to default main window when no windowName', async () => {
+    it('connects to default window index 0 when no index specified', async () => {
       const stream = makeMockStream();
       mockExecAttachTmuxWindow.mockResolvedValueOnce({
         exec: { id: 'exec-1' },
@@ -63,22 +63,22 @@ describe('terminalWsHandler', () => {
 
       // Wait for async exec to complete
       await vi.waitFor(() => {
-        expect(mockExecAttachTmuxWindow).toHaveBeenCalledWith('container-abc', 'main');
+        expect(mockExecAttachTmuxWindow).toHaveBeenCalledWith('container-abc', 0);
       });
     });
 
-    it('connects to specified tmux window', async () => {
+    it('connects to specified tmux window index', async () => {
       const stream = makeMockStream();
       mockExecAttachTmuxWindow.mockResolvedValueOnce({
         exec: { id: 'exec-2' },
         stream,
       });
 
-      const peer = makePeer('p4', '/ws/terminal/container-xyz/my-shell');
+      const peer = makePeer('p4', '/ws/terminal/container-xyz/3');
       terminalWsHandler.open(peer);
 
       await vi.waitFor(() => {
-        expect(mockExecAttachTmuxWindow).toHaveBeenCalledWith('container-xyz', 'my-shell');
+        expect(mockExecAttachTmuxWindow).toHaveBeenCalledWith('container-xyz', 3);
       });
     });
 
@@ -171,6 +171,21 @@ describe('terminalWsHandler', () => {
 
       // The stream should be ended since ctx.closed was true
       expect(stream.end).toHaveBeenCalled();
+    });
+
+    it('treats non-numeric window path segment as index 0', async () => {
+      const stream = makeMockStream();
+      mockExecAttachTmuxWindow.mockResolvedValueOnce({
+        exec: { id: 'exec-nan' },
+        stream,
+      });
+
+      const peer = makePeer('p10', '/ws/terminal/container-abc/not-a-number');
+      terminalWsHandler.open(peer);
+
+      await vi.waitFor(() => {
+        expect(mockExecAttachTmuxWindow).toHaveBeenCalledWith('container-abc', 0);
+      });
     });
   });
 

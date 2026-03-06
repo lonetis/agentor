@@ -6,7 +6,7 @@ defineRouteMeta({
     operationId: 'renameTmuxWindow',
     parameters: [
       { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' },
-      { name: 'windowName', in: 'path', required: true, schema: { type: 'string' }, description: 'Current window name' },
+      { name: 'windowIndex', in: 'path', required: true, schema: { type: 'integer' }, description: 'Tmux window index' },
     ],
     requestBody: {
       required: true,
@@ -34,7 +34,10 @@ import { WINDOW_NAME_RE } from '../../../../utils/validation';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
-  const windowName = getRouterParam(event, 'windowName')!;
+  const windowIndex = parseInt(getRouterParam(event, 'windowIndex')!, 10);
+  if (Number.isNaN(windowIndex) || windowIndex < 0) {
+    throw createError({ statusCode: 400, statusMessage: 'windowIndex must be a non-negative integer' });
+  }
   const body = await readBody(event);
 
   const newName = typeof body?.newName === 'string' ? body.newName.trim() : '';
@@ -46,6 +49,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const containerManager = useContainerManager();
-  await containerManager.renameTmuxWindow(id, windowName, newName);
+  await containerManager.renameTmuxWindow(id, windowIndex, newName);
   return { windowName: newName };
 });

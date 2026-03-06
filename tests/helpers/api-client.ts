@@ -91,15 +91,15 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
-  async renamePane(containerId: string, windowName: string, newName: string) {
-    const res = await this.request.put(`${BASE_URL}/api/containers/${containerId}/panes/${windowName}`, {
+  async renamePane(containerId: string, windowIndex: number, newName: string) {
+    const res = await this.request.put(`${BASE_URL}/api/containers/${containerId}/panes/${windowIndex}`, {
       data: { newName },
     });
     return { status: res.status(), body: await res.json() };
   }
 
-  async deletePane(containerId: string, windowName: string) {
-    const res = await this.request.delete(`${BASE_URL}/api/containers/${containerId}/panes/${windowName}`);
+  async deletePane(containerId: string, windowIndex: number) {
+    const res = await this.request.delete(`${BASE_URL}/api/containers/${containerId}/panes/${windowIndex}`);
     return { status: res.status(), body: await res.json() };
   }
 

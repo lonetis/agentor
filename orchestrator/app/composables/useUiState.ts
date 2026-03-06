@@ -24,7 +24,7 @@ interface PaneState {
 }
 
 interface TmuxState {
-  activeWindows: Record<string, string>;
+  activeWindows: Record<string, number>;
 }
 
 export interface UiState {
@@ -181,12 +181,12 @@ export function useUiState() {
 
   // --- Tmux ---
 
-  function setTmuxActiveWindow(containerId: string, windowName: string) {
-    s.value.tmux.activeWindows[containerId] = windowName;
+  function setTmuxActiveWindow(containerId: string, windowIndex: number) {
+    s.value.tmux.activeWindows[containerId] = windowIndex;
     scheduleWrite();
   }
 
-  function getTmuxActiveWindow(containerId: string): string | undefined {
+  function getTmuxActiveWindow(containerId: string): number | undefined {
     return s.value.tmux.activeWindows[containerId];
   }
 

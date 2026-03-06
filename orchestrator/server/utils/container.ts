@@ -507,21 +507,27 @@ export class ContainerManager {
     return this.dockerService.execListTmuxWindows(id);
   }
 
-  async createTmuxWindow(id: string, name?: string): Promise<string> {
+  async createTmuxWindow(id: string, name?: string): Promise<TmuxWindow> {
     const windowName = name || `shell-${nanoid(4)}`;
     await this.dockerService.execTmux(id, ['new-window', '-t', 'main:', '-n', windowName]);
-    return windowName;
+    // Fetch the newly created window to get its index
+    const windows = await this.dockerService.execListTmuxWindows(id);
+    const created = windows.findLast((w) => w.name === windowName);
+    if (!created) {
+      throw new Error('Failed to find newly created tmux window');
+    }
+    return created;
   }
 
-  async renameTmuxWindow(id: string, oldName: string, newName: string): Promise<void> {
-    await this.dockerService.execTmux(id, ['rename-window', '-t', `main:${oldName}`, newName]);
+  async renameTmuxWindow(id: string, windowIndex: number, newName: string): Promise<void> {
+    await this.dockerService.execTmux(id, ['rename-window', '-t', `main:${windowIndex}`, newName]);
   }
 
-  async killTmuxWindow(id: string, windowName: string): Promise<void> {
-    if (windowName === 'main') {
+  async killTmuxWindow(id: string, windowIndex: number): Promise<void> {
+    if (windowIndex === 0) {
       throw new Error('Cannot kill the main tmux window');
     }
-    await this.dockerService.execTmux(id, ['kill-window', '-t', `main:${windowName}`]);
+    await this.dockerService.execTmux(id, ['kill-window', '-t', `main:${windowIndex}`]);
   }
 
   getServiceStatus(workerId: string): ServiceStatus {

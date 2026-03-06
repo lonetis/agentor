@@ -5,7 +5,9 @@ const POLL_INTERVAL = 3000;
 export function useTmuxTabs(containerId: Ref<string>) {
   const { getTmuxActiveWindow, setTmuxActiveWindow } = useUiState();
   const windows = ref<TmuxWindow[]>([]);
-  const activeWindowName = ref<string | null>(null);
+  const activeWindowIndex = ref<number | null>(null);
+
+  const defaultWindowIndex = 0;
 
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
   let fetchGeneration = 0;
@@ -21,18 +23,18 @@ export function useTmuxTabs(containerId: Ref<string>) {
       windows.value = data;
 
       // If active window was removed externally, pick first available
-      if (activeWindowName.value && !data.some((w) => w.name === activeWindowName.value)) {
-        activeWindowName.value = data.length > 0 ? data[0]!.name : null;
+      if (activeWindowIndex.value != null && !data.some((w) => w.index === activeWindowIndex.value)) {
+        activeWindowIndex.value = data.length > 0 ? data[0]!.index : null;
       }
 
       // Auto-select first window when nothing is active
-      if (!activeWindowName.value && data.length > 0) {
-        activeWindowName.value = data[0]!.name;
+      if (activeWindowIndex.value == null && data.length > 0) {
+        activeWindowIndex.value = data[0]!.index;
       }
 
       // Persist for reopen
-      if (activeWindowName.value) {
-        setTmuxActiveWindow(containerId.value, activeWindowName.value);
+      if (activeWindowIndex.value != null) {
+        setTmuxActiveWindow(containerId.value, activeWindowIndex.value);
       }
     } catch {
       // Container may be stopped or removed
@@ -44,10 +46,10 @@ export function useTmuxTabs(containerId: Ref<string>) {
 
     // Restore last active window if it still exists
     const saved = getTmuxActiveWindow(containerId.value);
-    if (saved && windows.value.some((w) => w.name === saved)) {
-      activeWindowName.value = saved;
-    } else if (windows.value.length > 0 && !activeWindowName.value) {
-      activeWindowName.value = windows.value[0]!.name;
+    if (saved != null && windows.value.some((w) => w.index === saved)) {
+      activeWindowIndex.value = saved;
+    } else if (windows.value.length > 0 && activeWindowIndex.value == null) {
+      activeWindowIndex.value = windows.value[0]!.index;
     }
 
     startPolling();
@@ -65,42 +67,31 @@ export function useTmuxTabs(containerId: Ref<string>) {
     }
   }
 
-  async function createWindow(name?: string): Promise<string | null> {
+  async function createWindow(name?: string): Promise<TmuxWindow | null> {
     try {
-      const { windowName } = await $fetch<{ windowName: string }>(
+      const window = await $fetch<TmuxWindow>(
         `/api/containers/${containerId.value}/panes`,
         { method: 'POST', body: name ? { name } : undefined },
       );
       await fetchWindows();
-      activeWindowName.value = windowName;
-      setTmuxActiveWindow(containerId.value, windowName);
-      return windowName;
+      activeWindowIndex.value = window.index;
+      setTmuxActiveWindow(containerId.value, window.index);
+      return window;
     } catch {
       return null;
     }
   }
 
-  async function renameWindow(oldName: string, newName: string): Promise<boolean> {
+  async function renameWindow(windowIndex: number, newName: string): Promise<boolean> {
     try {
-      await $fetch(`/api/containers/${containerId.value}/panes/${oldName}`, {
+      await $fetch(`/api/containers/${containerId.value}/panes/${windowIndex}`, {
         method: 'PUT',
         body: { newName },
       });
 
       // Update windows array
-      const win = windows.value.find((w) => w.name === oldName);
+      const win = windows.value.find((w) => w.index === windowIndex);
       if (win) win.name = newName;
-
-      // Update active window name if it was the renamed window
-      if (activeWindowName.value === oldName) {
-        activeWindowName.value = newName;
-      }
-
-      // Update persisted active window
-      const saved = getTmuxActiveWindow(containerId.value);
-      if (saved === oldName) {
-        setTmuxActiveWindow(containerId.value, newName);
-      }
 
       return true;
     } catch {
@@ -108,26 +99,26 @@ export function useTmuxTabs(containerId: Ref<string>) {
     }
   }
 
-  async function closeWindow(name: string) {
+  async function closeWindow(windowIndex: number) {
     try {
-      await $fetch(`/api/containers/${containerId.value}/panes/${name}`, {
+      await $fetch(`/api/containers/${containerId.value}/panes/${windowIndex}`, {
         method: 'DELETE',
       });
     } catch {
       // Window may already be gone
     }
-    windows.value = windows.value.filter((w) => w.name !== name);
-    if (activeWindowName.value === name) {
-      activeWindowName.value = windows.value.length > 0 ? windows.value[0]!.name : null;
+    windows.value = windows.value.filter((w) => w.index !== windowIndex);
+    if (activeWindowIndex.value === windowIndex) {
+      activeWindowIndex.value = windows.value.length > 0 ? windows.value[0]!.index : null;
     }
-    if (activeWindowName.value) {
-      setTmuxActiveWindow(containerId.value, activeWindowName.value);
+    if (activeWindowIndex.value != null) {
+      setTmuxActiveWindow(containerId.value, activeWindowIndex.value);
     }
   }
 
-  function activateWindow(name: string) {
-    activeWindowName.value = name;
-    setTmuxActiveWindow(containerId.value, name);
+  function activateWindow(windowIndex: number) {
+    activeWindowIndex.value = windowIndex;
+    setTmuxActiveWindow(containerId.value, windowIndex);
   }
 
   function destroy() {
@@ -138,7 +129,7 @@ export function useTmuxTabs(containerId: Ref<string>) {
   watch(containerId, () => {
     stopPolling();
     windows.value = [];
-    activeWindowName.value = null;
+    activeWindowIndex.value = null;
     init();
   });
 
@@ -147,7 +138,8 @@ export function useTmuxTabs(containerId: Ref<string>) {
 
   return {
     windows,
-    activeWindowName,
+    activeWindowIndex,
+    defaultWindowIndex,
     createWindow,
     renameWindow,
     closeWindow,

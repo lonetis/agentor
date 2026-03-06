@@ -42,24 +42,26 @@ test.describe('Tmux Panes API', () => {
       const api = new ApiClient(request);
       const { status, body } = await api.createPane(containerId, 'test-window');
       expect(status).toBe(201);
-      expect(body.windowName).toBe('test-window');
+      expect(body.name).toBe('test-window');
+      expect(typeof body.index).toBe('number');
 
       // Verify it exists
       const { body: panes } = await api.listPanes(containerId);
       expect(panes.some((w: { name: string }) => w.name === 'test-window')).toBe(true);
 
       // Cleanup
-      await api.deletePane(containerId, 'test-window');
+      await api.deletePane(containerId, body.index);
     });
 
     test('creates a window without a name (auto-generated)', async ({ request }) => {
       const api = new ApiClient(request);
       const { status, body } = await api.createPane(containerId);
       expect(status).toBe(201);
-      expect(body.windowName).toBeTruthy();
+      expect(body.name).toBeTruthy();
+      expect(typeof body.index).toBe('number');
 
       // Cleanup
-      await api.deletePane(containerId, body.windowName);
+      await api.deletePane(containerId, body.index);
     });
 
     test('rejects invalid window name with special chars', async ({ request }) => {
@@ -84,21 +86,21 @@ test.describe('Tmux Panes API', () => {
       const api = new ApiClient(request);
       const { status, body } = await api.createPane(containerId, 'test123');
       expect(status).toBe(201);
-      await api.deletePane(containerId, body.windowName);
+      await api.deletePane(containerId, body.index);
     });
 
     test('accepts window name with dashes', async ({ request }) => {
       const api = new ApiClient(request);
       const { status, body } = await api.createPane(containerId, 'my-window');
       expect(status).toBe(201);
-      await api.deletePane(containerId, body.windowName);
+      await api.deletePane(containerId, body.index);
     });
 
     test('accepts window name with underscores', async ({ request }) => {
       const api = new ApiClient(request);
       const { status, body } = await api.createPane(containerId, 'my_window');
       expect(status).toBe(201);
-      await api.deletePane(containerId, body.windowName);
+      await api.deletePane(containerId, body.index);
     });
 
     test('handles duplicate window name gracefully', async ({ request }) => {
@@ -111,67 +113,69 @@ test.describe('Tmux Panes API', () => {
         // Second creation with same name succeeds (tmux allows duplicate names)
         const { status: secondStatus, body: second } = await api.createPane(containerId, windowName);
         expect(secondStatus).toBe(201);
-        expect(second.windowName).toBe(windowName);
-        await api.deletePane(containerId, second.windowName);
+        expect(second.name).toBe(windowName);
+        // Indices must differ
+        expect(second.index).not.toBe(first.index);
+        await api.deletePane(containerId, second.index);
       } finally {
-        await api.deletePane(containerId, first.windowName);
+        await api.deletePane(containerId, first.index);
       }
     });
   });
 
-  test.describe('PUT /api/containers/:id/panes/:windowName', () => {
+  test.describe('PUT /api/containers/:id/panes/:windowIndex', () => {
     test('renames a tmux window', async ({ request }) => {
       const api = new ApiClient(request);
       // Create a window to rename
       const { body: created } = await api.createPane(containerId, 'rename-me');
 
-      const { status, body } = await api.renamePane(containerId, created.windowName, 'renamed');
+      const { status, body } = await api.renamePane(containerId, created.index, 'renamed');
       expect(status).toBe(200);
       expect(body.windowName).toBe('renamed');
 
       // Cleanup
-      await api.deletePane(containerId, 'renamed');
+      await api.deletePane(containerId, created.index);
     });
 
     test('rejects empty newName', async ({ request }) => {
       const api = new ApiClient(request);
       const { body: created } = await api.createPane(containerId, 'rename-test');
 
-      const { status } = await api.renamePane(containerId, created.windowName, '');
+      const { status } = await api.renamePane(containerId, created.index, '');
       expect(status).toBe(400);
 
-      await api.deletePane(containerId, created.windowName);
+      await api.deletePane(containerId, created.index);
     });
 
     test('rejects invalid newName', async ({ request }) => {
       const api = new ApiClient(request);
       const { body: created } = await api.createPane(containerId, 'rename-test2');
 
-      const { status } = await api.renamePane(containerId, created.windowName, 'bad name!');
+      const { status } = await api.renamePane(containerId, created.index, 'bad name!');
       expect(status).toBe(400);
 
-      await api.deletePane(containerId, created.windowName);
+      await api.deletePane(containerId, created.index);
     });
 
     test('rename preserves window in list', async ({ request }) => {
       const api = new ApiClient(request);
       const { body: created } = await api.createPane(containerId, 'rename-verify');
-      await api.renamePane(containerId, created.windowName, 'renamed-verified');
+      await api.renamePane(containerId, created.index, 'renamed-verified');
 
       const { body: panes } = await api.listPanes(containerId);
       expect(panes.some((w: { name: string }) => w.name === 'renamed-verified')).toBe(true);
       expect(panes.some((w: { name: string }) => w.name === 'rename-verify')).toBe(false);
 
-      await api.deletePane(containerId, 'renamed-verified');
+      await api.deletePane(containerId, created.index);
     });
   });
 
-  test.describe('DELETE /api/containers/:id/panes/:windowName', () => {
+  test.describe('DELETE /api/containers/:id/panes/:windowIndex', () => {
     test('closes a tmux window', async ({ request }) => {
       const api = new ApiClient(request);
       const { body: created } = await api.createPane(containerId, 'close-me');
 
-      const { status, body } = await api.deletePane(containerId, created.windowName);
+      const { status, body } = await api.deletePane(containerId, created.index);
       expect(status).toBe(200);
       expect(body.ok).toBe(true);
 
@@ -180,16 +184,16 @@ test.describe('Tmux Panes API', () => {
       expect(panes.some((w: { name: string }) => w.name === 'close-me')).toBe(false);
     });
 
-    test('cannot close the main window', async ({ request }) => {
+    test('cannot close the main window (index 0)', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.deletePane(containerId, 'main');
+      const { status } = await api.deletePane(containerId, 0);
       expect(status).toBe(403);
     });
 
-    test('rejects invalid window name in URL', async ({ request }) => {
+    test('rejects negative window index', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.deletePane(containerId, 'bad name!');
-      expect(status).toBe(400);
+      const res = await api.request.delete(`${api.baseUrl}/api/containers/${containerId}/panes/-1`);
+      expect(res.status()).toBe(400);
     });
   });
 
@@ -198,8 +202,8 @@ test.describe('Tmux Panes API', () => {
       const api = new ApiClient(request);
       const { status, body } = await api.createPane(containerId, '   ');
       expect(status).toBe(201);
-      expect(body.windowName).toBeTruthy();
-      await api.deletePane(containerId, body.windowName);
+      expect(body.name).toBeTruthy();
+      await api.deletePane(containerId, body.index);
     });
 
     test('listing panes on non-existent container fails', async ({ request }) => {
@@ -217,20 +221,20 @@ test.describe('Tmux Panes API', () => {
     test('auto-generated name follows shell-XXXX pattern', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.createPane(containerId);
-      expect(body.windowName).toMatch(/^shell-[a-zA-Z0-9]{4}$/);
-      await api.deletePane(containerId, body.windowName);
+      expect(body.name).toMatch(/^shell-[a-zA-Z0-9]{4}$/);
+      await api.deletePane(containerId, body.index);
     });
 
-    test('rename non-existent window is idempotent', async ({ request }) => {
+    test('rename non-existent window index is idempotent', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.renamePane(containerId, 'no-such-window', 'new-name');
+      const { status } = await api.renamePane(containerId, 9999, 'new-name');
       // tmux rename on non-existent window returns 200 (silent no-op)
       expect(status).toBe(200);
     });
 
-    test('delete non-existent window is idempotent', async ({ request }) => {
+    test('delete non-existent window index is idempotent', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.deletePane(containerId, 'no-such-window');
+      const { status } = await api.deletePane(containerId, 9999);
       // tmux kill-window on non-existent window returns 200 (silent no-op)
       expect(status).toBe(200);
     });
@@ -252,7 +256,7 @@ test.describe('Tmux Panes API', () => {
       const { body: second } = await api.createPane(containerId, secondName);
 
       // Rename second window to first's name — tmux allows duplicate names
-      const { status } = await api.renamePane(containerId, second.windowName, firstName);
+      const { status } = await api.renamePane(containerId, second.index, firstName);
       expect(status).toBe(200);
 
       // Verify both windows exist with the same name
@@ -260,9 +264,9 @@ test.describe('Tmux Panes API', () => {
       const matching = panes.filter((w: { name: string }) => w.name === firstName);
       expect(matching.length).toBe(2);
 
-      // Cleanup — delete by name (will delete one of the duplicates)
-      await api.deletePane(containerId, firstName);
-      await api.deletePane(containerId, firstName);
+      // Cleanup — delete by index (unambiguous)
+      await api.deletePane(containerId, second.index);
+      await api.deletePane(containerId, first.index);
     });
 
     test('create window with 50-char valid name', async ({ request }) => {
@@ -270,9 +274,9 @@ test.describe('Tmux Panes API', () => {
       const longName = 'a'.repeat(50);
       const { status, body } = await api.createPane(containerId, longName);
       expect(status).toBe(201);
-      expect(body.windowName).toBe(longName);
+      expect(body.name).toBe(longName);
 
-      await api.deletePane(containerId, body.windowName);
+      await api.deletePane(containerId, body.index);
     });
 
     test('rejects rename with missing newName in body', async ({ request }) => {
@@ -283,23 +287,23 @@ test.describe('Tmux Panes API', () => {
       try {
         // Send body without newName — handler coerces missing to ''
         const res = await request.put(
-          `${api.baseUrl}/api/containers/${containerId}/panes/${created.windowName}`,
+          `${api.baseUrl}/api/containers/${containerId}/panes/${created.index}`,
           { data: {} },
         );
         expect(res.status()).toBe(400);
       } finally {
-        await api.deletePane(containerId, created.windowName);
+        await api.deletePane(containerId, created.index);
       }
     });
 
     test('rename main window behavior', async ({ request }) => {
       const api = new ApiClient(request);
       const newName = `main-renamed-${Date.now()}`;
-      const { status } = await api.renamePane(containerId, 'main', newName);
+      const { status } = await api.renamePane(containerId, 0, newName);
 
       if (status === 200) {
         // If rename succeeded, rename it back to restore state
-        await api.renamePane(containerId, newName, 'main');
+        await api.renamePane(containerId, 0, 'main');
       } else {
         // If rename is forbidden or fails, that's also valid behavior
         expect(status).toBeGreaterThanOrEqual(400);

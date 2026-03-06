@@ -395,7 +395,7 @@ Web-native tab bar inside the terminal pane — each tab represents a tmux windo
 
 **Architecture** (`TerminalPane.vue` + `useTmuxTabs` + `TmuxTabBar`):
 - `useTmuxTabs(containerId)` manages the tmux window list: fetches via API, polls every 3s for external changes (e.g. agent creating windows), provides create/close/activate/rename
-- `TerminalPane` maintains a `Map<windowName, useTerminal()>` — one terminal per tmux window, all with live WebSocket connections
+- `TerminalPane` maintains a `Map<windowIndex, useTerminal()>` — one terminal per tmux window, all with live WebSocket connections
 - `v-show` toggles visibility (not `v-if`) so hidden terminals keep their DOM, scrollback buffer, and WebSocket stream
 - `TmuxTabBar` renders the inner tab bar (30px, dark theme, visually subordinate to the outer pane tab bar)
 - Active window persisted per container in a module-level `Map` — survives outer tab close/reopen
@@ -457,7 +457,7 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `sidebar.panels` — per-section collapse states: `archived` (default true), `portMappings`, `domainMappings`, `usage`, `images` (default false)
 - `panes.rootNode` — serialized `PaneNode` tree (split pane layout + open tabs)
 - `panes.focusedNodeId` — which leaf pane group is focused
-- `tmux.activeWindows` — `Record<containerId, windowName>` for restoring active tmux tab per terminal
+- `tmux.activeWindows` — `Record<containerId, windowIndex>` for restoring active tmux tab per terminal
 
 **Architecture:**
 - Module-level singleton ref, loaded from localStorage on first access
@@ -673,8 +673,8 @@ All API routes return JSON only (no HTML partials).
 | GET | `/api/containers/:id/logs` | View container logs |
 | GET | `/api/containers/:id/panes` | List tmux windows |
 | POST | `/api/containers/:id/panes` | Create new tmux window (optional `name` in body) |
-| PUT | `/api/containers/:id/panes/:windowName` | Rename tmux window (`newName` in body) |
-| DELETE | `/api/containers/:id/panes/:windowName` | Kill tmux window |
+| PUT | `/api/containers/:id/panes/:windowIndex` | Rename tmux window (`newName` in body) |
+| DELETE | `/api/containers/:id/panes/:windowIndex` | Kill tmux window |
 | GET | `/api/containers/:id/desktop/status` | Desktop status |
 | GET | `/api/containers/:id/editor/status` | Editor (code-server) status |
 | GET | `/api/containers/:id/apps` | List all running apps |
@@ -711,7 +711,7 @@ All API routes return JSON only (no HTML partials).
 | WS | `/ws/desktop/:containerId` | WebSocket relay to worker's websockify (VNC) |
 | WS | `/editor/:containerId/**` | WebSocket relay to worker's code-server (inline on same route) |
 | WS | `/ws/terminal/:containerId` | Terminal WebSocket (agent default window) |
-| WS | `/ws/terminal/:containerId/:windowName` | Terminal WebSocket (named window) |
+| WS | `/ws/terminal/:containerId/:windowIndex` | Terminal WebSocket (window by index) |
 | GET | `/api/environments` | List all environments |
 | POST | `/api/environments` | Create environment |
 | GET | `/api/environments/:id` | Get single environment |

@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const containerManager = useContainerManager();
-  const windowName = await containerManager.createTmuxWindow(id, name || undefined);
+  const window = await containerManager.createTmuxWindow(id, name || undefined);
   setResponseStatus(event, 201);
-  return { windowName };
+  return window;
 });

@@ -25,11 +25,13 @@ function cleanupPeerContext(peer: Peer): void {
   peerContexts.delete(getPeerId(peer));
 }
 
-function parseWsParams(url: string | undefined): { containerId: string; windowName?: string } | null {
+function parseWsParams(url: string | undefined): { containerId: string; windowIndex: number } | null {
   if (!url) return null;
   const match = url.match(/\/ws\/terminal\/([^/?]+)(?:\/([^/?]+))?/);
   if (!match?.[1]) return null;
-  return { containerId: match[1], windowName: match[2] };
+  const rawIndex = match[2];
+  const windowIndex = rawIndex != null ? parseInt(rawIndex, 10) : 0;
+  return { containerId: match[1], windowIndex: Number.isNaN(windowIndex) ? 0 : windowIndex };
 }
 
 function handleTerminalOpen(peer: Peer): void {
@@ -44,7 +46,7 @@ function handleTerminalOpen(peer: Peer): void {
   }
 
   dockerService
-    .execAttachTmuxWindow(params.containerId, params.windowName || 'main')
+    .execAttachTmuxWindow(params.containerId, params.windowIndex)
     .then(({ exec, stream }) => {
       if (ctx.closed) {
         stream.end();

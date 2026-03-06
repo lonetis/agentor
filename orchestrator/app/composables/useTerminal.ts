@@ -3,7 +3,7 @@ import type { FitAddon } from '@xterm/addon-fit';
 
 interface TerminalState {
   containerId: string;
-  windowName: string;
+  windowIndex: number;
   term: Terminal;
   fitAddon: FitAddon;
   ws: WebSocket;
@@ -60,7 +60,7 @@ export function useTerminal() {
 
   function openTerminal(
     containerId: string,
-    windowName: string,
+    windowIndex: number,
     containerEl: HTMLElement,
     TerminalClass: typeof Terminal,
     FitAddonClass: typeof FitAddon,
@@ -68,7 +68,7 @@ export function useTerminal() {
     const current = activeTerminal.value;
 
     // Already connected to same container+window
-    if (current && current.containerId === containerId && current.windowName === windowName) {
+    if (current && current.containerId === containerId && current.windowIndex === windowIndex) {
       fitTerminal();
       return;
     }
@@ -112,7 +112,7 @@ export function useTerminal() {
     };
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${location.host}/ws/terminal/${containerId}/${windowName}`;
+    const wsUrl = `${protocol}//${location.host}/ws/terminal/${containerId}/${windowIndex}`;
     const ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';
 
@@ -156,7 +156,7 @@ export function useTerminal() {
       }
     });
 
-    activeTerminal.value = { containerId, windowName, term, fitAddon, ws, containerEl, eventCleanup };
+    activeTerminal.value = { containerId, windowIndex, term, fitAddon, ws, containerEl, eventCleanup };
   }
 
   function fitTerminal(immediate = false) {

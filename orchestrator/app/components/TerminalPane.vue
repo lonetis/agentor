@@ -7,11 +7,10 @@ const { $Terminal, $FitAddon } = useNuxtApp();
 
 const containerIdRef = toRef(props, 'containerId');
 
-const defaultWindow = 'main';
-
 const {
   windows,
-  activeWindowName,
+  activeWindowIndex,
+  defaultWindowIndex,
   createWindow,
   renameWindow,
   closeWindow,
@@ -19,103 +18,114 @@ const {
   destroy: destroyTmuxTabs,
 } = useTmuxTabs(containerIdRef);
 
-// Map of window name -> terminal instance + element ref
+// Map of window index -> terminal instance + element ref
 const terminals = new Map<
-  string,
+  number,
   { instance: ReturnType<typeof useTerminal>; el: HTMLElement | null }
 >();
 
 // Template refs for terminal containers
-const terminalRefs = new Map<string, HTMLElement>();
-function setTerminalRef(name: string, el: Element | null | ComponentPublicInstance) {
+const terminalRefs = new Map<number, HTMLElement>();
+function setTerminalRef(index: number, el: Element | null | ComponentPublicInstance) {
   const htmlEl = (el as ComponentPublicInstance)?.$el ?? el;
   if (htmlEl instanceof HTMLElement) {
-    terminalRefs.set(name, htmlEl);
+    terminalRefs.set(index, htmlEl);
   } else {
-    terminalRefs.delete(name);
+    terminalRefs.delete(index);
   }
 }
 
 // Container element for ResizeObserver
 const terminalsContainer = ref<HTMLElement | null>(null);
 
-function ensureTerminal(windowName: string) {
-  if (terminals.has(windowName)) return;
+function ensureTerminal(windowIndex: number) {
+  if (terminals.has(windowIndex)) return;
   const instance = useTerminal();
-  terminals.set(windowName, { instance, el: null });
+  terminals.set(windowIndex, { instance, el: null });
 }
 
-function connectTerminal(windowName: string) {
-  const entry = terminals.get(windowName);
-  const el = terminalRefs.get(windowName);
+function connectTerminal(windowIndex: number) {
+  const entry = terminals.get(windowIndex);
+  const el = terminalRefs.get(windowIndex);
   if (!entry || !el || !$Terminal || !$FitAddon) return;
 
   entry.el = el;
   el.innerHTML = '';
-  entry.instance.openTerminal(props.containerId, windowName, el, $Terminal, $FitAddon);
+  entry.instance.openTerminal(props.containerId, windowIndex, el, $Terminal, $FitAddon);
 }
 
-function destroyTerminal(windowName: string) {
-  const entry = terminals.get(windowName);
+function destroyTerminal(windowIndex: number) {
+  const entry = terminals.get(windowIndex);
   if (!entry) return;
   entry.instance.destroy();
-  terminals.delete(windowName);
-  terminalRefs.delete(windowName);
+  terminals.delete(windowIndex);
+  terminalRefs.delete(windowIndex);
 }
 
-async function onRename(oldName: string, newName: string) {
-  // Re-key maps optimistically BEFORE the async call so the watcher
-  // (which fires as a microtask after renameWindow mutates windows)
-  // sees the new key and doesn't destroy the live terminal.
-  const entry = terminals.get(oldName);
-  if (entry) {
-    terminals.delete(oldName);
-    terminals.set(newName, entry);
-  }
-  const el = terminalRefs.get(oldName);
-  if (el) {
-    terminalRefs.delete(oldName);
-    terminalRefs.set(newName, el);
-  }
+// Reset a terminal's connection without destroying the instance.
+// Closes the WebSocket and disposes the xterm terminal so that
+// connectTerminal() will create a fresh linked tmux session.
+function resetTerminal(windowIndex: number) {
+  const entry = terminals.get(windowIndex);
+  if (!entry?.el) return;
+  entry.instance.closeTerminal();
+  entry.el = null;
+}
 
-  const success = await renameWindow(oldName, newName);
-  if (!success) {
-    // Undo re-keying on failure
-    const entry = terminals.get(newName);
-    if (entry) {
-      terminals.delete(newName);
-      terminals.set(oldName, entry);
-    }
-    const el = terminalRefs.get(newName);
-    if (el) {
-      terminalRefs.delete(newName);
-      terminalRefs.set(oldName, el);
-    }
-  }
+async function onRename(windowIndex: number, newName: string) {
+  await renameWindow(windowIndex, newName);
+}
+
+// Track known window indices to detect externally-created windows
+let knownWindowIndices = new Set<number>();
+let skipReconnect = false;
+
+// Wrap createWindow to suppress reconnection for UI-initiated creates
+async function handleCreate(name?: string) {
+  skipReconnect = true;
+  await createWindow(name);
+  await nextTick();
+  skipReconnect = false;
 }
 
 // Watch windows list — create/destroy terminal instances as needed
 watch(
   windows,
   (newWindows) => {
-    const currentNames = new Set(newWindows.map((w) => w.name));
+    const currentIndices = new Set(newWindows.map((w) => w.index));
 
     // Destroy terminals for removed windows
-    for (const name of terminals.keys()) {
-      if (!currentNames.has(name)) {
-        destroyTerminal(name);
+    for (const index of terminals.keys()) {
+      if (!currentIndices.has(index)) {
+        destroyTerminal(index);
       }
     }
 
+    // Detect externally-created windows (e.g. ctrl+b+c inside a terminal).
+    // When tmux creates a window via keyboard shortcut, the linked session
+    // switches to the new window, breaking the old tab's window binding.
+    // Reset all connected terminals so they reconnect with correct windows.
+    if (!skipReconnect && knownWindowIndices.size > 0) {
+      const hasNewExternal = [...currentIndices].some((idx) => !knownWindowIndices.has(idx));
+      if (hasNewExternal) {
+        for (const [index, entry] of terminals.entries()) {
+          if (entry.el && currentIndices.has(index)) {
+            resetTerminal(index);
+          }
+        }
+      }
+    }
+    knownWindowIndices = currentIndices;
+
     // Ensure terminal instances exist for all windows (but don't connect hidden ones yet)
     for (const w of newWindows) {
-      ensureTerminal(w.name);
+      ensureTerminal(w.index);
     }
 
     // Only connect the active window after DOM update
     nextTick(() => {
-      const active = activeWindowName.value;
-      if (active) {
+      const active = activeWindowIndex.value;
+      if (active != null) {
         const entry = terminals.get(active);
         if (entry && !entry.el) {
           connectTerminal(active);
@@ -127,14 +137,14 @@ watch(
 );
 
 // When active tab changes: connect if needed, then refit
-watch(activeWindowName, (name) => {
-  if (!name) return;
+watch(activeWindowIndex, (index) => {
+  if (index == null) return;
   nextTick(() => {
-    const entry = terminals.get(name);
+    const entry = terminals.get(index);
     if (!entry) return;
     if (!entry.el) {
       // Lazily connect terminal when it first becomes visible
-      connectTerminal(name);
+      connectTerminal(index);
     } else {
       // Already connected — just refit for the now-visible element
       entry.instance.fitTerminal();
@@ -147,8 +157,8 @@ let resizeObserver: ResizeObserver | null = null;
 onMounted(() => {
   if (!terminalsContainer.value) return;
   resizeObserver = new ResizeObserver(() => {
-    if (!activeWindowName.value) return;
-    const entry = terminals.get(activeWindowName.value);
+    if (activeWindowIndex.value == null) return;
+    const entry = terminals.get(activeWindowIndex.value);
     entry?.instance.fitTerminal(false);
   });
   resizeObserver.observe(terminalsContainer.value);
@@ -157,8 +167,8 @@ onMounted(() => {
 onUnmounted(() => {
   resizeObserver?.disconnect();
   resizeObserver = null;
-  for (const name of [...terminals.keys()]) {
-    destroyTerminal(name);
+  for (const index of [...terminals.keys()]) {
+    destroyTerminal(index);
   }
   destroyTmuxTabs();
 });
@@ -168,20 +178,20 @@ onUnmounted(() => {
   <div class="absolute inset-0 flex flex-col" style="background: var(--terminal-bg);">
     <TmuxTabBar
       :windows="windows"
-      :active-window-name="activeWindowName"
-      :default-window="defaultWindow"
+      :active-window-index="activeWindowIndex"
+      :default-window-index="defaultWindowIndex"
       @activate="activateWindow"
       @close="closeWindow"
-      @create="createWindow"
+      @create="handleCreate"
       @rename="onRename"
     />
 
     <div ref="terminalsContainer" class="relative flex-1 min-h-0">
       <div
         v-for="w in windows"
-        :key="w.name"
-        v-show="w.name === activeWindowName"
-        :ref="(el) => setTerminalRef(w.name, el)"
+        :key="w.index"
+        v-show="w.index === activeWindowIndex"
+        :ref="(el) => setTerminalRef(w.index, el)"
         class="absolute inset-0"
       />
     </div>
