@@ -32,6 +32,12 @@ export interface BuiltInEnvironment {
   enabledAgentsMdIds: string[] | null;
 }
 
+function toText(raw: unknown): string {
+  if (typeof raw === 'string') return raw;
+  if (raw instanceof Uint8Array) return new TextDecoder().decode(raw);
+  return String(raw);
+}
+
 /**
  * Load all built-in skills from server assets (server/built-in/skills/*.md).
  * Each file's basename (without extension) is used as the skill ID.
@@ -44,7 +50,7 @@ export async function loadBuiltInSkills(): Promise<BuiltInSkill[]> {
     if (!key.endsWith('.md')) continue;
     const raw = await storage.getItem(key);
     if (!raw) continue;
-    const content = typeof raw === 'string' ? raw : String(raw);
+    const content = toText(raw);
     const id = key.replace(/\.md$/, '');
     skills.push({ id, name: id, content });
   }
@@ -63,7 +69,7 @@ export async function loadBuiltInAgentsMd(): Promise<BuiltInAgentsMdEntry[]> {
     if (!key.endsWith('.md')) continue;
     const raw = await storage.getItem(key);
     if (!raw) continue;
-    const content = typeof raw === 'string' ? raw : String(raw);
+    const content = toText(raw);
     const id = key.replace(/\.md$/, '');
     entries.push({ id, name: id, content });
   }
@@ -82,7 +88,7 @@ export async function loadBuiltInInitScripts(): Promise<BuiltInInitScript[]> {
     if (!key.endsWith('.sh')) continue;
     const raw = await storage.getItem(key);
     if (!raw) continue;
-    const content = typeof raw === 'string' ? raw : String(raw);
+    const content = toText(raw);
     const id = key.replace(/\.sh$/, '');
     scripts.push({ id, name: id, content: content.trim() });
   }
@@ -102,7 +108,7 @@ export async function loadBuiltInEnvironments(): Promise<BuiltInEnvironment[]> {
     const raw = await storage.getItem(key);
     if (!raw) continue;
     const id = key.replace(/\.json$/, '');
-    const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const data = typeof raw === 'object' && !(raw instanceof Uint8Array) ? raw : JSON.parse(toText(raw));
     environments.push({ id, name: id, ...data });
   }
   return environments;
