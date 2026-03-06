@@ -19,17 +19,15 @@ services:
       - agentor-orchestrator-node-modules:/app/node_modules
       - /var/run/docker.sock:/var/run/docker.sock
       # Storage mode is auto-detected from the mount type:
+      #   Directory mode (host bind mount):   ./data:/data   (default)
       #   Volume mode (Docker named volume):  agentor-data:/data
-      #   Directory mode (host bind mount):   ./data:/data
-      - agentor-data:/data
+      - ./data:/data
       - ./.cred:/cred
     env_file: .env
 
 volumes:
   agentor-orchestrator-node-modules:
     name: agentor-orchestrator-node-modules
-  agentor-data:
-    name: agentor-data
 
 networks:
   agentor-net:

@@ -114,14 +114,14 @@ Open **http://localhost:3000**
 
 ## Storage
 
-By default, all persistent data lives in a Docker named volume (`agentor-data`). To use a **host directory** instead (easier to browse, back up, and migrate), change the `/data` volume mount in your compose file:
+By default, all persistent data lives in `./data/` on the host — easy to browse, back up, and migrate. To use a Docker named volume instead, change the `/data` mount in your compose file:
 
 ```yaml
-# Volume mode (default):
-- agentor-data:/data
-
-# Directory mode:
+# Directory mode (default):
 - ./data:/data
+
+# Volume mode:
+- agentor-data:/data
 ```
 
 The storage mode is auto-detected from the mount type — no env var changes needed. In directory mode, worker workspaces live at `./data/workspaces/` and can be accessed directly from the host.
