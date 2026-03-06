@@ -110,9 +110,11 @@ Open **http://localhost:3000**
 > [!NOTE]
 > The port mapper runs as a separate container (`agentor-mapper`) managed automatically by the orchestrator. It is created when the first port mapping is added and removed when all mappings are deleted. Mapped ports are arbitrary — no fixed ranges.
 
-### Storage Modes
+---
 
-By default, data is stored in a Docker named volume (`agentor-data`). To use a **host directory** instead (easier to browse, back up, and migrate), change the volume mount in your compose file:
+## Storage
+
+By default, all persistent data lives in a Docker named volume (`agentor-data`). To use a **host directory** instead (easier to browse, back up, and migrate), change the `/data` volume mount in your compose file:
 
 ```yaml
 # Volume mode (default):
@@ -122,9 +124,7 @@ By default, data is stored in a Docker named volume (`agentor-data`). To use a *
 - ./data:/data
 ```
 
-The storage mode is auto-detected — no env var changes needed. In directory mode, worker workspaces live at `./data/workspaces/` and can be accessed directly from the host.
-
----
+The storage mode is auto-detected from the mount type — no env var changes needed. In directory mode, worker workspaces live at `./data/workspaces/` and can be accessed directly from the host.
 
 ## Ports
 
