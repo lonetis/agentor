@@ -64,8 +64,6 @@ export class DockerService {
     mounts?: MountConfig[];
     dockerEnabled?: boolean;
     credentialBinds?: string[];
-    environmentId?: string;
-    environmentName?: string;
     environmentJson: EnvironmentJsonPayload;
     skillsJson: SkillJsonEntry[];
     agentsMdJson: AgentsMdJsonEntry[];
@@ -149,12 +147,6 @@ export class DockerService {
         'agentor.created': new Date().toISOString(),
         ...(opts.displayName ? { 'agentor.display-name': opts.displayName } : {}),
         ...(repos?.length ? { 'agentor.repos': JSON.stringify(repos) } : {}),
-        ...(opts.cpuLimit ? { 'agentor.cpu-limit': String(opts.cpuLimit) } : {}),
-        ...(opts.memoryLimit ? { 'agentor.memory-limit': opts.memoryLimit } : {}),
-        ...(networkMode && networkMode !== 'full' ? { 'agentor.network-mode': networkMode } : {}),
-        ...(opts.dockerEnabled ? { 'agentor.docker-enabled': 'true' } : {}),
-        ...(opts.environmentId ? { 'agentor.environment-id': opts.environmentId } : {}),
-        ...(opts.environmentName ? { 'agentor.environment-name': opts.environmentName } : {}),
       },
       HostConfig: {
         NetworkMode: this.config.dockerNetwork,

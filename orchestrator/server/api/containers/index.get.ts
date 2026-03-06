@@ -25,6 +25,12 @@ defineRouteMeta({
               image: { type: 'string' },
               imageId: { type: 'string' },
               labels: { type: 'object', additionalProperties: { type: 'string' } },
+              environmentId: { type: 'string' },
+              environmentName: { type: 'string' },
+              cpuLimit: { type: 'number' },
+              memoryLimit: { type: 'string' },
+              networkMode: { type: 'string', enum: ['block-all', 'block', 'package-managers', 'full', 'custom'] },
+              dockerEnabled: { type: 'boolean' },
             },
           },
           RepoConfig: {

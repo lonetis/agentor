@@ -115,8 +115,6 @@ function makeOpts(overrides: Record<string, unknown> = {}): {
   mounts?: { source: string; target: string; readOnly?: boolean }[];
   dockerEnabled?: boolean;
   credentialBinds?: string[];
-  environmentId?: string;
-  environmentName?: string;
   environmentJson: EnvironmentJsonPayload;
   skillsJson: SkillJsonEntry[];
   agentsMdJson: AgentsMdJsonEntry[];
@@ -260,19 +258,15 @@ describe('DockerService', () => {
       expect(call.Labels['agentor.repos']).toBe(JSON.stringify(repos));
     });
 
-    it('passes environment JSON and labels', async () => {
+    it('passes environment JSON env var', async () => {
       await service.createWorkerContainer(makeOpts({
         environmentJson: { ...defaultEnvironmentJson, networkMode: 'custom', allowedDomains: ['example.com'] },
-        environmentId: 'env-1',
-        environmentName: 'Test Env',
       }));
       const call = mockCreateContainer.mock.calls[0]![0];
       const envJson = call.Env.find((e: string) => e.startsWith('ENVIRONMENT='));
       const parsed = JSON.parse(envJson!.substring(12));
       expect(parsed.networkMode).toBe('custom');
       expect(parsed.allowedDomains).toEqual(['example.com']);
-      expect(call.Labels['agentor.environment-id']).toBe('env-1');
-      expect(call.Labels['agentor.environment-name']).toBe('Test Env');
     });
   });
 
@@ -647,14 +641,6 @@ describe('DockerService', () => {
       const call = mockCreateContainer.mock.calls[0]![0];
       expect(call.HostConfig.Binds).toContain('/host/data:/data:ro');
       expect(call.HostConfig.Binds).toContain('/host/config:/config');
-    });
-
-    it('does not set network-mode label for full mode', async () => {
-      await service.createWorkerContainer(makeOpts({
-        environmentJson: { ...defaultEnvironmentJson, networkMode: 'full' },
-      }));
-      const call = mockCreateContainer.mock.calls[0]![0];
-      expect(call.Labels['agentor.network-mode']).toBeUndefined();
     });
 
     it('no Memory or NanoCpus when limits are zero/empty', async () => {

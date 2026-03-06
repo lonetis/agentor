@@ -201,9 +201,12 @@ export class ContainerManager {
         }
       }
 
+      const name = dc.Names[0]?.replace(/^\//, '') || dc.Id.slice(0, 12);
+      const worker = this.workerStore?.get(name);
+
       this.containers.set(dc.Id, {
         id: dc.Id,
-        name: dc.Names[0]?.replace(/^\//, '') || dc.Id.slice(0, 12),
+        name,
         displayName: labels['agentor.display-name'] || undefined,
         repos: repos?.length ? repos : undefined,
         status: ContainerManager.STATE_MAP[dc.State] || 'error',
@@ -213,6 +216,12 @@ export class ContainerManager {
         labels: Object.fromEntries(
           Object.entries(labels).filter(([k]) => k.startsWith('agentor.') && k !== 'agentor.managed')
         ),
+        environmentId: worker?.environmentId ?? labels['agentor.environment-id'],
+        environmentName: worker?.environmentName ?? labels['agentor.environment-name'],
+        cpuLimit: worker?.cpuLimit ?? parseLabelFloat(labels['agentor.cpu-limit']),
+        memoryLimit: worker?.memoryLimit ?? labels['agentor.memory-limit'] ?? undefined,
+        networkMode: (worker?.networkMode ?? labels['agentor.network-mode'] ?? undefined) as NetworkMode | undefined,
+        dockerEnabled: worker?.dockerEnabled ?? (labels['agentor.docker-enabled'] === 'true' ? true : undefined),
       });
     }
   }
@@ -258,8 +267,6 @@ export class ContainerManager {
       mounts: request.mounts,
       dockerEnabled,
       credentialBinds: this.credentialMountManager?.getBindMounts(),
-      environmentId: request.environmentId,
-      environmentName: envConfig.environmentName,
       environmentJson: envConfig.environmentJson,
       skillsJson: envConfig.skillsJson,
       agentsMdJson: envConfig.agentsMdJson,
@@ -268,6 +275,8 @@ export class ContainerManager {
     });
 
     const image = this.config.workerImagePrefix + this.config.workerImage;
+
+    const networkMode = envConfig.environmentJson.networkMode as NetworkMode;
 
     const containerInfo: ContainerInfo = {
       id: container.id,
@@ -279,6 +288,12 @@ export class ContainerManager {
       image,
       imageId: '',
       labels: {},
+      environmentId: request.environmentId,
+      environmentName: envConfig.environmentName,
+      cpuLimit,
+      memoryLimit,
+      networkMode,
+      dockerEnabled,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -294,7 +309,7 @@ export class ContainerManager {
         repos: repos.length > 0 ? repos : undefined,
         cpuLimit,
         memoryLimit,
-        networkMode: envConfig.environmentJson.networkMode as NetworkMode,
+        networkMode,
         dockerEnabled,
         image,
         imageId: '',
@@ -425,8 +440,6 @@ export class ContainerManager {
       memoryLimit,
       dockerEnabled,
       credentialBinds: this.credentialMountManager?.getBindMounts(),
-      environmentId: worker.environmentId,
-      environmentName: envConfig.environmentName || worker.environmentName,
       environmentJson: envConfig.environmentJson,
       skillsJson: envConfig.skillsJson,
       agentsMdJson: envConfig.agentsMdJson,
@@ -447,6 +460,12 @@ export class ContainerManager {
       image,
       imageId: '',
       labels: {},
+      environmentId: worker.environmentId,
+      environmentName: envConfig.environmentName || worker.environmentName,
+      cpuLimit,
+      memoryLimit,
+      networkMode: worker.networkMode,
+      dockerEnabled,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -500,14 +519,14 @@ export class ContainerManager {
       id: info.id,
       name: info.name,
       displayName: info.displayName,
-      environmentId: info.labels['agentor.environment-id'],
-      environmentName: info.labels['agentor.environment-name'],
+      environmentId: info.environmentId,
+      environmentName: info.environmentName,
       createdAt: info.createdAt,
       repos: info.repos,
-      cpuLimit: parseLabelFloat(info.labels['agentor.cpu-limit']),
-      memoryLimit: info.labels['agentor.memory-limit'] || undefined,
-      networkMode: info.labels['agentor.network-mode'] as NetworkMode | undefined,
-      dockerEnabled: info.labels['agentor.docker-enabled'] === 'true',
+      cpuLimit: info.cpuLimit,
+      memoryLimit: info.memoryLimit,
+      networkMode: info.networkMode,
+      dockerEnabled: info.dockerEnabled,
       image: info.image,
       imageId: info.imageId,
       labels: info.labels,

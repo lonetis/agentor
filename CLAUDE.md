@@ -96,14 +96,8 @@ Docker labels remain the **runtime** source of truth for active containers. `Con
 - `agentor.created` — ISO timestamp
 - `agentor.display-name` — optional friendly name
 - `agentor.repos` — JSON-stringified array of repo configs
-- `agentor.cpu-limit` — CPU core limit
-- `agentor.memory-limit` — memory limit string
-- `agentor.network-mode` — firewall mode (omitted if `full`)
-- `agentor.docker-enabled` — Docker-in-Docker flag
-- `agentor.environment-id` — source environment ID
-- `agentor.environment-name` — source environment name
 
-The detail modal auto-displays all `agentor.*` labels (except internal ones like `managed`), so adding a new label to container creation automatically surfaces it in the UI.
+Configuration data (CPU limit, memory limit, network mode, Docker-in-Docker, environment ID/name) is persisted in WorkerStore (`workers.json`), not in Docker labels. The detail modal reads these fields from `ContainerInfo` (populated from WorkerStore during `sync()`). For backward compatibility, `sync()` falls back to reading legacy labels (`agentor.cpu-limit`, `agentor.memory-limit`, `agentor.network-mode`, `agentor.docker-enabled`, `agentor.environment-id`, `agentor.environment-name`) from containers created before this change.
 
 ## Unified Worker Image
 

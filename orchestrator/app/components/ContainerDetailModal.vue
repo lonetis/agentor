@@ -18,39 +18,18 @@ const formattedCreatedAt = computed(() => {
   return new Date(props.container.createdAt).toLocaleString();
 });
 
-// Labels already shown in dedicated sections — exclude from generic display
-const DEDICATED_LABELS = new Set([
-  'agentor.created',
-  'agentor.novnc-port',
-  'agentor.display-name',
-  'agentor.repos',
-]);
-
-const configLabels = computed(() => {
-  if (!props.container.labels) return [];
-  return Object.entries(props.container.labels)
-    .filter(([k]) => !DEDICATED_LABELS.has(k))
-    .map(([k, v]) => ({ key: humanizeLabel(k), value: formatValue(v) }));
+const configFields = computed(() => {
+  const c = props.container;
+  const fields: { key: string; value: string }[] = [];
+  if (c.environmentName) fields.push({ key: 'Environment', value: c.environmentName });
+  if (c.cpuLimit != null) fields.push({ key: 'CPU Limit', value: `${c.cpuLimit} cores` });
+  if (c.memoryLimit) fields.push({ key: 'Memory Limit', value: c.memoryLimit });
+  if (c.networkMode && c.networkMode !== 'full') fields.push({ key: 'Network Mode', value: c.networkMode });
+  if (c.dockerEnabled) fields.push({ key: 'Docker Enabled', value: 'Yes' });
+  return fields;
 });
 
 const repos = computed(() => props.container.repos || []);
-
-function humanizeLabel(key: string): string {
-  const name = key.replace('agentor.', '');
-  return name
-    .split('-')
-    .map((word) => {
-      if (['cpu', 'id', 'vnc'].includes(word)) return word.toUpperCase();
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    })
-    .join(' ');
-}
-
-function formatValue(value: string): string {
-  if (value === 'true') return 'Yes';
-  if (value === 'false') return 'No';
-  return value;
-}
 </script>
 
 <template>
@@ -89,13 +68,13 @@ function formatValue(value: string): string {
             </dl>
           </section>
 
-          <!-- Configuration from labels (extensible — any new agentor.* label appears here) -->
-          <section v-if="configLabels.length > 0">
+          <!-- Configuration -->
+          <section v-if="configFields.length > 0">
             <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Configuration</h3>
             <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-              <template v-for="label in configLabels" :key="label.key">
-                <dt class="text-gray-500 dark:text-gray-400">{{ label.key }}</dt>
-                <dd class="text-gray-900 dark:text-white">{{ label.value }}</dd>
+              <template v-for="field in configFields" :key="field.key">
+                <dt class="text-gray-500 dark:text-gray-400">{{ field.key }}</dt>
+                <dd class="text-gray-900 dark:text-white">{{ field.value }}</dd>
               </template>
             </dl>
           </section>

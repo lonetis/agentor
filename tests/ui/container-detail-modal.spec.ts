@@ -75,13 +75,13 @@ test.describe.serial('Container Detail Modal', () => {
     await expect(dialog.getByText('Created', { exact: true })).toBeVisible();
   });
 
-  test('shows Configuration section with Docker labels', async ({ page }) => {
+  test('shows Configuration section with worker config', async ({ page }) => {
     await goToDashboard(page);
     await page.waitForSelector(`h3:has-text("${displayName}")`, { timeout: 15_000 });
     await page.locator(`h3:has-text("${displayName}")`).first().click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
-    // Configuration section should be visible (agentor.* labels are auto-displayed)
+    // Configuration section shows worker config fields (environment, docker, etc.)
     await expect(dialog.getByText('Configuration', { exact: true })).toBeVisible();
   });
 
@@ -115,15 +115,14 @@ test.describe.serial('Container Detail Modal', () => {
     await expect(dialog).toBeHidden({ timeout: 5_000 });
   });
 
-  test('Configuration section shows agentor Docker labels', async ({ page }) => {
+  test('Configuration section shows environment name', async ({ page }) => {
     await goToDashboard(page);
     await page.waitForSelector(`h3:has-text("${displayName}")`, { timeout: 15_000 });
     await page.locator(`h3:has-text("${displayName}")`).first().click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
-    // The Configuration section auto-displays agentor.* labels
-    // At minimum, the "created" label (timestamp) should be present
-    await expect(dialog.getByText('created')).toBeVisible();
+    // The Configuration section shows worker config fields
+    await expect(dialog.getByText('Environment', { exact: true })).toBeVisible();
   });
 
   test('Container ID is displayed as truncated hash', async ({ page }) => {
@@ -138,14 +137,13 @@ test.describe.serial('Container Detail Modal', () => {
     await expect(containerIdLabel).toBeVisible();
   });
 
-  test('Configuration section shows Docker label values', async ({ page }) => {
+  test('Configuration section shows Docker Enabled when applicable', async ({ page }) => {
     await goToDashboard(page);
     await page.waitForSelector(`h3:has-text("${displayName}")`, { timeout: 15_000 });
     await page.locator(`h3:has-text("${displayName}")`).first().click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
-    // The humanizeLabel() function renders agentor.* labels as humanized terms
-    // "agentor.docker-enabled" → "Docker Enabled", with value "Yes" (formatValue)
+    // Docker Enabled is shown when the worker has dockerEnabled=true
     await expect(dialog.getByText('Docker Enabled')).toBeVisible();
   });
 });

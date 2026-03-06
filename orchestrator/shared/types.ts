@@ -42,6 +42,12 @@ export interface ContainerInfo {
   image: string;
   imageId: string;
   labels: Record<string, string>;
+  environmentId?: string;
+  environmentName?: string;
+  cpuLimit?: number;
+  memoryLimit?: string;
+  networkMode?: NetworkMode;
+  dockerEnabled?: boolean;
 }
 
 export interface CreateContainerRequest {
