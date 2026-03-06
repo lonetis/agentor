@@ -4,10 +4,7 @@ import type { Config } from './config';
 import type { AgentUsageInfo, AgentUsageStatus, AgentAuthType, UsageWindow } from '../../shared/types';
 
 const CRED_DIR = '/cred';
-const POLL_INTERVAL_MS = 300_000;
-
-/** Per-agent backoff state for rate-limited endpoints */
-const rateLimitBackoff = new Map<string, number>(); // agentId → earliest retry timestamp (ms)
+const POLL_INTERVAL_MS = 60_000;
 
 const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const CODEX_TOKEN_ENDPOINT = 'https://auth.openai.com/oauth/token';
@@ -41,12 +38,17 @@ export class UsageChecker {
   private config: Config;
   private status: AgentUsageStatus = { agents: [] };
   private pollInterval: ReturnType<typeof setInterval> | null = null;
+  /** Per-agent backoff state for rate-limited endpoints (persisted to disk) */
+  private rateLimitBackoff = new Map<string, number>();
+  private backoffFilePath: string;
 
   constructor(config: Config) {
     this.config = config;
+    this.backoffFilePath = join(config.dataDir, 'usage-backoff.json');
   }
 
   async init(): Promise<void> {
+    await this.loadBackoff();
     await this.fetchAll();
 
     const hasAnyOAuth = this.status.agents.some((a) => a.authType === 'oauth');
@@ -61,6 +63,33 @@ export class UsageChecker {
 
   getStatus(): AgentUsageStatus {
     return this.status;
+  }
+
+  private async loadBackoff(): Promise<void> {
+    try {
+      const raw = await readFile(this.backoffFilePath, 'utf-8');
+      const data = JSON.parse(raw) as Record<string, number>;
+      const now = Date.now();
+      for (const [key, ts] of Object.entries(data)) {
+        if (typeof ts === 'number' && ts > now) {
+          this.rateLimitBackoff.set(key, ts);
+        }
+      }
+    } catch {
+      // File doesn't exist or is invalid — start fresh
+    }
+  }
+
+  private async saveBackoff(): Promise<void> {
+    const obj: Record<string, number> = {};
+    for (const [key, ts] of this.rateLimitBackoff) {
+      obj[key] = ts;
+    }
+    try {
+      await writeFile(this.backoffFilePath, JSON.stringify(obj));
+    } catch (err) {
+      console.error('[usage-checker] failed to save backoff state:', err instanceof Error ? err.message : err);
+    }
   }
 
   private async fetchAll(): Promise<void> {
@@ -115,7 +144,7 @@ export class UsageChecker {
     if (!token) return base;
 
     // Skip if rate-limited
-    const backoffUntil = rateLimitBackoff.get('claude');
+    const backoffUntil = this.rateLimitBackoff.get('claude');
     if (backoffUntil && Date.now() < backoffUntil) {
       base.error = `Rate limited — retrying after ${new Date(backoffUntil).toISOString()}`;
       return base;
@@ -133,13 +162,14 @@ export class UsageChecker {
         const retryAfter = resp.headers.get('retry-after');
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
-        rateLimitBackoff.set('claude', Date.now() + delayMs);
+        this.rateLimitBackoff.set('claude', Date.now() + delayMs);
+        await this.saveBackoff();
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
 
       // Clear backoff on success or non-429 responses
-      rateLimitBackoff.delete('claude');
+      if (this.rateLimitBackoff.delete('claude')) await this.saveBackoff();
 
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
@@ -217,7 +247,7 @@ export class UsageChecker {
     }
 
     // Skip if rate-limited
-    const codexBackoff = rateLimitBackoff.get('codex');
+    const codexBackoff = this.rateLimitBackoff.get('codex');
     if (codexBackoff && Date.now() < codexBackoff) {
       base.error = `Rate limited — retrying after ${new Date(codexBackoff).toISOString()}`;
       return base;
@@ -237,12 +267,13 @@ export class UsageChecker {
         const retryAfter = resp.headers.get('retry-after');
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
-        rateLimitBackoff.set('codex', Date.now() + delayMs);
+        this.rateLimitBackoff.set('codex', Date.now() + delayMs);
+        await this.saveBackoff();
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
 
-      rateLimitBackoff.delete('codex');
+      if (this.rateLimitBackoff.delete('codex')) await this.saveBackoff();
 
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
@@ -360,7 +391,7 @@ export class UsageChecker {
     }
 
     // Skip if rate-limited
-    const geminiBackoff = rateLimitBackoff.get('gemini');
+    const geminiBackoff = this.rateLimitBackoff.get('gemini');
     if (geminiBackoff && Date.now() < geminiBackoff) {
       base.error = `Rate limited — retrying after ${new Date(geminiBackoff).toISOString()}`;
       return base;
@@ -380,12 +411,13 @@ export class UsageChecker {
         const retryAfter = resp.headers.get('retry-after');
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
-        rateLimitBackoff.set('gemini', Date.now() + delayMs);
+        this.rateLimitBackoff.set('gemini', Date.now() + delayMs);
+        await this.saveBackoff();
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
 
-      rateLimitBackoff.delete('gemini');
+      if (this.rateLimitBackoff.delete('gemini')) await this.saveBackoff();
 
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
