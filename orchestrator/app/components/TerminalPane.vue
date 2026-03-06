@@ -179,7 +179,7 @@ onUnmounted(() => {
     <div ref="terminalsContainer" class="relative flex-1 min-h-0">
       <div
         v-for="w in windows"
-        :key="w.index"
+        :key="w.name"
         v-show="w.name === activeWindowName"
         :ref="(el) => setTerminalRef(w.name, el)"
         class="absolute inset-0"
