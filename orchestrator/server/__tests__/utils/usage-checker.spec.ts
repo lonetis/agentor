@@ -4,10 +4,12 @@ import type { Config } from '../../utils/config';
 // --- Mock node:fs/promises ---
 const mockReadFile = vi.fn();
 const mockWriteFile = vi.fn().mockResolvedValue(undefined);
+const mockUnlink = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('node:fs/promises', () => ({
   readFile: (...args: unknown[]) => mockReadFile(...args),
   writeFile: (...args: unknown[]) => mockWriteFile(...args),
+  unlink: (...args: unknown[]) => mockUnlink(...args),
 }));
 
 import { UsageChecker } from '../../utils/usage-checker';

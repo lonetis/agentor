@@ -305,9 +305,9 @@ Automatic image update detection and per-image or bulk updates for production de
 Polls agent usage APIs to show remaining capacity in the sidebar. Only works for OAuth-authenticated agents (credential files in `.cred/`). API key auth has no usage endpoints.
 
 **Architecture:**
-- `UsageChecker` (`usage-checker.ts`): Singleton + 60s polling (follows `UpdateChecker` pattern). Reads credential files from `/cred/`, detects auth type per agent (OAuth > API key > none), fetches usage in parallel
-- `UsagePanel.vue`: Sidebar component showing per-agent auth badge + progress bars per usage window
-- `useUsage.ts`: composable for 60s polling of `/api/usage`
+- `UsageChecker` (`usage-checker.ts`): Singleton + 5min polling. Per-agent state (results, backoff, last fetch time) persisted to `usage.json` in the data directory — each agent tracks its own fetch time and backoff independently, so a failure in one agent doesn't affect others. On restart, serves persisted results immediately; only re-fetches agents whose data is stale. Reads credential files from `/cred/`, detects auth type per agent (OAuth > API key > none), fetches usage in parallel
+- `UsagePanel.vue`: Sidebar component showing per-agent auth badge + progress bars per usage window + "Fetched Xm ago" relative timestamp
+- `useUsage.ts`: composable for 5min polling of `/api/usage`
 
 **Supported agents:**
 
@@ -747,6 +747,7 @@ All API routes return JSON only (no HTML partials).
 | DELETE | `/api/agents-md/:id` | Delete custom AGENTS.md entry |
 | GET | `/api/credentials` | Credential file status per agent (OAuth bind mounts) |
 | GET | `/api/usage` | Agent usage status (OAuth usage windows per agent) |
+| POST | `/api/usage/refresh` | Trigger immediate usage refresh |
 | GET | `/api/updates` | Update status (image digests, production mode) |
 | POST | `/api/updates/check` | Trigger manual update check |
 | POST | `/api/updates/apply` | Pull updated images, recreate mapper/orchestrator |

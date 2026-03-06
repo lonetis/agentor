@@ -105,6 +105,7 @@ export interface AgentUsageInfo {
   planType?: string;
   error?: string;
   lastChecked?: string;
+  lastFetchTime?: string;
 }
 
 export interface AgentUsageStatus {

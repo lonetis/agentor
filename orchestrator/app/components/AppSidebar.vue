@@ -47,6 +47,7 @@ const usageCollapsed = computed({
   get: () => uiState.value.sidebar.panels.usage,
   set: (v: boolean) => setPanelCollapsed('usage', v),
 });
+const { refreshing: usageRefreshing, refresh: usageRefresh } = useUsage();
 const imagesCollapsed = computed({
   get: () => uiState.value.sidebar.panels.images,
   set: (v: boolean) => setPanelCollapsed('images', v),
@@ -201,19 +202,32 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
 
     <!-- Usage (always visible, collapsible) -->
     <div class="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
-      <button
-        class="w-full flex items-center justify-between px-4 py-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-        @click="usageCollapsed = !usageCollapsed"
-      >
-        Usage
-        <svg
-          class="w-3.5 h-3.5 transition-transform"
-          :class="usageCollapsed ? '-rotate-90' : ''"
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+      <div class="flex items-center px-4 py-2">
+        <span class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Usage</span>
+        <button
+          class="ml-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+          :class="{ 'animate-spin': usageRefreshing }"
+          :disabled="usageRefreshing"
+          title="Refresh usage"
+          @click="usageRefresh()"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+        <button
+          class="ml-auto text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+          @click="usageCollapsed = !usageCollapsed"
+        >
+          <svg
+            class="w-3.5 h-3.5 transition-transform"
+            :class="usageCollapsed ? '-rotate-90' : ''"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
       <div v-if="!usageCollapsed">
         <UsagePanel />
       </div>

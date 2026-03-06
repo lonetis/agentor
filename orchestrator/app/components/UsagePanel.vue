@@ -3,6 +3,11 @@ import type { AgentUsageInfo } from '~/types';
 
 const { status } = useUsage();
 
+const now = ref(Date.now());
+let nowTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => { nowTimer = setInterval(() => { now.value = Date.now(); }, 30_000); });
+onUnmounted(() => { if (nowTimer) clearInterval(nowTimer); });
+
 function barColor(utilization: number): string {
   if (utilization >= 80) return 'bg-red-500';
   if (utilization >= 50) return 'bg-amber-500';
@@ -33,6 +38,16 @@ function relativeTime(iso: string | null): string {
   return `${days}d ${hours % 24}h`;
 }
 
+function fetchedAgo(iso: string | undefined): string {
+  if (!iso) return '';
+  const diff = now.value - new Date(iso).getTime();
+  if (diff < 60_000) return 'just now';
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m ago`;
+}
+
 function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
   switch (agent.authType) {
     case 'oauth': return { label: 'OAuth', class: 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' };
@@ -53,6 +68,12 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
         <!-- Agent header -->
         <div class="flex items-center gap-1.5">
           <span class="text-xs font-medium text-gray-600 dark:text-gray-400">{{ agent.displayName }}</span>
+          <span
+            v-if="fetchedAgo(agent.lastFetchTime)"
+            class="text-[9px] text-gray-400 dark:text-gray-500"
+          >
+            {{ fetchedAgo(agent.lastFetchTime) }}
+          </span>
           <span
             v-if="agent.planType"
             class="px-1 py-0.5 text-[9px] font-medium rounded bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300"
@@ -104,6 +125,7 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
         <div v-if="agent.error" class="mt-0.5">
           <span class="text-[10px] text-red-500 dark:text-red-400">{{ agent.error }}</span>
         </div>
+
       </div>
     </div>
   </div>

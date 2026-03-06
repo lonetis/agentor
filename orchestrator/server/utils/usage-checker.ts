@@ -1,10 +1,19 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Config } from './config';
 import type { AgentUsageInfo, AgentUsageStatus, AgentAuthType, UsageWindow } from '../../shared/types';
 
 const CRED_DIR = '/cred';
-const POLL_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 300_000;
+
+interface AgentState {
+  info: AgentUsageInfo;
+  lastFetchTime: number;
+}
+
+interface PersistedUsageState {
+  agents: Record<string, { info: AgentUsageInfo; lastFetchTime: number; backoffUntil: number }>;
+}
 
 const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const CODEX_TOKEN_ENDPOINT = 'https://auth.openai.com/oauth/token';
@@ -36,30 +45,31 @@ interface GeminiCredFile {
 
 export class UsageChecker {
   private config: Config;
-  private status: AgentUsageStatus = { agents: [] };
+  private agentStates = new Map<string, AgentState>();
   private pollInterval: ReturnType<typeof setInterval> | null = null;
   /** Per-agent backoff state for rate-limited endpoints (persisted to disk) */
   private rateLimitBackoff = new Map<string, number>();
-  private backoffFilePath: string;
-  /** Timestamp of last successful fetchAll (persisted to survive restarts) */
-  private lastFetchTime = 0;
-  private lastFetchFilePath: string;
+  private stateFilePath: string;
 
   constructor(config: Config) {
     this.config = config;
-    this.backoffFilePath = join(config.dataDir, 'usage-backoff.json');
-    this.lastFetchFilePath = join(config.dataDir, 'usage-last-fetch.json');
+    this.stateFilePath = join(config.dataDir, 'usage.json');
   }
 
   async init(): Promise<void> {
-    await this.loadBackoff();
-    await this.loadLastFetchTime();
+    await this.loadState();
+    await this.deleteLegacyFiles();
 
-    const elapsed = Date.now() - this.lastFetchTime;
-    if (elapsed >= POLL_INTERVAL_MS) {
+    const now = Date.now();
+    const anyStale = !this.agentStates.size || [...this.agentStates.values()].some(
+      (s) => now - s.lastFetchTime >= POLL_INTERVAL_MS,
+    );
+
+    if (anyStale) {
       await this.fetchAll();
     } else {
-      console.log(`[usage-checker] skipping initial fetch (${Math.round(elapsed / 1000)}s since last check)`);
+      const oldest = Math.min(...[...this.agentStates.values()].map((s) => s.lastFetchTime));
+      console.log(`[usage-checker] skipping initial fetch (${Math.round((now - oldest) / 1000)}s since oldest check, serving persisted data)`);
     }
 
     // Detect OAuth from credential files so polling starts even when the initial fetch was skipped
@@ -73,8 +83,17 @@ export class UsageChecker {
     }
   }
 
+  async refresh(): Promise<AgentUsageStatus> {
+    await this.fetchAll();
+    return this.getStatus();
+  }
+
   getStatus(): AgentUsageStatus {
-    return this.status;
+    const agents = [...this.agentStates.values()].map((s) => ({
+      ...s.info,
+      lastFetchTime: s.lastFetchTime > 0 ? new Date(s.lastFetchTime).toISOString() : undefined,
+    }));
+    return { agents };
   }
 
   private async hasOAuthCredentials(): Promise<boolean> {
@@ -86,34 +105,22 @@ export class UsageChecker {
     return !!(claude?.claudeAiOauth?.accessToken || codex?.tokens?.access_token || gemini?.access_token);
   }
 
-  private async loadLastFetchTime(): Promise<void> {
+  private async loadState(): Promise<void> {
     try {
-      const raw = await readFile(this.lastFetchFilePath, 'utf-8');
-      const ts = JSON.parse(raw) as number;
-      if (typeof ts === 'number' && ts > 0) {
-        this.lastFetchTime = ts;
-      }
-    } catch {
-      // File doesn't exist or is invalid — treat as never fetched
-    }
-  }
-
-  private async saveLastFetchTime(): Promise<void> {
-    try {
-      await writeFile(this.lastFetchFilePath, JSON.stringify(this.lastFetchTime));
-    } catch (err) {
-      console.error('[usage-checker] failed to save last fetch time:', err instanceof Error ? err.message : err);
-    }
-  }
-
-  private async loadBackoff(): Promise<void> {
-    try {
-      const raw = await readFile(this.backoffFilePath, 'utf-8');
-      const data = JSON.parse(raw) as Record<string, number>;
-      const now = Date.now();
-      for (const [key, ts] of Object.entries(data)) {
-        if (typeof ts === 'number' && ts > now) {
-          this.rateLimitBackoff.set(key, ts);
+      const raw = await readFile(this.stateFilePath, 'utf-8');
+      const data = JSON.parse(raw) as PersistedUsageState;
+      if (data.agents && typeof data.agents === 'object') {
+        const now = Date.now();
+        for (const [id, entry] of Object.entries(data.agents)) {
+          if (entry.info) {
+            this.agentStates.set(id, {
+              info: entry.info,
+              lastFetchTime: typeof entry.lastFetchTime === 'number' ? entry.lastFetchTime : 0,
+            });
+          }
+          if (typeof entry.backoffUntil === 'number' && entry.backoffUntil > now) {
+            this.rateLimitBackoff.set(id, entry.backoffUntil);
+          }
         }
       }
     } catch {
@@ -121,27 +128,48 @@ export class UsageChecker {
     }
   }
 
-  private async saveBackoff(): Promise<void> {
-    const obj: Record<string, number> = {};
-    for (const [key, ts] of this.rateLimitBackoff) {
-      obj[key] = ts;
+  private async saveState(): Promise<void> {
+    const agents: PersistedUsageState['agents'] = {};
+    for (const [id, state] of this.agentStates) {
+      agents[id] = {
+        info: state.info,
+        lastFetchTime: state.lastFetchTime,
+        backoffUntil: this.rateLimitBackoff.get(id) ?? 0,
+      };
     }
     try {
-      await writeFile(this.backoffFilePath, JSON.stringify(obj));
+      await writeFile(this.stateFilePath, JSON.stringify({ agents }));
     } catch (err) {
-      console.error('[usage-checker] failed to save backoff state:', err instanceof Error ? err.message : err);
+      console.error('[usage-checker] failed to save state:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  private async deleteLegacyFiles(): Promise<void> {
+    const legacyFiles = [
+      join(this.config.dataDir, 'usage-backoff.json'),
+      join(this.config.dataDir, 'usage-last-fetch.json'),
+    ];
+    for (const file of legacyFiles) {
+      try { await unlink(file); } catch { /* doesn't exist — fine */ }
     }
   }
 
   private async fetchAll(): Promise<void> {
-    const [claude, codex, gemini] = await Promise.all([
+    const results = await Promise.all([
       this.fetchClaudeUsage(),
       this.fetchCodexUsage(),
       this.fetchGeminiUsage(),
     ]);
-    this.status = { agents: [claude, codex, gemini] };
-    this.lastFetchTime = Date.now();
-    await this.saveLastFetchTime();
+
+    const now = Date.now();
+    for (const info of results) {
+      const existing = this.agentStates.get(info.agentId);
+      this.agentStates.set(info.agentId, {
+        info,
+        lastFetchTime: info.error ? (existing?.lastFetchTime ?? 0) : now,
+      });
+    }
+    await this.saveState();
   }
 
   private async readCredFile<T>(fileName: string): Promise<T | null> {
@@ -206,13 +234,13 @@ export class UsageChecker {
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
         this.rateLimitBackoff.set('claude', Date.now() + delayMs);
-        await this.saveBackoff();
+        await this.saveState();
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
 
       // Clear backoff on success or non-429 responses
-      if (this.rateLimitBackoff.delete('claude')) await this.saveBackoff();
+      if (this.rateLimitBackoff.delete('claude')) await this.saveState();
 
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
@@ -311,12 +339,12 @@ export class UsageChecker {
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
         this.rateLimitBackoff.set('codex', Date.now() + delayMs);
-        await this.saveBackoff();
+        await this.saveState();
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
 
-      if (this.rateLimitBackoff.delete('codex')) await this.saveBackoff();
+      if (this.rateLimitBackoff.delete('codex')) await this.saveState();
 
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
@@ -455,12 +483,12 @@ export class UsageChecker {
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
         this.rateLimitBackoff.set('gemini', Date.now() + delayMs);
-        await this.saveBackoff();
+        await this.saveState();
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
 
-      if (this.rateLimitBackoff.delete('gemini')) await this.saveBackoff();
+      if (this.rateLimitBackoff.delete('gemini')) await this.saveState();
 
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
