@@ -4,7 +4,7 @@ import type { Config } from './config';
 import type { AgentUsageInfo, AgentUsageStatus, AgentAuthType, UsageWindow } from '../../shared/types';
 
 const CRED_DIR = '/cred';
-const POLL_INTERVAL_MS = 300_000;
+const POLL_INTERVAL_MS = 600_000;
 
 interface AgentState {
   info: AgentUsageInfo;

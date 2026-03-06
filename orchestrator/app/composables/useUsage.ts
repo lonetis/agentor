@@ -28,7 +28,7 @@ export function useUsage() {
     initialized = true;
     fetchStatus();
   }
-  usePolling(() => fetchStatus(), 300_000);
+  usePolling(() => fetchStatus(), 600_000);
 
   return { status, refreshing, refresh };
 }
