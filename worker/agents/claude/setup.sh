@@ -14,7 +14,15 @@ sudo chown agent:agent ~/.claude
 # Skip onboarding and dangerous-mode permission prompt
 cat > ~/.claude/settings.json <<EOF
 {
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "alwaysThinkingEnabled": true,
+  "effortLevel": "high",
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  }
 }
 EOF
 cat > ~/.claude.json <<EOF
