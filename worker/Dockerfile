@@ -102,12 +102,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends dnsmasq ipset i
 RUN curl -fsSL https://get.docker.com | sh && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Codex CLI
-RUN npm install -g @openai/codex
-
-# Gemini CLI
-RUN npm install -g @google/gemini-cli
-
 # code-server (VS Code in browser)
 RUN curl -fsSL https://code-server.dev/install.sh | sh
 
@@ -147,8 +141,9 @@ EXPOSE 6080 8443
 
 USER agent
 
-# Claude CLI (installed as agent user — goes to ~/.local/bin)
+# Agent CLIs (installed as agent user so auto-updates work)
 RUN curl -fsSL https://claude.ai/install.sh | bash
+RUN npm config set prefix ~/.local && npm install -g @openai/codex @google/gemini-cli
 ENV PATH="/home/agent/.local/bin:${PATH}"
 
 # Agent setup/start scripts
