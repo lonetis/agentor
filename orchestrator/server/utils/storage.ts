@@ -78,11 +78,8 @@ export class StorageManager {
     return `${name}-workspace:/workspace`;
   }
 
-  /** Bind string for a worker's Docker-in-Docker data */
+  /** Bind string for a worker's Docker-in-Docker data (always a named volume — overlay2 requires a native filesystem) */
   getWorkerDockerBind(name: string): string {
-    if (this.mode === 'directory') {
-      return `${join(this.dataRef, 'docker', name)}:/var/lib/docker`;
-    }
     return `${name}-docker:/var/lib/docker`;
   }
 
@@ -94,18 +91,13 @@ export class StorageManager {
     return 'agentor-traefik-certs:/letsencrypt';
   }
 
-  /** Ensure workspace (and optionally docker) directories exist with correct ownership */
-  async ensureWorkerDirs(name: string, dockerEnabled: boolean): Promise<void> {
+  /** Ensure workspace directory exists with correct ownership (directory mode only) */
+  async ensureWorkerDirs(name: string): Promise<void> {
     if (this.mode !== 'directory') return;
 
     const workspaceDir = join(this.dataDir, 'workspaces', name);
     await mkdir(workspaceDir, { recursive: true });
     await this.chownDir(workspaceDir);
-
-    if (dockerEnabled) {
-      const dockerDir = join(this.dataDir, 'docker', name);
-      await mkdir(dockerDir, { recursive: true });
-    }
   }
 
   /** Remove a worker's workspace (volume or directory) */
@@ -117,13 +109,9 @@ export class StorageManager {
     }
   }
 
-  /** Remove a worker's Docker-in-Docker data (volume or directory) */
+  /** Remove a worker's Docker-in-Docker volume (always a named volume) */
   async removeWorkerDocker(name: string): Promise<void> {
-    if (this.mode === 'directory') {
-      await rm(join(this.dataDir, 'docker', name), { recursive: true, force: true });
-    } else {
-      await this.removeVolume(`${name}-docker`);
-    }
+    await this.removeVolume(`${name}-docker`);
   }
 
   /** Ensure Traefik cert directory exists (directory mode only) */

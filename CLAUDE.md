@@ -42,11 +42,11 @@ Switch modes by changing one line in the compose file — no env vars needed. `S
 ├── workspaces/          ← worker workspace dirs
 │   ├── agentor-worker-happy-panda/
 │   └── agentor-worker-cool-tiger/
-├── docker/              ← worker DinD dirs
-│   └── agentor-worker-happy-panda/
 └── traefik-certs/       ← ACME certificates
     └── acme.json
 ```
+
+DinD data always uses Docker named volumes (`<name>-docker`) regardless of storage mode — overlay2 requires a native filesystem and cannot run on bind-mounted host directories.
 
 ### Bind String Construction
 
@@ -54,7 +54,7 @@ Switch modes by changing one line in the compose file — no env vars needed. `S
 |----------|------------|----------------|
 | Data (mapper/traefik) | `<volumeName>:/data:ro` | `<hostPath>:/data:ro` |
 | Worker workspace | `<name>-workspace:/workspace` | `<hostPath>/workspaces/<name>:/workspace` |
-| Worker DinD | `<name>-docker:/var/lib/docker` | `<hostPath>/docker/<name>:/var/lib/docker` |
+| Worker DinD | `<name>-docker:/var/lib/docker` | `<name>-docker:/var/lib/docker` (always named volume) |
 | Traefik certs | `agentor-traefik-certs:/letsencrypt` | `<hostPath>/traefik-certs:/letsencrypt` |
 
 ### Cleanup
@@ -62,7 +62,7 @@ Switch modes by changing one line in the compose file — no env vars needed. `S
 | Operation | Volume mode | Directory mode |
 |-----------|------------|----------------|
 | Remove workspace | `docker volume rm <name>-workspace` | `rm -rf /data/workspaces/<name>/` |
-| Remove DinD | `docker volume rm <name>-docker` | `rm -rf /data/docker/<name>/` |
+| Remove DinD | `docker volume rm <name>-docker` | `docker volume rm <name>-docker` (same) |
 
 ## Worker State & Persistence
 

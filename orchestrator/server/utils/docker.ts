@@ -106,7 +106,7 @@ export class DockerService {
 
     // Persistent workspace — named volume (volume mode) or host directory (directory mode)
     if (opts.storageManager) {
-      await opts.storageManager.ensureWorkerDirs(opts.name, !!opts.dockerEnabled);
+      await opts.storageManager.ensureWorkerDirs(opts.name);
       binds.push(opts.storageManager.getWorkerWorkspaceBind(opts.name));
     } else {
       binds.push(`${opts.name}-workspace:/workspace`);
