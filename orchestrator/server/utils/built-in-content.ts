@@ -42,8 +42,9 @@ export async function loadBuiltInSkills(): Promise<BuiltInSkill[]> {
   const skills: BuiltInSkill[] = [];
   for (const key of keys) {
     if (!key.endsWith('.md')) continue;
-    const content = await storage.getItem(key) as string;
-    if (!content) continue;
+    const raw = await storage.getItem(key);
+    if (!raw) continue;
+    const content = typeof raw === 'string' ? raw : String(raw);
     const id = key.replace(/\.md$/, '');
     skills.push({ id, name: id, content });
   }
@@ -60,8 +61,9 @@ export async function loadBuiltInAgentsMd(): Promise<BuiltInAgentsMdEntry[]> {
   const entries: BuiltInAgentsMdEntry[] = [];
   for (const key of keys) {
     if (!key.endsWith('.md')) continue;
-    const content = await storage.getItem(key) as string;
-    if (!content) continue;
+    const raw = await storage.getItem(key);
+    if (!raw) continue;
+    const content = typeof raw === 'string' ? raw : String(raw);
     const id = key.replace(/\.md$/, '');
     entries.push({ id, name: id, content });
   }
@@ -78,8 +80,9 @@ export async function loadBuiltInInitScripts(): Promise<BuiltInInitScript[]> {
   const scripts: BuiltInInitScript[] = [];
   for (const key of keys) {
     if (!key.endsWith('.sh')) continue;
-    const content = await storage.getItem(key) as string;
-    if (!content) continue;
+    const raw = await storage.getItem(key);
+    if (!raw) continue;
+    const content = typeof raw === 'string' ? raw : String(raw);
     const id = key.replace(/\.sh$/, '');
     scripts.push({ id, name: id, content: content.trim() });
   }
