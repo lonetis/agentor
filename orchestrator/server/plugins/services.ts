@@ -1,9 +1,13 @@
-import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useAgentsMdStore, useInitScriptStore } from '../utils/services';
+import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useStorageManager, useSkillStore, useAgentsMdStore, useInitScriptStore } from '../utils/services';
 import { loadBuiltInSkills, loadBuiltInAgentsMd, loadBuiltInInitScripts, loadBuiltInEnvironments } from '../utils/built-in-content';
 
 export default defineNitroPlugin(async () => {
   const dockerService = useDockerService();
   await dockerService.ensureNetwork();
+
+  // Initialize storage manager (auto-detect volume vs directory mode from /data mount)
+  const storageManager = useStorageManager();
+  await storageManager.init();
 
   // Initialize credential mount manager (resolve host path of /cred bind mount)
   const credentialMountManager = useCredentialMountManager();
@@ -11,6 +15,7 @@ export default defineNitroPlugin(async () => {
 
   const containerManager = useContainerManager();
   containerManager.setCredentialMountManager(credentialMountManager);
+  containerManager.setStorageManager(storageManager);
   await containerManager.sync();
 
   // Initialize environment store (load from disk, seed built-ins) and connect to container manager

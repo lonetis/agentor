@@ -4,6 +4,7 @@ import { join, dirname } from 'node:path';
 import Docker from 'dockerode';
 import type { Config, BaseDomainConfig } from './config';
 import type { DomainMappingStore, DomainMapping } from './domain-mapping-store';
+import type { StorageManager } from './storage';
 
 const TRAEFIK_CONTAINER_NAME = 'agentor-traefik';
 const TRAEFIK_LABEL = 'agentor.managed';
@@ -13,13 +14,15 @@ export class TraefikManager {
   private docker: Docker;
   private config: Config;
   private store: DomainMappingStore;
+  private storageManager: StorageManager;
   private reconcileQueue: Promise<void> = Promise.resolve();
   private configFileJustCreated = false;
 
-  constructor(config: Config, store: DomainMappingStore) {
+  constructor(config: Config, store: DomainMappingStore, storageManager: StorageManager) {
     this.docker = new Docker({ socketPath: '/var/run/docker.sock' });
     this.config = config;
     this.store = store;
+    this.storageManager = storageManager;
   }
 
   async init(): Promise<void> {
@@ -269,6 +272,8 @@ export class TraefikManager {
       console.warn('[traefik-manager] ACME_EMAIL not configured — TLS certificates will not be issued');
     }
 
+    await this.storageManager.ensureCertDir();
+
     const image = this.config.traefikImage;
 
     await this.ensureImage(image);
@@ -299,8 +304,8 @@ export class TraefikManager {
         },
         RestartPolicy: { Name: 'unless-stopped' },
         Binds: [
-          `${this.config.dataVolume}:/data:ro`,
-          'agentor-traefik-certs:/letsencrypt',
+          this.storageManager.getDataBind(true),
+          this.storageManager.getCertBind(),
         ],
       },
     });

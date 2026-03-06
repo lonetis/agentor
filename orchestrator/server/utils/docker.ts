@@ -5,6 +5,7 @@ import { getAppType } from './apps';
 import { listGitProviders } from './git-providers';
 import { getAllAgentEnvVars } from './agent-config';
 import type { MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ExposeApis } from '../../shared/types';
+import type { StorageManager } from './storage';
 
 export interface EnvironmentJsonPayload {
   networkMode: string;
@@ -69,6 +70,7 @@ export class DockerService {
     skillsJson: SkillJsonEntry[];
     agentsMdJson: AgentsMdJsonEntry[];
     workerJson: WorkerJsonPayload;
+    storageManager?: StorageManager;
   }): Promise<Docker.Container> {
     const env: string[] = [];
 
@@ -102,14 +104,22 @@ export class DockerService {
       (m) => `${m.source}:${m.target}${m.readOnly ? ':ro' : ''}`
     );
 
-    // Persistent workspace volume — data survives container removal
-    binds.push(`${opts.name}-workspace:/workspace`);
+    // Persistent workspace — named volume (volume mode) or host directory (directory mode)
+    if (opts.storageManager) {
+      await opts.storageManager.ensureWorkerDirs(opts.name, !!opts.dockerEnabled);
+      binds.push(opts.storageManager.getWorkerWorkspaceBind(opts.name));
+    } else {
+      binds.push(`${opts.name}-workspace:/workspace`);
+    }
 
-    // Docker-in-Docker: mount a named volume for /var/lib/docker so overlay2 works
-    // (overlay2 cannot nest on the container's overlayfs root, but a Docker volume
-    // is backed by the host filesystem). Data persists across container restarts.
+    // Docker-in-Docker: overlay2 cannot nest on the container's overlayfs root,
+    // but works on a volume or host directory. Data persists across container restarts.
     if (opts.dockerEnabled) {
-      binds.push(`${opts.name}-docker:/var/lib/docker`);
+      if (opts.storageManager) {
+        binds.push(opts.storageManager.getWorkerDockerBind(opts.name));
+      } else {
+        binds.push(`${opts.name}-docker:/var/lib/docker`);
+      }
     }
 
     // Credential file bind mounts (OAuth tokens shared across all workers)

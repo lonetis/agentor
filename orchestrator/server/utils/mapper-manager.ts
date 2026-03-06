@@ -1,6 +1,7 @@
 import Docker from 'dockerode';
 import type { Config } from './config';
 import type { PortMappingStore, PortMapping } from './port-mapping-store';
+import type { StorageManager } from './storage';
 
 const MAPPER_CONTAINER_NAME = 'agentor-mapper';
 const MAPPER_LABEL = 'agentor.managed';
@@ -10,12 +11,14 @@ export class MapperManager {
   private docker: Docker;
   private config: Config;
   private store: PortMappingStore;
+  private storageManager: StorageManager;
   private reconcileQueue: Promise<void> = Promise.resolve();
 
-  constructor(config: Config, store: PortMappingStore) {
+  constructor(config: Config, store: PortMappingStore, storageManager: StorageManager) {
     this.docker = new Docker({ socketPath: '/var/run/docker.sock' });
     this.config = config;
     this.store = store;
+    this.storageManager = storageManager;
   }
 
   async init(): Promise<void> {
@@ -88,7 +91,7 @@ export class MapperManager {
         NetworkMode: this.config.dockerNetwork,
         PortBindings: portBindings,
         RestartPolicy: { Name: 'unless-stopped' },
-        Binds: [`${this.config.dataVolume}:/data:ro`],
+        Binds: [this.storageManager.getDataBind(true)],
       },
     });
 

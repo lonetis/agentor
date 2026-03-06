@@ -13,6 +13,7 @@ import type { WorkerStore, WorkerRecord } from './worker-store';
 import type { CredentialMountManager } from './credential-mounts';
 import type { SkillStore } from './skill-store';
 import type { AgentsMdStore } from './agents-md-store';
+import type { StorageManager } from './storage';
 import type { NetworkMode, ExposeApis, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest } from '../../shared/types';
 
 function parseLabelFloat(value: string | undefined): number | undefined {
@@ -40,6 +41,7 @@ export class ContainerManager {
   private credentialMountManager?: CredentialMountManager;
   private skillStore?: SkillStore;
   private agentsMdStore?: AgentsMdStore;
+  private storageManager?: StorageManager;
   constructor(dockerService: DockerService, config: Config) {
     this.dockerService = dockerService;
     this.config = config;
@@ -63,6 +65,10 @@ export class ContainerManager {
 
   setAgentsMdStore(store: AgentsMdStore): void {
     this.agentsMdStore = store;
+  }
+
+  setStorageManager(manager: StorageManager): void {
+    this.storageManager = manager;
   }
 
   private resolveSkillsAndAgentsMd(
@@ -258,6 +264,7 @@ export class ContainerManager {
       skillsJson: envConfig.skillsJson,
       agentsMdJson: envConfig.agentsMdJson,
       workerJson,
+      storageManager: this.storageManager,
     });
 
     const image = this.config.workerImagePrefix + this.config.workerImage;
@@ -337,8 +344,13 @@ export class ContainerManager {
     const info = this.containers.get(id);
     await this.dockerService.removeContainer(id);
     if (info?.name) {
-      await this.dockerService.removeVolume(`${info.name}-docker`);
-      await this.dockerService.removeVolume(`${info.name}-workspace`);
+      if (this.storageManager) {
+        await this.storageManager.removeWorkerDocker(info.name);
+        await this.storageManager.removeWorkerWorkspace(info.name);
+      } else {
+        await this.dockerService.removeVolume(`${info.name}-docker`);
+        await this.dockerService.removeVolume(`${info.name}-workspace`);
+      }
       if (this.workerStore) {
         await this.workerStore.delete(info.name).catch((err) => {
           console.error(`[container] failed to delete worker record '${info.name}':`, err instanceof Error ? err.message : err);
@@ -357,8 +369,6 @@ export class ContainerManager {
     }
 
     await this.dockerService.removeContainer(id);
-
-    await this.dockerService.removeVolume(`${info.name}-docker`);
 
     if (this.workerStore) {
       await this.workerStore.upsert(this.containerInfoToWorkerRecord(info));
@@ -421,6 +431,7 @@ export class ContainerManager {
       skillsJson: envConfig.skillsJson,
       agentsMdJson: envConfig.agentsMdJson,
       workerJson,
+      storageManager: this.storageManager,
     });
 
     await this.workerStore.unarchive(worker.name, container.id);
@@ -450,8 +461,13 @@ export class ContainerManager {
       throw new Error('Archived worker not found');
     }
 
-    await this.dockerService.removeVolume(`${name}-workspace`);
-    await this.dockerService.removeVolume(`${name}-docker`);
+    if (this.storageManager) {
+      await this.storageManager.removeWorkerWorkspace(name);
+      await this.storageManager.removeWorkerDocker(name);
+    } else {
+      await this.dockerService.removeVolume(`${name}-workspace`);
+      await this.dockerService.removeVolume(`${name}-docker`);
+    }
     await this.workerStore.delete(name);
   }
 

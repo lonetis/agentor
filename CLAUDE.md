@@ -20,20 +20,64 @@ Four managed containers:
 - **Traefik**: Reverse proxy for domain-based routing with Let's Encrypt TLS. Managed by the orchestrator — created when domain mappings or dashboard subdomain are configured, removed when empty. Optional (requires `BASE_DOMAINS` env var).
 - **Workers**: Single unified Docker image (`agentor-worker`, Ubuntu 24.04) with all agent CLIs pre-installed, running in tmux, plus an integrated display stack (Xvfb + fluxbox + x11vnc + noVNC on port 6080), code-server (VS Code on port 8443), and Chromium. Each worker is a single container with all agents available.
 
+## Storage Modes
+
+The orchestrator supports two storage modes, auto-detected from how `/data` is mounted:
+
+| Mode | Mount type | Detection | Worker data storage |
+|------|-----------|-----------|-------------------|
+| **Volume** | `agentor-data:/data` | `Type: "volume"` | Docker named volumes (`<name>-workspace`, `<name>-docker`, `agentor-traefik-certs`) |
+| **Directory** | `./data:/data` | `Type: "bind"` | Subdirectories under the data directory on the host |
+
+Switch modes by changing one line in the compose file — no env vars needed. `StorageManager` (`orchestrator/server/utils/storage.ts`) self-inspects the orchestrator container on startup to determine the mount type.
+
+### Directory Layout (directory mode)
+
+```
+/data/
+├── workers.json
+├── port-mappings.json
+├── domain-mappings.json
+├── traefik-config.json
+├── workspaces/          ← worker workspace dirs
+│   ├── agentor-worker-happy-panda/
+│   └── agentor-worker-cool-tiger/
+├── docker/              ← worker DinD dirs
+│   └── agentor-worker-happy-panda/
+└── traefik-certs/       ← ACME certificates
+    └── acme.json
+```
+
+### Bind String Construction
+
+| Resource | Volume mode | Directory mode |
+|----------|------------|----------------|
+| Data (mapper/traefik) | `<volumeName>:/data:ro` | `<hostPath>:/data:ro` |
+| Worker workspace | `<name>-workspace:/workspace` | `<hostPath>/workspaces/<name>:/workspace` |
+| Worker DinD | `<name>-docker:/var/lib/docker` | `<hostPath>/docker/<name>:/var/lib/docker` |
+| Traefik certs | `agentor-traefik-certs:/letsencrypt` | `<hostPath>/traefik-certs:/letsencrypt` |
+
+### Cleanup
+
+| Operation | Volume mode | Directory mode |
+|-----------|------------|----------------|
+| Remove workspace | `docker volume rm <name>-workspace` | `rm -rf /data/workspaces/<name>/` |
+| Remove DinD | `docker volume rm <name>-docker` | `rm -rf /data/docker/<name>/` |
+
 ## Worker State & Persistence
 
 Workers exist in four states:
 
-| State | Container | Workspace Volume | WorkerStore |
-|-------|-----------|-----------------|-------------|
+| State | Container | Workspace + DinD | WorkerStore |
+|-------|-----------|------------------|-------------|
 | **running** | Running | Mounted | `active` |
 | **stopped** | Stopped | Mounted | `active` |
 | **archived** | Removed | Kept on disk | `archived` |
 | **deleted** | Removed | Removed | Removed |
 
-### Workspace Volumes
+### Workspace & DinD Storage
 
-Each worker gets a persistent **named Docker volume** (`${containerName}-workspace`) mounted at `/workspace`. This volume survives container stops, restarts, and archiving. The same pattern as DinD volumes (`${containerName}-docker`). On container removal (delete), the workspace volume is also removed. On archive, only the container is removed — the workspace volume persists.
+Each worker gets persistent storage mounted at `/workspace` and (when DinD is enabled) `/var/lib/docker`. In **volume mode**, these are Docker named volumes (`${containerName}-workspace`, `${containerName}-docker`). In **directory mode**, these are host directories (`<dataDir>/workspaces/${containerName}/`, `<dataDir>/docker/${containerName}/`). Both survive container stops, restarts, and archiving. On archive, only the container is removed — workspace and DinD data persist for unarchiving. On delete, both are removed.
 
 ### WorkerStore
 
@@ -517,6 +561,7 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/server/utils/environments.ts` - EnvironmentStore class, network mode types, package manager domains list
 - `orchestrator/server/utils/worker-store.ts` - WorkerStore class (persistent worker metadata for archive/unarchive)
 - `orchestrator/server/utils/credential-mounts.ts` - CredentialMountManager class (resolves host path of /cred mount, generates bind mount strings for worker containers) + AGENT_CREDENTIAL_MAPPINGS registry
+- `orchestrator/server/utils/storage.ts` - StorageManager class (auto-detects volume vs directory storage mode, provides bind string construction and cleanup for worker workspaces, DinD, Traefik certs)
 - `orchestrator/server/utils/skill-store.ts` - SkillStore class (extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/agents-md-store.ts` - AgentsMdStore class (AGENTS.md entries, extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/built-in-content.ts` - Built-in content loader (reads markdown files from server assets via `useStorage()`)
