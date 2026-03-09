@@ -13,6 +13,18 @@ async function getInitScripts(): Promise<{ id: string; name: string; content: st
 }
 
 /**
+ * Interactive prompt that may appear during agent startup and needs dismissal.
+ */
+interface InteractivePrompt {
+  /** Pattern to detect this interactive prompt in the terminal buffer */
+  detect: RegExp;
+  /** Raw string to send to dismiss it (e.g. '\r' for Enter) */
+  respond: string;
+  /** Optional pattern to wait for after dismissal (defaults to readyPattern) */
+  waitFor?: RegExp;
+}
+
+/**
  * Agent-specific configuration for prompting tests.
  */
 interface AgentTestConfig {
@@ -26,14 +38,16 @@ interface AgentTestConfig {
   prompt: string;
   /** Pattern expected in the response */
   responsePattern: RegExp;
+  /** Optional interactive prompts that may appear during startup and need dismissal */
+  interactivePrompts?: InteractivePrompt[];
 }
 
 const AGENT_CONFIGS: AgentTestConfig[] = [
   {
     id: 'claude',
     displayName: 'Claude',
-    // Claude TUI shows "Welcome to" (may appear as "Welcometo" after ANSI stripping)
-    readyPattern: /Welcome\s*to/i,
+    // Claude Code TUI shows /workspace path and model info when ready
+    readyPattern: /\/workspace/,
     failPattern: /\$\s*$/m,
     prompt: 'What is 2+2? Reply with just the number.',
     responsePattern: /4/,
@@ -46,6 +60,13 @@ const AGENT_CONFIGS: AgentTestConfig[] = [
     failPattern: /\$\s*$/m,
     prompt: 'What is 2+2? Reply with just the number.',
     responsePattern: /4/,
+    // Codex may show a model upgrade prompt on first launch
+    interactivePrompts: [
+      {
+        detect: /Codex to proceed|Try new model/i,
+        respond: '\r',
+      },
+    ],
   },
   {
     id: 'gemini',
@@ -101,9 +122,18 @@ for (const agent of AGENT_CONFIGS) {
       ws = new TerminalWsClient(containerId);
       await ws.connect(15_000);
 
-      // Wait for agent readiness — either agent prompt or shell fallback
+      // Build a combined pattern: readyPattern + any interactive prompt patterns
+      const allPatterns = [agent.readyPattern.source];
+      if (agent.interactivePrompts) {
+        for (const ip of agent.interactivePrompts) {
+          allPatterns.push(ip.detect.source);
+        }
+      }
+      const combinedPattern = new RegExp(allPatterns.join('|'), 'i');
+
+      // Wait for agent readiness or interactive prompt — or shell fallback
       try {
-        await ws.waitForOutput(agent.readyPattern, 120_000);
+        await ws.waitForOutput(combinedPattern, 120_000);
       } catch {
         const buf = ws.getBuffer();
         // Check if we fell back to a shell prompt (agent failed to start)
@@ -114,6 +144,19 @@ for (const agent of AGENT_CONFIGS) {
           `${agent.displayName} CLI did not reach ready state within 120s.\n` +
           `Buffer (last 500 chars):\n${buf.slice(-500)}`
         );
+      }
+
+      // Handle any interactive prompts (e.g. model upgrade selection)
+      if (agent.interactivePrompts) {
+        for (const ip of agent.interactivePrompts) {
+          if (ip.detect.test(ws.getBuffer())) {
+            await new Promise(r => setTimeout(r, 1000));
+            ws.sendRaw(ip.respond);
+            ws.clearBuffer();
+            const waitPattern = ip.waitFor ?? agent.readyPattern;
+            await ws.waitForOutput(waitPattern, 60_000);
+          }
+        }
       }
     });
 
