@@ -24,16 +24,18 @@ Four managed containers:
 
 | Topic | File | Contents |
 |-------|------|----------|
-| Architecture | [docs/architecture.md](docs/architecture.md) | Storage modes (volume vs directory), worker state & persistence, WorkerStore, Docker labels |
-| Worker System | [docs/worker.md](docs/worker.md) | Unified worker image, init scripts, agents, git identity wrapper, DinD, host bind mounts, startup sequence |
-| Networking | [docs/networking.md](docs/networking.md) | Port mapper, domain mapping (Traefik), TLS challenges, self-signed certs, config drift detection |
-| UI | [docs/ui.md](docs/ui.md) | Split pane layout, tmux tab integration, theme system, VS Code editor, UI state persistence |
-| Environments | [docs/environments.md](docs/environments.md) | Environment system, network firewall, skills, AGENTS.md, worker API exposure |
-| Production | [docs/production.md](docs/production.md) | Update mechanism, agent usage monitoring |
-| Apps | [docs/apps.md](docs/apps.md) | Modular app system, adding new apps |
-| API | [docs/api.md](docs/api.md) | API documentation (OpenAPI), adding docs to routes |
-| Key Files | [docs/key-files.md](docs/key-files.md) | Complete file listing (server, client, worker, tests) |
-| Testing | [docs/testing.md](docs/testing.md) | Running tests, writing tests, conventions, maintaining FEATURES.md and TESTS.md |
+| Architecture | @docs/architecture.md | Storage modes (volume vs directory), worker state & persistence, WorkerStore, Docker labels |
+| Worker System | @docs/worker.md | Unified worker image, init scripts, agents, git identity wrapper, DinD, host bind mounts, startup sequence |
+| Networking | @docs/networking.md | Port mapper, domain mapping (Traefik), TLS challenges, self-signed certs, config drift detection |
+| UI | @docs/ui.md | Split pane layout, tmux tab integration, theme system, VS Code editor, UI state persistence |
+| Environments | @docs/environments.md | Environment system, network firewall, skills, AGENTS.md, worker API exposure |
+| Production | @docs/production.md | Update mechanism, agent usage monitoring |
+| Apps | @docs/apps.md | Modular app system, adding new apps |
+| API | @docs/api.md | API documentation (OpenAPI), adding docs to routes |
+| Key Files | @docs/key-files.md | Complete file listing (server, client, worker, tests) |
+| Testing | @docs/testing.md | Running tests, writing tests, conventions, maintaining FEATURES.md and TESTS.md |
+| Feature Inventory | @tests/FEATURES.md | Canonical list of all user-facing features, drives test coverage |
+| Test Suite Index | @tests/TESTS.md | Test counts, structure, and design decisions |
 
 ## Tech Stack
 
@@ -94,4 +96,4 @@ cd tests && npx playwright test ui/container-card.spec.ts  # Re-run single file
 
 ## Environment Variables
 
-See `.env.example` for full list. Agent API keys (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) are optional — for OAuth/subscription auth, log in once inside any worker instead (see `.cred.example/README`).
+See @.env.example for full list. Agent API keys (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) are optional — for OAuth/subscription auth, log in once inside any worker instead (see @.cred.example/README).
