@@ -58,19 +58,19 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
 </script>
 
 <template>
-  <div class="px-3 pb-3">
+  <div>
     <div v-if="!status" class="text-[10px] text-gray-400 dark:text-gray-600 italic">
       Loading...
     </div>
 
-    <div v-else class="space-y-2.5">
-      <div v-for="agent in status.agents" :key="agent.agentId">
+    <div v-else class="space-y-3">
+      <div v-for="agent in status.agents" :key="agent.agentId" class="system-card">
         <!-- Agent header -->
-        <div class="flex items-center gap-1.5">
-          <span class="text-xs font-medium text-gray-600 dark:text-gray-400">{{ agent.displayName }}</span>
+        <div class="system-card-header">
+          <span>{{ agent.displayName }}</span>
           <span
             v-if="fetchedAgo(agent.lastFetchTime)"
-            class="text-[9px] text-gray-400 dark:text-gray-500"
+            class="text-[9px] text-gray-400 dark:text-gray-500 font-normal"
           >
             {{ fetchedAgo(agent.lastFetchTime) }}
           </span>
@@ -89,7 +89,7 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
         </div>
 
         <!-- Usage windows -->
-        <div v-if="agent.windows.length > 0" class="mt-1 space-y-1">
+        <div v-if="agent.windows.length > 0" class="px-3 py-2.5 space-y-1">
           <div v-for="(w, i) in agent.windows" :key="i" class="flex items-center gap-1.5">
             <span class="text-[10px] text-gray-500 dark:text-gray-400 w-11 text-right flex-shrink-0 truncate">{{ w.label }}</span>
             <div class="flex-1 h-1.5 rounded-full overflow-hidden" :class="trackColor(w.utilization)">
@@ -114,15 +114,15 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
         </div>
 
         <!-- No usage data -->
-        <div v-else-if="agent.authType === 'api-key'" class="mt-0.5">
+        <div v-else-if="agent.authType === 'api-key'" class="px-3 py-2.5">
           <span class="text-[10px] text-gray-400 dark:text-gray-500 italic">No usage data for API key auth</span>
         </div>
-        <div v-else-if="agent.authType === 'none'" class="mt-0.5">
+        <div v-else-if="agent.authType === 'none'" class="px-3 py-2.5">
           <span class="text-[10px] text-gray-400 dark:text-gray-500 italic">Not configured</span>
         </div>
 
         <!-- Error -->
-        <div v-if="agent.error" class="mt-0.5">
+        <div v-if="agent.error" class="px-3 pb-2">
           <span class="text-[10px] text-red-500 dark:text-red-400">{{ agent.error }}</span>
         </div>
 

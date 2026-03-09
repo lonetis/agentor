@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ContainerInfo, Tab, ArchivedWorker } from '~/types';
 
-defineProps<{
+const props = defineProps<{
   containers: ContainerInfo[];
   tabs: Tab[];
   activeTabId: string | null;
@@ -29,37 +29,118 @@ const emit = defineEmits<{
   toggleCollapse: [];
 }>();
 
-const { state: uiState, setPanelCollapsed } = useUiState();
-
-const archivedCollapsed = computed({
-  get: () => uiState.value.sidebar.panels.archived,
-  set: (v: boolean) => setPanelCollapsed('archived', v),
-});
-const portMappingsCollapsed = computed({
-  get: () => uiState.value.sidebar.panels.portMappings,
-  set: (v: boolean) => setPanelCollapsed('portMappings', v),
-});
-const domainMappingsCollapsed = computed({
-  get: () => uiState.value.sidebar.panels.domainMappings,
-  set: (v: boolean) => setPanelCollapsed('domainMappings', v),
-});
-const usageCollapsed = computed({
-  get: () => uiState.value.sidebar.panels.usage,
-  set: (v: boolean) => setPanelCollapsed('usage', v),
-});
+const { state: uiState, setActiveTab } = useUiState();
 const { refreshing: usageRefreshing, refresh: usageRefresh } = useUsage();
-const imagesCollapsed = computed({
-  get: () => uiState.value.sidebar.panels.images,
-  set: (v: boolean) => setPanelCollapsed('images', v),
-});
-const settingsCollapsed = computed({
-  get: () => uiState.value.sidebar.panels.settings,
-  set: (v: boolean) => setPanelCollapsed('settings', v),
-});
+const { mappings: portMappings } = usePortMappings();
+const { mappings: domainMappings } = useDomainMappings();
 
 const { data: domainMapperStatus } = useFetch<{ enabled: boolean }>('/api/domain-mapper/status', {
   default: () => ({ enabled: false }),
 });
+
+interface SidebarTabDef {
+  id: string;
+  label: string;
+  icon: string;
+  badge?: number;
+}
+
+const visibleTabs = computed<SidebarTabDef[]>(() => {
+  const items: SidebarTabDef[] = [
+    { id: 'workers', label: 'Workers', icon: 'i-lucide-server', badge: props.containers.length || undefined },
+    { id: 'archived', label: 'Archived', icon: 'i-lucide-archive', badge: props.archivedWorkers.length || undefined },
+    { id: 'ports', label: 'Ports', icon: 'i-lucide-plug', badge: portMappings.value.length || undefined },
+  ];
+  if (domainMapperStatus.value.enabled) {
+    items.push({ id: 'domains', label: 'Domains', icon: 'i-lucide-globe', badge: domainMappings.value.length || undefined });
+  }
+  items.push(
+    { id: 'usage', label: 'Usage', icon: 'i-lucide-activity' },
+    { id: 'system', label: 'System', icon: 'i-lucide-settings' },
+  );
+  return items;
+});
+
+const activeTab = computed(() => {
+  const validIds = visibleTabs.value.map((t) => t.id);
+  return validIds.includes(uiState.value.sidebar.activeTab)
+    ? uiState.value.sidebar.activeTab
+    : 'workers';
+});
+
+function selectTab(id: string) {
+  setActiveTab(id);
+  moreOpen.value = false;
+}
+
+// --- Overflow handling ---
+const tabBarRef = ref<HTMLElement>();
+const measureRef = ref<HTMLElement>();
+const moreContainerRef = ref<HTMLElement>();
+const moreOpen = ref(false);
+const visibleCount = ref(100);
+
+const inlineTabs = computed(() => visibleTabs.value.slice(0, visibleCount.value));
+const overflowTabsList = computed(() => visibleTabs.value.slice(visibleCount.value));
+const activeInOverflow = computed(() => overflowTabsList.value.some((t) => t.id === activeTab.value));
+
+function recalcOverflow() {
+  const bar = tabBarRef.value;
+  const measure = measureRef.value;
+  if (!bar || !measure) return;
+
+  const available = bar.clientWidth;
+  const tabEls = Array.from(measure.children) as HTMLElement[];
+  const moreWidth = 38;
+
+  let totalWidth = 0;
+  for (const el of tabEls) totalWidth += el.offsetWidth;
+
+  if (totalWidth <= available) {
+    visibleCount.value = tabEls.length;
+    return;
+  }
+
+  let used = 0;
+  let count = 0;
+  for (const el of tabEls) {
+    if (used + el.offsetWidth > available - moreWidth) break;
+    used += el.offsetWidth;
+    count++;
+  }
+  visibleCount.value = Math.max(1, count);
+}
+
+function onClickOutside(e: MouseEvent) {
+  if (moreContainerRef.value && !moreContainerRef.value.contains(e.target as Node)) {
+    moreOpen.value = false;
+  }
+}
+
+watch(moreOpen, (open) => {
+  if (open) {
+    document.addEventListener('mousedown', onClickOutside);
+  } else {
+    document.removeEventListener('mousedown', onClickOutside);
+  }
+});
+
+let resizeObs: ResizeObserver | null = null;
+
+onMounted(() => {
+  nextTick(recalcOverflow);
+  if (tabBarRef.value) {
+    resizeObs = new ResizeObserver(() => recalcOverflow());
+    resizeObs.observe(tabBarRef.value);
+  }
+});
+
+onUnmounted(() => {
+  resizeObs?.disconnect();
+  document.removeEventListener('mousedown', onClickOutside);
+});
+
+watch(visibleTabs, () => nextTick(recalcOverflow));
 
 function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string | null): boolean {
   if (!activeTabId) return false;
@@ -69,7 +150,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
 </script>
 
 <template>
-  <aside class="bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 min-w-0">
+  <aside class="relative bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 min-w-0">
     <!-- Header -->
     <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
       <div class="flex items-center justify-between">
@@ -105,146 +186,171 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
       </div>
     </div>
 
-    <!-- Workers (scrollable) -->
-    <div class="flex-1 overflow-y-auto p-3 min-h-0">
-      <p class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 px-1">Workers</p>
-
-      <div v-if="containers.length === 0" class="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
-        No workers yet.
-      </div>
-
-      <div class="space-y-2">
-        <ContainerCard
-          v-for="c in containers"
-          :key="c.id"
-          :container="c"
-          :is-active="isContainerActive(c.id, tabs, activeTabId)"
-          @open-terminal="(cid) => emit('openTerminal', cid)"
-          @open-desktop="(cid) => emit('openDesktop', cid)"
-          @open-apps="(cid) => emit('openApps', cid)"
-          @open-editor="(cid) => emit('openEditor', cid)"
-          @stop="(id) => emit('stopContainer', id)"
-          @restart="(id) => emit('restartContainer', id)"
-          @remove="(id) => emit('removeContainer', id)"
-          @archive="(id) => emit('archiveContainer', id)"
-          @download-workspace="(id) => emit('downloadWorkspace', id)"
-        />
+    <!-- Hidden measurement row (off-screen, for overflow calculation) -->
+    <div ref="measureRef" class="sidebar-tab-measure">
+      <div v-for="tab in visibleTabs" :key="'m-' + tab.id" class="sidebar-tab">
+        <UIcon :name="tab.icon" class="size-3.5 flex-shrink-0" />
+        <span class="sidebar-tab-label">{{ tab.label }}</span>
+        <span v-if="tab.badge" class="sidebar-tab-badge">{{ tab.badge }}</span>
       </div>
     </div>
 
-    <!-- Archived Workers (collapsible, above Port Mappings) -->
-    <div v-if="archivedWorkers.length > 0" class="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
-      <button
-        class="w-full flex items-center justify-between px-4 py-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-        @click="archivedCollapsed = !archivedCollapsed"
-      >
-        Archived ({{ archivedWorkers.length }})
-        <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="archivedCollapsed ? '-rotate-90' : ''" />
-      </button>
-      <div v-if="!archivedCollapsed" class="px-3 pb-3 space-y-2 overflow-y-auto max-h-48">
-        <ArchivedWorkerCard
-          v-for="w in archivedWorkers"
-          :key="w.name"
-          :worker="w"
-          @unarchive="(name) => emit('unarchiveWorker', name)"
-          @delete="(name) => emit('deleteArchivedWorker', name)"
-        />
+    <!-- Tab bar area -->
+    <div ref="moreContainerRef" class="sidebar-tab-bar-wrap">
+      <nav ref="tabBarRef" class="sidebar-tab-bar">
+        <button
+          v-for="tab in inlineTabs"
+          :key="tab.id"
+          class="sidebar-tab"
+          :class="{ 'sidebar-tab-active': activeTab === tab.id }"
+          :title="tab.label"
+          @click="selectTab(tab.id)"
+        >
+          <UIcon :name="tab.icon" class="size-3.5 flex-shrink-0" />
+          <span class="sidebar-tab-label">{{ tab.label }}</span>
+          <span v-if="tab.badge" class="sidebar-tab-badge">{{ tab.badge }}</span>
+        </button>
+
+        <!-- More button (inside nav to participate in flex layout) -->
+        <button
+          v-if="overflowTabsList.length > 0"
+          class="sidebar-tab sidebar-tab-more-btn"
+          :class="{ 'sidebar-tab-active': activeInOverflow }"
+          title="More tabs"
+          @click="moreOpen = !moreOpen"
+        >
+          <UIcon name="i-lucide-chevrons-right" class="size-3.5" />
+        </button>
+      </nav>
+
+      <!-- Dropdown rendered OUTSIDE the nav to escape overflow:hidden -->
+      <div v-if="moreOpen && overflowTabsList.length > 0" class="sidebar-tab-dropdown">
+        <button
+          v-for="tab in overflowTabsList"
+          :key="tab.id"
+          class="sidebar-tab-dropdown-item"
+          :class="{ 'sidebar-tab-dropdown-item-active': activeTab === tab.id }"
+          @click="selectTab(tab.id)"
+        >
+          <UIcon :name="tab.icon" class="size-3.5 flex-shrink-0" />
+          <span>{{ tab.label }}</span>
+          <span v-if="tab.badge" class="sidebar-tab-dropdown-badge">{{ tab.badge }}</span>
+        </button>
       </div>
     </div>
 
-    <!-- Port Mappings (always visible, collapsible) -->
-    <div class="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
-      <button
-        class="w-full flex items-center justify-between px-4 py-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-        @click="portMappingsCollapsed = !portMappingsCollapsed"
-      >
-        Port Mappings
-        <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="portMappingsCollapsed ? '-rotate-90' : ''" />
-      </button>
-      <div v-if="!portMappingsCollapsed" class="px-3 pb-3 overflow-y-auto max-h-64">
+    <!-- Tab content -->
+    <div class="flex-1 overflow-y-auto min-h-0">
+      <!-- Workers -->
+      <div v-if="activeTab === 'workers'" class="p-3">
+        <div v-if="containers.length === 0" class="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
+          No workers yet.
+        </div>
+        <div class="space-y-2">
+          <ContainerCard
+            v-for="c in containers"
+            :key="c.id"
+            :container="c"
+            :is-active="isContainerActive(c.id, tabs, activeTabId)"
+            @open-terminal="(cid) => emit('openTerminal', cid)"
+            @open-desktop="(cid) => emit('openDesktop', cid)"
+            @open-apps="(cid) => emit('openApps', cid)"
+            @open-editor="(cid) => emit('openEditor', cid)"
+            @stop="(id) => emit('stopContainer', id)"
+            @restart="(id) => emit('restartContainer', id)"
+            @remove="(id) => emit('removeContainer', id)"
+            @archive="(id) => emit('archiveContainer', id)"
+            @download-workspace="(id) => emit('downloadWorkspace', id)"
+          />
+        </div>
+      </div>
+
+      <!-- Archived -->
+      <div v-if="activeTab === 'archived'" class="p-3">
+        <div v-if="archivedWorkers.length === 0" class="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
+          No archived workers.
+        </div>
+        <div class="space-y-2">
+          <ArchivedWorkerCard
+            v-for="w in archivedWorkers"
+            :key="w.name"
+            :worker="w"
+            @unarchive="(name) => emit('unarchiveWorker', name)"
+            @delete="(name) => emit('deleteArchivedWorker', name)"
+          />
+        </div>
+      </div>
+
+      <!-- Port Mappings -->
+      <div v-if="activeTab === 'ports'" class="p-3">
         <PortMappingsPanel :containers="containers" />
       </div>
-    </div>
 
-    <!-- Domain Mappings (only shown when baseDomain is configured) -->
-    <div v-if="domainMapperStatus.enabled" class="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
-      <button
-        class="w-full flex items-center justify-between px-4 py-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-        @click="domainMappingsCollapsed = !domainMappingsCollapsed"
-      >
-        Domain Mappings
-        <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="domainMappingsCollapsed ? '-rotate-90' : ''" />
-      </button>
-      <div v-if="!domainMappingsCollapsed" class="px-3 pb-3 overflow-y-auto max-h-64">
+      <!-- Domain Mappings -->
+      <div v-if="activeTab === 'domains'" class="p-3">
         <DomainMappingsPanel :containers="containers" />
       </div>
-    </div>
 
-    <!-- Usage (always visible, collapsible) -->
-    <div class="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
-      <div class="flex items-center px-4 py-2">
-        <span class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Usage</span>
-        <button
-          class="ml-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-          :class="{ 'animate-spin': usageRefreshing }"
-          :disabled="usageRefreshing"
-          title="Refresh usage"
-          @click="usageRefresh()"
-        >
-          <UIcon name="i-lucide-refresh-cw" class="size-3" />
-        </button>
-        <button
-          class="ml-auto text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-          @click="usageCollapsed = !usageCollapsed"
-        >
-          <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="usageCollapsed ? '-rotate-90' : ''" />
-        </button>
-      </div>
-      <div v-if="!usageCollapsed">
+      <!-- Usage -->
+      <div v-if="activeTab === 'usage'" class="p-3 space-y-3">
         <UsagePanel />
+        <!-- Actions card -->
+        <div class="system-card">
+          <div class="system-card-header">
+            <UIcon name="i-lucide-zap" class="size-3.5" />
+            <span>Actions</span>
+          </div>
+          <div class="p-1.5">
+            <button
+              class="system-card-link disabled:opacity-50"
+              :disabled="usageRefreshing"
+              @click="usageRefresh()"
+            >
+              <UIcon name="i-lucide-refresh-cw" class="size-3.5 flex-shrink-0" :class="{ 'animate-spin': usageRefreshing }" />
+              {{ usageRefreshing ? 'Refreshing...' : 'Refresh usage' }}
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <!-- Images (always visible, collapsible) -->
-    <div class="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
-      <button
-        class="w-full flex items-center justify-between px-4 py-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-        @click="imagesCollapsed = !imagesCollapsed"
-      >
-        Images
-        <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="imagesCollapsed ? '-rotate-90' : ''" />
-      </button>
-      <div v-if="!imagesCollapsed">
-        <UpdateNotification />
-      </div>
-    </div>
+      <!-- System (merged Images + Settings) -->
+      <div v-if="activeTab === 'system'" class="p-3 space-y-3">
+        <!-- Images card -->
+        <div class="system-card">
+          <div class="system-card-header">
+            <UIcon name="i-lucide-box" class="size-3.5" />
+            <span>Images</span>
+          </div>
+          <div class="px-3 py-2.5">
+            <UpdateNotification />
+          </div>
+        </div>
 
-    <!-- Settings (always visible, collapsible) -->
-    <div class="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
-      <button
-        class="w-full flex items-center justify-between px-4 py-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-        @click="settingsCollapsed = !settingsCollapsed"
-      >
-        Settings
-        <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="settingsCollapsed ? '-rotate-90' : ''" />
-      </button>
-      <div v-if="!settingsCollapsed" class="px-4 pb-3 space-y-1.5">
-        <button
-          class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors w-full text-left"
-          @click="emit('openSettings')"
-        >
-          <UIcon name="i-lucide-settings" class="size-3.5 flex-shrink-0" />
-          System Settings
-        </button>
-        <a
-          href="/api/docs"
-          target="_blank"
-          class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-        >
-          <UIcon name="i-lucide-book-open" class="size-3.5 flex-shrink-0" />
-          API Docs
-          <UIcon name="i-lucide-external-link" class="size-3 flex-shrink-0 opacity-50" />
-        </a>
+        <!-- Quick links card -->
+        <div class="system-card">
+          <div class="system-card-header">
+            <UIcon name="i-lucide-link" class="size-3.5" />
+            <span>Quick Links</span>
+          </div>
+          <div class="p-1.5">
+            <button
+              class="system-card-link"
+              @click="emit('openSettings')"
+            >
+              <UIcon name="i-lucide-sliders-horizontal" class="size-3.5 flex-shrink-0" />
+              System Settings
+            </button>
+            <a
+              href="/api/docs"
+              target="_blank"
+              class="system-card-link"
+            >
+              <UIcon name="i-lucide-book-open" class="size-3.5 flex-shrink-0" />
+              API Docs
+              <UIcon name="i-lucide-external-link" class="size-3 flex-shrink-0 ml-auto opacity-40" />
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   </aside>

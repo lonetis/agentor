@@ -25,10 +25,8 @@ function shortDigest(digest: string): string {
 }
 
 function imageName(fullName: string): string {
-  // ghcr.io/lonetis/agentor-orchestrator:latest -> orchestrator
   const agentorMatch = fullName.match(/agentor-(\w+):/);
   if (agentorMatch) return agentorMatch[1]!;
-  // traefik:v3 -> traefik, user/repo:tag -> repo
   const parts = fullName.split(':')[0] ?? fullName;
   const segments = parts.split('/');
   return segments[segments.length - 1]!;
@@ -58,7 +56,7 @@ function formatBytes(bytes: number): string {
 </script>
 
 <template>
-  <div class="px-3 pb-3">
+  <div>
     <!-- Restarting overlay -->
     <div
       v-if="isRestarting"
@@ -72,15 +70,11 @@ function formatBytes(bytes: number): string {
     </div>
 
     <template v-else>
-      <!-- Image list (always shown) -->
-      <div class="space-y-1">
-        <div
-          v-for="info in imageList"
-          :key="info.name"
-          class="flex items-center justify-between gap-1 text-xs"
-        >
-          <span class="font-medium text-gray-600 dark:text-gray-400 truncate">{{ imageName(info.name) }}</span>
-          <div class="flex items-center gap-1.5 flex-shrink-0">
+      <!-- Image list (grid: name column auto-sizes, hash column left-aligned) -->
+      <div class="grid gap-x-3 gap-y-1.5 text-xs items-center" style="grid-template-columns: auto 1fr">
+        <template v-for="info in imageList" :key="info.name">
+          <span class="font-medium text-gray-600 dark:text-gray-400">{{ imageName(info.name) }}</span>
+          <div class="flex items-center gap-1.5">
             <template v-if="isProductionMode && info.updateAvailable">
               <div class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
               <span class="text-amber-600 dark:text-amber-400 font-mono text-[10px]">
@@ -110,7 +104,7 @@ function formatBytes(bytes: number): string {
               <span class="text-gray-400 dark:text-gray-600 text-[10px] italic">not found</span>
             </template>
           </div>
-        </div>
+        </template>
       </div>
 
       <!-- No images loaded yet -->
@@ -152,35 +146,34 @@ function formatBytes(bytes: number): string {
         </UButton>
       </div>
 
-      <!-- Production mode: up to date with check button -->
-      <div
-        v-else-if="isProductionMode && status"
-        class="mt-1.5 flex items-center justify-end"
-      >
+      <!-- Actions (separator + interactive rows) -->
+      <div v-if="status" class="mt-2.5 pt-2.5 border-t border-gray-200 dark:border-gray-700/50 -mx-3 px-1.5 space-y-0.5">
+        <!-- Check for updates (production only, when up to date) -->
         <button
-          class="text-[10px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400"
+          v-if="isProductionMode && updatesAvailable === 0"
+          class="system-card-link disabled:opacity-50"
           :disabled="isChecking"
           @click="checkNow"
         >
+          <UIcon name="i-lucide-refresh-cw" class="size-3.5 flex-shrink-0" :class="{ 'animate-spin': isChecking }" />
           {{ isChecking ? 'Checking...' : 'Check for updates' }}
         </button>
-      </div>
 
-      <!-- Prune unused images -->
-      <div v-if="status" class="mt-2 flex items-center justify-between">
+        <!-- Prune unused images -->
         <button
-          class="text-[10px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 disabled:opacity-50"
+          class="system-card-link disabled:opacity-50"
           :disabled="isPruning || isApplying || anyApplyingImage"
           @click="pruneImages"
         >
+          <UIcon name="i-lucide-trash-2" class="size-3.5 flex-shrink-0" />
           {{ isPruning ? 'Pruning...' : 'Prune unused images' }}
+          <span
+            v-if="lastPruneResult"
+            class="ml-auto text-[10px] text-gray-400 dark:text-gray-500 font-normal"
+          >
+            {{ lastPruneResult.imagesDeleted }} removed
+          </span>
         </button>
-        <span
-          v-if="lastPruneResult"
-          class="text-[10px] text-gray-400 dark:text-gray-500"
-        >
-          {{ lastPruneResult.imagesDeleted }} removed, {{ formatBytes(lastPruneResult.spaceReclaimed) }} freed
-        </span>
       </div>
     </template>
   </div>

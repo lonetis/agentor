@@ -46,8 +46,8 @@ async function handleCreate() {
           v-model="formType"
           class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs shrink-0"
         >
-          <option value="localhost">local</option>
-          <option value="external">ext</option>
+          <option value="localhost">internal</option>
+          <option value="external">external</option>
         </select>
         <select
           v-model="formWorkerId"
@@ -63,14 +63,14 @@ async function handleCreate() {
         <input
           v-model.number="formExternalPort"
           type="number"
-          placeholder="Ext port"
+          placeholder="External port"
           class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
         />
         <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>
         <input
           v-model.number="formInternalPort"
           type="number"
-          placeholder="Int port"
+          placeholder="Internal port"
           class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
         />
         <UButton size="xs" color="primary" variant="solid" class="shrink-0" @click="handleCreate">
@@ -88,7 +88,7 @@ async function handleCreate() {
 
     <!-- Mappings list -->
     <div v-if="mappings.length === 0 && !showForm" class="text-gray-400 dark:text-gray-500 text-xs text-center py-1">
-      No active mappings
+      No active port mappings
     </div>
     <div
       v-for="m in mappings"
@@ -99,7 +99,7 @@ async function handleCreate() {
         class="px-1 rounded text-[10px] font-medium shrink-0"
         :class="m.type === 'localhost' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' : 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300'"
       >
-        {{ m.type === 'localhost' ? 'local' : 'ext' }}
+        {{ m.type === 'localhost' ? 'internal' : 'external' }}
       </span>
       <span class="text-gray-700 dark:text-gray-300 font-mono shrink-0">:{{ m.externalPort }}</span>
       <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>

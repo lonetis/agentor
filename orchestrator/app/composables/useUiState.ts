@@ -15,6 +15,7 @@ interface PanelStates {
 interface SidebarState {
   width: number;
   collapsed: boolean;
+  activeTab: string;
   panels: PanelStates;
 }
 
@@ -47,6 +48,7 @@ function defaultState(): UiState {
     sidebar: {
       width: 320,
       collapsed: false,
+      activeTab: 'workers',
       panels: { ...DEFAULT_PANELS },
     },
     panes: {
@@ -78,6 +80,9 @@ function loadState(): UiState {
           }
           if (typeof parsed.sidebar.collapsed === 'boolean') {
             base.sidebar.collapsed = parsed.sidebar.collapsed;
+          }
+          if (typeof parsed.sidebar.activeTab === 'string') {
+            base.sidebar.activeTab = parsed.sidebar.activeTab;
           }
           if (parsed.sidebar.panels && typeof parsed.sidebar.panels === 'object') {
             for (const key of Object.keys(DEFAULT_PANELS) as (keyof PanelStates)[]) {
@@ -171,6 +176,11 @@ export function useUiState() {
     scheduleWrite();
   }
 
+  function setActiveTab(tab: string) {
+    s.value.sidebar.activeTab = tab;
+    scheduleWrite();
+  }
+
   // --- Panes ---
 
   function setPaneLayout(rootNode: PaneNode | null, focusedNodeId: string | null) {
@@ -200,6 +210,7 @@ export function useUiState() {
     setSidebarWidth,
     setSidebarCollapsed,
     setPanelCollapsed,
+    setActiveTab,
     setPaneLayout,
     setTmuxActiveWindow,
     getTmuxActiveWindow,
