@@ -23,6 +23,8 @@ export default defineEventHandler(() => {
   const dashboardHasTls = dashboardDomainConfig ? dashboardDomainConfig.challengeType !== 'none' : false;
   const dashboardScheme = dashboardHasTls ? 'https' : 'http';
 
+  const hasSelfSigned = config.baseDomainConfigs.some((c) => c.challengeType === 'selfsigned');
+
   return {
     enabled: config.baseDomains.length > 0,
     baseDomains: config.baseDomains,
@@ -32,6 +34,7 @@ export default defineEventHandler(() => {
       ...(c.dnsProvider ? { dnsProvider: c.dnsProvider } : {}),
     })),
     totalMappings: mappings.length,
+    ...(hasSelfSigned ? { hasSelfSignedCa: true } : {}),
     ...(config.dashboardSubdomain && config.dashboardBaseDomain
       ? { dashboardUrl: `${dashboardScheme}://${config.dashboardSubdomain}.${config.dashboardBaseDomain}` }
       : {}),

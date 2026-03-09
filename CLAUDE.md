@@ -225,8 +225,9 @@ Each base domain in `BASE_DOMAINS` specifies its own TLS challenge type:
 | `domain.com` | none | No | No | Nothing |
 | `domain.com:http` | HTTP-01 | Yes | No | Port 80 publicly accessible |
 | `domain.com:dns:provider` | DNS-01 | Yes | Yes (`*.domain.com`) | DNS provider credentials |
+| `domain.com:selfsigned` | Self-signed CA | Yes | Yes (`*.domain.com`) | User trusts the CA cert in browser |
 
-Example: `BASE_DOMAINS=a.com:dns:cloudflare,b.com:http,c.com`
+Example: `BASE_DOMAINS=a.com:dns:cloudflare,b.com:http,c.com,d.com:selfsigned`
 
 **DNS provider configuration** uses `ACME_DNS_<PROVIDER>_*` env vars (provider name uppercased, hyphens → underscores):
 - `ACME_DNS_<PROVIDER>_VARS` — comma-separated env var names to forward to Traefik container (required)
@@ -242,6 +243,20 @@ Traefik certificate resolvers are created dynamically based on configured challe
 - `letsencrypt-dns-<provider>` — DNS-01 per provider (e.g., `letsencrypt-dns-cloudflare`)
 
 DNS-challenged domains get wildcard TLS: `{ certResolver, domains: [{ main, sans: ["*.domain"] }] }`
+
+### Self-Signed Certificates
+
+Domains configured with `:selfsigned` use a locally generated CA to issue wildcard certificates. No external DNS or Let's Encrypt needed — ideal for development or private networks.
+
+**Architecture:**
+- `SelfSignedCertManager` (`selfsigned-certs.ts`): Generates and stores a root CA certificate + per-domain wildcard certificates using `node-forge`
+- CA cert (10-year validity) + domain certs (5-year) stored in `<DATA_DIR>/selfsigned-certs/`
+- Certs are generated on first startup and reused across restarts (persisted in data directory)
+- Traefik loads certs via its file provider config (`tls.certificates` section in `traefik-config.json`)
+- Self-signed routers use `tls: {}` (empty — Traefik auto-matches the certificate by SNI from loaded certs)
+- CA cert downloadable via `GET /api/domain-mapper/ca-cert` and from the dashboard UI ("CA cert" button)
+- Each domain gets a wildcard cert with SANs: `domain.com` + `*.domain.com`
+- Mixed configurations work: some domains can use `:selfsigned` while others use `:http` or `:dns:provider`
 
 ### Config Drift Detection
 
@@ -556,6 +571,7 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/server/utils/worker-store.ts` - WorkerStore class (persistent worker metadata for archive/unarchive)
 - `orchestrator/server/utils/credential-mounts.ts` - CredentialMountManager class (resolves host path of /cred mount, generates bind mount strings for worker containers) + AGENT_CREDENTIAL_MAPPINGS registry
 - `orchestrator/server/utils/storage.ts` - StorageManager class (auto-detects volume vs directory storage mode, provides bind string construction and cleanup for worker workspaces, DinD, Traefik certs)
+- `orchestrator/server/utils/selfsigned-certs.ts` - SelfSignedCertManager class (CA + wildcard cert generation using node-forge for selfsigned domains)
 - `orchestrator/server/utils/skill-store.ts` - SkillStore class (extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/agents-md-store.ts` - AgentsMdStore class (AGENTS.md entries, extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/built-in-content.ts` - Built-in content loader (reads markdown files from server assets via `useStorage()`)
@@ -563,7 +579,7 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `orchestrator/server/built-in/agents-md/` - Built-in AGENTS.md entry files (filename = ID, name parsed from first `# Heading`)
 - `orchestrator/server/built-in/init-scripts/` - Built-in init script files (plain .sh, filename = ID and name)
 - `orchestrator/server/built-in/environments/` - Built-in environment JSON files (filename = ID, contains environment config)
-- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useAgentsMdStore, useInitScriptStore) + shared `cleanupWorkerMappings()` utility
+- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useAgentsMdStore, useInitScriptStore) + shared `cleanupWorkerMappings()` utility
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)
 - `orchestrator/server/utils/terminal-handler.ts` - Docker stream WebSocket terminal logic (uses ws-utils, exports terminalWsHandler)
@@ -728,7 +744,8 @@ All API routes return JSON only (no HTML partials).
 | POST | `/api/domain-mappings` | Create domain mapping |
 | POST | `/api/domain-mappings/batch` | Create multiple domain mappings (single Traefik reconcile) |
 | DELETE | `/api/domain-mappings/:id` | Remove domain mapping |
-| GET | `/api/domain-mapper/status` | Domain mapper status (enabled, baseDomains) |
+| GET | `/api/domain-mapper/status` | Domain mapper status (enabled, baseDomains, hasSelfSignedCa) |
+| GET | `/api/domain-mapper/ca-cert` | Download self-signed CA certificate PEM |
 | GET | `/api/skills` | List all skills |
 | POST | `/api/skills` | Create custom skill |
 | GET | `/api/skills/:id` | Get single skill |

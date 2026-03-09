@@ -183,6 +183,11 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
+  async getCaCert() {
+    const res = await this.request.get(`${BASE_URL}/api/domain-mapper/ca-cert`);
+    return { status: res.status(), body: await res.text(), headers: res.headers() };
+  }
+
   // ─── Environments ─────────────────────────────────────────────
   async listEnvironments() {
     const res = await this.request.get(`${BASE_URL}/api/environments`);
@@ -222,12 +227,6 @@ export class ApiClient {
 
   async deleteArchivedWorker(name: string) {
     const res = await this.request.delete(`${BASE_URL}/api/archived/${name}`);
-    return { status: res.status(), body: await res.json() };
-  }
-
-  // ─── Init Presets ─────────────────────────────────────────────
-  async listInitPresets() {
-    const res = await this.request.get(`${BASE_URL}/api/init-presets`);
     return { status: res.status(), body: await res.json() };
   }
 
@@ -285,6 +284,119 @@ export class ApiClient {
   async applyUpdates(images?: string[]) {
     const data = images ? { images } : {};
     const res = await this.request.post(`${BASE_URL}/api/updates/apply`, { data });
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async pruneImages() {
+    const res = await this.request.post(`${BASE_URL}/api/updates/prune`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  // ─── Skills ────────────────────────────────────────────────────
+  async listSkills() {
+    const res = await this.request.get(`${BASE_URL}/api/skills`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async createSkill(data: Record<string, unknown>) {
+    const res = await this.request.post(`${BASE_URL}/api/skills`, { data });
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async getSkill(id: string) {
+    const res = await this.request.get(`${BASE_URL}/api/skills/${id}`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async updateSkill(id: string, data: Record<string, unknown>) {
+    const res = await this.request.put(`${BASE_URL}/api/skills/${id}`, { data });
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async deleteSkill(id: string) {
+    const res = await this.request.delete(`${BASE_URL}/api/skills/${id}`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  // ─── AGENTS.md ─────────────────────────────────────────────────
+  async listAgentsMd() {
+    const res = await this.request.get(`${BASE_URL}/api/agents-md`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async createAgentsMd(data: Record<string, unknown>) {
+    const res = await this.request.post(`${BASE_URL}/api/agents-md`, { data });
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async getAgentsMd(id: string) {
+    const res = await this.request.get(`${BASE_URL}/api/agents-md/${id}`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async updateAgentsMd(id: string, data: Record<string, unknown>) {
+    const res = await this.request.put(`${BASE_URL}/api/agents-md/${id}`, { data });
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async deleteAgentsMd(id: string) {
+    const res = await this.request.delete(`${BASE_URL}/api/agents-md/${id}`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  // ─── Init Scripts ──────────────────────────────────────────────
+  async listInitScripts() {
+    const res = await this.request.get(`${BASE_URL}/api/init-scripts`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async createInitScript(data: Record<string, unknown>) {
+    const res = await this.request.post(`${BASE_URL}/api/init-scripts`, { data });
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async getInitScript(id: string) {
+    const res = await this.request.get(`${BASE_URL}/api/init-scripts/${id}`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async updateInitScript(id: string, data: Record<string, unknown>) {
+    const res = await this.request.put(`${BASE_URL}/api/init-scripts/${id}`, { data });
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async deleteInitScript(id: string) {
+    const res = await this.request.delete(`${BASE_URL}/api/init-scripts/${id}`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  // ─── Settings ──────────────────────────────────────────────────
+  async getSettings() {
+    const res = await this.request.get(`${BASE_URL}/api/settings`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  // ─── Credentials ───────────────────────────────────────────────
+  async listCredentials() {
+    const res = await this.request.get(`${BASE_URL}/api/credentials`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  // ─── Agent API Domains ─────────────────────────────────────────
+  async listAgentApiDomains() {
+    const res = await this.request.get(`${BASE_URL}/api/agent-api-domains`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  // ─── Usage Refresh ─────────────────────────────────────────────
+  async refreshUsage() {
+    const res = await this.request.post(`${BASE_URL}/api/usage/refresh`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  // ─── Domain Mappings Batch ─────────────────────────────────────
+  async createDomainMappingsBatch(data: Record<string, unknown>) {
+    const res = await this.request.post(`${BASE_URL}/api/domain-mappings/batch`, { data });
     return { status: res.status(), body: await res.json() };
   }
 }

@@ -75,7 +75,7 @@ export interface DomainMapping {
   };
 }
 
-export type ChallengeType = 'none' | 'http' | 'dns';
+export type ChallengeType = 'none' | 'http' | 'dns' | 'selfsigned';
 
 export interface BaseDomainConfig {
   domain: string;
@@ -88,6 +88,7 @@ export interface DomainMapperStatus {
   baseDomains: string[];
   baseDomainConfigs: BaseDomainConfig[];
   totalMappings: number;
+  hasSelfSignedCa?: boolean;
   dashboardUrl?: string;
 }
 

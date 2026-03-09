@@ -1,4 +1,4 @@
-export type ChallengeType = 'none' | 'http' | 'dns';
+export type ChallengeType = 'none' | 'http' | 'dns' | 'selfsigned';
 
 export interface BaseDomainConfig {
   domain: string;
@@ -49,6 +49,9 @@ function parseBaseDomains(raw: string): BaseDomainConfig[] {
     }
     if (parts.length >= 2 && parts[1] === 'http') {
       return { domain, challengeType: 'http' as ChallengeType };
+    }
+    if (parts.length >= 2 && parts[1] === 'selfsigned') {
+      return { domain, challengeType: 'selfsigned' as ChallengeType };
     }
     return { domain, challengeType: 'none' as ChallengeType };
   });

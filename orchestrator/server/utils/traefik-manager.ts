@@ -5,6 +5,7 @@ import Docker from 'dockerode';
 import type { Config, BaseDomainConfig } from './config';
 import type { DomainMappingStore, DomainMapping } from './domain-mapping-store';
 import type { StorageManager } from './storage';
+import type { SelfSignedCertManager } from './selfsigned-certs';
 
 const TRAEFIK_CONTAINER_NAME = 'agentor-traefik';
 const TRAEFIK_LABEL = 'agentor.managed';
@@ -15,18 +16,28 @@ export class TraefikManager {
   private config: Config;
   private store: DomainMappingStore;
   private storageManager: StorageManager;
+  private selfSignedCertManager: SelfSignedCertManager;
   private reconcileQueue: Promise<void> = Promise.resolve();
   private configFileJustCreated = false;
 
-  constructor(config: Config, store: DomainMappingStore, storageManager: StorageManager) {
+  constructor(config: Config, store: DomainMappingStore, storageManager: StorageManager, selfSignedCertManager: SelfSignedCertManager) {
     this.docker = new Docker({ socketPath: '/var/run/docker.sock' });
     this.config = config;
     this.store = store;
     this.storageManager = storageManager;
+    this.selfSignedCertManager = selfSignedCertManager;
   }
 
   async init(): Promise<void> {
     if (this.config.baseDomains.length === 0) return;
+
+    const selfSignedDomains = this.config.baseDomainConfigs
+      .filter((c) => c.challengeType === 'selfsigned')
+      .map((c) => c.domain);
+    if (selfSignedDomains.length > 0) {
+      await this.selfSignedCertManager.init(selfSignedDomains);
+    }
+
     await this.ensureConfigFile();
     await this.reconcile();
   }
@@ -110,6 +121,7 @@ export class TraefikManager {
   private getTlsConfig(baseDomain: string): Record<string, unknown> | undefined {
     const dc = this.getDomainConfig(baseDomain);
     if (!dc || dc.challengeType === 'none') return undefined;
+    if (dc.challengeType === 'selfsigned') return {};
     if (dc.challengeType === 'http') return { certResolver: 'letsencrypt' };
     return {
       certResolver: `letsencrypt-dns-${dc.dnsProvider}`,
@@ -189,9 +201,24 @@ export class TraefikManager {
       }
     }
 
+    // Add self-signed TLS certificates to the file provider config
+    const selfSignedDomains = this.config.baseDomainConfigs.filter((c) => c.challengeType === 'selfsigned');
+    if (selfSignedDomains.length > 0) {
+      (config as Record<string, unknown>).tls = {
+        certificates: selfSignedDomains.map((dc) => ({
+          certFile: this.selfSignedCertManager.getTraefikCertPath(dc.domain),
+          keyFile: this.selfSignedCertManager.getTraefikKeyPath(dc.domain),
+        })),
+      };
+    }
+
     // Strip empty sub-objects — Traefik v3 rejects standalone empty maps
     const clean: Record<string, unknown> = {};
     for (const [proto, sections] of Object.entries(config)) {
+      if (proto === 'tls') {
+        clean[proto] = sections;
+        continue;
+      }
       const filtered: Record<string, unknown> = {};
       for (const [key, val] of Object.entries(sections as Record<string, Record<string, unknown>>)) {
         if (Object.keys(val).length > 0) filtered[key] = val;
@@ -267,8 +294,8 @@ export class TraefikManager {
   }
 
   private async createTraefik(): Promise<void> {
-    const hasAnyCerts = this.config.baseDomainConfigs.some((c) => c.challengeType !== 'none');
-    if (hasAnyCerts && !this.config.acmeEmail) {
+    const hasAcmeCerts = this.config.baseDomainConfigs.some((c) => c.challengeType === 'http' || c.challengeType === 'dns');
+    if (hasAcmeCerts && !this.config.acmeEmail) {
       console.warn('[traefik-manager] ACME_EMAIL not configured — TLS certificates will not be issued');
     }
 

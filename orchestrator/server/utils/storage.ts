@@ -120,6 +120,12 @@ export class StorageManager {
     await mkdir(join(this.dataDir, 'traefik-certs'), { recursive: true });
   }
 
+  /** Ensure self-signed cert directory exists (directory mode only) */
+  async ensureSelfSignedCertDir(): Promise<void> {
+    if (this.mode !== 'directory') return;
+    await mkdir(join(this.dataDir, 'selfsigned-certs'), { recursive: true });
+  }
+
   private async removeVolume(volumeName: string): Promise<void> {
     try {
       const volume = this.docker.getVolume(volumeName);

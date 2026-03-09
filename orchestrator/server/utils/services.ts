@@ -16,6 +16,7 @@ import { SkillStore } from './skill-store';
 import { AgentsMdStore } from './agents-md-store';
 import { InitScriptStore } from './init-script-store';
 import { StorageManager } from './storage';
+import { SelfSignedCertManager } from './selfsigned-certs';
 
 function singleton<T>(factory: () => T): () => T {
   let instance: T | undefined;
@@ -34,7 +35,8 @@ export const useContainerManager = singleton(() => new ContainerManager(useDocke
 export const usePortMappingStore = singleton(() => new PortMappingStore(useConfig().dataDir));
 export const useMapperManager = singleton(() => new MapperManager(useConfig(), usePortMappingStore(), useStorageManager()));
 export const useDomainMappingStore = singleton(() => new DomainMappingStore(useConfig().dataDir));
-export const useTraefikManager = singleton(() => new TraefikManager(useConfig(), useDomainMappingStore(), useStorageManager()));
+export const useSelfSignedCertManager = singleton(() => new SelfSignedCertManager(useConfig().dataDir));
+export const useTraefikManager = singleton(() => new TraefikManager(useConfig(), useDomainMappingStore(), useStorageManager(), useSelfSignedCertManager()));
 export const useGitHubService = singleton(() => new GitHubService(useConfig()));
 export const useEnvironmentStore = singleton(() => new EnvironmentStore(useConfig().dataDir));
 export const useWorkerStore = singleton(() => new WorkerStore(useConfig().dataDir));

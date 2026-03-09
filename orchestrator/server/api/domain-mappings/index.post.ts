@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
     if (!domainConfig || domainConfig.challengeType === 'none') {
       throw createError({
         statusCode: 400,
-        statusMessage: `${body.protocol.toUpperCase()} requires TLS but '${body.baseDomain}' has no ACME challenge configured (use :http or :dns:provider in BASE_DOMAINS)`,
+        statusMessage: `${body.protocol.toUpperCase()} requires TLS but '${body.baseDomain}' has no TLS configured (use :http, :dns:provider, or :selfsigned in BASE_DOMAINS)`,
       });
     }
   }

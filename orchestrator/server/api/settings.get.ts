@@ -152,7 +152,9 @@ export default defineEventHandler(async () => {
         ? `DNS-01 (${domainConfig.dnsProvider})`
         : domainConfig.challengeType === 'http'
           ? 'HTTP-01'
-          : 'None';
+          : domainConfig.challengeType === 'selfsigned'
+            ? 'Self-Signed CA'
+            : 'None';
       domainItems.push({
         key: `tls.${domainConfig.domain}`,
         label: `${domainConfig.domain} TLS Challenge`,

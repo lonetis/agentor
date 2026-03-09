@@ -24,7 +24,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 - **Multi-repo cloning** — clone one or more git repos into each worker at startup
 - **App system** — launch Chromium (with CDP) or SOCKS5 proxy instances inside workers
 - **Port mapper** — dedicated container running TCP reverse proxies to expose worker-internal ports to the host
-- **Domain mapping** — Traefik reverse proxy with Let's Encrypt TLS, subdomain-based routing to worker ports, optional HTTP basic auth
+- **Domain mapping** — Traefik reverse proxy with TLS (Let's Encrypt HTTP-01/DNS-01 or self-signed CA), subdomain-based routing to worker ports, optional HTTP basic auth
 - **Auto-updates** — per-image or bulk image updates in production mode with registry-agnostic digest comparison (GHCR + Docker Hub), orchestrator self-replaces
 - **Resource limits** — per-worker CPU and memory constraints
 - **Volume mounts** — bind-mount host directories into workers

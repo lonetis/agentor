@@ -133,7 +133,12 @@ const challengeColors: Record<string, string> = {
   none: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
   http: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300',
   dns: 'bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300',
+  selfsigned: 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300',
 };
+
+function downloadCaCert() {
+  window.open('/api/domain-mapper/ca-cert', '_blank');
+}
 </script>
 
 <template>
@@ -238,9 +243,22 @@ const challengeColors: Record<string, string> = {
       </div>
     </div>
 
-    <UButton v-if="!showForm" size="xs" color="primary" variant="solid" class="self-start" @click="showForm = true">
-      + Map
-    </UButton>
+    <div v-if="!showForm" class="flex gap-1.5 items-center">
+      <UButton size="xs" color="primary" variant="solid" @click="showForm = true">
+        + Map
+      </UButton>
+      <UButton
+        v-if="status.hasSelfSignedCa"
+        size="xs"
+        color="neutral"
+        variant="ghost"
+        title="Download CA certificate (trust in browser for self-signed domains)"
+        @click="downloadCaCert"
+      >
+        <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+        CA cert
+      </UButton>
+    </div>
 
     <!-- Mappings list -->
     <div v-if="mappings.length === 0 && !showForm" class="text-gray-400 dark:text-gray-500 text-xs text-center py-1">
@@ -262,7 +280,7 @@ const challengeColors: Record<string, string> = {
         :class="challengeColors[getChallengeType(m.baseDomain)]"
         :title="getDnsProvider(m.baseDomain) ? `dns:${getDnsProvider(m.baseDomain)}` : getChallengeType(m.baseDomain)"
       >
-        {{ getChallengeType(m.baseDomain) === 'dns' ? getDnsProvider(m.baseDomain) : getChallengeType(m.baseDomain) }}
+        {{ getChallengeType(m.baseDomain) === 'dns' ? getDnsProvider(m.baseDomain) : getChallengeType(m.baseDomain) === 'selfsigned' ? 'self' : getChallengeType(m.baseDomain) }}
       </span>
       <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.subdomain ? `${m.subdomain}.${m.baseDomain}` : m.baseDomain }}</span>
       <svg
