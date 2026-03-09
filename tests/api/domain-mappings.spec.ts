@@ -870,9 +870,9 @@ test.describe('Domain Mappings API', () => {
       expect(status).toBe(200);
 
       if (body.dashboardUrl !== undefined) {
-        // If present, it should be a valid-looking URL
+        // If present, it should be a valid-looking URL (http or https depending on TLS config)
         expect(typeof body.dashboardUrl).toBe('string');
-        expect(body.dashboardUrl).toMatch(/^https:\/\/.+\..+/);
+        expect(body.dashboardUrl).toMatch(/^https?:\/\/.+\..+/);
       }
       // If absent, the field should simply not exist
       // (either way is valid — depends on DASHBOARD_SUBDOMAIN config)

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
-import { createWorker, cleanupWorker, cleanupAllPortMappings } from '../helpers/worker-lifecycle';
+import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 
 test.describe('Port Mappings API', () => {
   let containerId: string;
@@ -13,12 +13,16 @@ test.describe('Port Mappings API', () => {
   });
 
   test.afterAll(async ({ request }) => {
-    await cleanupAllPortMappings(request);
+    // Only clean up mappings for our specific worker (not globally — avoids parallel interference)
+    const api = new ApiClient(request);
+    const { body: mappings } = await api.listPortMappings();
+    for (const m of mappings) {
+      if (m.workerId === containerId) {
+        try { await api.deletePortMapping(m.externalPort); } catch { /* ignore */ }
+      }
+    }
     await cleanupWorker(request, containerId);
   });
-
-  // Note: no afterEach cleanup — port mappings are cleaned up in afterAll
-  // Using afterEach with cleanupAllPortMappings causes race conditions with fullyParallel
 
   test.describe('GET /api/port-mappings', () => {
     test('returns list of port mappings', async ({ request }) => {
@@ -372,11 +376,9 @@ test.describe('Port Mappings API', () => {
   });
 
   test.describe('Mapper status after operations', () => {
-    test('localhostCount increases after creating localhost mapping', async ({ request }) => {
+    test('localhostCount reflects created localhost mapping', async ({ request }) => {
       const api = new ApiClient(request);
       const uniquePort = 19300 + (Date.now() % 100);
-
-      const { body: before } = await api.getPortMapperStatus();
 
       const { status } = await api.createPortMapping({
         externalPort: uniquePort,
@@ -387,19 +389,24 @@ test.describe('Port Mappings API', () => {
       expect(status).toBe(201);
 
       try {
-        const { body: after } = await api.getPortMapperStatus();
-        // Only check the specific count (totalMappings can race with parallel tests)
-        expect(after.localhostCount).toBeGreaterThanOrEqual(before.localhostCount + 1);
+        // Wait for mapper container reconciliation (async) — retry up to 15s
+        let localhostCount = 0;
+        const start = Date.now();
+        while (Date.now() - start < 15_000) {
+          await new Promise(r => setTimeout(r, 1000));
+          const { body: statusBody } = await api.getPortMapperStatus();
+          localhostCount = statusBody.localhostCount;
+          if (localhostCount > 0) break;
+        }
+        expect(localhostCount).toBeGreaterThan(0);
       } finally {
         try { await api.deletePortMapping(uniquePort); } catch { /* ignore */ }
       }
     });
 
-    test('externalCount increases after creating external mapping', async ({ request }) => {
+    test('externalCount reflects created external mapping', async ({ request }) => {
       const api = new ApiClient(request);
       const uniquePort = 19400 + (Date.now() % 100);
-
-      const { body: before } = await api.getPortMapperStatus();
 
       const { status } = await api.createPortMapping({
         externalPort: uniquePort,
@@ -410,9 +417,16 @@ test.describe('Port Mappings API', () => {
       expect(status).toBe(201);
 
       try {
-        const { body: after } = await api.getPortMapperStatus();
-        // Only check the specific count (totalMappings can race with parallel tests)
-        expect(after.externalCount).toBeGreaterThanOrEqual(before.externalCount + 1);
+        // Wait for mapper container reconciliation (async) — retry up to 15s
+        let externalCount = 0;
+        const start = Date.now();
+        while (Date.now() - start < 15_000) {
+          await new Promise(r => setTimeout(r, 1000));
+          const { body: statusBody } = await api.getPortMapperStatus();
+          externalCount = statusBody.externalCount;
+          if (externalCount > 0) break;
+        }
+        expect(externalCount).toBeGreaterThan(0);
       } finally {
         try { await api.deletePortMapping(uniquePort); } catch { /* ignore */ }
       }

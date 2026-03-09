@@ -260,7 +260,7 @@ test.describe('UI State Persistence', () => {
     test('Images collapse persists', async ({ page }) => {
       await freshStart(page);
 
-      const btn = page.locator('button:has-text("IMAGES")');
+      const btn = page.locator('button.w-full').filter({ hasText: /Images/i }).first();
       await btn.click();
       await page.waitForTimeout(300);
 
@@ -275,7 +275,7 @@ test.describe('UI State Persistence', () => {
     test('Usage collapse persists', async ({ page }) => {
       await freshStart(page);
 
-      const btn = page.locator('button:has-text("USAGE")');
+      const btn = page.locator('div.flex.items-center').filter({ hasText: /Usage/i }).locator('button.ml-auto');
       await btn.click();
       await page.waitForTimeout(300);
 
@@ -293,7 +293,7 @@ test.describe('UI State Persistence', () => {
       // Collapse Port Mappings and Images, leave Usage expanded
       await page.locator('button:has-text("PORT MAPPINGS")').click();
       await page.waitForTimeout(200);
-      await page.locator('button:has-text("IMAGES")').click();
+      await page.locator('button.w-full').filter({ hasText: /Images/i }).first().click();
       await page.waitForTimeout(200);
 
       await page.reload({ waitUntil: 'networkidle' });
@@ -500,12 +500,11 @@ test.describe('UI State Persistence', () => {
 
       const state = await getUiState(page);
       const tmux = state!.tmux as Record<string, unknown>;
-      const activeWindows = tmux.activeWindows as Record<string, string>;
+      const activeWindows = tmux.activeWindows as Record<string, number>;
       expect(Object.keys(activeWindows).length).toBeGreaterThan(0);
-      // The default window should have a name (e.g., 'main' or 'shell')
-      const windowName = Object.values(activeWindows)[0];
-      expect(typeof windowName).toBe('string');
-      expect(windowName!.length).toBeGreaterThan(0);
+      // The default window index should be a number (0 for the first window)
+      const windowIndex = Object.values(activeWindows)[0];
+      expect(typeof windowIndex).toBe('number');
     });
 
     test('creating a new tmux window persists the new active window', async ({ page }) => {
@@ -539,10 +538,10 @@ test.describe('UI State Persistence', () => {
 
       const state = await getUiState(page);
       const tmux = state!.tmux as Record<string, unknown>;
-      const activeWindows = tmux.activeWindows as Record<string, string>;
+      const activeWindows = tmux.activeWindows as Record<string, number>;
       // Should have an entry for this container
       const savedWindow = activeWindows[containerId];
-      expect(savedWindow).toBeTruthy();
+      expect(savedWindow).toBeDefined();
     });
 
     test('switching tmux window persists the new selection', async ({ page }) => {
@@ -586,9 +585,9 @@ test.describe('UI State Persistence', () => {
 
         const stateAfter = await getUiState(page);
         const tmuxAfter = stateAfter!.tmux as Record<string, unknown>;
-        const windowsAfter = tmuxAfter.activeWindows as Record<string, string>;
+        const windowsAfter = tmuxAfter.activeWindows as Record<string, number>;
         // The persisted window should have changed
-        expect(windowsAfter[containerId]).toBeTruthy();
+        expect(windowsAfter[containerId]).toBeDefined();
       }
       // If only one tab, the test passes trivially (nothing to switch to)
     });
@@ -608,8 +607,8 @@ test.describe('UI State Persistence', () => {
 
       // Get the persisted window name
       const state1 = await getUiState(page);
-      const window1 = ((state1!.tmux as Record<string, unknown>).activeWindows as Record<string, string>)[containerId];
-      expect(window1).toBeTruthy();
+      const window1 = ((state1!.tmux as Record<string, unknown>).activeWindows as Record<string, number>)[containerId];
+      expect(window1).toBeDefined();
 
       // Close the terminal tab via the X button on the pane tab bar
       // The close button is opacity-0 until hover, so hover the tab first

@@ -1,12 +1,33 @@
-import { test, expect } from '@playwright/test';
-import { goToDashboard, toggleSidebarSection } from '../helpers/ui-helpers';
-import { createWorker, cleanupWorker, cleanupAllDomainMappings } from '../helpers/worker-lifecycle';
+import { test, expect, type Locator } from '@playwright/test';
+import { goToDashboard } from '../helpers/ui-helpers';
+import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
 
+/** Click the Domain Mappings "+ Map" button and verify the form opens. Retries up to 3 times. */
+async function openDmForm(aside: Locator) {
+  const subdomainInput = aside.locator('input[placeholder="subdomain (optional)"]');
+  // Target the Domain Mappings section specifically (not Port Mappings)
+  const dmSection = aside.locator('button:has-text("Domain Mappings")').locator('..');
+  const mapBtn = dmSection.locator('button:has-text("+ Map")');
+  await expect(mapBtn).toBeVisible({ timeout: 10_000 });
+  await mapBtn.scrollIntoViewIfNeeded();
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await mapBtn.isVisible().catch(() => false)) {
+      await mapBtn.click({ force: attempt > 0 });
+    }
+    try {
+      await expect(subdomainInput).toBeVisible({ timeout: 3_000 });
+      return; // Form opened successfully
+    } catch {
+      // Retry
+    }
+  }
+  // Final assertion — form must be open
+  await expect(subdomainInput).toBeVisible({ timeout: 5_000 });
+}
+
 test.describe('Domain Mappings Panel — Advanced API', () => {
-  test.afterEach(async ({ request }) => {
-    await cleanupAllDomainMappings(request);
-  });
 
   test('domain mapper status is displayed', async ({ request }) => {
     const api = new ApiClient(request);
@@ -140,8 +161,8 @@ test.describe('Domain Mappings Panel — UI', () => {
 
     await goToDashboard(page);
     const aside = page.locator('aside');
-    await aside.locator('button:has-text("+ Map")').last().click();
-    await expect(aside.locator('input[placeholder="subdomain"]')).toBeVisible({ timeout: 5_000 });
+    await openDmForm(aside);
+    await expect(aside.locator('input[placeholder="subdomain (optional)"]')).toBeVisible({ timeout: 5_000 });
     await expect(aside.locator('input[placeholder="Internal port"]')).toBeVisible();
   });
 
@@ -152,10 +173,10 @@ test.describe('Domain Mappings Panel — UI', () => {
 
     await goToDashboard(page);
     const aside = page.locator('aside');
-    await aside.locator('button:has-text("+ Map")').last().click();
-    // Protocol selector (select element) should be visible
-    const protocolSelect = aside.locator('select').first();
-    await expect(protocolSelect).toBeVisible({ timeout: 5_000 });
+    await openDmForm(aside);
+    await expect(aside.locator('button:has-text("http")').first()).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('button:has-text("https")').first()).toBeVisible();
+    await expect(aside.locator('button:has-text("tcp")').first()).toBeVisible();
   });
 
   test('switching protocol to TCP hides Basic auth checkbox', async ({ page, request }) => {
@@ -165,13 +186,9 @@ test.describe('Domain Mappings Panel — UI', () => {
 
     await goToDashboard(page);
     const aside = page.locator('aside');
-    await aside.locator('button:has-text("+ Map")').last().click();
-    // Basic auth should be visible initially (http/https default)
+    await openDmForm(aside);
     await expect(aside.locator('text=Basic auth')).toBeVisible({ timeout: 5_000 });
-    // Switch protocol to TCP
-    const protocolSelect = aside.locator('select').first();
-    await protocolSelect.selectOption('tcp');
-    // Basic auth should now be hidden
+    await aside.locator('button:has-text("tcp")').first().click();
     await expect(aside.locator('text=Basic auth')).toBeHidden({ timeout: 5_000 });
   });
 
@@ -182,13 +199,10 @@ test.describe('Domain Mappings Panel — UI', () => {
 
     await goToDashboard(page);
     const aside = page.locator('aside');
-    await aside.locator('button:has-text("+ Map")').last().click();
-    const protocolSelect = aside.locator('select').first();
-    // Switch to TCP
-    await protocolSelect.selectOption('tcp');
+    await openDmForm(aside);
+    await aside.locator('button:has-text("tcp")').first().click();
     await expect(aside.locator('text=Basic auth')).toBeHidden({ timeout: 5_000 });
-    // Switch back to https
-    await protocolSelect.selectOption('https');
+    await aside.locator('button:has-text("http")').first().click();
     await expect(aside.locator('text=Basic auth')).toBeVisible({ timeout: 5_000 });
   });
 
@@ -199,12 +213,9 @@ test.describe('Domain Mappings Panel — UI', () => {
 
     await goToDashboard(page);
     const aside = page.locator('aside');
-    await aside.locator('button:has-text("+ Map")').last().click();
-    // Username/password should be hidden initially
+    await openDmForm(aside);
     await expect(aside.locator('input[placeholder="Username"]')).toBeHidden();
-    // Check the Basic auth checkbox
     await aside.locator('text=Basic auth').click();
-    // Fields should now be visible
     await expect(aside.locator('input[placeholder="Username"]')).toBeVisible({ timeout: 5_000 });
     await expect(aside.locator('input[placeholder="Password"]')).toBeVisible();
   });
@@ -214,11 +225,17 @@ test.describe('Domain Mappings Panel — UI', () => {
     const { body } = await api.getDomainMapperStatus();
     test.skip(!body.enabled, 'Domain mapping not enabled');
 
+    // Start listening for domain-mapper status API before navigating so we catch the first response
+    const statusResponsePromise = page.waitForResponse(
+      resp => resp.url().includes('/api/domain-mapper/status') && resp.ok(),
+      { timeout: 15_000 },
+    );
     await goToDashboard(page);
+    await statusResponsePromise;
     const aside = page.locator('aside');
-    await aside.locator('button:has-text("+ Map")').last().click();
-    // Should display the base domain (either as span or select)
-    await expect(aside.locator(`text=.${body.baseDomains[0]}`)).toBeVisible({ timeout: 5_000 });
+    await openDmForm(aside);
+    // Use first() to avoid strict mode if a parallel test created a mapping with the same domain
+    await expect(aside.locator(`text=.${body.baseDomains[0]}`).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('form shows base domain selector when multiple domains configured', async ({ page, request }) => {
@@ -229,10 +246,11 @@ test.describe('Domain Mappings Panel — UI', () => {
 
     await goToDashboard(page);
     const aside = page.locator('aside');
-    await aside.locator('button:has-text("+ Map")').last().click();
-    // With multiple base domains, a select element should appear for domain choice
-    const domainSelect = aside.locator('select').nth(1);
-    await expect(domainSelect).toBeVisible({ timeout: 5_000 });
+    await openDmForm(aside);
+    // With multiple base domains, toggle buttons should appear for each domain
+    for (const domain of body.baseDomains) {
+      await expect(aside.locator(`button:has-text(".${domain}")`)).toBeVisible({ timeout: 5_000 });
+    }
   });
 
   test('Cancel button closes the form', async ({ page, request }) => {
@@ -242,9 +260,8 @@ test.describe('Domain Mappings Panel — UI', () => {
 
     await goToDashboard(page);
     const aside = page.locator('aside');
-    await aside.locator('button:has-text("+ Map")').last().click();
-    await expect(aside.locator('input[placeholder="subdomain"]')).toBeVisible({ timeout: 5_000 });
+    await openDmForm(aside);
     await aside.locator('button:has-text("Cancel")').click();
-    await expect(aside.locator('input[placeholder="subdomain"]')).toBeHidden({ timeout: 5_000 });
+    await expect(aside.locator('input[placeholder="subdomain (optional)"]')).toBeHidden({ timeout: 5_000 });
   });
 });

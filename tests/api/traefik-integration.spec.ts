@@ -262,9 +262,6 @@ test.describe('Traefik Integration', () => {
       const uniqueSub = `count-${Date.now()}`;
 
       try {
-        const { body: beforeStatus } = await api.getDomainMapperStatus();
-        const beforeCount = beforeStatus.totalMappings;
-
         const { body: mapping } = await api.createDomainMapping({
           subdomain: uniqueSub,
           baseDomain,
@@ -273,13 +270,21 @@ test.describe('Traefik Integration', () => {
           internalPort: 8080,
         });
 
+        // Verify mapping exists in the list
+        const { body: afterCreateList } = await api.listDomainMappings();
+        const found = afterCreateList.find((m: { id: string }) => m.id === mapping.id);
+        expect(found).toBeTruthy();
+
+        // Verify totalMappings > 0
         const { body: afterCreate } = await api.getDomainMapperStatus();
-        expect(afterCreate.totalMappings).toBe(beforeCount + 1);
+        expect(afterCreate.totalMappings).toBeGreaterThan(0);
 
         await api.deleteDomainMapping(mapping.id);
 
-        const { body: afterDelete } = await api.getDomainMapperStatus();
-        expect(afterDelete.totalMappings).toBe(beforeCount);
+        // Verify mapping is gone from the list
+        const { body: afterDeleteList } = await api.listDomainMappings();
+        const deleted = afterDeleteList.find((m: { id: string }) => m.id === mapping.id);
+        expect(deleted).toBeFalsy();
       } finally {
         await cleanupWorker(request, container.id);
       }
@@ -378,7 +383,8 @@ test.describe('Traefik Integration', () => {
 
       if (body.dashboardUrl) {
         expect(typeof body.dashboardUrl).toBe('string');
-        expect(body.dashboardUrl).toContain('https://');
+        // Dashboard URL can be http:// or https:// depending on the TLS challenge config
+        expect(body.dashboardUrl).toMatch(/^https?:\/\//);
         expect(body.dashboardUrl).toContain(baseDomain);
       }
     });

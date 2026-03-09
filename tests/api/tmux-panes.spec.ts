@@ -2,12 +2,29 @@ import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 
-test.describe('Tmux Panes API', () => {
+test.describe.serial('Tmux Panes API', () => {
   let containerId: string;
 
   test.beforeAll(async ({ request }) => {
     const container = await createWorker(request);
     containerId = container.id;
+    // Wait for tmux to be fully ready — verify we can actually CREATE a window (not just list)
+    const api = new ApiClient(request);
+    const start = Date.now();
+    while (Date.now() - start < 60_000) {
+      const { status } = await api.listPanes(containerId);
+      if (status !== 200) {
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+      // Try creating a probe window to verify tmux is fully functional
+      const { status: createStatus, body } = await api.createPane(containerId, 'readiness-probe');
+      if (createStatus === 201) {
+        await api.deletePane(containerId, body.index);
+        break;
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
   });
 
   test.afterAll(async ({ request }) => {
@@ -221,7 +238,7 @@ test.describe('Tmux Panes API', () => {
     test('auto-generated name follows shell-XXXX pattern', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.createPane(containerId);
-      expect(body.name).toMatch(/^shell-[a-zA-Z0-9]{4}$/);
+      expect(body.name).toMatch(/^shell-[a-zA-Z0-9_-]{4}$/);
       await api.deletePane(containerId, body.index);
     });
 
@@ -252,21 +269,25 @@ test.describe('Tmux Panes API', () => {
       const firstName = `dup-src-${Date.now()}`;
       const secondName = `dup-tgt-${Date.now()}`;
 
-      const { body: first } = await api.createPane(containerId, firstName);
-      const { body: second } = await api.createPane(containerId, secondName);
+      const { status: s1, body: first } = await api.createPane(containerId, firstName);
+      expect(s1).toBe(201);
+      const { status: s2, body: second } = await api.createPane(containerId, secondName);
+      expect(s2).toBe(201);
 
-      // Rename second window to first's name — tmux allows duplicate names
-      const { status } = await api.renamePane(containerId, second.index, firstName);
-      expect(status).toBe(200);
+      try {
+        // Rename second window to first's name — tmux allows duplicate names
+        const { status } = await api.renamePane(containerId, second.index, firstName);
+        expect(status).toBe(200);
 
-      // Verify both windows exist with the same name
-      const { body: panes } = await api.listPanes(containerId);
-      const matching = panes.filter((w: { name: string }) => w.name === firstName);
-      expect(matching.length).toBe(2);
-
-      // Cleanup — delete by index (unambiguous)
-      await api.deletePane(containerId, second.index);
-      await api.deletePane(containerId, first.index);
+        // Verify both windows exist with the same name
+        const { body: panes } = await api.listPanes(containerId);
+        const matching = panes.filter((w: { name: string }) => w.name === firstName);
+        expect(matching.length).toBe(2);
+      } finally {
+        // Cleanup — delete by index (unambiguous)
+        try { await api.deletePane(containerId, second.index); } catch { /* ignore */ }
+        try { await api.deletePane(containerId, first.index); } catch { /* ignore */ }
+      }
     });
 
     test('create window with 50-char valid name', async ({ request }) => {

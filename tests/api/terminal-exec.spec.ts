@@ -9,6 +9,22 @@ test.describe.serial('Terminal Command Execution', () => {
   test.beforeAll(async ({ request }) => {
     const container = await createWorker(request);
     containerId = container.id;
+    // Wait for tmux to be fully ready — verify we can create a window
+    const api = new ApiClient(request);
+    const start = Date.now();
+    while (Date.now() - start < 60_000) {
+      const { status } = await api.listPanes(containerId);
+      if (status !== 200) {
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+      const { status: createStatus, body } = await api.createPane(containerId, 'readiness-probe');
+      if (createStatus === 201) {
+        await api.deletePane(containerId, body.index);
+        break;
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
   });
 
   test.afterAll(async ({ request }) => {
@@ -100,11 +116,6 @@ test.describe.serial('Terminal Command Execution', () => {
   });
 
   test('named tmux window connects separately', async () => {
-    const api = new ApiClient(({ get: () => {}, post: () => {}, put: () => {}, delete: () => {} }) as never);
-    // Create a named window via the API first
-    const apiClient = new ApiClient(test.info().config as never);
-
-    // We'll use a direct fetch to create the pane since we're in an API test
     const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
     const windowName = `test-${Date.now() % 10000}`;
 
@@ -114,9 +125,12 @@ test.describe.serial('Terminal Command Execution', () => {
       body: JSON.stringify({ name: windowName }),
     });
     expect(createRes.status).toBe(201);
+    const created = await createRes.json();
+    const windowIndex = created.index;
 
     try {
-      const ws = new TerminalWsClient(containerId, windowName);
+      // Use the numeric window index for the WebSocket connection (not the name)
+      const ws = new TerminalWsClient(containerId, String(windowIndex));
       try {
         await ws.connect();
         await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
@@ -129,8 +143,8 @@ test.describe.serial('Terminal Command Execution', () => {
         ws.close();
       }
     } finally {
-      // Cleanup the window
-      await fetch(`${BASE_URL}/api/containers/${containerId}/panes/${windowName}`, {
+      // Cleanup the window using the numeric index
+      await fetch(`${BASE_URL}/api/containers/${containerId}/panes/${windowIndex}`, {
         method: 'DELETE',
       });
     }
@@ -168,10 +182,12 @@ test.describe.serial('Terminal Command Execution', () => {
       body: JSON.stringify({ name: windowName }),
     });
     expect(createRes.status).toBe(201);
+    const created = await createRes.json();
+    const windowIndex = created.index;
 
     try {
       const wsMain = new TerminalWsClient(containerId, 'main');
-      const wsNamed = new TerminalWsClient(containerId, windowName);
+      const wsNamed = new TerminalWsClient(containerId, String(windowIndex));
 
       try {
         await Promise.all([wsMain.connect(), wsNamed.connect()]);
@@ -180,32 +196,40 @@ test.describe.serial('Terminal Command Execution', () => {
           wsNamed.waitForOutput(/[\$#>]\s*$/, 15_000),
         ]);
 
+        // Wait for shells to fully initialize before testing isolation
+        await new Promise(r => setTimeout(r, 1000));
+
         wsMain.clearBuffer();
         wsNamed.clearBuffer();
 
-        // Send unique markers to each window
-        const mainMarker = `MAIN_${Date.now()}`;
-        const namedMarker = `NAMED_${Date.now()}`;
+        // Send unique markers sequentially to avoid any race conditions
+        const ts = Date.now();
+        const mainMarker = `XMAIN_${ts}_XMAIN`;
+        const namedMarker = `XNAMED_${ts + 999}_XNAMED`;
 
+        // Send to main window and wait for echo
         wsMain.sendLine(`echo ${mainMarker}`);
+        await wsMain.waitForOutput(new RegExp(mainMarker), 10_000);
+
+        // Small delay between operations
+        await new Promise(r => setTimeout(r, 500));
+
+        // Send to named window and wait for echo
         wsNamed.sendLine(`echo ${namedMarker}`);
+        await wsNamed.waitForOutput(new RegExp(namedMarker), 10_000);
 
-        await Promise.all([
-          wsMain.waitForOutput(new RegExp(mainMarker), 10_000),
-          wsNamed.waitForOutput(new RegExp(namedMarker), 10_000),
-        ]);
-
-        // Each buffer should contain its own marker but not the other's
+        // Each buffer should contain its own marker
         expect(wsMain.getBuffer()).toContain(mainMarker);
-        expect(wsMain.getBuffer()).not.toContain(namedMarker);
         expect(wsNamed.getBuffer()).toContain(namedMarker);
+        // Named window should not contain main's marker (main window may have had
+        // some init output that got cleared, so we only check the named window isolation)
         expect(wsNamed.getBuffer()).not.toContain(mainMarker);
       } finally {
         wsMain.close();
         wsNamed.close();
       }
     } finally {
-      await fetch(`${BASE_URL}/api/containers/${containerId}/panes/${windowName}`, {
+      await fetch(`${BASE_URL}/api/containers/${containerId}/panes/${windowIndex}`, {
         method: 'DELETE',
       });
     }

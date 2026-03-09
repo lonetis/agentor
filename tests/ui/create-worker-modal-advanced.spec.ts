@@ -1,13 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { goToDashboard, openCreateWorkerModal } from '../helpers/ui-helpers';
-import { cleanupAllEnvironments } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
 
 test.describe('Create Worker Modal — Advanced', () => {
-  test.afterEach(async ({ request }) => {
-    await cleanupAllEnvironments(request);
-  });
-
   test('modal has environment selector', async ({ page }) => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
@@ -19,7 +14,7 @@ test.describe('Create Worker Modal — Advanced', () => {
   test('environment selector shows created environments', async ({ page, request }) => {
     const api = new ApiClient(request);
     const envName = `Env-${Date.now()}`;
-    await api.createEnvironment({
+    const { body: created } = await api.createEnvironment({
       name: envName,
       cpuLimit: 0,
       memoryLimit: '',
@@ -31,16 +26,20 @@ test.describe('Create Worker Modal — Advanced', () => {
       setupScript: '',
     });
 
-    await goToDashboard(page);
-    await openCreateWorkerModal(page);
-    const dialog = page.locator('[role="dialog"]');
+    try {
+      await goToDashboard(page);
+      await openCreateWorkerModal(page);
+      const dialog = page.locator('[role="dialog"]');
 
-    // Click on the environment dropdown/selector
-    const envSelector = dialog.locator('select, [role="listbox"], [role="combobox"]').first();
-    if (await envSelector.count() > 0) {
-      await envSelector.click();
-      // The created environment should be visible
-      await expect(page.getByText(envName)).toBeVisible({ timeout: 5_000 });
+      // Click on the environment dropdown/selector
+      const envSelector = dialog.locator('select, [role="listbox"], [role="combobox"]').first();
+      if (await envSelector.count() > 0) {
+        await envSelector.click();
+        // The created environment should be visible
+        await expect(page.getByText(envName)).toBeVisible({ timeout: 5_000 });
+      }
+    } finally {
+      try { await api.deleteEnvironment(created.id); } catch { /* ignore */ }
     }
   });
 
@@ -57,21 +56,23 @@ test.describe('Create Worker Modal — Advanced', () => {
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
 
-    // Look for a preset selector (dropdown or select)
-    const presetDropdown = dialog.locator('select, [role="listbox"], [role="combobox"]').last();
-    if (await presetDropdown.count() > 0) {
-      await presetDropdown.click();
-      // Try clicking Claude option
-      const claudeOption = page.getByText('Claude', { exact: false }).first();
-      if (await claudeOption.isVisible()) {
-        await claudeOption.click();
-        // The textarea should now contain 'claude'
-        const textarea = dialog.locator('textarea').first();
-        if (await textarea.count() > 0) {
-          const value = await textarea.inputValue();
-          expect(value.toLowerCase()).toContain('claude');
-        }
-      }
+    // The Init Script USelect (combobox) shows "None" by default
+    const initScriptCombobox = dialog.getByRole('combobox', { name: 'Init Script' });
+    await expect(initScriptCombobox).toBeVisible();
+
+    // Click the combobox to open the dropdown
+    await initScriptCombobox.click();
+    await page.waitForTimeout(300);
+
+    // Look for the claude option in the dropdown listbox
+    const claudeOption = page.getByRole('option', { name: 'claude' });
+    if (await claudeOption.isVisible().catch(() => false)) {
+      await claudeOption.click();
+      // The textarea should now contain 'claude'
+      const textarea = dialog.locator('textarea').first();
+      await page.waitForTimeout(500);
+      const value = await textarea.inputValue();
+      expect(value.toLowerCase()).toContain('claude');
     }
   });
 
@@ -79,10 +80,14 @@ test.describe('Create Worker Modal — Advanced', () => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
-    // Should have a display name input
-    const inputs = dialog.locator('input');
-    const count = await inputs.count();
-    expect(count).toBeGreaterThanOrEqual(2); // name + display name at minimum
+    // The Name field is the display name input (UInput wraps a native input)
+    const nameInput = dialog.getByRole('textbox', { name: 'Name' });
+    await expect(nameInput).toBeVisible();
+    // Wait for the async name generation to populate the placeholder
+    await page.waitForTimeout(1000);
+    const placeholder = await nameInput.getAttribute('placeholder');
+    expect(placeholder).toBeTruthy();
+    expect(placeholder!.length).toBeGreaterThan(0);
   });
 
   test('modal has create and cancel buttons', async ({ page }) => {
@@ -99,13 +104,17 @@ test.describe('Create Worker Modal — Advanced', () => {
     await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5_000 });
   });
 
-  test('name field is pre-populated', async ({ page }) => {
+  test('name field has generated placeholder', async ({ page }) => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
     const nameInput = dialog.locator('input').first();
+    // The name field value is empty — the generated name is shown as placeholder
     const value = await nameInput.inputValue();
-    expect(value.length).toBeGreaterThan(0);
-    expect(value).toContain('agentor-worker');
+    expect(value).toBe('');
+    // Wait for the generated name API call to complete (placeholder gets populated async)
+    await expect(nameInput).toHaveAttribute('placeholder', /.+/, { timeout: 10_000 });
+    const placeholder = await nameInput.getAttribute('placeholder');
+    expect(placeholder!.length).toBeGreaterThan(0);
   });
 });

@@ -1,10 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
-import { cleanupAllEnvironments } from '../helpers/worker-lifecycle';
 
 test.describe('Environments API — Advanced', () => {
+  // Track IDs created by each test for targeted cleanup
+  const createdIds: string[] = [];
+
   test.afterEach(async ({ request }) => {
-    await cleanupAllEnvironments(request);
+    const api = new ApiClient(request);
+    for (const id of createdIds.splice(0)) {
+      try { await api.deleteEnvironment(id); } catch { /* ignore */ }
+    }
   });
 
   test.describe('Network modes', () => {
@@ -27,6 +32,7 @@ test.describe('Environments API — Advanced', () => {
         expect(status).toBe(201);
         expect(body.networkMode).toBe(mode);
         expect(body.id).toBeTruthy();
+        createdIds.push(body.id);
       });
     }
   });
@@ -48,6 +54,7 @@ test.describe('Environments API — Advanced', () => {
       });
       expect(status).toBe(201);
       expect(body.envVars).toBe(envVars);
+      createdIds.push(body.id);
     });
   });
 
@@ -65,6 +72,7 @@ test.describe('Environments API — Advanced', () => {
         envVars: 'FOO=bar',
         setupScript: 'echo setup',
       });
+      createdIds.push(created.id);
 
       const { status, body: updated } = await api.updateEnvironment(created.id, {
         name: 'test-update-renamed',
@@ -138,6 +146,7 @@ test.describe('Environments API — Advanced', () => {
       expect(status).toBe(201);
       expect(body.cpuLimit).toBe(4.5);
       expect(body.memoryLimit).toBe('2g');
+      createdIds.push(body.id);
     });
   });
 });

@@ -127,3 +127,42 @@ export async function cleanupAllEnvironments(request: APIRequestContext): Promis
     } catch { /* ignore */ }
   }
 }
+
+/**
+ * Cleans up all custom skills (built-in skills cannot be deleted).
+ */
+export async function cleanupAllCustomSkills(request: APIRequestContext): Promise<void> {
+  const api = new ApiClient(request);
+  const { body: skills } = await api.listSkills();
+  for (const s of skills) {
+    if (!s.builtIn) {
+      try { await api.deleteSkill(s.id); } catch { /* ignore */ }
+    }
+  }
+}
+
+/**
+ * Cleans up all custom AGENTS.md entries (built-in entries cannot be deleted).
+ */
+export async function cleanupAllCustomAgentsMd(request: APIRequestContext): Promise<void> {
+  const api = new ApiClient(request);
+  const { body: entries } = await api.listAgentsMd();
+  for (const e of entries) {
+    if (!e.builtIn) {
+      try { await api.deleteAgentsMd(e.id); } catch { /* ignore */ }
+    }
+  }
+}
+
+/**
+ * Cleans up all custom init scripts (built-in scripts cannot be deleted).
+ */
+export async function cleanupAllCustomInitScripts(request: APIRequestContext): Promise<void> {
+  const api = new ApiClient(request);
+  const { body: scripts } = await api.listInitScripts();
+  for (const s of scripts) {
+    if (!s.builtIn) {
+      try { await api.deleteInitScript(s.id); } catch { /* ignore */ }
+    }
+  }
+}

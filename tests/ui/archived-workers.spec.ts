@@ -42,7 +42,8 @@ test.describe('Archived Workers UI', () => {
 
   test.describe('Archived worker card', () => {
     test('shows archived worker name after expanding section', async ({ page, request }) => {
-      const container = await createWorker(request);
+      const displayName = `ArcName-${Date.now()}`;
+      const container = await createWorker(request, { displayName });
       const api = new ApiClient(request);
       await api.archiveContainer(container.id);
 
@@ -50,12 +51,12 @@ test.describe('Archived Workers UI', () => {
 
       // The Archived section button should be visible (collapsed by default)
       const archivedBtn = page.locator('button').filter({ hasText: /Archived/i });
-      await expect(archivedBtn).toBeVisible({ timeout: 10_000 });
+      await expect(archivedBtn).toBeVisible({ timeout: 15_000 });
       // Click to expand
       await archivedBtn.click();
       await page.waitForTimeout(500);
-      // The worker name should appear
-      await expect(page.locator('aside').locator(`text=${container.name}`)).toBeVisible({ timeout: 10_000 });
+      // The worker display name should appear
+      await expect(page.locator('aside').locator(`text=${displayName}`)).toBeVisible({ timeout: 15_000 });
 
       await api.deleteArchivedWorker(container.name);
     });
@@ -97,8 +98,11 @@ test.describe('Archived Workers UI', () => {
     let containerId: string;
     let containerName: string;
 
+    let displayName: string;
+
     test.beforeEach(async ({ request }) => {
-      const container = await createWorker(request, { displayName: 'ArchiveTest' });
+      displayName = `ArcViaUI-${Date.now()}`;
+      const container = await createWorker(request, { displayName });
       containerId = container.id;
       containerName = container.name as string;
     });
@@ -111,14 +115,14 @@ test.describe('Archived Workers UI', () => {
 
     test('archiving removes container from active list', async ({ page }) => {
       await goToDashboard(page);
-      const card = page.locator('.rounded-lg').filter({ hasText: 'ArchiveTest' });
+      const card = page.locator('.rounded-lg').filter({ hasText: displayName });
       await expect(card).toBeVisible({ timeout: 15_000 });
 
       acceptNextConfirm(page);
       await card.locator('button:has-text("Archive")').click();
 
       // Container should disappear from active list
-      await expect(page.locator('h3:has-text("ArchiveTest")')).toBeHidden({ timeout: 30_000 });
+      await expect(page.locator(`h3:has-text("${displayName}")`)).toBeHidden({ timeout: 30_000 });
       containerId = ''; // Prevent double cleanup
     });
   });

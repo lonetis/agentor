@@ -5,12 +5,28 @@ import { ApiClient } from '../helpers/api-client';
 
 test.describe.serial('Tmux Tabs', () => {
   let containerId: string;
-  let containerName: string;
+  let displayName: string;
 
   test.beforeAll(async ({ request }) => {
-    const container = await createWorker(request, { displayName: `Tmux-${Date.now()}` });
+    displayName = `Tmux-${Date.now()}`;
+    const container = await createWorker(request, { displayName });
     containerId = container.id;
-    containerName = container.name;
+    // Wait for tmux to be fully ready — verify we can actually CREATE a window
+    const api = new ApiClient(request);
+    const start = Date.now();
+    while (Date.now() - start < 60_000) {
+      const { status } = await api.listPanes(containerId);
+      if (status !== 200) {
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+      const { status: createStatus, body } = await api.createPane(containerId, 'readiness-probe');
+      if (createStatus === 201) {
+        await api.deletePane(containerId, body.index);
+        break;
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
   });
 
   test.afterAll(async ({ request }) => {
@@ -102,21 +118,21 @@ test.describe.serial('Tmux Tabs', () => {
 
   test('UI: terminal opens when clicking container', async ({ page }) => {
     await goToDashboard(page);
-    const card = page.locator('.rounded-lg').filter({ hasText: containerName }).first();
+    const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    // Click to open terminal
-    await card.locator('h3').click();
+    // Click the Terminal button (not h3 which opens detail modal)
+    await card.locator('button').first().click();
     // Terminal pane should appear (xterm container)
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
   });
 
   test('UI: tmux tab bar is visible with main tab', async ({ page }) => {
     await goToDashboard(page);
-    const card = page.locator('.rounded-lg').filter({ hasText: containerName }).first();
+    const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    await card.locator('h3').click();
+    await card.locator('button').first().click();
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
     // Tmux tab bar should show the main tab

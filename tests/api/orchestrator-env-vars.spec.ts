@@ -27,10 +27,13 @@ test.describe('Orchestrator Env Vars API', () => {
     expect(githubToken).toBeTruthy();
   });
 
-  test('includes credential file entries', async ({ request }) => {
+  test('includes agent API key entries', async ({ request }) => {
     const api = new ApiClient(request);
     const { body } = await api.listOrchestratorEnvVars();
-    const credEntries = body.filter((e: { name: string }) => e.name.startsWith('.cred/'));
-    expect(credEntries.length).toBeGreaterThan(0);
+    // Should include at least one agent API key entry (e.g. ANTHROPIC_API_KEY)
+    const agentKeys = body.filter((e: { name: string }) =>
+      e.name.includes('API_KEY') || e.name === 'GITHUB_TOKEN'
+    );
+    expect(agentKeys.length).toBeGreaterThan(0);
   });
 });

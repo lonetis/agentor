@@ -57,4 +57,23 @@ test.describe('Usage API', () => {
       }
     });
   });
+
+  test.describe('POST /api/usage/refresh', () => {
+    test('triggers immediate refresh and returns status', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status, body } = await api.refreshUsage();
+      expect(status).toBe(200);
+      expect(Array.isArray(body.agents)).toBe(true);
+    });
+
+    test('refresh returns same structure as GET', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: refreshed } = await api.refreshUsage();
+      for (const agent of refreshed.agents) {
+        expect(typeof agent.agentId).toBe('string');
+        expect(typeof agent.displayName).toBe('string');
+        expect(['oauth', 'api-key', 'none']).toContain(agent.authType);
+      }
+    });
+  });
 });

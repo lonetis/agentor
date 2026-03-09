@@ -208,7 +208,13 @@ export class DockerService {
       AttachStdout: true,
       AttachStderr: true,
     });
-    await exec.start({ Detach: false, Tty: true });
+    const stream = await exec.start({ Detach: false, Tty: false });
+    // Consume stream and wait for it to close (ensures tmux command completes)
+    await new Promise<void>((resolve, reject) => {
+      (stream as NodeJS.ReadableStream).on('data', () => {});
+      (stream as NodeJS.ReadableStream).on('end', resolve);
+      (stream as NodeJS.ReadableStream).on('error', reject);
+    });
   }
 
   async execListTmuxWindows(containerId: string): Promise<TmuxWindow[]> {

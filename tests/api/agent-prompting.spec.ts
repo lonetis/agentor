@@ -5,10 +5,10 @@ import { TerminalWsClient, checkAgentCredentials, AgentCredentials } from '../he
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 /**
- * Fetch init presets from the API (plain fetch, no Playwright request context needed).
+ * Fetch init scripts from the API (plain fetch, no Playwright request context needed).
  */
-async function getInitPresets(): Promise<{ id: string; displayName: string; script: string }[]> {
-  const res = await fetch(`${BASE_URL}/api/init-presets`);
+async function getInitScripts(): Promise<{ id: string; name: string; content: string }[]> {
+  const res = await fetch(`${BASE_URL}/api/init-scripts`);
   return res.json();
 }
 
@@ -59,11 +59,11 @@ const AGENT_CONFIGS: AgentTestConfig[] = [
 ];
 
 let credentials: AgentCredentials;
-let presets: { id: string; displayName: string; script: string }[];
+let initScripts: { id: string; name: string; content: string }[];
 
 test.beforeAll(async ({ request }) => {
   credentials = await checkAgentCredentials(request);
-  presets = await getInitPresets();
+  initScripts = await getInitScripts();
 });
 
 for (const agent of AGENT_CONFIGS) {
@@ -75,15 +75,15 @@ for (const agent of AGENT_CONFIGS) {
       const hasCredentials = credentials[agent.id as keyof AgentCredentials];
       test.skip(!hasCredentials, `No credentials configured for ${agent.displayName}`);
 
-      const preset = presets.find(p => p.id === agent.id);
-      if (!preset) {
-        test.skip(true, `Init preset '${agent.id}' not found`);
+      const script = initScripts.find(p => p.id === agent.id);
+      if (!script) {
+        test.skip(true, `Init script '${agent.id}' not found`);
         return;
       }
 
       const container = await createWorker(request, {
         displayName: `${agent.displayName}-test-${Date.now()}`,
-        initScript: preset.script,
+        initScript: script.content,
       });
       containerId = container.id;
     });

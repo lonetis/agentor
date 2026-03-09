@@ -28,15 +28,21 @@ export interface AgentCredentials {
  */
 export async function checkAgentCredentials(request: APIRequestContext): Promise<AgentCredentials> {
   const api = new ApiClient(request);
-  const { body } = await api.listOrchestratorEnvVars();
+  const [{ body: envVars }, { body: creds }] = await Promise.all([
+    api.listOrchestratorEnvVars(),
+    api.listCredentials(),
+  ]);
 
-  const vars = body as { name: string; configured: boolean }[];
-  const has = (name: string) => vars.find(v => v.name === name)?.configured ?? false;
+  const vars = envVars as { name: string; configured: boolean }[];
+  const hasEnv = (name: string) => vars.find(v => v.name === name)?.configured ?? false;
+
+  const credFiles = creds as { agentId: string; configured: boolean }[];
+  const hasCred = (agentId: string) => credFiles.find(c => c.agentId === agentId)?.configured ?? false;
 
   return {
-    claude: has('ANTHROPIC_API_KEY') || has('.cred/claude.json'),
-    codex: has('OPENAI_API_KEY') || has('.cred/codex.json'),
-    gemini: has('GEMINI_API_KEY') || has('.cred/gemini.json'),
+    claude: hasEnv('ANTHROPIC_API_KEY') || hasCred('claude'),
+    codex: hasEnv('OPENAI_API_KEY') || hasCred('codex'),
+    gemini: hasEnv('GEMINI_API_KEY') || hasCred('gemini'),
   };
 }
 

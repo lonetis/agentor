@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { goToDashboard } from '../helpers/ui-helpers';
-import { createWorker, cleanupWorker, cleanupAllPortMappings } from '../helpers/worker-lifecycle';
+import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
 
 test.describe('Port Mappings Panel', () => {
@@ -12,10 +12,14 @@ test.describe('Port Mappings Panel', () => {
 
     test('shows + Map button', async ({ page }) => {
       await goToDashboard(page);
-      await expect(page.locator('button:has-text("+ Map")')).toBeVisible();
+      await expect(page.locator('button:has-text("+ Map")').first()).toBeVisible();
     });
 
-    test('shows no active mappings message', async ({ page }) => {
+    test('shows no active mappings message', async ({ page, request }) => {
+      const api = new ApiClient(request);
+      const { body: mappings } = await api.listPortMappings();
+      test.skip(mappings.length > 0, 'Port mappings exist from parallel tests');
+
       await goToDashboard(page);
       await expect(page.locator('text=No active mappings')).toBeVisible();
     });
@@ -30,7 +34,14 @@ test.describe('Port Mappings Panel', () => {
     });
 
     test.afterEach(async ({ request }) => {
-      await cleanupAllPortMappings(request);
+      // Only clean up mappings for our specific worker (not all mappings globally)
+      const api = new ApiClient(request);
+      const { body: mappings } = await api.listPortMappings();
+      for (const m of mappings) {
+        if (m.workerId === containerId) {
+          try { await api.deletePortMapping(m.externalPort); } catch { /* ignore */ }
+        }
+      }
       await cleanupWorker(request, containerId);
     });
 
@@ -66,10 +77,10 @@ test.describe('Port Mappings Panel', () => {
     test('clicking + Map opens the form', async ({ page }) => {
       await goToDashboard(page);
       const aside = page.locator('aside');
-      await aside.locator('button:has-text("+ Map")').click();
+      await aside.locator('button:has-text("+ Map")').first().click();
       // Form should appear with Add and Cancel buttons
-      await expect(aside.locator('button:has-text("Add")')).toBeVisible({ timeout: 5_000 });
-      await expect(aside.locator('button:has-text("Cancel")')).toBeVisible();
+      await expect(aside.locator('button:has-text("Add")').first()).toBeVisible({ timeout: 5_000 });
+      await expect(aside.locator('button:has-text("Cancel")').first()).toBeVisible();
       // External port input should be visible
       await expect(aside.locator('input[placeholder="Ext port"]')).toBeVisible();
       await expect(aside.locator('input[placeholder="Int port"]')).toBeVisible();
@@ -78,18 +89,18 @@ test.describe('Port Mappings Panel', () => {
     test('Cancel closes the form', async ({ page }) => {
       await goToDashboard(page);
       const aside = page.locator('aside');
-      await aside.locator('button:has-text("+ Map")').click();
-      await expect(aside.locator('button:has-text("Cancel")')).toBeVisible({ timeout: 5_000 });
-      await aside.locator('button:has-text("Cancel")').click();
+      await aside.locator('button:has-text("+ Map")').first().click();
+      await expect(aside.locator('button:has-text("Cancel")').first()).toBeVisible({ timeout: 5_000 });
+      await aside.locator('button:has-text("Cancel")').first().click();
       // Form should be hidden, + Map button should reappear
-      await expect(aside.locator('button:has-text("+ Map")')).toBeVisible({ timeout: 5_000 });
+      await expect(aside.locator('button:has-text("+ Map")').first()).toBeVisible({ timeout: 5_000 });
       await expect(aside.locator('input[placeholder="Ext port"]')).toBeHidden();
     });
 
     test('form has type selector with local and ext options', async ({ page }) => {
       await goToDashboard(page);
       const aside = page.locator('aside');
-      await aside.locator('button:has-text("+ Map")').click();
+      await aside.locator('button:has-text("+ Map")').first().click();
       // Type selector is the first select in the form
       const typeSelect = aside.locator('select').first();
       await expect(typeSelect).toBeVisible({ timeout: 5_000 });
@@ -101,7 +112,7 @@ test.describe('Port Mappings Panel', () => {
     test('form has worker selector with Worker placeholder', async ({ page }) => {
       await goToDashboard(page);
       const aside = page.locator('aside');
-      await aside.locator('button:has-text("+ Map")').click();
+      await aside.locator('button:has-text("+ Map")').first().click();
       // Worker selector has a disabled "Worker" placeholder
       const workerSelect = aside.locator('select').nth(1);
       await expect(workerSelect).toBeVisible({ timeout: 5_000 });

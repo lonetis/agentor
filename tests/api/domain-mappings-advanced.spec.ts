@@ -1,12 +1,19 @@
 import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
-import { createWorker, cleanupWorker, cleanupAllDomainMappings } from '../helpers/worker-lifecycle';
+import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 
 test.describe('Domain Mappings API — Advanced', () => {
   const createdContainerIds: string[] = [];
 
   test.afterEach(async ({ request }) => {
-    await cleanupAllDomainMappings(request);
+    // Clean up domain mappings only for our workers (not globally — avoids parallel interference)
+    const api = new ApiClient(request);
+    const { body: mappings } = await api.listDomainMappings();
+    for (const m of mappings) {
+      if (createdContainerIds.includes(m.workerId)) {
+        try { await api.deleteDomainMapping(m.id); } catch { /* ignore */ }
+      }
+    }
     for (const id of createdContainerIds) {
       await cleanupWorker(request, id);
     }
