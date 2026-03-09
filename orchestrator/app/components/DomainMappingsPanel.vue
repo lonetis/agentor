@@ -255,7 +255,7 @@ function downloadCaCert() {
         title="Download CA certificate (trust in browser for self-signed domains)"
         @click="downloadCaCert"
       >
-        <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+        <UIcon name="i-lucide-file-down" class="size-3 mr-0.5" />
         CA cert
       </UButton>
     </div>
@@ -283,14 +283,11 @@ function downloadCaCert() {
         {{ getChallengeType(m.baseDomain) === 'dns' ? getDnsProvider(m.baseDomain) : getChallengeType(m.baseDomain) === 'selfsigned' ? 'self' : getChallengeType(m.baseDomain) }}
       </span>
       <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.subdomain ? `${m.subdomain}.${m.baseDomain}` : m.baseDomain }}</span>
-      <svg
+      <UIcon
         v-if="m.basicAuth"
-        class="w-3 h-3 text-amber-500 shrink-0"
-        fill="currentColor"
-        viewBox="0 0 20 20"
-      >
-        <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
-      </svg>
+        name="i-lucide-lock"
+        class="size-3 text-amber-500 shrink-0"
+      />
       <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>
       <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ shortName(m.workerName) }}:{{ m.internalPort }}</span>
       <button
@@ -298,9 +295,7 @@ function downloadCaCert() {
         title="Remove mapping"
         @click="removeMapping(m.id)"
       >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
+        <UIcon name="i-lucide-x" class="size-3" />
       </button>
     </div>
   </div>

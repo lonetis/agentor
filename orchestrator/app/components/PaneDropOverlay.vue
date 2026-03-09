@@ -99,32 +99,9 @@ const isMerge = computed(() => hoveredZone.value === 'center');
         isMerge ? 'bg-blue-500/15 border-2 border-blue-500/40' : 'bg-blue-500/20 border-2 border-blue-500/50',
       ]"
     >
-      <!-- Vertical split icon (left/right) -->
-      <svg
-        v-if="isVerticalSplit"
-        class="w-8 h-8 text-blue-400 opacity-80"
-        fill="none" stroke="currentColor" viewBox="0 0 24 24"
-      >
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 3v18M3 3h18v18H3z" />
-      </svg>
-
-      <!-- Horizontal split icon (top/bottom) -->
-      <svg
-        v-if="isHorizontalSplit"
-        class="w-8 h-8 text-blue-400 opacity-80"
-        fill="none" stroke="currentColor" viewBox="0 0 24 24"
-      >
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12h18M3 3h18v18H3z" />
-      </svg>
-
-      <!-- Merge icon (center) -->
-      <svg
-        v-if="isMerge"
-        class="w-8 h-8 text-blue-400 opacity-80"
-        fill="none" stroke="currentColor" viewBox="0 0 24 24"
-      >
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16" />
-      </svg>
+      <UIcon v-if="isVerticalSplit" name="i-lucide-columns-2" class="size-8 text-blue-400 opacity-80" />
+      <UIcon v-if="isHorizontalSplit" name="i-lucide-rows-2" class="size-8 text-blue-400 opacity-80" />
+      <UIcon v-if="isMerge" name="i-lucide-layers" class="size-8 text-blue-400 opacity-80" />
     </div>
   </div>
 </template>

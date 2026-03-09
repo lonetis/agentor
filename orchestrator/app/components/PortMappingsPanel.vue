@@ -109,9 +109,7 @@ async function handleCreate() {
         title="Remove mapping"
         @click="removeMapping(m.externalPort)"
       >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
+        <UIcon name="i-lucide-x" class="size-3" />
       </button>
     </div>
   </div>

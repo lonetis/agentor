@@ -24,7 +24,7 @@ const activeTab = computed(() => {
       :container-id="activeTab.containerId"
       endpoint="desktop"
       label="Desktop"
-      icon="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+      icon-name="i-lucide-monitor"
       :url="`/desktop/${activeTab.containerId}/vnc.html?autoconnect=true&resize=scale&quality=6&compression=2&path=ws/desktop/${activeTab.containerId}`"
     />
     <AppsPane
@@ -38,7 +38,7 @@ const activeTab = computed(() => {
       :container-id="activeTab.containerId"
       endpoint="editor"
       label="Editor"
-      icon="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"
+      icon-name="i-lucide-code"
       :url="`/editor/${activeTab.containerId}/?folder=/workspace`"
     />
     <TerminalPlaceholder v-else />

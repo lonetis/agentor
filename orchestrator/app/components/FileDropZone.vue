@@ -137,9 +137,7 @@ const totalSize = computed(() => props.modelValue.reduce((sum, f) => sum + f.siz
         class="hidden"
         @change="onFileInput"
       />
-      <svg class="w-6 h-6 mx-auto mb-1.5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-      </svg>
+      <UIcon name="i-lucide-cloud-upload" class="size-6 mx-auto mb-1.5 text-gray-400 dark:text-gray-500" />
       <p class="text-sm text-gray-500 dark:text-gray-400">
         Drop files or folders here
       </p>
@@ -168,9 +166,7 @@ const totalSize = computed(() => props.modelValue.reduce((sum, f) => sum + f.siz
             class="text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 shrink-0"
             @click.stop="removeFile(idx)"
           >
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <UIcon name="i-lucide-x" class="size-3" />
           </button>
         </div>
       </div>

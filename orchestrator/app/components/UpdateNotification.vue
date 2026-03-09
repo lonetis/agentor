@@ -65,10 +65,7 @@ function formatBytes(bytes: number): string {
       class="rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 p-3 text-center"
     >
       <div class="flex items-center justify-center gap-2 text-blue-700 dark:text-blue-300 text-sm font-medium">
-        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-        </svg>
+        <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
         Reconnecting...
       </div>
       <p class="text-xs text-blue-600 dark:text-blue-400 mt-1">Orchestrator is restarting with the new image.</p>

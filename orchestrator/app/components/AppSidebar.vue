@@ -81,9 +81,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             title="Collapse sidebar"
             @click="emit('toggleCollapse')"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-            </svg>
+            <UIcon name="i-lucide-chevrons-left" class="size-4" />
           </button>
         </div>
       </div>
@@ -141,13 +139,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         @click="archivedCollapsed = !archivedCollapsed"
       >
         Archived ({{ archivedWorkers.length }})
-        <svg
-          class="w-3.5 h-3.5 transition-transform"
-          :class="archivedCollapsed ? '-rotate-90' : ''"
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-        </svg>
+        <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="archivedCollapsed ? '-rotate-90' : ''" />
       </button>
       <div v-if="!archivedCollapsed" class="px-3 pb-3 space-y-2 overflow-y-auto max-h-48">
         <ArchivedWorkerCard
@@ -167,13 +159,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         @click="portMappingsCollapsed = !portMappingsCollapsed"
       >
         Port Mappings
-        <svg
-          class="w-3.5 h-3.5 transition-transform"
-          :class="portMappingsCollapsed ? '-rotate-90' : ''"
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-        </svg>
+        <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="portMappingsCollapsed ? '-rotate-90' : ''" />
       </button>
       <div v-if="!portMappingsCollapsed" class="px-3 pb-3 overflow-y-auto max-h-64">
         <PortMappingsPanel :containers="containers" />
@@ -187,13 +173,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         @click="domainMappingsCollapsed = !domainMappingsCollapsed"
       >
         Domain Mappings
-        <svg
-          class="w-3.5 h-3.5 transition-transform"
-          :class="domainMappingsCollapsed ? '-rotate-90' : ''"
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-        </svg>
+        <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="domainMappingsCollapsed ? '-rotate-90' : ''" />
       </button>
       <div v-if="!domainMappingsCollapsed" class="px-3 pb-3 overflow-y-auto max-h-64">
         <DomainMappingsPanel :containers="containers" />
@@ -211,21 +191,13 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
           title="Refresh usage"
           @click="usageRefresh()"
         >
-          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
+          <UIcon name="i-lucide-refresh-cw" class="size-3" />
         </button>
         <button
           class="ml-auto text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
           @click="usageCollapsed = !usageCollapsed"
         >
-          <svg
-            class="w-3.5 h-3.5 transition-transform"
-            :class="usageCollapsed ? '-rotate-90' : ''"
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
+          <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="usageCollapsed ? '-rotate-90' : ''" />
         </button>
       </div>
       <div v-if="!usageCollapsed">
@@ -240,13 +212,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         @click="imagesCollapsed = !imagesCollapsed"
       >
         Images
-        <svg
-          class="w-3.5 h-3.5 transition-transform"
-          :class="imagesCollapsed ? '-rotate-90' : ''"
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-        </svg>
+        <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="imagesCollapsed ? '-rotate-90' : ''" />
       </button>
       <div v-if="!imagesCollapsed">
         <UpdateNotification />
@@ -260,23 +226,14 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         @click="settingsCollapsed = !settingsCollapsed"
       >
         Settings
-        <svg
-          class="w-3.5 h-3.5 transition-transform"
-          :class="settingsCollapsed ? '-rotate-90' : ''"
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-        </svg>
+        <UIcon name="i-lucide-chevron-down" class="size-3.5 transition-transform" :class="settingsCollapsed ? '-rotate-90' : ''" />
       </button>
       <div v-if="!settingsCollapsed" class="px-4 pb-3 space-y-1.5">
         <button
           class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors w-full text-left"
           @click="emit('openSettings')"
         >
-          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
+          <UIcon name="i-lucide-settings" class="size-3.5 flex-shrink-0" />
           System Settings
         </button>
         <a
@@ -284,13 +241,9 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
           target="_blank"
           class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
         >
-          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-          </svg>
+          <UIcon name="i-lucide-book-open" class="size-3.5 flex-shrink-0" />
           API Docs
-          <svg class="w-3 h-3 flex-shrink-0 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
+          <UIcon name="i-lucide-external-link" class="size-3 flex-shrink-0 opacity-50" />
         </a>
       </div>
     </div>

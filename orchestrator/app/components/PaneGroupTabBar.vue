@@ -15,10 +15,10 @@ const emit = defineEmits<{
 }>();
 
 const typeIcons: Record<string, string> = {
-  terminal: 'M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
-  desktop: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
-  apps: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z',
-  editor: 'M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5',
+  terminal: 'i-lucide-terminal',
+  desktop: 'i-lucide-monitor',
+  apps: 'i-lucide-layout-grid',
+  editor: 'i-lucide-code',
 };
 
 const typeLabels: Record<string, string> = {
@@ -121,18 +121,14 @@ const insertIndicatorLeft = computed(() => {
       @click="emit('activate', tab.id)"
       @mousedown="onMiddleClick($event, tab.id)"
     >
-      <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" :d="typeIcons[tab.type]" />
-      </svg>
+      <UIcon :name="typeIcons[tab.type]!" class="size-3.5 shrink-0" />
       <span class="truncate max-w-[140px]">{{ tab.containerName }} - {{ typeLabels[tab.type] }}</span>
       <button
         class="ml-1 w-4 h-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity shrink-0 pane-tab-close"
         :class="tab.id === group.activeTabId ? 'opacity-60' : ''"
         @click.stop="emit('close', tab.id)"
       >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
+        <UIcon name="i-lucide-x" class="size-3" />
       </button>
     </div>
 

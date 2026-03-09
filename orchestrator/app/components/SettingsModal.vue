@@ -108,13 +108,7 @@ function statusColor(value: string): BadgeColor {
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ section.label }}</span>
                 <span class="text-xs text-gray-400 dark:text-gray-500">{{ section.items.length }} items</span>
               </div>
-              <svg
-                class="w-4 h-4 text-gray-400 transition-transform"
-                :class="isSectionExpanded(section.id) ? '' : '-rotate-90'"
-                fill="none" stroke="currentColor" viewBox="0 0 24 24"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-              </svg>
+              <UIcon name="i-lucide-chevron-down" class="size-4 text-gray-400 transition-transform" :class="isSectionExpanded(section.id) ? '' : '-rotate-90'" />
             </button>
 
             <!-- Section items -->

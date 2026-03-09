@@ -3,7 +3,7 @@ const props = defineProps<{
   containerId: string;
   endpoint: 'desktop' | 'editor';
   label: string;
-  icon: string;
+  iconName: string;
   url: string;
 }>();
 
@@ -15,14 +15,7 @@ const { status } = useContainerServiceStatus(containerIdRef as Ref<string>, prop
   <div class="flex flex-col h-full">
     <!-- Not running / starting -->
     <div v-if="!status.running" class="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 gap-4">
-      <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="1.5"
-          :d="icon"
-        />
-      </svg>
+      <UIcon :name="iconName" class="size-12" />
       <p class="text-sm">{{ label }} is starting...</p>
     </div>
 
