@@ -143,6 +143,19 @@ export function useTerminal() {
       term.write('\r\n\x1b[31m[Connection closed]\x1b[0m\r\n');
     };
 
+    // Shift+Enter → send CSI u encoded Shift+Enter so agents (Claude Code,
+    // Codex, etc.) can distinguish it from plain Enter and insert a newline.
+    // tmux extended-keys (csi-u format) passes this through to the application.
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        if (event.type === 'keydown' && ws.readyState === WebSocket.OPEN) {
+          ws.send('\x1b[13;2u');
+        }
+        return false;
+      }
+      return true;
+    });
+
     // SGR mouse escape: \x1b[<button;col;row[Mm]
     // Button >= 64 = scroll (wheel up/down) — forward to tmux for scrollback.
     // Button < 64 = click/drag/motion — block so tmux doesn't move cursor.

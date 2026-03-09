@@ -79,6 +79,9 @@ tmux new-session -d -s main -n "$WINDOW_NAME" -c /workspace \
     "bash /home/agent/loading-screen.sh"
 tmux set -g mouse on
 tmux set -g status off
+tmux set -g extended-keys on
+tmux set -s terminal-features 'xterm*:extkeys'
+tmux bind-key -n S-Enter send-keys Escape '[13;2u'
 tmux set-option -w -t "main:$WINDOW_NAME" automatic-rename off
 _log "Tmux: ready"
 
