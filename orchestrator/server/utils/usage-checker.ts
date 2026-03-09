@@ -84,7 +84,13 @@ export class UsageChecker {
   }
 
   async refresh(): Promise<AgentUsageStatus> {
-    await this.fetchAll();
+    const now = Date.now();
+    const anyStale = !this.agentStates.size || [...this.agentStates.values()].some(
+      (s) => now - s.lastFetchTime >= POLL_INTERVAL_MS,
+    );
+    if (anyStale) {
+      await this.fetchAll();
+    }
     return this.getStatus();
   }
 
