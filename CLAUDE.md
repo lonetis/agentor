@@ -666,6 +666,20 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `worker/agents/gemini/setup.sh` - Gemini auth + config + skills/AGENTS.md writing
 - `worker/agents/*/git-identity` - Per-agent git identity (two lines: name, email)
 
+### Tests — Integration (Playwright)
+- `tests/playwright.config.ts` - Playwright config (two projects: api + ui, parallel workers, timeouts)
+- `tests/helpers/api-client.ts` - Typed API wrapper for all endpoints (returns `{ status, body }`)
+- `tests/helpers/worker-lifecycle.ts` - Container create/cleanup helpers with timeouts
+- `tests/helpers/terminal-ws.ts` - WebSocket terminal client with ANSI stripping
+- `tests/api/*.spec.ts` - API integration tests (~30 files)
+- `tests/ui/*.spec.ts` - UI integration tests (~35 files)
+- `tests/FEATURES.md` - Feature inventory driving test coverage
+- `tests/TESTS.md` - Test suite documentation with counts per file
+
+### Tests — Unit (Vitest)
+- `orchestrator/vitest.config.ts` - Vitest configuration
+- `orchestrator/server/__tests__/utils/*.spec.ts` - Server utility unit tests (~15 files)
+
 ## Gotchas
 
 - **crossws `peer.ctx` is undefined** in Nitro's bundled crossws — store per-connection state in a `Map<string, Context>` keyed by `peer.id`, not on `peer.ctx`
@@ -699,90 +713,53 @@ cd orchestrator && docker build -t agentor-orchestrator:latest .
 
 # Typecheck (run from orchestrator/)
 cd orchestrator && npx nuxi prepare && npx vue-tsc --noEmit -p .nuxt/tsconfig.json
+
+# Integration tests (requires running orchestrator at localhost:3000)
+cd tests && npm test            # All tests (API + UI)
+cd tests && npm run test:api    # API only (headless, fast)
+cd tests && npm run test:ui     # UI only (Chromium)
+cd tests && npm run test:headed # UI with visible browser
+cd tests && npx playwright test api/health.spec.ts  # Single file
+
+# Unit tests
+cd orchestrator && npx vitest
 ```
+
+## Testing
+
+Two test suites: Playwright integration tests (`tests/`) and vitest unit tests (`orchestrator/server/__tests__/`).
+
+### Integration Tests (Playwright)
+
+**Prerequisites:** Agentor running (`docker compose -f docker-compose.dev.yml up`), orchestrator at `http://localhost:3000` (override with `BASE_URL` env var). First run: `cd tests && npm install && npx playwright install chromium`.
+
+**Config** (`tests/playwright.config.ts`): Two projects — `api` (headless, no browser) and `ui` (Desktop Chrome 1920x1080). 4 parallel workers locally, 1 in CI. 2 retries in CI, 0 locally. 120s global timeout, 15s expect timeout. Traces on first retry.
+
+**Structure:**
+- `tests/api/*.spec.ts` — ~30 files covering all API endpoints (containers, environments, port/domain mappings, tmux, apps, workspace, archived workers, skills, agents-md, init scripts, usage, updates, terminal WebSocket, agent prompting)
+- `tests/ui/*.spec.ts` — ~35 files covering UI workflows (dashboard, sidebar, modals, forms, drag-and-drop, theme, state persistence)
+- `tests/helpers/api-client.ts` — Typed wrapper for all API endpoints, returns `{ status, body }` tuples
+- `tests/helpers/worker-lifecycle.ts` — Container create/cleanup with 90s timeout, idempotent cleanup for all resource types
+- `tests/helpers/terminal-ws.ts` — WebSocket terminal client with ANSI stripping for pattern matching
+
+**Conventions:**
+- Each test cleans only resources it created (no global `cleanupAllWorkers()` in `afterEach` — causes race conditions)
+- Unique display names with `Date.now()` to avoid collisions in parallel runs
+- `test.describe.serial` for stateful flows (e.g., archive then unarchive)
+- Agent prompting tests auto-skip without API keys or `.cred/` files
+- Traefik integration tests auto-skip without `BASE_DOMAINS`
+
+**Documentation:** `tests/FEATURES.md` (feature inventory driving coverage), `tests/TESTS.md` (test counts per file)
+
+### Unit Tests (Vitest)
+
+**Config** (`orchestrator/vitest.config.ts`). Run from orchestrator directory.
+
+**Structure:** `orchestrator/server/__tests__/utils/*.spec.ts` — ~15 files covering server utilities (json-store, container, docker, config, mapper-manager, traefik-manager, update-checker, usage-checker, worker-store, credential-mounts, environments, port-mapping-store, domain-mapping-store, ws-utils, terminal-handler, validation, services, git-providers, apps).
 
 ## API Endpoints
 
-All API routes return JSON only (no HTML partials).
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/init-scripts` | List all init scripts |
-| POST | `/api/init-scripts` | Create custom init script |
-| GET | `/api/init-scripts/:id` | Get single init script |
-| PUT | `/api/init-scripts/:id` | Update custom init script |
-| DELETE | `/api/init-scripts/:id` | Delete custom init script |
-| GET | `/api/agent-api-domains` | List agent API domains (firewall allowlist) |
-| GET | `/api/git-providers` | List available git providers |
-| GET | `/api/app-types` | List available app types |
-| GET | `/api/package-manager-domains` | List active package manager domains |
-| GET | `/api/containers` | List all worker containers |
-| GET | `/api/containers/generate-name` | Generate a random container name |
-| POST | `/api/containers` | Create new worker (accepts `environmentId`, `initScript`) |
-| POST | `/api/containers/:id/stop` | Stop worker |
-| POST | `/api/containers/:id/restart` | Restart worker |
-| DELETE | `/api/containers/:id` | Remove worker (deletes workspace) |
-| POST | `/api/containers/:id/archive` | Archive worker (keeps workspace) |
-| GET | `/api/containers/:id/workspace` | Download workspace as `.tar.gz` |
-| POST | `/api/containers/:id/workspace` | Upload files to workspace (multipart) |
-| GET | `/api/containers/:id/logs` | View container logs |
-| GET | `/api/containers/:id/panes` | List tmux windows |
-| POST | `/api/containers/:id/panes` | Create new tmux window (optional `name` in body) |
-| PUT | `/api/containers/:id/panes/:windowIndex` | Rename tmux window (`newName` in body) |
-| DELETE | `/api/containers/:id/panes/:windowIndex` | Kill tmux window |
-| GET | `/api/containers/:id/desktop/status` | Desktop status |
-| GET | `/api/containers/:id/editor/status` | Editor (code-server) status |
-| GET | `/api/containers/:id/apps` | List all running apps |
-| GET | `/api/containers/:id/apps/:appType` | List running apps of specific type |
-| POST | `/api/containers/:id/apps/:appType` | Start new app |
-| DELETE | `/api/containers/:id/apps/:appType/:instanceId` | Stop app |
-| GET | `/api/port-mappings` | List active port mappings |
-| POST | `/api/port-mappings` | Create port mapping |
-| DELETE | `/api/port-mappings/:port` | Remove port mapping |
-| GET | `/api/port-mapper/status` | Mapping counts by type |
-| GET | `/api/domain-mappings` | List domain mappings |
-| POST | `/api/domain-mappings` | Create domain mapping |
-| POST | `/api/domain-mappings/batch` | Create multiple domain mappings (single Traefik reconcile) |
-| DELETE | `/api/domain-mappings/:id` | Remove domain mapping |
-| GET | `/api/domain-mapper/status` | Domain mapper status (enabled, baseDomains, hasSelfSignedCa) |
-| GET | `/api/domain-mapper/ca-cert` | Download self-signed CA certificate PEM |
-| GET | `/api/skills` | List all skills |
-| POST | `/api/skills` | Create custom skill |
-| GET | `/api/skills/:id` | Get single skill |
-| PUT | `/api/skills/:id` | Update custom skill |
-| DELETE | `/api/skills/:id` | Delete custom skill |
-| GET | `/api/agents-md` | List all AGENTS.md entries |
-| POST | `/api/agents-md` | Create custom AGENTS.md entry |
-| GET | `/api/agents-md/:id` | Get single AGENTS.md entry |
-| PUT | `/api/agents-md/:id` | Update custom AGENTS.md entry |
-| DELETE | `/api/agents-md/:id` | Delete custom AGENTS.md entry |
-| GET | `/api/credentials` | Credential file status per agent (OAuth bind mounts) |
-| GET | `/api/usage` | Agent usage status (OAuth usage windows per agent) |
-| POST | `/api/usage/refresh` | Trigger immediate usage refresh |
-| GET | `/api/updates` | Update status (image digests, production mode) |
-| POST | `/api/updates/check` | Trigger manual update check |
-| POST | `/api/updates/apply` | Pull updated images, recreate mapper/orchestrator |
-| POST | `/api/updates/prune` | Prune unused Docker images to reclaim disk space |
-| GET | `/desktop/:containerId/**` | Reverse proxy to worker's noVNC (port 6080) |
-| GET | `/editor/:containerId/**` | Reverse proxy to worker's code-server (port 8443) |
-| WS | `/ws/desktop/:containerId` | WebSocket relay to worker's websockify (VNC) |
-| WS | `/editor/:containerId/**` | WebSocket relay to worker's code-server (inline on same route) |
-| WS | `/ws/terminal/:containerId` | Terminal WebSocket (agent default window) |
-| WS | `/ws/terminal/:containerId/:windowIndex` | Terminal WebSocket (window by index) |
-| GET | `/api/environments` | List all environments |
-| POST | `/api/environments` | Create environment |
-| GET | `/api/environments/:id` | Get single environment |
-| PUT | `/api/environments/:id` | Update environment |
-| DELETE | `/api/environments/:id` | Delete environment |
-| GET | `/api/archived` | List archived workers |
-| POST | `/api/archived/:name/unarchive` | Unarchive worker |
-| DELETE | `/api/archived/:name` | Permanently delete archived worker |
-| GET | `/api/orchestrator-env-vars` | System env vars (all agents) |
-| GET | `/api/github/repos` | List authenticated user's GitHub repos |
-| POST | `/api/github/repos` | Create a new GitHub repository |
-| GET | `/api/github/repos/:owner/:repo/branches` | List branches + default branch |
-| GET | `/api/settings` | All system settings (categorized, read-only) |
-| GET | `/api/health` | Health check |
+All API routes return JSON. Full interactive reference at `/api/docs` (Scalar UI) and raw spec at `/api/docs/openapi.json`.
 
 ## API Documentation
 
