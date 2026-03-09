@@ -85,7 +85,7 @@ tests/
 | File | Tests | Coverage |
 |------|-------|----------|
 | `health.spec.ts` | 4 | Health check endpoint, container count validation, exact status 'ok', no sensitive info exposure |
-| `containers.spec.ts` | 41 | CRUD, validation, field completeness, name format, stop/restart/archive/delete on non-existent, logs (running/stopped/non-empty/non-numeric tail graceful default), memoryLimit, initScript, environmentId, dockerEnabled, displayName persistence, state transitions (double-stop, restart running, archive stopped), list exclusion, response fields |
+| `containers.spec.ts` | 41 | CRUD, validation, field completeness, name format, stop/restart/archive/delete on non-existent, logs (running/stopped/non-empty/non-numeric tail graceful default), memoryLimit, initScript, environmentId, dockerEnabled, displayName persistence, state transitions (double-stop, restart running, archive stopped), list exclusion, response fields, snapshotted environment data fields, no labels |
 | `containers-edge-cases.spec.ts` | 10 | Edge case container operations |
 | `tmux-panes.spec.ts` | 29 | Window CRUD, name validation, main window protection, duplicates, rename verify, whitespace name, non-existent container, auto-generated name format, rename/delete idempotency, main always present, 50-char name, rename main behavior, missing newName in body |
 | `apps.spec.ts` | 14 | App lifecycle (socks5 start/stop, chromium), error handling (invalid type, non-existent container/instance), response fields (id/port on start, instance fields on list, ok on stop) |
@@ -121,13 +121,13 @@ tests/
 | File | Tests | Coverage |
 |------|-------|----------|
 | `dashboard.spec.ts` | 11 | Page load, title, buttons, sections, images, sidebar labels |
-| `sidebar.spec.ts` | 17 | Collapse/expand, section toggles, theme buttons, resize, panel states |
+| `sidebar.spec.ts` | 17 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design |
 | `create-worker-modal.spec.ts` | 29 | Open/close, form fields, name input, add repo/mount, environment dropdown, init preset dropdown, Create action |
 | `create-worker-modal-advanced.spec.ts` | 8 | Advanced modal interactions |
 | `cross-modal-navigation.spec.ts` | 6 | Manage button navigation between modals |
 | `container-card.spec.ts` | 14 | Name, status, buttons, icons, stop/restart/archive, Restart hidden when running |
-| `container-card-advanced.spec.ts` | 7 | Advanced container card interactions |
-| `container-detail-modal.spec.ts` | 23 | Modal content, Docker labels, Configuration section, status, ID, close (Escape + overlay) |
+| `container-card-advanced.spec.ts` | 7 | Advanced container card interactions, icon-only action buttons, single button row layout, compact card design |
+| `container-detail-modal.spec.ts` | 43 | Modal content, Worker section (Container/ID/Image/ImageID/Created), Configuration section (Environment/CPU/Memory/Docker), Network (Mode/Allowed Domains/Package Managers), Repositories, Mounts, Init Script, Exposed Worker APIs (badges), Skills (badges), AGENTS.md (badges), Env Vars, Setup Script, status badge color, section order, close (Escape + overlay), custom environment name, snapshotted config |
 | `environments-modal.spec.ts` | 20 | Open/close, pre-created env, create button, form fields (network, Docker, resources), Setup Script, Init Script, Create button |
 | `environments-modal-advanced.spec.ts` | 5 | Advanced environment modal interactions |
 | `environment-editor-network.spec.ts` | 11 | Network mode selector, custom domains, package manager toggle |

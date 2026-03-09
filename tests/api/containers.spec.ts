@@ -35,7 +35,7 @@ test.describe('Containers API', () => {
       expect(typeof found.createdAt).toBe('string');
       expect(typeof found.image).toBe('string');
       expect(typeof found.imageId).toBe('string');
-      expect(found.labels).toBeTruthy();
+      expect(found.image).toBeTruthy();
     });
   });
 
@@ -427,6 +427,185 @@ test.describe('Containers API', () => {
       expect(container.status).toBe('running');
       expect(container.displayName).toBe('FieldsCheck');
       expect(typeof container.image).toBe('string');
+    });
+  });
+
+  test.describe('Snapshotted environment fields', () => {
+    test('container list includes mounts when created with mounts', async ({ request }) => {
+      const container = await createWorker(request, {
+        mounts: [{ source: '/tmp/test-agentor-mounts', target: '/mnt/test', readOnly: true }],
+      });
+      createdContainerIds.push(container.id);
+
+      const api = new ApiClient(request);
+      const { body } = await api.listContainers();
+      const found = body.find((c: { id: string }) => c.id === container.id);
+      expect(found).toBeTruthy();
+      expect(Array.isArray(found.mounts)).toBe(true);
+      expect(found.mounts).toHaveLength(1);
+      expect(found.mounts[0].source).toBe('/tmp/test-agentor-mounts');
+      expect(found.mounts[0].target).toBe('/mnt/test');
+      expect(found.mounts[0].readOnly).toBe(true);
+    });
+
+    test('container list includes initScript when created with initScript', async ({ request }) => {
+      const script = '#!/bin/bash\necho "snapshot-test"';
+      const container = await createWorker(request, { initScript: script });
+      createdContainerIds.push(container.id);
+
+      const api = new ApiClient(request);
+      const { body } = await api.listContainers();
+      const found = body.find((c: { id: string }) => c.id === container.id);
+      expect(found).toBeTruthy();
+      expect(found.initScript).toBe(script);
+    });
+
+    test('container created with environment includes snapshotted environment data', async ({ request }) => {
+      const api = new ApiClient(request);
+      const envName = `SnapshotEnv-${Date.now()}`;
+
+      // Create an environment with custom config
+      const { status: envStatus, body: env } = await api.createEnvironment({
+        name: envName,
+        networkMode: 'custom',
+        allowedDomains: ['example.com', 'api.example.com'],
+        includePackageManagerDomains: true,
+        setupScript: '#!/bin/bash\napt-get update',
+        envVars: 'MY_VAR=hello\nANOTHER=world',
+        exposeApis: { portMappings: false, domainMappings: true, usage: false },
+        dockerEnabled: false,
+      });
+      expect(envStatus).toBe(201);
+
+      try {
+        const container = await createWorker(request, { environmentId: env.id });
+        createdContainerIds.push(container.id);
+
+        // Fetch from list endpoint to verify snapshotted fields
+        const { body: containers } = await api.listContainers();
+        const found = containers.find((c: { id: string }) => c.id === container.id);
+        expect(found).toBeTruthy();
+
+        // Environment reference
+        expect(found.environmentId).toBe(env.id);
+        expect(found.environmentName).toBe(envName);
+
+        // Network settings
+        expect(found.networkMode).toBe('custom');
+        expect(Array.isArray(found.allowedDomains)).toBe(true);
+        expect(found.allowedDomains).toEqual(expect.arrayContaining(['example.com', 'api.example.com']));
+        expect(found.includePackageManagerDomains).toBe(true);
+
+        // Setup script and env vars
+        expect(found.setupScript).toBe('#!/bin/bash\napt-get update');
+        expect(found.envVars).toBe('MY_VAR=hello\nANOTHER=world');
+
+        // Docker disabled
+        expect(found.dockerEnabled).toBe(false);
+
+        // Expose APIs
+        expect(found.exposeApis).toBeTruthy();
+        expect(found.exposeApis.portMappings).toBe(false);
+        expect(found.exposeApis.domainMappings).toBe(true);
+        expect(found.exposeApis.usage).toBe(false);
+      } finally {
+        await api.deleteEnvironment(env.id);
+      }
+    });
+
+    test('container created with environment includes skillNames and agentsMdNames', async ({ request }) => {
+      const api = new ApiClient(request);
+
+      // Create a custom skill
+      const { status: skillStatus, body: skill } = await api.createSkill({
+        name: `TestSkill-${Date.now()}`,
+        content: 'Test skill content',
+      });
+      expect(skillStatus).toBe(201);
+
+      // Create a custom AGENTS.md entry
+      const { status: agentsMdStatus, body: agentsMd } = await api.createAgentsMd({
+        name: `TestAgentsMd-${Date.now()}`,
+        content: 'Test agents md content',
+      });
+      expect(agentsMdStatus).toBe(201);
+
+      // Create environment with all skills/agents.md enabled (null = all enabled)
+      const { status: envStatus, body: env } = await api.createEnvironment({
+        name: `SkillAgentsEnv-${Date.now()}`,
+        enabledSkillIds: null,
+        enabledAgentsMdIds: null,
+      });
+      expect(envStatus).toBe(201);
+
+      try {
+        const container = await createWorker(request, { environmentId: env.id });
+        createdContainerIds.push(container.id);
+
+        const { body: containers } = await api.listContainers();
+        const found = containers.find((c: { id: string }) => c.id === container.id);
+        expect(found).toBeTruthy();
+
+        // skillNames should include the custom skill name
+        expect(Array.isArray(found.skillNames)).toBe(true);
+        expect(found.skillNames).toEqual(expect.arrayContaining([skill.name]));
+
+        // agentsMdNames should include the custom AGENTS.md entry name
+        expect(Array.isArray(found.agentsMdNames)).toBe(true);
+        expect(found.agentsMdNames).toEqual(expect.arrayContaining([agentsMd.name]));
+      } finally {
+        await api.deleteEnvironment(env.id);
+        await api.deleteSkill(skill.id);
+        await api.deleteAgentsMd(agentsMd.id);
+      }
+    });
+
+    test('container without environment has default field values', async ({ request }) => {
+      const container = await createWorker(request);
+      createdContainerIds.push(container.id);
+
+      const api = new ApiClient(request);
+      const { body } = await api.listContainers();
+      const found = body.find((c: { id: string }) => c.id === container.id);
+      expect(found).toBeTruthy();
+
+      // Default environment should have full network mode
+      expect(found.networkMode).toBe('full');
+      // Docker should be enabled by default
+      expect(found.dockerEnabled).toBe(true);
+      // Expose APIs should all be true by default
+      expect(found.exposeApis).toBeTruthy();
+      expect(found.exposeApis.portMappings).toBe(true);
+      expect(found.exposeApis.domainMappings).toBe(true);
+      expect(found.exposeApis.usage).toBe(true);
+    });
+
+    test('create response includes snapshotted fields directly', async ({ request }) => {
+      const api = new ApiClient(request);
+      const envName = `DirectSnapshot-${Date.now()}`;
+
+      const { body: env } = await api.createEnvironment({
+        name: envName,
+        setupScript: 'echo direct-test',
+        envVars: 'DIRECT_VAR=1',
+        networkMode: 'block',
+      });
+
+      try {
+        // Verify create response itself includes snapshotted fields
+        const container = await createWorker(request, { environmentId: env.id });
+        createdContainerIds.push(container.id);
+
+        expect(container.environmentId).toBe(env.id);
+        expect(container.environmentName).toBe(envName);
+        expect(container.networkMode).toBe('block');
+        expect(container.setupScript).toBe('echo direct-test');
+        expect(container.envVars).toBe('DIRECT_VAR=1');
+        expect(container.dockerEnabled).toBe(true);
+        expect(container.exposeApis).toBeTruthy();
+      } finally {
+        await api.deleteEnvironment(env.id);
+      }
     });
   });
 });

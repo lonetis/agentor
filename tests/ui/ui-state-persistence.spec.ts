@@ -1,4 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page, Locator } from '@playwright/test';
 import { goToDashboard, collapseSidebar, expandSidebar } from '../helpers/ui-helpers';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 
@@ -50,6 +50,34 @@ function buildSeededState(overrides: Record<string, unknown> = {}): string {
 /** Wait for debounced write (500ms) + margin */
 async function waitForWrite(page: Page): Promise<void> {
   await page.waitForTimeout(800);
+}
+
+/** Find an icon-only button by hovering and matching its tooltip text */
+async function findButtonByTooltip(
+  card: Locator,
+  page: Page,
+  name: string,
+): Promise<Locator> {
+  const buttons = card.locator('button');
+  const count = await buttons.count();
+  for (let i = count - 1; i >= 0; i--) {
+    const btn = buttons.nth(i);
+    await btn.scrollIntoViewIfNeeded();
+    const box = await btn.boundingBox();
+    if (!box) continue;
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(100);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    try {
+      const tooltip = page.locator('[role="tooltip"]');
+      await tooltip.waitFor({ state: 'visible', timeout: 2000 });
+      const text = await tooltip.textContent();
+      if (text?.trim() === name) return btn;
+    } catch {
+      // tooltip didn't appear, try next button
+    }
+  }
+  throw new Error(`Button with tooltip "${name}" not found`);
 }
 
 // ===========================
@@ -462,7 +490,8 @@ test.describe('UI State Persistence', () => {
 
       // Remove via UI
       page.once('dialog', (dialog) => dialog.accept());
-      await card.locator('button:has-text("Remove")').click();
+      const removeBtn = await findButtonByTooltip(card, page, 'Remove');
+      await removeBtn.click();
 
       await page.waitForTimeout(3000);
 

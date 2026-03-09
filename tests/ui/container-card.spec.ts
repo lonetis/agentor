@@ -1,7 +1,50 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Locator, Page } from '@playwright/test';
 import { goToDashboard } from '../helpers/ui-helpers';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
+
+/**
+ * Find an icon-only button inside a container card by hovering each button and
+ * matching the tooltip text that appears. Returns the button Locator.
+ *
+ * Uses page.mouse.move to exact coordinates (more reliable than locator.hover
+ * with Reka UI tooltips). Searches from the last button backwards since action
+ * buttons (Stop, Restart, Archive, Remove) are at the end of the button row.
+ */
+async function findButtonByTooltip(card: Locator, page: Page, tooltipText: string): Promise<Locator> {
+  const buttons = card.locator('button');
+  const count = await buttons.count();
+  for (let i = count - 1; i >= 0; i--) {
+    const btn = buttons.nth(i);
+    await btn.scrollIntoViewIfNeeded();
+    const box = await btn.boundingBox();
+    if (!box) continue;
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(100);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    try {
+      const tooltip = page.locator('[role="tooltip"]');
+      await tooltip.waitFor({ state: 'visible', timeout: 2000 });
+      const text = await tooltip.textContent();
+      if (text?.trim() === tooltipText) return btn;
+    } catch {
+      // tooltip didn't appear, try next button
+    }
+  }
+  throw new Error(`No button with tooltip "${tooltipText}" found in card`);
+}
+
+/**
+ * Check whether a button with the given tooltip text exists in the card.
+ */
+async function hasButtonWithTooltip(card: Locator, page: Page, tooltipText: string): Promise<boolean> {
+  try {
+    await findButtonByTooltip(card, page, tooltipText);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 test.describe.serial('Container Card', () => {
   let containerId: string;
@@ -44,8 +87,8 @@ test.describe.serial('Container Card', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
-    // The image ID is rendered in a <p> with class font-mono
-    const imageId = card.locator('p.font-mono');
+    // The image ID is rendered in a <span> with class font-mono
+    const imageId = card.locator('span.font-mono');
     await expect(imageId).toBeVisible({ timeout: 30_000 });
     const text = await imageId.textContent();
     // Should be a 10-character hex hash (first 10 chars of sha256 digest)
@@ -72,28 +115,28 @@ test.describe.serial('Container Card', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    await expect(card.locator('button:has-text("Stop")')).toBeVisible();
+    expect(await hasButtonWithTooltip(card, page, 'Stop')).toBe(true);
   });
 
   test('Archive button visible', async ({ page }) => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
-    await expect(card.locator('button:has-text("Archive")')).toBeVisible();
+    expect(await hasButtonWithTooltip(card, page, 'Archive')).toBe(true);
   });
 
   test('Remove button visible', async ({ page }) => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
-    await expect(card.locator('button:has-text("Remove")')).toBeVisible();
+    expect(await hasButtonWithTooltip(card, page, 'Remove')).toBe(true);
   });
 
   test('Restart button not visible when running', async ({ page }) => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    await expect(card.locator('button:has-text("Restart")')).toBeHidden();
+    expect(await hasButtonWithTooltip(card, page, 'Restart')).toBe(false);
   });
 
   // ─── 4. State Transitions ────────────────────────────────────
@@ -102,7 +145,8 @@ test.describe.serial('Container Card', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    await card.locator('button:has-text("Stop")').click();
+    const stopBtn = await findButtonByTooltip(card, page, 'Stop');
+    await stopBtn.click();
     await expect(card.locator('text=stopped')).toBeVisible({ timeout: 30_000 });
   });
 
@@ -110,31 +154,35 @@ test.describe.serial('Container Card', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
-    // Container is stopped from previous test; icon buttons section uses v-if="isRunning"
-    // so all icon buttons (svg-containing buttons) should be absent
+    await expect(card.locator('text=stopped')).toBeVisible({ timeout: 15_000 });
+    // Container is stopped from previous test; view buttons (Terminal, Desktop, etc.)
+    // are hidden (v-if="isRunning") but action buttons (Restart, Archive, Remove) remain
     const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
     const count = await iconButtons.count();
-    expect(count).toBe(0);
+    // 3 action buttons remain: Restart, Archive, Remove
+    expect(count).toBe(3);
   });
 
   test('Restart button appears when stopped', async ({ page }) => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
-    await expect(card.locator('button:has-text("Restart")')).toBeVisible({ timeout: 15_000 });
+    await expect(card.locator('text=stopped')).toBeVisible({ timeout: 15_000 });
+    expect(await hasButtonWithTooltip(card, page, 'Restart')).toBe(true);
     // Stop button should be hidden when stopped
-    await expect(card.locator('button:has-text("Stop")')).toBeHidden();
+    expect(await hasButtonWithTooltip(card, page, 'Stop')).toBe(false);
   });
 
   test('Restart restarts container (status changes to "running")', async ({ page }) => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
-    await expect(card.locator('button:has-text("Restart")')).toBeVisible({ timeout: 15_000 });
-    await card.locator('button:has-text("Restart")').click();
+    await expect(card.locator('text=stopped')).toBeVisible({ timeout: 15_000 });
+    const restartBtn = await findButtonByTooltip(card, page, 'Restart');
+    await restartBtn.click();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
     // After restart, Stop should be back and Restart should be gone
-    await expect(card.locator('button:has-text("Stop")')).toBeVisible();
-    await expect(card.locator('button:has-text("Restart")')).toBeHidden();
+    expect(await hasButtonWithTooltip(card, page, 'Stop')).toBe(true);
+    expect(await hasButtonWithTooltip(card, page, 'Restart')).toBe(false);
   });
 
   // ─── 5. Detail Modal ────────────────────────────────────────

@@ -107,10 +107,16 @@ test.describe.serial('Container Detail Modal', () => {
     await expect(containerIdLabel).toBeVisible();
   });
 
-  test('Configuration section shows Docker Enabled when applicable', async ({ page }) => {
+  test('Configuration section shows Docker field', async ({ page }) => {
     const dialog = await openDetailModal(page);
-    // Docker Enabled is shown when the worker has dockerEnabled=true
-    await expect(dialog.getByText('Docker Enabled')).toBeVisible();
+    // The Configuration section has a "Docker" dt with "Enabled" or "Disabled" dd
+    await expect(dialog.getByText('Docker', { exact: true })).toBeVisible();
+  });
+
+  test('Configuration section shows CPU and Memory Limit fields', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    await expect(dialog.getByText('CPU Limit', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Memory Limit', { exact: true })).toBeVisible();
   });
 
   // --- New tests below ---
@@ -234,6 +240,160 @@ test.describe.serial('Container Detail Modal', () => {
     await expect(header).toHaveCount(1);
     const headerText = await header.textContent();
     expect(headerText!.trim()).toBe(displayName);
+  });
+
+  // --- Section visibility tests ---
+
+  test('shows Network section with Mode and Package Managers fields', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    await expect(dialog.getByText('Network', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Mode', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Package Managers', { exact: true })).toBeVisible();
+  });
+
+  test('shows Repositories section header', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    await expect(dialog.getByText('Repositories', { exact: true })).toBeVisible();
+  });
+
+  test('Repositories section shows "None" when no repos configured', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    // The default worker has no repos, so should show italic "None"
+    const reposSection = dialog.locator('section').filter({ hasText: 'Repositories' });
+    await expect(reposSection.locator('span.italic')).toContainText('None');
+  });
+
+  test('shows Mounts section header', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    await expect(dialog.getByText('Mounts', { exact: true })).toBeVisible();
+  });
+
+  test('Mounts section shows "None" when no mounts configured', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    // The default worker has no mounts, so should show italic "None"
+    const mountsSection = dialog.locator('section').filter({ hasText: 'Mounts' });
+    await expect(mountsSection.locator('span.italic')).toContainText('None');
+  });
+
+  test('shows Init Script section header', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    await expect(dialog.getByText('Init Script', { exact: true })).toBeVisible();
+  });
+
+  test('Init Script section shows "None" when no init script configured', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    // The default worker has no init script, so should show italic "None"
+    const initSection = dialog.locator('section').filter({ hasText: 'Init Script' });
+    await expect(initSection.locator('span.italic')).toContainText('None');
+  });
+
+  test('shows Exposed Worker APIs section header', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    await expect(dialog.getByText('Exposed Worker APIs', { exact: true })).toBeVisible();
+  });
+
+  test('Exposed Worker APIs section shows API badges for default worker', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    // The default worker has all APIs exposed (portMappings, domainMappings, usage)
+    const apisSection = dialog.locator('section').filter({ hasText: 'Exposed Worker APIs' });
+    await expect(apisSection.getByText('Port Mappings')).toBeVisible();
+    await expect(apisSection.getByText('Domain Mappings')).toBeVisible();
+    await expect(apisSection.getByText('Usage')).toBeVisible();
+  });
+
+  test('shows Skills section header', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    await expect(dialog.getByText('Skills', { exact: true })).toBeVisible();
+  });
+
+  test('Skills section shows skill badges for default worker', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    // The default worker has skills from the default environment
+    const skillsSection = dialog.locator('section').filter({ hasText: 'Skills' });
+    // At least one skill badge should be visible (not "None")
+    await expect(skillsSection.locator('span').filter({ hasText: /^[a-z]/ }).first()).toBeVisible();
+  });
+
+  test('shows AGENTS.md section header', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    await expect(dialog.getByText('AGENTS.md', { exact: true })).toBeVisible();
+  });
+
+  test('AGENTS.md section shows entry badges for default worker', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    // The default worker has AGENTS.md entries from the default environment
+    const agentsSection = dialog.locator('section').filter({ hasText: 'AGENTS.md' });
+    // At least one entry badge should be visible (not "None")
+    await expect(agentsSection.locator('span').filter({ hasText: /^[a-z]/ }).first()).toBeVisible();
+  });
+
+  test('shows Environment Variables section header', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    await expect(dialog.getByText('Environment Variables', { exact: true })).toBeVisible();
+  });
+
+  test('Environment Variables section shows "None" when no env vars configured', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    // The default worker has no custom env vars, so should show italic "None"
+    const envVarsSection = dialog.locator('section').filter({ hasText: 'Environment Variables' });
+    await expect(envVarsSection.locator('span.italic')).toContainText('None');
+  });
+
+  test('shows Setup Script section header', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    await expect(dialog.getByText('Setup Script', { exact: true })).toBeVisible();
+  });
+
+  test('Setup Script section shows "None" when no setup script configured', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    // The default worker has no setup script, so should show italic "None"
+    const setupSection = dialog.locator('section').filter({ hasText: 'Setup Script' });
+    await expect(setupSection.locator('span.italic')).toContainText('None');
+  });
+
+  test('all always-visible sections are present in correct order', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    // Verify all section headers appear in the modal
+    // Sections: Worker, Configuration, Network, Repositories, Mounts, Init Script,
+    // Exposed Worker APIs, Skills, AGENTS.md, Environment Variables, Setup Script
+    const sections = dialog.locator('section h3');
+    const sectionTexts: string[] = [];
+    const count = await sections.count();
+    for (let i = 0; i < count; i++) {
+      const text = await sections.nth(i).textContent();
+      if (text) sectionTexts.push(text.trim().toUpperCase());
+    }
+    // Verify minimum expected sections are present and in order
+    const expected = [
+      'WORKER',
+      'CONFIGURATION',
+      'NETWORK',
+      'REPOSITORIES',
+      'MOUNTS',
+      'INIT SCRIPT',
+    ];
+    for (let i = 0; i < expected.length; i++) {
+      expect(sectionTexts).toContain(expected[i]);
+    }
+    // Verify order: each expected section appears after the previous one
+    for (let i = 1; i < expected.length; i++) {
+      const prevIdx = sectionTexts.indexOf(expected[i - 1]);
+      const currIdx = sectionTexts.indexOf(expected[i]);
+      expect(currIdx).toBeGreaterThan(prevIdx);
+    }
+  });
+
+  test('Configuration section shows four key-value pairs', async ({ page }) => {
+    const dialog = await openDetailModal(page);
+    // The Configuration section dl should have exactly 4 dt/dd pairs:
+    // Environment, CPU Limit, Memory Limit, Docker
+    const configSection = dialog.locator('section').filter({ hasText: 'Configuration' }).first();
+    const dtElements = configSection.locator('dt');
+    await expect(dtElements).toHaveCount(4);
+    await expect(dtElements.nth(0)).toHaveText('Environment');
+    await expect(dtElements.nth(1)).toHaveText('CPU Limit');
+    await expect(dtElements.nth(2)).toHaveText('Memory Limit');
+    await expect(dtElements.nth(3)).toHaveText('Docker');
   });
 });
 
