@@ -1,4 +1,4 @@
-import type { NetworkMode, RepoConfig, ExposeApis as ExposeApisType } from '../../shared/types';
+import type { NetworkMode, RepoConfig, MountConfig, ExposeApis as ExposeApisType } from '../../shared/types';
 
 export type {
   RepoConfig,
@@ -125,12 +125,20 @@ export interface ArchivedWorker {
   createdAt: string;
   archivedAt?: string;
   repos?: RepoConfig[];
+  mounts?: MountConfig[];
+  initScript?: string;
   cpuLimit?: number;
   memoryLimit?: string;
   networkMode?: string;
   dockerEnabled?: boolean;
+  allowedDomains?: string[];
+  includePackageManagerDomains?: boolean;
+  setupScript?: string;
+  envVars?: string;
+  exposeApis?: ExposeApisType;
+  skillNames?: string[];
+  agentsMdNames?: string[];
   image: string;
-  labels: Record<string, string>;
 }
 
 export type TabType = 'terminal' | 'desktop' | 'apps' | 'editor';

@@ -1,5 +1,5 @@
 import { JsonStore } from './json-store';
-import type { RepoConfig, NetworkMode } from '../../shared/types';
+import type { RepoConfig, MountConfig, NetworkMode, ExposeApis } from '../../shared/types';
 
 export interface WorkerRecord {
   id: string;
@@ -9,13 +9,21 @@ export interface WorkerRecord {
   environmentName?: string;
   createdAt: string;
   repos?: RepoConfig[];
+  mounts?: MountConfig[];
+  initScript?: string;
   cpuLimit?: number;
   memoryLimit?: string;
   networkMode?: NetworkMode;
   dockerEnabled?: boolean;
+  allowedDomains?: string[];
+  includePackageManagerDomains?: boolean;
+  setupScript?: string;
+  envVars?: string;
+  exposeApis?: ExposeApis;
+  skillNames?: string[];
+  agentsMdNames?: string[];
   image: string;
   imageId: string;
-  labels: Record<string, string>;
   status: 'active' | 'archived';
   archivedAt?: string;
 }

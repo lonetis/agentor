@@ -4,7 +4,7 @@ import type { Config } from './config';
 import { getAppType } from './apps';
 import { DockerService } from './docker';
 import type { EnvironmentJsonPayload, SkillJsonEntry, AgentsMdJsonEntry, WorkerJsonPayload } from './docker';
-import type { AppInstanceInfo, RepoConfig, TmuxWindow } from '../../shared/types';
+import type { AppInstanceInfo, TmuxWindow } from '../../shared/types';
 import { getAllGitCloneDomains } from './git-providers';
 import { getAllAgentApiDomains } from './agent-config';
 import { getPackageManagerDomains } from './environments';
@@ -16,17 +16,13 @@ import type { AgentsMdStore } from './agents-md-store';
 import type { StorageManager } from './storage';
 import type { NetworkMode, ExposeApis, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest } from '../../shared/types';
 
-function parseLabelFloat(value: string | undefined): number | undefined {
-  if (value == null) return undefined;
-  const num = parseFloat(value);
-  return Number.isNaN(num) ? undefined : num;
-}
 
 interface ResolvedEnvConfig {
   cpuLimit?: number;
   memoryLimit?: string;
   dockerEnabled?: boolean;
   environmentName?: string;
+  includePackageManagerDomains?: boolean;
   environmentJson: EnvironmentJsonPayload;
   skillsJson: SkillJsonEntry[];
   agentsMdJson: AgentsMdJsonEntry[];
@@ -119,6 +115,7 @@ export class ContainerManager {
     if (!this.environmentStore) {
       const { skillsJson, agentsMdJson } = this.resolveSkillsAndAgentsMd(null, null, defaultExposeApis);
       return {
+        includePackageManagerDomains: true,
         environmentJson: {
           networkMode: 'full',
           allowedDomains: [],
@@ -163,6 +160,7 @@ export class ContainerManager {
       memoryLimit: env.memoryLimit || undefined,
       dockerEnabled,
       environmentName: env.name,
+      includePackageManagerDomains: env.includePackageManagerDomains ?? false,
       environmentJson: {
         networkMode: env.networkMode || 'full',
         allowedDomains: domains,
@@ -190,38 +188,33 @@ export class ContainerManager {
     this.containers.clear();
 
     for (const dc of dockerContainers) {
-      const labels = dc.Labels;
-
-      let repos: RepoConfig[] | undefined;
-      if (labels['agentor.repos']) {
-        try {
-          repos = JSON.parse(labels['agentor.repos']);
-        } catch {
-          repos = undefined;
-        }
-      }
-
       const name = dc.Names[0]?.replace(/^\//, '') || dc.Id.slice(0, 12);
       const worker = this.workerStore?.get(name);
 
       this.containers.set(dc.Id, {
         id: dc.Id,
         name,
-        displayName: labels['agentor.display-name'] || undefined,
-        repos: repos?.length ? repos : undefined,
+        displayName: worker?.displayName,
+        repos: worker?.repos,
+        mounts: worker?.mounts,
+        initScript: worker?.initScript,
         status: ContainerManager.STATE_MAP[dc.State] || 'error',
-        createdAt: labels['agentor.created'] || '',
+        createdAt: worker?.createdAt || '',
         image: dc.Image,
         imageId: dc.ImageID,
-        labels: Object.fromEntries(
-          Object.entries(labels).filter(([k]) => k.startsWith('agentor.') && k !== 'agentor.managed')
-        ),
-        environmentId: worker?.environmentId ?? labels['agentor.environment-id'],
-        environmentName: worker?.environmentName ?? labels['agentor.environment-name'],
-        cpuLimit: worker?.cpuLimit ?? parseLabelFloat(labels['agentor.cpu-limit']),
-        memoryLimit: worker?.memoryLimit ?? labels['agentor.memory-limit'] ?? undefined,
-        networkMode: (worker?.networkMode ?? labels['agentor.network-mode'] ?? undefined) as NetworkMode | undefined,
-        dockerEnabled: worker?.dockerEnabled ?? (labels['agentor.docker-enabled'] === 'true' ? true : undefined),
+        environmentId: worker?.environmentId,
+        environmentName: worker?.environmentName,
+        cpuLimit: worker?.cpuLimit,
+        memoryLimit: worker?.memoryLimit,
+        networkMode: worker?.networkMode,
+        dockerEnabled: worker?.dockerEnabled,
+        allowedDomains: worker?.allowedDomains,
+        includePackageManagerDomains: worker?.includePackageManagerDomains,
+        setupScript: worker?.setupScript,
+        envVars: worker?.envVars,
+        exposeApis: worker?.exposeApis,
+        skillNames: worker?.skillNames,
+        agentsMdNames: worker?.agentsMdNames,
       });
     }
   }
@@ -278,44 +271,45 @@ export class ContainerManager {
 
     const networkMode = envConfig.environmentJson.networkMode as NetworkMode;
 
+    const mounts = request.mounts?.length ? request.mounts : undefined;
+    const initScript = request.initScript?.trim() || undefined;
+    const allowedDomains = envConfig.environmentJson.allowedDomains.length > 0 ? envConfig.environmentJson.allowedDomains : undefined;
+    const setupScript = envConfig.environmentJson.setupScript || undefined;
+    const envVars = envConfig.environmentJson.envVars || undefined;
+    const exposeApis = envConfig.environmentJson.exposeApis;
+    const skillNames = envConfig.skillsJson.length > 0 ? envConfig.skillsJson.map((s) => s.name) : undefined;
+    const agentsMdNames = envConfig.agentsMdJson.length > 0 ? envConfig.agentsMdJson.map((e) => e.name) : undefined;
+
     const containerInfo: ContainerInfo = {
       id: container.id,
       name,
       displayName: request.displayName || undefined,
       repos: repos.length > 0 ? repos : undefined,
+      mounts,
+      initScript,
       status: 'running',
       createdAt: new Date().toISOString(),
       image,
       imageId: '',
-      labels: {},
       environmentId: request.environmentId,
       environmentName: envConfig.environmentName,
       cpuLimit,
       memoryLimit,
       networkMode,
       dockerEnabled,
+      allowedDomains,
+      includePackageManagerDomains: envConfig.includePackageManagerDomains,
+      setupScript,
+      envVars,
+      exposeApis,
+      skillNames,
+      agentsMdNames,
     };
 
     this.containers.set(container.id, containerInfo);
 
     if (this.workerStore) {
-      await this.workerStore.upsert({
-        id: container.id,
-        name,
-        displayName: request.displayName || undefined,
-        environmentId: request.environmentId,
-        environmentName: envConfig.environmentName,
-        createdAt: containerInfo.createdAt,
-        repos: repos.length > 0 ? repos : undefined,
-        cpuLimit,
-        memoryLimit,
-        networkMode,
-        dockerEnabled,
-        image,
-        imageId: '',
-        labels: {},
-        status: 'active',
-      });
+      await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
     }
 
     return containerInfo;
@@ -401,24 +395,25 @@ export class ContainerManager {
       throw new Error('Archived worker not found');
     }
 
-    // Resolve environment config (graceful fallback if environment was deleted)
+    // Resolve environment config (graceful fallback to snapshotted worker data if environment was deleted)
     const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
     let envConfig: ResolvedEnvConfig = {
       environmentJson: {
         networkMode: worker.networkMode || 'full',
-        allowedDomains: [],
+        allowedDomains: worker.allowedDomains || [],
         dockerEnabled: worker.dockerEnabled ?? true,
-        setupScript: '',
-        envVars: '',
-        exposeApis: defaultExposeApis,
+        setupScript: worker.setupScript || '',
+        envVars: worker.envVars || '',
+        exposeApis: worker.exposeApis || defaultExposeApis,
       },
-      skillsJson: [],
-      agentsMdJson: [],
+      includePackageManagerDomains: worker.includePackageManagerDomains,
+      skillsJson: worker.skillNames?.map((name) => ({ name, content: '' })) || [],
+      agentsMdJson: worker.agentsMdNames?.map((name) => ({ name, content: '' })) || [],
     };
     try {
       envConfig = this.resolveEnvironmentConfig(worker.environmentId);
     } catch {
-      // Environment may have been deleted since archival — use worker defaults
+      // Environment may have been deleted since archival — use snapshotted worker data
     }
 
     const cpuLimit = envConfig.cpuLimit ?? worker.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
@@ -455,17 +450,25 @@ export class ContainerManager {
       name: worker.name,
       displayName: worker.displayName,
       repos: worker.repos,
+      mounts: worker.mounts,
+      initScript: worker.initScript,
       status: 'running',
       createdAt: worker.createdAt,
       image,
       imageId: '',
-      labels: {},
       environmentId: worker.environmentId,
       environmentName: envConfig.environmentName || worker.environmentName,
       cpuLimit,
       memoryLimit,
       networkMode: worker.networkMode,
       dockerEnabled,
+      allowedDomains: worker.allowedDomains,
+      includePackageManagerDomains: worker.includePackageManagerDomains,
+      setupScript: worker.setupScript,
+      envVars: worker.envVars,
+      exposeApis: worker.exposeApis,
+      skillNames: worker.skillNames,
+      agentsMdNames: worker.agentsMdNames,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -502,7 +505,7 @@ export class ContainerManager {
       activeNames.add(info.name);
       const existing = this.workerStore.get(info.name);
       if (!existing || existing.status === 'active') {
-        // Always update active workers with latest Docker state (labels, image, etc.)
+        // Always update active workers with latest Docker state (image, etc.)
         await this.workerStore.upsert(this.containerInfoToWorkerRecord(info));
       }
     }
@@ -523,13 +526,21 @@ export class ContainerManager {
       environmentName: info.environmentName,
       createdAt: info.createdAt,
       repos: info.repos,
+      mounts: info.mounts,
+      initScript: info.initScript,
       cpuLimit: info.cpuLimit,
       memoryLimit: info.memoryLimit,
       networkMode: info.networkMode,
       dockerEnabled: info.dockerEnabled,
+      allowedDomains: info.allowedDomains,
+      includePackageManagerDomains: info.includePackageManagerDomains,
+      setupScript: info.setupScript,
+      envVars: info.envVars,
+      exposeApis: info.exposeApis,
+      skillNames: info.skillNames,
+      agentsMdNames: info.agentsMdNames,
       image: info.image,
       imageId: info.imageId,
-      labels: info.labels,
       status: 'active',
     };
   }

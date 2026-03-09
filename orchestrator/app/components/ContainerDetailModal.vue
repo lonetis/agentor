@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { ContainerInfo } from '~/types';
+import type { ContainerInfo, PortMapping, DomainMapping } from '~/types';
+import type { AppInstanceInfo } from '../../shared/types';
 
 const props = defineProps<{
   container: ContainerInfo;
@@ -7,6 +8,51 @@ const props = defineProps<{
 }>();
 
 const open = defineModel<boolean>('open', { default: false });
+
+const portMappings = ref<PortMapping[]>([]);
+const domainMappings = ref<DomainMapping[]>([]);
+const appInstances = ref<AppInstanceInfo[]>([]);
+const loaded = ref(false);
+
+async function loadDetails() {
+  if (loaded.value) return;
+  loaded.value = true;
+
+  const fetches: Promise<void>[] = [];
+
+  fetches.push(
+    $fetch<PortMapping[]>('/api/port-mappings')
+      .then((all) => { portMappings.value = all.filter((m) => m.workerId === props.container.id); })
+      .catch(() => {}),
+  );
+
+  fetches.push(
+    $fetch<DomainMapping[]>('/api/domain-mappings')
+      .then((all) => { domainMappings.value = all.filter((m) => m.workerId === props.container.id); })
+      .catch(() => {}),
+  );
+
+  if (props.container.status === 'running') {
+    fetches.push(
+      $fetch<AppInstanceInfo[]>(`/api/containers/${props.container.id}/apps`)
+        .then((apps) => { appInstances.value = apps; })
+        .catch(() => {}),
+    );
+  }
+
+  await Promise.all(fetches);
+}
+
+watch(open, (isOpen) => {
+  if (isOpen) loadDetails();
+});
+
+watch(() => props.container.id, () => {
+  portMappings.value = [];
+  domainMappings.value = [];
+  appInstances.value = [];
+  loaded.value = false;
+});
 
 const shortImageId = computed(() => {
   const id = props.container.imageId || '';
@@ -18,18 +64,27 @@ const formattedCreatedAt = computed(() => {
   return new Date(props.container.createdAt).toLocaleString();
 });
 
-const configFields = computed(() => {
-  const c = props.container;
-  const fields: { key: string; value: string }[] = [];
-  if (c.environmentName) fields.push({ key: 'Environment', value: c.environmentName });
-  if (c.cpuLimit != null) fields.push({ key: 'CPU Limit', value: `${c.cpuLimit} cores` });
-  if (c.memoryLimit) fields.push({ key: 'Memory Limit', value: c.memoryLimit });
-  if (c.networkMode && c.networkMode !== 'full') fields.push({ key: 'Network Mode', value: c.networkMode });
-  if (c.dockerEnabled) fields.push({ key: 'Docker Enabled', value: 'Yes' });
-  return fields;
+const networkModeLabel = computed(() => {
+  const labels: Record<string, string> = {
+    'full': 'Full access',
+    'block-all': 'Block all',
+    'block': 'Block (custom allowlist)',
+    'package-managers': 'Package managers only',
+    'custom': 'Custom',
+  };
+  const mode = props.container.networkMode;
+  return mode ? labels[mode] || mode : null;
 });
 
-const repos = computed(() => props.container.repos || []);
+const exposeApisLabels = computed(() => {
+  const apis = props.container.exposeApis;
+  if (!apis) return [];
+  const result: string[] = [];
+  if (apis.portMappings) result.push('Port Mappings');
+  if (apis.domainMappings) result.push('Domain Mappings');
+  if (apis.usage) result.push('Usage');
+  return result;
+});
 </script>
 
 <template>
@@ -69,25 +124,196 @@ const repos = computed(() => props.container.repos || []);
           </section>
 
           <!-- Configuration -->
-          <section v-if="configFields.length > 0">
+          <section>
             <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Configuration</h3>
             <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-              <template v-for="field in configFields" :key="field.key">
-                <dt class="text-gray-500 dark:text-gray-400">{{ field.key }}</dt>
-                <dd class="text-gray-900 dark:text-white">{{ field.value }}</dd>
+              <dt class="text-gray-500 dark:text-gray-400">Environment</dt>
+              <dd class="text-gray-900 dark:text-white">{{ container.environmentName || '\u2014' }}</dd>
+
+              <dt class="text-gray-500 dark:text-gray-400">CPU Limit</dt>
+              <dd class="text-gray-900 dark:text-white">{{ container.cpuLimit ? `${container.cpuLimit} cores` : 'Unlimited' }}</dd>
+
+              <dt class="text-gray-500 dark:text-gray-400">Memory Limit</dt>
+              <dd class="text-gray-900 dark:text-white">{{ container.memoryLimit || 'Unlimited' }}</dd>
+
+              <dt class="text-gray-500 dark:text-gray-400">Docker</dt>
+              <dd class="text-gray-900 dark:text-white">{{ container.dockerEnabled ? 'Enabled' : 'Disabled' }}</dd>
+            </dl>
+          </section>
+
+          <!-- Network -->
+          <section>
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Network</h3>
+            <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+              <dt class="text-gray-500 dark:text-gray-400">Mode</dt>
+              <dd class="text-gray-900 dark:text-white">{{ networkModeLabel || '\u2014' }}</dd>
+
+              <template v-if="container.allowedDomains?.length">
+                <dt class="text-gray-500 dark:text-gray-400">Allowed Domains</dt>
+                <dd class="text-gray-900 dark:text-white">
+                  <div v-for="domain in container.allowedDomains" :key="domain" class="font-mono text-xs">{{ domain }}</div>
+                </dd>
               </template>
+
+              <dt class="text-gray-500 dark:text-gray-400">Package Managers</dt>
+              <dd class="text-gray-900 dark:text-white">{{ container.includePackageManagerDomains ? 'Allowed' : 'Blocked' }}</dd>
             </dl>
           </section>
 
           <!-- Repositories -->
-          <section v-if="repos.length > 0">
+          <section>
             <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Repositories</h3>
-            <div class="space-y-1">
-              <div v-for="(repo, idx) in repos" :key="idx" class="text-sm">
-                <span class="text-gray-900 dark:text-white font-mono text-xs">{{ repo.url }}</span>
-                <span v-if="repo.branch" class="text-gray-400 ml-1.5 text-xs">@ {{ repo.branch }}</span>
+            <template v-if="container.repos?.length">
+              <div class="space-y-1">
+                <div v-for="(repo, idx) in container.repos" :key="idx" class="text-sm">
+                  <span class="text-gray-900 dark:text-white font-mono text-xs">{{ repo.url }}</span>
+                  <span v-if="repo.branch" class="text-gray-400 ml-1.5 text-xs">@ {{ repo.branch }}</span>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
+            </template>
+          </section>
+
+          <!-- Mounts -->
+          <section>
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Mounts</h3>
+            <template v-if="container.mounts?.length">
+              <div class="space-y-1">
+                <div v-for="(mount, idx) in container.mounts" :key="idx" class="flex items-center gap-2 text-sm">
+                  <span class="font-mono text-xs text-gray-900 dark:text-white truncate">{{ mount.source }}</span>
+                  <span class="text-gray-400">&rarr;</span>
+                  <span class="font-mono text-xs text-gray-900 dark:text-white truncate">{{ mount.target }}</span>
+                  <UBadge v-if="mount.readOnly" color="neutral" variant="subtle" size="xs">ro</UBadge>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
+            </template>
+          </section>
+
+          <!-- Init Script -->
+          <section>
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Init Script</h3>
+            <template v-if="container.initScript">
+              <pre class="text-xs font-mono text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto whitespace-pre-wrap">{{ container.initScript }}</pre>
+            </template>
+            <template v-else>
+              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
+            </template>
+          </section>
+
+          <!-- Port Mappings -->
+          <section v-if="portMappings.length > 0">
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Port Mappings</h3>
+            <div class="space-y-1.5">
+              <div v-for="pm in portMappings" :key="pm.externalPort" class="flex items-center gap-2 text-sm">
+                <span class="font-mono text-xs text-gray-900 dark:text-white">:{{ pm.externalPort }}</span>
+                <span class="text-gray-400">&rarr;</span>
+                <span class="font-mono text-xs text-gray-900 dark:text-white">:{{ pm.internalPort }}</span>
+                <UBadge :color="pm.type === 'external' ? 'warning' : 'neutral'" variant="subtle" size="xs">
+                  {{ pm.type }}
+                </UBadge>
+                <span v-if="pm.appType" class="text-gray-400 text-xs">{{ pm.appType }}</span>
               </div>
             </div>
+          </section>
+
+          <!-- Domain Mappings -->
+          <section v-if="domainMappings.length > 0">
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Domain Mappings</h3>
+            <div class="space-y-1.5">
+              <div v-for="dm in domainMappings" :key="dm.id" class="flex items-center gap-2 text-sm">
+                <span class="font-mono text-xs text-gray-900 dark:text-white truncate">{{ dm.subdomain }}.{{ dm.baseDomain }}</span>
+                <span class="text-gray-400">&rarr;</span>
+                <span class="font-mono text-xs text-gray-900 dark:text-white">:{{ dm.internalPort }}</span>
+                <UBadge color="neutral" variant="subtle" size="xs">{{ dm.protocol }}</UBadge>
+                <UBadge v-if="dm.basicAuth" color="warning" variant="subtle" size="xs">auth</UBadge>
+              </div>
+            </div>
+          </section>
+
+          <!-- App Instances -->
+          <section v-if="appInstances.length > 0">
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">App Instances</h3>
+            <div class="space-y-1.5">
+              <div v-for="app in appInstances" :key="app.id" class="flex items-center gap-2 text-sm">
+                <span class="text-gray-900 dark:text-white text-xs">{{ app.appType }}</span>
+                <span class="font-mono text-xs text-gray-400">:{{ app.port }}</span>
+                <UBadge :color="app.status === 'running' ? 'success' : 'neutral'" variant="subtle" size="xs">
+                  {{ app.status }}
+                </UBadge>
+              </div>
+            </div>
+          </section>
+
+          <!-- Exposed Worker APIs -->
+          <section>
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Exposed Worker APIs</h3>
+            <template v-if="exposeApisLabels.length > 0">
+              <div class="flex flex-wrap gap-1.5">
+                <UBadge v-for="label in exposeApisLabels" :key="label" color="neutral" variant="subtle" size="xs">
+                  {{ label }}
+                </UBadge>
+              </div>
+            </template>
+            <template v-else>
+              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
+            </template>
+          </section>
+
+          <!-- Skills -->
+          <section>
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Skills</h3>
+            <template v-if="container.skillNames?.length">
+              <div class="flex flex-wrap gap-1.5">
+                <UBadge v-for="name in container.skillNames" :key="name" color="neutral" variant="subtle" size="xs">
+                  {{ name }}
+                </UBadge>
+              </div>
+            </template>
+            <template v-else>
+              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
+            </template>
+          </section>
+
+          <!-- AGENTS.md -->
+          <section>
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">AGENTS.md</h3>
+            <template v-if="container.agentsMdNames?.length">
+              <div class="flex flex-wrap gap-1.5">
+                <UBadge v-for="name in container.agentsMdNames" :key="name" color="neutral" variant="subtle" size="xs">
+                  {{ name }}
+                </UBadge>
+              </div>
+            </template>
+            <template v-else>
+              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
+            </template>
+          </section>
+
+          <!-- Environment Variables -->
+          <section>
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Environment Variables</h3>
+            <template v-if="container.envVars">
+              <pre class="text-xs font-mono text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto whitespace-pre-wrap">{{ container.envVars }}</pre>
+            </template>
+            <template v-else>
+              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
+            </template>
+          </section>
+
+          <!-- Setup Script -->
+          <section>
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Setup Script</h3>
+            <template v-if="container.setupScript">
+              <pre class="text-xs font-mono text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto whitespace-pre-wrap">{{ container.setupScript }}</pre>
+            </template>
+            <template v-else>
+              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
+            </template>
           </section>
         </div>
       </div>

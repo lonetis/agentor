@@ -134,8 +134,6 @@ export class DockerService {
     const needsNetAdmin = networkMode && networkMode !== 'full';
     const capAdd = needsNetAdmin && !opts.dockerEnabled ? ['NET_ADMIN'] : [];
 
-    const repos = opts.workerJson.repos;
-
     const container = await this.docker.createContainer({
       Image: image,
       name: opts.name,
@@ -144,9 +142,6 @@ export class DockerService {
       OpenStdin: true,
       Labels: {
         [MANAGED_LABEL]: 'true',
-        'agentor.created': new Date().toISOString(),
-        ...(opts.displayName ? { 'agentor.display-name': opts.displayName } : {}),
-        ...(repos?.length ? { 'agentor.repos': JSON.stringify(repos) } : {}),
       },
       HostConfig: {
         NetworkMode: this.config.dockerNetwork,

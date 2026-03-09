@@ -37,17 +37,25 @@ export interface ContainerInfo {
   name: string;
   displayName?: string;
   repos?: RepoConfig[];
+  mounts?: MountConfig[];
+  initScript?: string;
   status: ContainerStatus;
   createdAt: string;
   image: string;
   imageId: string;
-  labels: Record<string, string>;
   environmentId?: string;
   environmentName?: string;
   cpuLimit?: number;
   memoryLimit?: string;
   networkMode?: NetworkMode;
   dockerEnabled?: boolean;
+  allowedDomains?: string[];
+  includePackageManagerDomains?: boolean;
+  setupScript?: string;
+  envVars?: string;
+  exposeApis?: ExposeApis;
+  skillNames?: string[];
+  agentsMdNames?: string[];
 }
 
 export interface CreateContainerRequest {
