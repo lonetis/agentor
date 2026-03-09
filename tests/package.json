@@ -8,6 +8,8 @@
     "test:api": "npx playwright test --project=api",
     "test:ui": "npx playwright test --project=ui",
     "test:headed": "npx playwright test --project=ui --headed",
+    "test:debug": "npx playwright test --project=ui --headed --slowmo 200 --workers=1",
+    "test:trace": "npx playwright test --trace on",
     "test:report": "npx playwright show-report"
   },
   "devDependencies": {
