@@ -70,7 +70,13 @@ cd tests && npm run test:api    # API only (headless, fast)
 cd tests && npm run test:ui     # UI only (Chromium)
 cd tests && npm run test:headed # UI with visible browser
 cd tests && npx playwright test api/health.spec.ts  # Single file
+
+# Testing workflow: run the full suite once, save output, then fix individual files
+cd tests && npm test 2>&1 | tee /tmp/test-results.txt  # Full run, save output
+cd tests && npx playwright test ui/container-card.spec.ts  # Re-run single file
 ```
+
+**Testing approach**: Do not repeatedly run the entire test suite. Run it once, save the output, then re-run only the individual failing test files to iterate on fixes.
 
 ## Gotchas
 
@@ -80,6 +86,7 @@ cd tests && npx playwright test api/health.spec.ts  # Single file
 - **Claude Code CLI exits immediately** (code 0) under QEMU emulation (amd64 on ARM host) — always build the worker image for native arch, never use `--platform=linux/amd64`
 - **Regenerate `package-lock.json`** after modifying `package.json` dependencies (`rm package-lock.json && npm install`) or `npm ci` in the Dockerfile will fail
 - **`useEventListener` is VueUse**, not a Nuxt built-in — use manual `addEventListener`/`removeEventListener` in lifecycle hooks
+- **Reka UI tooltip hover in tests** — `locator.hover()` does not reliably trigger Reka UI tooltips; use `page.mouse.move(x, y)` with exact bounding box coordinates instead. Also `getByRole('tooltip', { name })` fails to match accessible names — check `[role="tooltip"]` text content directly
 - **Nuxt 4 compatibility mode** (`future.compatibilityVersion: 4`) makes `app/` the source root — pages, components, composables, and assets go under `app/`, not the project root
 - **Nitro `[...path]` catch-all doesn't match empty path** — `/editor/{id}/` needs a separate `index.ts` handler; the catch-all only matches when there's at least one path segment
 - **tmux `respawn-pane -k` without explicit command** re-runs the original pane start command — always pass `bash` (or the desired command) as the last argument
