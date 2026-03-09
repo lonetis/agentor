@@ -4,7 +4,7 @@ import type { Config } from './config';
 import type { AgentUsageInfo, AgentUsageStatus, AgentAuthType, UsageWindow } from '../../shared/types';
 
 const CRED_DIR = '/cred';
-const POLL_INTERVAL_MS = 600_000;
+const POLL_INTERVAL_MS = 300_000;
 
 interface AgentState {
   info: AgentUsageInfo;
@@ -50,6 +50,8 @@ export class UsageChecker {
   /** Per-agent backoff state for rate-limited endpoints (persisted to disk) */
   private rateLimitBackoff = new Map<string, number>();
   private stateFilePath: string;
+  /** Serializes fetchAll() calls to prevent concurrent API requests */
+  private fetchQueue: Promise<void> = Promise.resolve();
 
   constructor(config: Config) {
     this.config = config;
@@ -84,13 +86,7 @@ export class UsageChecker {
   }
 
   async refresh(): Promise<AgentUsageStatus> {
-    const now = Date.now();
-    const anyStale = !this.agentStates.size || [...this.agentStates.values()].some(
-      (s) => now - s.lastFetchTime >= POLL_INTERVAL_MS,
-    );
-    if (anyStale) {
-      await this.fetchAll();
-    }
+    await this.fetchAll();
     return this.getStatus();
   }
 
@@ -160,19 +156,38 @@ export class UsageChecker {
     }
   }
 
-  private async fetchAll(): Promise<void> {
-    const results = await Promise.all([
-      this.fetchClaudeUsage(),
-      this.fetchCodexUsage(),
-      this.fetchGeminiUsage(),
-    ]);
+  private fetchAll(): Promise<void> {
+    this.fetchQueue = this.fetchQueue.then(() => this.doFetchAll()).catch(() => {});
+    return this.fetchQueue;
+  }
 
+  private async doFetchAll(): Promise<void> {
     const now = Date.now();
+
+    // Only fetch agents whose data is stale (older than POLL_INTERVAL_MS)
+    const fetchers: Array<() => Promise<AgentUsageInfo>> = [];
+    const agentIds = ['claude', 'codex', 'gemini'] as const;
+    const fetchFns = [
+      () => this.fetchClaudeUsage(),
+      () => this.fetchCodexUsage(),
+      () => this.fetchGeminiUsage(),
+    ];
+
+    for (let i = 0; i < agentIds.length; i++) {
+      const existing = this.agentStates.get(agentIds[i]);
+      if (!existing || now - existing.lastFetchTime >= POLL_INTERVAL_MS) {
+        fetchers.push(fetchFns[i]!);
+      }
+    }
+
+    if (fetchers.length === 0) return;
+
+    const results = await Promise.all(fetchers.map((fn) => fn()));
+
     for (const info of results) {
-      const existing = this.agentStates.get(info.agentId);
       this.agentStates.set(info.agentId, {
         info,
-        lastFetchTime: info.error ? (existing?.lastFetchTime ?? 0) : now,
+        lastFetchTime: now,
       });
     }
     await this.saveState();
