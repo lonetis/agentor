@@ -25,15 +25,15 @@ test.describe('Update Notification / Images Section', () => {
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
-  test('"Prune unused images" button is visible', async ({ page }) => {
+  test('"Prune dangling images" button is visible', async ({ page }) => {
     await goToDashboard(page);
     await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
     // The prune button appears once status has loaded
-    await expect(aside.getByText('Prune unused images')).toBeVisible({ timeout: 10_000 });
+    await expect(aside.getByText('Prune dangling images')).toBeVisible({ timeout: 10_000 });
   });
 
-  test('clicking "Prune unused images" triggers prune UI flow', async ({ page }) => {
+  test('clicking "Prune dangling images" triggers prune UI flow', async ({ page }) => {
     await goToDashboard(page);
     await selectSidebarTab(page, 'System');
     // Intercept prune API to prevent actually deleting the worker image
@@ -46,14 +46,14 @@ test.describe('Update Notification / Images Section', () => {
     });
 
     const aside = page.locator('aside');
-    const pruneBtn = aside.getByText('Prune unused images');
+    const pruneBtn = aside.getByText('Prune dangling images');
     await expect(pruneBtn).toBeVisible({ timeout: 10_000 });
 
     // Click prune — button text should change to "Pruning..." while running
     await pruneBtn.click();
 
     // Wait for prune to complete (button returns to original text)
-    await expect(aside.getByText('Prune unused images')).toBeVisible({ timeout: 15_000 });
+    await expect(aside.getByText('Prune dangling images')).toBeVisible({ timeout: 15_000 });
 
     // After the mock prune, a result should display
     await expect(aside.getByText(/removed/)).toBeVisible({ timeout: 5_000 });
@@ -74,12 +74,12 @@ test.describe('Update Notification / Images Section', () => {
     });
 
     const aside = page.locator('aside');
-    const pruneBtn = aside.getByText('Prune unused images');
+    const pruneBtn = aside.getByText('Prune dangling images');
     await expect(pruneBtn).toBeVisible({ timeout: 10_000 });
 
     await pruneBtn.click();
     // The button should remain visible after prune (re-enabled, not removed from DOM)
-    await expect(aside.getByText('Prune unused images')).toBeVisible({ timeout: 15_000 });
+    await expect(aside.getByText('Prune dangling images')).toBeVisible({ timeout: 15_000 });
 
     await page.unrouteAll({ behavior: 'wait' });
   });
@@ -183,11 +183,11 @@ test.describe('Update Notification / Images Section', () => {
     await expect(btn).toBeVisible({ timeout: 15_000 });
   });
 
-  test('"Prune unused images" is disabled while pruning', async ({ page }) => {
+  test('"Prune dangling images" is disabled while pruning', async ({ page }) => {
     await goToDashboard(page);
     await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
-    const pruneBtn = aside.getByText('Prune unused images');
+    const pruneBtn = aside.getByText('Prune dangling images');
     await expect(pruneBtn).toBeVisible({ timeout: 10_000 });
 
     // Intercept the prune API to add a delay so we can observe the disabled state
@@ -207,7 +207,7 @@ test.describe('Update Notification / Images Section', () => {
     await expect(aside.getByText('Pruning...')).toBeVisible({ timeout: 3_000 });
 
     // Wait for prune to complete
-    await expect(aside.getByText('Prune unused images')).toBeVisible({ timeout: 15_000 });
+    await expect(aside.getByText('Prune dangling images')).toBeVisible({ timeout: 15_000 });
   });
 
   test('reconnecting overlay is not shown under normal operation', async ({ page }) => {
@@ -231,7 +231,7 @@ test.describe('Update Notification / Images Section', () => {
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
 
     // The prune button should also be within the sidebar
-    await expect(aside.getByText('Prune unused images')).toBeVisible({ timeout: 10_000 });
+    await expect(aside.getByText('Prune dangling images')).toBeVisible({ timeout: 10_000 });
   });
 
   test('null images (no local Docker image) do not render a row', async ({ page }) => {
@@ -240,7 +240,7 @@ test.describe('Update Notification / Images Section', () => {
     const aside = page.locator('aside');
 
     // Wait for images section to load
-    await expect(aside.getByText('Prune unused images')).toBeVisible({ timeout: 10_000 });
+    await expect(aside.getByText('Prune dangling images')).toBeVisible({ timeout: 10_000 });
 
     // Query the API to see which images are null
     const status = await page.evaluate(() =>

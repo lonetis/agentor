@@ -159,14 +159,14 @@ function formatBytes(bytes: number): string {
           {{ isChecking ? 'Checking...' : 'Check for updates' }}
         </button>
 
-        <!-- Prune unused images -->
+        <!-- Prune dangling images -->
         <button
           class="system-card-link disabled:opacity-50"
           :disabled="isPruning || isApplying || anyApplyingImage"
           @click="pruneImages"
         >
           <UIcon name="i-lucide-trash-2" class="size-3.5 flex-shrink-0" />
-          {{ isPruning ? 'Pruning...' : 'Prune unused images' }}
+          {{ isPruning ? 'Pruning...' : 'Prune dangling images' }}
           <span
             v-if="lastPruneResult"
             class="ml-auto text-[10px] text-gray-400 dark:text-gray-500 font-normal"

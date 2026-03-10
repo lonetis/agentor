@@ -1,8 +1,8 @@
 defineRouteMeta({
   openAPI: {
     tags: ['Updates'],
-    summary: 'Prune unused images',
-    description: 'Removes all unused Docker images (dangling and unreferenced) to reclaim disk space.',
+    summary: 'Prune dangling images',
+    description: 'Removes dangling Docker images (untagged layers left behind by builds) to reclaim disk space.',
     operationId: 'pruneImages',
     responses: {
       200: {

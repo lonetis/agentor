@@ -425,7 +425,7 @@ export class UpdateChecker {
   }
 
   async pruneImages(): Promise<PruneResult> {
-    const res = await this.docker.pruneImages({ filters: { dangling: ['false'] } });
+    const res = await this.docker.pruneImages({ filters: { dangling: ['true'] } });
     return {
       imagesDeleted: res.ImagesDeleted?.length ?? 0,
       spaceReclaimed: res.SpaceReclaimed ?? 0,

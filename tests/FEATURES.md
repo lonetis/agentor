@@ -329,7 +329,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Per-image "Update" button (production mode, when update available)
 - "Update All" button (production mode, when any updates available)
 - "Re-check" / "Check for updates" button
-- "Prune unused images" button with result display
+- "Prune dangling images" button with result display
 
 ### 15.2 Restarting State
 - Blue overlay with spinner + "Reconnecting..." + description when orchestrator restarts
@@ -572,7 +572,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `GET /api/updates` — status for 4 images
 - `POST /api/updates/check` — trigger manual check
 - `POST /api/updates/apply` — pull + recreate (optional { images } body for per-image)
-- `POST /api/updates/prune` — prune unused images
+- `POST /api/updates/prune` — prune dangling images
 
 ### 23.13 Usage
 - `GET /api/usage` — agent usage status (per-agent auth type, windows, timestamps)
