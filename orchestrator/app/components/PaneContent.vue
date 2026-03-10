@@ -25,7 +25,7 @@ const activeTab = computed(() => {
       endpoint="desktop"
       label="Desktop"
       icon-name="i-lucide-monitor"
-      :url="`/desktop/${activeTab.containerId}/vnc.html?autoconnect=true&resize=scale&quality=6&compression=2&path=ws/desktop/${activeTab.containerId}`"
+      :url="`/desktop/${activeTab.containerId}/vnc.html?autoconnect=true&resize=scale&quality=9&compression=0&reconnect=true&reconnect_delay=2000&path=ws/desktop/${activeTab.containerId}`"
     />
     <AppsPane
       v-else-if="activeTab?.type === 'apps'"

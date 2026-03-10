@@ -25,6 +25,9 @@ RUN apt-get update && apt-get install -y \
     websockify \
     procps \
     fonts-liberation \
+    fonts-dejavu-core \
+    fonts-noto-color-emoji \
+    fontconfig \
     libnss3 \
     libatk-bridge2.0-0 \
     libgtk-3-0 \
@@ -114,6 +117,11 @@ RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 ENV DISPLAY=:99
 
+# Font rendering: enable subpixel antialiasing and hinting
+RUN mkdir -p /etc/fonts/conf.d && \
+    printf '<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n<fontconfig>\n  <match target="font">\n    <edit name="antialias" mode="assign"><bool>true</bool></edit>\n    <edit name="hinting" mode="assign"><bool>true</bool></edit>\n    <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>\n    <edit name="rgba" mode="assign"><const>rgb</const></edit>\n    <edit name="lcdfilter" mode="assign"><const>lcddefault</const></edit>\n  </match>\n</fontconfig>\n' > /etc/fonts/local.conf && \
+    fc-cache -f
+
 # Pre-create X11 socket directory with correct permissions (Xvfb runs as non-root)
 RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
 
@@ -122,6 +130,10 @@ RUN userdel -r ubuntu 2>/dev/null || true && \
     useradd -m -s /bin/bash -u 1000 agent && \
     echo "agent ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
     usermod -aG docker agent
+
+# X11 rendering defaults (DPI + font antialiasing)
+RUN printf 'Xft.dpi: 96\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hintslight\nXft.rgba: rgb\nXft.lcdfilter: lcddefault\n' > /home/agent/.Xresources && \
+    chown agent:agent /home/agent/.Xresources
 
 COPY --chmod=755 entrypoint.sh /home/agent/entrypoint.sh
 COPY --chmod=755 loading-screen.sh /home/agent/loading-screen.sh

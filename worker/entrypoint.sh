@@ -185,8 +185,9 @@ pkill -f fluxbox 2>/dev/null || true
 pkill -f websockify 2>/dev/null || true
 Xvfb :99 -screen 0 1920x1080x24 -ac &
 wait_for_file /tmp/.X11-unix/X99
+xrdb -merge /home/agent/.Xresources 2>/dev/null || true
 fluxbox &
-x11vnc -display :99 -nopw -shared -forever -rfbport 5900 &
+x11vnc -display :99 -nopw -shared -forever -rfbport 5900 -cursor most -xkb -noxdamage &
 wait_for_port 5900
 websockify --web /usr/share/novnc/ 6080 localhost:5900 &
 _done display "Display stack"
