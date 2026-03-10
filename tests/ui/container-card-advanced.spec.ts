@@ -72,7 +72,7 @@ test.describe.serial('Container Card — Advanced', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
     // All buttons are now icon-only (view + action in a single row)
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await expect(iconButtons.first()).toBeVisible({ timeout: 10_000 });
     const count = await iconButtons.count();
     // 9 icon buttons: Terminal, Desktop, Editor, Apps, Upload, Download, Stop, Archive, Remove
@@ -114,7 +114,7 @@ test.describe.serial('Container Card — Advanced', () => {
     await expect(card.locator('text=stopped')).toBeVisible({ timeout: 15_000 });
     // When stopped, view buttons (Terminal, Desktop, etc.) are hidden (v-if="isRunning")
     // but action buttons (Restart, Archive, Remove) remain as icon buttons
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     const count = await iconButtons.count();
     // 3 action buttons remain: Restart, Archive, Remove
     expect(count).toBe(3);

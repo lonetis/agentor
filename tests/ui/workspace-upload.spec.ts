@@ -25,7 +25,7 @@ test.describe.serial('Workspace Upload Modal', () => {
     // The upload button has tooltip "Upload to Workspace" — it is the 5th icon button
     // It is a UButton wrapping an SVG (upload arrow icon)
     // All icon buttons are in the view buttons row (only visible when running)
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await expect(iconButtons.first()).toBeVisible();
     const count = await iconButtons.count();
     // Should have at least 6 icon buttons (Terminal, Desktop, Editor, Apps, Upload, Download)
@@ -42,7 +42,7 @@ test.describe.serial('Workspace Upload Modal', () => {
     // Click all icon buttons to find the one that opens the upload modal
     // The Upload button triggers showUpload = true which opens the UploadModal
     // We can find it by its position - it's the 5th icon button
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     // Icon buttons order: Terminal(0), Desktop(1), Editor(2), Apps(3), Upload(4), Download(5)
     await iconButtons.nth(4).click();
     await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5_000 });
@@ -55,7 +55,7 @@ test.describe.serial('Workspace Upload Modal', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(4).click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -67,7 +67,7 @@ test.describe.serial('Workspace Upload Modal', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(4).click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -79,7 +79,7 @@ test.describe.serial('Workspace Upload Modal', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(4).click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -91,7 +91,7 @@ test.describe.serial('Workspace Upload Modal', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(4).click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -104,7 +104,7 @@ test.describe.serial('Workspace Upload Modal', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(4).click();
     await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5_000 });
     await page.click('[role="dialog"] button:has-text("Cancel")');
@@ -115,7 +115,7 @@ test.describe.serial('Workspace Upload Modal', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(4).click();
     await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press('Escape');

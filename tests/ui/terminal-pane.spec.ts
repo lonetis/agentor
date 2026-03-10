@@ -23,7 +23,7 @@ test.describe.serial('Terminal Pane', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
     // Click the first icon button (Terminal)
-    const buttons = card.locator('button').filter({ has: page.locator('svg') });
+    const buttons = card.locator('button');
     await buttons.first().click();
 
     // Should see the xterm terminal area
@@ -35,7 +35,7 @@ test.describe.serial('Terminal Pane', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const buttons = card.locator('button').filter({ has: page.locator('svg') });
+    const buttons = card.locator('button');
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
@@ -48,7 +48,7 @@ test.describe.serial('Terminal Pane', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const buttons = card.locator('button').filter({ has: page.locator('svg') });
+    const buttons = card.locator('button');
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
@@ -60,7 +60,7 @@ test.describe.serial('Terminal Pane', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const buttons = card.locator('button').filter({ has: page.locator('svg') });
+    const buttons = card.locator('button');
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
@@ -72,7 +72,7 @@ test.describe.serial('Terminal Pane', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const buttons = card.locator('button').filter({ has: page.locator('svg') });
+    const buttons = card.locator('button');
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
@@ -93,7 +93,7 @@ test.describe.serial('Terminal Pane', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const buttons = card.locator('button').filter({ has: page.locator('svg') });
+    const buttons = card.locator('button');
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
@@ -110,7 +110,7 @@ test.describe.serial('Terminal Pane', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const buttons = card.locator('button').filter({ has: page.locator('svg') });
+    const buttons = card.locator('button');
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
@@ -128,7 +128,7 @@ test.describe.serial('Terminal Pane', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const buttons = card.locator('button').filter({ has: page.locator('svg') });
+    const buttons = card.locator('button');
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });

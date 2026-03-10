@@ -101,12 +101,12 @@ test.describe.serial('Container Card', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    // Icon buttons are wrapped in UTooltip. Count all SVG-containing buttons.
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    // All buttons (view + action) are icon-only UButtons
+    const iconButtons = card.locator('button');
     await expect(iconButtons.first()).toBeVisible({ timeout: 10_000 });
     const count = await iconButtons.count();
-    // 6 icon buttons: Terminal, Desktop, Editor, Apps, Upload, Download
-    expect(count).toBeGreaterThanOrEqual(4);
+    // 9 buttons: Terminal, Desktop, Editor, Apps, Upload, Download + Stop, Archive, Remove
+    expect(count).toBeGreaterThanOrEqual(9);
   });
 
   // ─── 3. Action Buttons ───────────────────────────────────────
@@ -157,7 +157,7 @@ test.describe.serial('Container Card', () => {
     await expect(card.locator('text=stopped')).toBeVisible({ timeout: 15_000 });
     // Container is stopped from previous test; view buttons (Terminal, Desktop, etc.)
     // are hidden (v-if="isRunning") but action buttons (Restart, Archive, Remove) remain
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     const count = await iconButtons.count();
     // 3 action buttons remain: Restart, Archive, Remove
     expect(count).toBe(3);

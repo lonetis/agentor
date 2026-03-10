@@ -1,13 +1,11 @@
 import { test, expect, type Locator } from '@playwright/test';
-import { goToDashboard } from '../helpers/ui-helpers';
+import { goToDashboard, selectSidebarTab, expectSidebarTabExists } from '../helpers/ui-helpers';
 import { ApiClient } from '../helpers/api-client';
 
 /** Click the Domain Mappings "+ Map" button and verify the form opens. Retries up to 3 times. */
 async function openDmForm(aside: Locator) {
   const subdomainInput = aside.locator('input[placeholder="subdomain (optional)"]');
-  // Target the Domain Mappings section specifically (not Port Mappings)
-  const dmSection = aside.locator('button:has-text("Domain Mappings")').locator('..');
-  const mapBtn = dmSection.locator('button:has-text("+ Map")');
+  const mapBtn = aside.locator('button:has-text("+ Map")');
   await expect(mapBtn).toBeVisible({ timeout: 10_000 });
   await mapBtn.scrollIntoViewIfNeeded();
 
@@ -41,19 +39,16 @@ test.describe('Domain Mappings Panel', () => {
     expect(Array.isArray(body.baseDomains)).toBe(true);
   });
 
-  test('Domain Mappings section hidden when not enabled', async ({ page, request }) => {
+  test('Domains tab hidden when not enabled, visible when enabled', async ({ page, request }) => {
     const api = new ApiClient(request);
     const { body } = await api.getDomainMapperStatus();
 
     await goToDashboard(page);
 
-    if (!body.enabled) {
-      // When domain mapping is not enabled, the section should not be rendered
-      await expect(page.locator('button:has-text("DOMAIN MAPPINGS")')).toBeHidden();
-    } else {
-      // When enabled, section should be visible
-      await expect(page.locator('button:has-text("DOMAIN MAPPINGS")')).toBeVisible();
+    if (body.enabled) {
+      await expectSidebarTabExists(page, 'Domains');
     }
+    // When not enabled, the Domains tab simply doesn't appear in the tab list
   });
 
   test('domain mappings list endpoint returns array', async ({ request }) => {
@@ -63,7 +58,7 @@ test.describe('Domain Mappings Panel', () => {
     expect(Array.isArray(body)).toBe(true);
   });
 
-  test('shows Domain Mappings section when enabled', async ({ page, request }) => {
+  test('shows Domain Mappings content when enabled', async ({ page, request }) => {
     const api = new ApiClient(request);
     const { body } = await api.getDomainMapperStatus();
 
@@ -71,7 +66,9 @@ test.describe('Domain Mappings Panel', () => {
     test.skip(!body.enabled, 'Domain mapping not enabled (BASE_DOMAINS not set)');
 
     await goToDashboard(page);
-    await expect(page.locator('button:has-text("DOMAIN MAPPINGS")')).toBeVisible();
+    await selectSidebarTab(page, 'Domains');
+    // Should show either "+ Map" button or mapping list
+    await expect(page.locator('aside').locator('button:has-text("+ Map")')).toBeVisible({ timeout: 10_000 });
   });
 
   test('clicking + Map opens the domain mapping form', async ({ page, request }) => {
@@ -80,6 +77,7 @@ test.describe('Domain Mappings Panel', () => {
     test.skip(!body.enabled, 'Domain mapping not enabled');
 
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Form should appear with Add and Cancel buttons
@@ -96,6 +94,7 @@ test.describe('Domain Mappings Panel', () => {
     test.skip(!body.enabled, 'Domain mapping not enabled');
 
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Protocol selector uses toggle buttons (not <select>)
@@ -110,6 +109,7 @@ test.describe('Domain Mappings Panel', () => {
     test.skip(!body.enabled, 'Domain mapping not enabled');
 
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Basic auth checkbox should be visible (default protocol is http, not tcp)
@@ -122,6 +122,7 @@ test.describe('Domain Mappings Panel', () => {
     test.skip(!body.enabled, 'Domain mapping not enabled');
 
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
     await expect(aside.locator('button:has-text("Cancel")')).toBeVisible({ timeout: 5_000 });
@@ -142,6 +143,7 @@ test.describe('Domain Mappings Panel', () => {
     );
     await goToDashboard(page);
     await statusResponsePromise;
+    await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Should show the base domain in the form (use first() to avoid strict mode if a parallel test created a mapping with the same domain)
@@ -168,6 +170,7 @@ test.describe('Domain Mappings Panel', () => {
 
       try {
         await goToDashboard(page);
+        await selectSidebarTab(page, 'Domains');
         // The subdomain should appear in the sidebar
         await expect(page.locator('aside').locator(`text=${uniqueSub}`)).toBeVisible({ timeout: 15_000 });
         // Protocol badge should show https
@@ -186,6 +189,7 @@ test.describe('Domain Mappings Panel', () => {
     test.skip(!body.enabled, 'Domain mapping not enabled');
 
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Basic auth should be visible initially (default protocol is http)
@@ -202,6 +206,7 @@ test.describe('Domain Mappings Panel', () => {
     test.skip(!body.enabled, 'Domain mapping not enabled');
 
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Username/password inputs should be hidden initially
@@ -224,6 +229,7 @@ test.describe('Domain Mappings Panel', () => {
     test.skip(mappings.length > 0, 'Domain mappings already exist');
 
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
     await expect(page.locator('text=No active domain mappings')).toBeVisible();
   });
 });

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { goToDashboard } from '../helpers/ui-helpers';
+import { goToDashboard, selectSidebarTab } from '../helpers/ui-helpers';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
 
@@ -22,35 +22,15 @@ test.describe.serial('Port Mappings — Create via UI', () => {
     await cleanupWorker(request, containerId);
   });
 
-  /**
-   * Finds the Port Mappings panel content within the sidebar.
-   * The sidebar has a "Port Mappings" header button followed by a content div.
-   */
-  async function getPortMappingsSection(page: import('@playwright/test').Page) {
-    const aside = page.locator('aside');
-    // The Port Mappings section header is a button with text "Port Mappings"
-    // The content div is the next sibling. But scoping is tricky.
-    // Instead, find the first "+ Map" button within the sidebar (Port Mappings comes before Domain Mappings)
-    return aside;
-  }
-
   test('fill out port mapping form and click Add creates a mapping', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Ports');
 
     const aside = page.locator('aside');
 
-    // Expand Port Mappings section if collapsed
-    const pmHeader = aside.locator('button').filter({ hasText: 'Port Mappings' }).first();
-    await expect(pmHeader).toBeVisible({ timeout: 10_000 });
-
-    // Click the header to expand if needed
+    // Click "+ Map" to open the form
     const mapBtn = aside.locator('button:has-text("+ Map")').first();
-    if (!(await mapBtn.isVisible().catch(() => false))) {
-      await pmHeader.click();
-      await page.waitForTimeout(300);
-    }
-
-    // Click "+ Map" to open the form (use first() to target Port Mappings, not Domain Mappings)
+    await expect(mapBtn).toBeVisible({ timeout: 10_000 });
     await mapBtn.click();
 
     // The form should appear with an Add button
@@ -64,11 +44,11 @@ test.describe.serial('Port Mappings — Create via UI', () => {
     await selects.nth(1).selectOption(containerId);
 
     // Fill external port
-    const extPortInput = aside.locator('input[placeholder="Ext port"]');
+    const extPortInput = aside.locator('input[placeholder="External port"]');
     await extPortInput.fill(String(TEST_EXTERNAL_PORT));
 
     // Fill internal port
-    const intPortInput = aside.locator('input[placeholder="Int port"]');
+    const intPortInput = aside.locator('input[placeholder="Internal port"]');
     await intPortInput.fill(String(TEST_INTERNAL_PORT));
 
     // Click Add
@@ -83,23 +63,15 @@ test.describe.serial('Port Mappings — Create via UI', () => {
 
   test('created mapping shows correct type badge, ports, and worker name', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Ports');
 
     const aside = page.locator('aside');
-
-    // Ensure Port Mappings is expanded
-    const pmHeader = aside.locator('button').filter({ hasText: 'Port Mappings' }).first();
-    await expect(pmHeader).toBeVisible({ timeout: 10_000 });
-    const mapBtn = aside.locator('button:has-text("+ Map")').first();
-    if (!(await mapBtn.isVisible().catch(() => false))) {
-      await pmHeader.click();
-      await page.waitForTimeout(300);
-    }
 
     // Wait for the mapping to appear
     await expect(aside.getByText(`:${TEST_EXTERNAL_PORT}`)).toBeVisible({ timeout: 15_000 });
 
-    // Verify "local" type badge is shown
-    await expect(aside.getByText('local', { exact: true }).first()).toBeVisible();
+    // Verify "internal" type badge is shown
+    await expect(aside.getByText('internal', { exact: true }).first()).toBeVisible();
 
     // Verify internal port is displayed
     await expect(aside.getByText(`:${TEST_INTERNAL_PORT}`)).toBeVisible();
@@ -107,19 +79,9 @@ test.describe.serial('Port Mappings — Create via UI', () => {
 
   test('delete the created mapping via X button removes it from the list', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Ports');
 
     const aside = page.locator('aside');
-
-    // Ensure Port Mappings is expanded
-    const pmHeader = aside.locator('button').filter({ hasText: /PORT MAPPINGS/i }).first();
-    await expect(pmHeader).toBeVisible({ timeout: 10_000 });
-    // Wait a moment for section content to render
-    await page.waitForTimeout(500);
-    const mapBtn = aside.locator('button:has-text("+ Map")').first();
-    if (!(await mapBtn.isVisible().catch(() => false))) {
-      await pmHeader.click();
-      await page.waitForTimeout(500);
-    }
 
     // Wait for the mapping to appear
     const portText = aside.getByText(`:${TEST_EXTERNAL_PORT}`);

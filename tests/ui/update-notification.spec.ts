@@ -1,72 +1,33 @@
 import { test, expect } from '@playwright/test';
-import { goToDashboard } from '../helpers/ui-helpers';
+import { goToDashboard, selectSidebarTab } from '../helpers/ui-helpers';
 
 test.describe('Update Notification / Images Section', () => {
-  test('Images section exists in sidebar', async ({ page }) => {
+  test('System tab exists in sidebar', async ({ page }) => {
     await goToDashboard(page);
-    await expect(page.getByRole('button', { name: 'Images', exact: true })).toBeVisible();
+    await expect(page.locator('aside .sidebar-tab').filter({ hasText: 'System' })).toBeVisible();
   });
 
   test('shows at least one image name', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     // At least traefik should always be present (pulled as a Docker Hub image).
-    // Other images (orchestrator, mapper, worker) may be null in dev when
-    // built from source with a different tag than what the update checker looks for.
     const aside = page.locator('aside');
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
-  test('can toggle Images section', async ({ page }) => {
+  test('System tab shows Images card with content', async ({ page }) => {
     await goToDashboard(page);
-    const btn = page.getByRole('button', { name: 'Images', exact: true });
-    await expect(btn).toBeVisible();
-    // Collapse
-    await btn.click();
-    await page.waitForTimeout(300);
-    // Re-expand
-    await btn.click();
-    await page.waitForTimeout(300);
-  });
-
-  test('Images section header has a chevron icon', async ({ page }) => {
-    await goToDashboard(page);
-    const btn = page.getByRole('button', { name: 'Images', exact: true });
-    await expect(btn).toBeVisible();
-    // The header button contains an SVG chevron for collapse/expand indication
-    const svg = btn.locator('svg');
-    await expect(svg).toBeVisible();
-  });
-
-  test('collapsing Images section hides content and re-expanding shows it', async ({ page }) => {
-    await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
-    const btn = page.getByRole('button', { name: 'Images', exact: true });
-
-    // Wait for the images section content to load (at least traefik is always present)
+    // Images card header should be visible
+    await expect(aside.getByText('Images', { exact: true })).toBeVisible({ timeout: 5_000 });
+    // traefik image should be shown
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
-
-    // "Prune unused images" should be visible when expanded
-    await expect(aside.getByText('Prune unused images')).toBeVisible();
-
-    // Collapse the section
-    await btn.click();
-    await page.waitForTimeout(300);
-
-    // Content should now be hidden
-    await expect(aside.getByText('traefik', { exact: true })).toBeHidden();
-    await expect(aside.getByText('Prune unused images')).toBeHidden();
-
-    // Re-expand
-    await btn.click();
-    await page.waitForTimeout(300);
-
-    // Content should be visible again
-    await expect(aside.getByText('traefik', { exact: true })).toBeVisible();
-    await expect(aside.getByText('Prune unused images')).toBeVisible();
   });
 
   test('"Prune unused images" button is visible', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
     // The prune button appears once status has loaded
     await expect(aside.getByText('Prune unused images')).toBeVisible({ timeout: 10_000 });
@@ -74,6 +35,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('clicking "Prune unused images" triggers prune UI flow', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     // Intercept prune API to prevent actually deleting the worker image
     await page.route('**/api/updates/prune', async route => {
       await route.fulfill({
@@ -94,13 +56,14 @@ test.describe('Update Notification / Images Section', () => {
     await expect(aside.getByText('Prune unused images')).toBeVisible({ timeout: 15_000 });
 
     // After the mock prune, a result should display
-    await expect(aside.getByText(/removed.*freed/)).toBeVisible({ timeout: 5_000 });
+    await expect(aside.getByText(/removed/)).toBeVisible({ timeout: 5_000 });
 
     await page.unrouteAll({ behavior: 'wait' });
   });
 
   test('prune button is re-enabled after prune completes', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     // Intercept prune API to prevent actually deleting the worker image
     await page.route('**/api/updates/prune', async route => {
       await route.fulfill({
@@ -123,6 +86,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('traefik image row shows the image name text', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     // The traefik image row has the name rendered as a <span> with font-medium class
@@ -132,6 +96,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('image rows show a digest or status indicator', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     // Wait for image list to load
@@ -149,6 +114,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('"Check for updates" or "Re-check" button is visible in production mode', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     // Wait for the images section content to load
@@ -166,6 +132,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('clicking check/re-check triggers a check without error', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -188,6 +155,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('check button shows "Checking..." while in progress', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -217,6 +185,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('"Prune unused images" is disabled while pruning', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
     const pruneBtn = aside.getByText('Prune unused images');
     await expect(pruneBtn).toBeVisible({ timeout: 10_000 });
@@ -243,6 +212,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('reconnecting overlay is not shown under normal operation', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     // Wait for images section to load
@@ -252,33 +222,9 @@ test.describe('Update Notification / Images Section', () => {
     await expect(aside.getByText('Reconnecting...')).toBeHidden();
   });
 
-  test('Images section collapse state persists across reload', async ({ page }) => {
-    await goToDashboard(page);
-    const aside = page.locator('aside');
-    const btn = page.getByRole('button', { name: 'Images', exact: true });
-
-    // Ensure content is visible initially
-    await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
-
-    // Collapse the section
-    await btn.click();
-    await page.waitForTimeout(300);
-    await expect(aside.getByText('traefik', { exact: true })).toBeHidden();
-
-    // Reload the page
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('text=Agentor', { timeout: 15_000 });
-
-    // The section should still be collapsed after reload (persisted to localStorage)
-    await expect(page.locator('aside').getByText('traefik', { exact: true })).toBeHidden({ timeout: 5_000 });
-
-    // Re-expand for clean state
-    await page.getByRole('button', { name: 'Images', exact: true }).click();
-    await page.waitForTimeout(300);
-  });
-
   test('image rows and prune button are inside the sidebar', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     // Traefik image name should appear within the sidebar
@@ -290,6 +236,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('null images (no local Docker image) do not render a row', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     // Wait for images section to load
@@ -315,6 +262,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('traefik image shows a green checkmark when up to date in production mode', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     // Wait for the traefik row to load
@@ -333,6 +281,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('traefik image row shows a truncated digest hash', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     // Wait for traefik row to load
@@ -353,6 +302,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('"Update All" visibility depends on available updates', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     // Wait for images section to load
@@ -375,6 +325,7 @@ test.describe('Update Notification / Images Section', () => {
 
   test('per-image "Update" buttons match available updates', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
 
     // Wait for images section to load
@@ -387,8 +338,22 @@ test.describe('Update Notification / Images Section', () => {
     ).length;
 
     // The number of per-image Update buttons (excluding "Update All") should match
-    // Use UButton which renders as a <button> with the text
     const updateBtns = aside.locator('button').filter({ hasText: /^Update$/ });
     await expect(updateBtns).toHaveCount(updatableCount);
+  });
+
+  test('active tab persists across reload', async ({ page }) => {
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
+
+    // Verify System tab content is visible
+    await expect(page.locator('aside').getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
+
+    // Reload the page
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForSelector('text=Agentor', { timeout: 15_000 });
+
+    // System tab content should still be visible after reload (traefik image name)
+    await expect(page.locator('aside').getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 });

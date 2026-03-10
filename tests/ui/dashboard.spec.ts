@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { goToDashboard } from '../helpers/ui-helpers';
+import { goToDashboard, selectSidebarTab, expectSidebarTabExists } from '../helpers/ui-helpers';
 
 test.describe('Dashboard Page', () => {
   test('loads the dashboard', async ({ page }) => {
@@ -28,10 +28,9 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('button:has-text("Environments")')).toBeVisible();
   });
 
-  test('shows the Workers section header in sidebar', async ({ page }) => {
+  test('shows the Workers tab in sidebar', async ({ page }) => {
     await goToDashboard(page);
-    // "Workers" is a paragraph with uppercase styling — use exact match to avoid matching "No workers yet"
-    await expect(page.locator('aside').getByText('Workers', { exact: true })).toBeVisible();
+    await expectSidebarTabExists(page, 'Workers');
   });
 
   test('shows placeholder in main content area', async ({ page }) => {
@@ -39,28 +38,29 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('text=Create a worker from the sidebar')).toBeVisible();
   });
 
-  test('shows Port Mappings section', async ({ page }) => {
+  test('shows Ports tab in sidebar', async ({ page }) => {
     await goToDashboard(page);
-    await expect(page.locator('button:has-text("Port Mappings")')).toBeVisible();
+    await expectSidebarTabExists(page, 'Ports');
   });
 
-  test('shows Images section', async ({ page }) => {
+  test('shows System tab in sidebar', async ({ page }) => {
     await goToDashboard(page);
-    await expect(page.getByRole('button', { name: 'Images', exact: true })).toBeVisible();
+    await expectSidebarTabExists(page, 'System');
   });
 
-  test('shows image names in Images section', async ({ page }) => {
+  test('shows image names in System tab', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
     // In dev mode, orchestrator/mapper/worker may be null and not rendered.
     // traefik is always pulled from Docker Hub and should always be present.
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
-  test('sidebar shows Workers label in uppercase', async ({ page }) => {
+  test('sidebar shows tab labels', async ({ page }) => {
     await goToDashboard(page);
-    const aside = page.locator('aside');
-    const workersLabel = aside.getByText('Workers', { exact: true });
-    await expect(workersLabel).toBeVisible();
+    await expectSidebarTabExists(page, 'Workers');
+    await expectSidebarTabExists(page, 'Usage');
+    await expectSidebarTabExists(page, 'System');
   });
 });

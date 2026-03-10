@@ -24,7 +24,7 @@ test.describe.serial('Apps Pane — UI', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
     // Apps is the 4th icon button (Terminal, Desktop, Editor, Apps)
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await expect(iconButtons.nth(3)).toBeVisible();
   });
 
@@ -33,7 +33,7 @@ test.describe.serial('Apps Pane — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(3).click();
 
     // The pane tab bar should show "Apps" label in the main area
@@ -45,7 +45,7 @@ test.describe.serial('Apps Pane — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(3).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 
@@ -58,7 +58,7 @@ test.describe.serial('Apps Pane — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(3).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 
@@ -71,7 +71,7 @@ test.describe.serial('Apps Pane — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(3).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 
@@ -85,7 +85,7 @@ test.describe.serial('Apps Pane — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(3).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 
@@ -105,7 +105,7 @@ test.describe.serial('Apps Pane — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(3).click();
 
     // Tab label format is "{containerName} - Apps"
@@ -118,7 +118,7 @@ test.describe.serial('Apps Pane — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const iconButtons = card.locator('button').filter({ has: page.locator('svg') });
+    const iconButtons = card.locator('button');
     await iconButtons.nth(3).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 

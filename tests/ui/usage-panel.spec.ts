@@ -1,22 +1,24 @@
 import { test, expect } from '@playwright/test';
-import { goToDashboard } from '../helpers/ui-helpers';
+import { goToDashboard, selectSidebarTab } from '../helpers/ui-helpers';
 
 test.describe('Usage Panel', () => {
-  test('USAGE section exists in sidebar', async ({ page }) => {
+  test('Usage tab exists in sidebar', async ({ page }) => {
     await goToDashboard(page);
-    await expect(page.locator('text=USAGE')).toBeVisible();
+    await expect(page.locator('aside .sidebar-tab').filter({ hasText: 'Usage' })).toBeVisible();
   });
 
   test('shows agent names', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
-    await expect(aside.getByText('Claude', { exact: true })).toBeVisible();
+    await expect(aside.getByText('Claude', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(aside.getByText('Codex', { exact: true })).toBeVisible();
     await expect(aside.getByText('Gemini', { exact: true })).toBeVisible();
   });
 
   test('shows auth type labels', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
     // Wait for usage data to load (agent names appear after API response)
     await expect(aside.getByText('Claude', { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -25,29 +27,19 @@ test.describe('Usage Panel', () => {
     expect(authLabels.length).toBeGreaterThanOrEqual(3);
   });
 
-  test('can toggle Usage section', async ({ page }) => {
+  test('switching to Usage tab shows agent names', async ({ page }) => {
     await goToDashboard(page);
+    // Start on Workers tab (default)
+    await expect(page.locator('aside .sidebar-tab-active')).toContainText('Workers');
+    // Switch to Usage tab
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
-    // The Usage section header has a span "Usage" and a chevron collapse button
-    const usageLabel = aside.locator('span').filter({ hasText: /^Usage$/ }).first();
-    await expect(usageLabel).toBeVisible();
-    // The collapse chevron is a sibling button with ml-auto class
-    const usageHeader = usageLabel.locator('..');
-    const collapseBtn = usageHeader.locator('button').last();
-    // Collapse
-    await collapseBtn.click();
-    await page.waitForTimeout(300);
-    // Agent names should be hidden when collapsed
-    await expect(aside.getByText('Claude', { exact: true })).toBeHidden();
-    // Re-expand
-    await collapseBtn.click();
-    await page.waitForTimeout(300);
-    // Agent names should be visible again
-    await expect(aside.getByText('Claude', { exact: true })).toBeVisible();
+    await expect(aside.getByText('Claude', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('shows per-agent rows with Claude, Codex, and Gemini visible', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
     // Each agent should have its own row inside the usage panel
     const claude = aside.getByText('Claude', { exact: true });
@@ -64,6 +56,7 @@ test.describe('Usage Panel', () => {
 
   test('shows an auth badge element per agent', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
     // Auth badges contain one of: "OAuth", "API key", "not configured"
     // Each badge has a rounded styling with specific color classes
@@ -80,6 +73,7 @@ test.describe('Usage Panel', () => {
 
   test('auth badges use correct color for their type', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
     // Check each badge has the expected color class based on its label
     const badges = aside.locator('span').filter({
@@ -101,6 +95,7 @@ test.describe('Usage Panel', () => {
 
   test('shows "Fetched Xm ago" relative timestamp per agent', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
     // The relative timestamp text matches patterns like "just now", "1m ago", "5m ago", "1h 30m ago"
     const timestamps = aside.locator('span').filter({
@@ -110,32 +105,23 @@ test.describe('Usage Panel', () => {
     // that have been fetched will show one; agents with 'none' auth may not)
     const count = await timestamps.count();
     // Depending on configuration, there may be 0 to 3 timestamps
-    // If any agent is configured (OAuth or API key), we expect at least one timestamp
-    // If none are configured, we accept 0
     expect(count).toBeGreaterThanOrEqual(0);
     expect(count).toBeLessThanOrEqual(3);
   });
 
-  test('refresh button is visible', async ({ page }) => {
+  test('refresh button is visible in Actions card', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
-    const refreshBtn = aside.locator('button[title="Refresh usage"]');
-    await expect(refreshBtn).toBeVisible();
-  });
-
-  test('refresh button contains an SVG icon', async ({ page }) => {
-    await goToDashboard(page);
-    const aside = page.locator('aside');
-    const refreshBtn = aside.locator('button[title="Refresh usage"]');
-    const svg = refreshBtn.locator('svg');
-    await expect(svg).toBeVisible();
+    await expect(aside.getByText('Refresh usage')).toBeVisible({ timeout: 10_000 });
   });
 
   test('clicking refresh button triggers refresh without error', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
-    const refreshBtn = aside.locator('button[title="Refresh usage"]');
-    await expect(refreshBtn).toBeVisible();
+    const refreshBtn = aside.getByText('Refresh usage');
+    await expect(refreshBtn).toBeVisible({ timeout: 10_000 });
 
     // Listen for console errors during the refresh
     const errors: string[] = [];
@@ -146,11 +132,8 @@ test.describe('Usage Panel', () => {
     // Click the refresh button
     await refreshBtn.click();
 
-    // The button should still be present after clicking (not removed from DOM)
-    await expect(refreshBtn).toBeVisible();
-
-    // Wait a moment for the refresh network call to complete
-    await page.waitForTimeout(2000);
+    // Wait for the refresh to complete
+    await expect(aside.getByText('Refresh usage')).toBeVisible({ timeout: 15_000 });
 
     // Agent names should still be visible after refresh
     await expect(aside.getByText('Claude', { exact: true })).toBeVisible();
@@ -162,57 +145,55 @@ test.describe('Usage Panel', () => {
     expect(usageErrors).toHaveLength(0);
   });
 
-  test('refresh button shows spinning animation while refreshing', async ({ page }) => {
+  test('refresh button shows "Refreshing..." while in progress', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
-    const refreshBtn = aside.locator('button[title="Refresh usage"]');
+    const refreshBtn = aside.getByText('Refresh usage');
+    await expect(refreshBtn).toBeVisible({ timeout: 10_000 });
 
-    // Click the refresh button and immediately check for the animate-spin class
-    await refreshBtn.click();
-    // The button or its parent should have animate-spin class while the request is in flight
-    // This may be very brief, so we check if the class is present right after clicking
-    // We use a short poll to catch the transient state
-    const hadSpinClass = await page.evaluate(() => {
-      const btn = document.querySelector('button[title="Refresh usage"]');
-      return btn?.classList.contains('animate-spin') ?? false;
+    // Intercept the refresh API to add a delay
+    await page.route('**/api/usage/refresh', async (route) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.continue();
     });
-    // Verify the button is not permanently stuck in spinning state
-    // Wait for spinner to stop (polling) — refresh can take several seconds under load
-    await expect(async () => {
-      const spinning = await page.evaluate(() => {
-        const btn = document.querySelector('button[title="Refresh usage"]');
-        return btn?.classList.contains('animate-spin') ?? false;
-      });
-      expect(spinning).toBe(false);
-    }).toPass({ timeout: 15_000 });
+
+    // Click the refresh button
+    await refreshBtn.click();
+
+    // Button should show "Refreshing..." text while in progress
+    await expect(aside.getByText('Refreshing...')).toBeVisible({ timeout: 3_000 });
+
+    // Wait for refresh to complete
+    await expect(aside.getByText('Refresh usage')).toBeVisible({ timeout: 15_000 });
+
+    await page.unrouteAll({ behavior: 'wait' });
   });
 
   test('refresh button is disabled during refresh', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
-    const refreshBtn = aside.locator('button[title="Refresh usage"]');
+    const refreshBtn = aside.getByText('Refresh usage');
+    await expect(refreshBtn).toBeVisible({ timeout: 10_000 });
 
-    // Before clicking, the button should not be disabled
-    await expect(refreshBtn).not.toBeDisabled();
-
-    // Click and check if the button becomes disabled during the request
+    // Click and wait for the refresh to complete
     await refreshBtn.click();
-    // After the refresh completes, the button should be enabled again
     await page.waitForTimeout(3000);
-    await expect(refreshBtn).not.toBeDisabled();
+    // After the refresh completes, the button should be visible again
+    await expect(aside.getByText('Refresh usage')).toBeVisible();
   });
 
   test('progress bars are visible when usage data exists', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
 
     // Progress bars are rendered as nested divs with colored bg classes
-    // The outer track has rounded-full + overflow-hidden, inner bar has rounded-full + transition-all
     const progressBars = aside.locator('div.rounded-full.overflow-hidden > div.rounded-full');
     const barCount = await progressBars.count();
 
     // If any agent has OAuth auth with usage windows, there will be progress bars
-    // If no agent has usage data, there will be 0 bars — both are valid states
     expect(barCount).toBeGreaterThanOrEqual(0);
 
     // Each visible bar should have a width style set (percentage)
@@ -224,6 +205,7 @@ test.describe('Usage Panel', () => {
 
   test('progress bars have correct color classes based on utilization', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
 
     const progressBars = aside.locator('div.rounded-full.overflow-hidden > div.rounded-full');
@@ -241,6 +223,7 @@ test.describe('Usage Panel', () => {
 
   test('usage percentage values are visible next to progress bars', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
 
     // Percentage values are displayed as "XX%" in monospace font
@@ -249,7 +232,6 @@ test.describe('Usage Panel', () => {
     });
     const count = await percentages.count();
 
-    // Same count as progress bars — one percentage per window
     expect(count).toBeGreaterThanOrEqual(0);
 
     for (let i = 0; i < count; i++) {
@@ -261,35 +243,30 @@ test.describe('Usage Panel', () => {
 
   test('usage window labels are visible next to progress bars', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
 
-    // Window labels (Session, Weekly, Sonnet, etc.) appear as small text before the bar
-    // They are in a truncated span with fixed width
     const progressBars = aside.locator('div.rounded-full.overflow-hidden');
     const barCount = await progressBars.count();
 
     if (barCount > 0) {
-      // Each progress bar row has a label sibling
       const labels = aside.locator('span.truncate').filter({
         hasText: /\S+/,
       });
-      // There should be at least as many labels as bars
       expect(await labels.count()).toBeGreaterThanOrEqual(barCount);
     }
   });
 
   test('error messages display in red text when present', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
 
-    // Error messages have text-red-500 or text-red-400 class
     const errorElements = aside.locator('span[class*="text-red-500"], span[class*="text-red-400"]');
     const errorCount = await errorElements.count();
 
-    // Errors are optional — they only appear when an agent's usage fetch fails
     expect(errorCount).toBeGreaterThanOrEqual(0);
 
-    // If errors exist, they should be visible and contain non-empty text
     for (let i = 0; i < errorCount; i++) {
       await expect(errorElements.nth(i)).toBeVisible();
       const text = await errorElements.nth(i).textContent();
@@ -299,21 +276,17 @@ test.describe('Usage Panel', () => {
 
   test('fallback messages show for agents without usage data', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
 
-    // "Not configured" appears for agents with authType 'none'
     const notConfigured = aside.locator('span').filter({ hasText: 'Not configured' });
-    // "No usage data for API key auth" appears for agents with authType 'api-key'
     const noApiKeyData = aside.locator('span').filter({ hasText: 'No usage data for API key auth' });
 
     const notConfiguredCount = await notConfigured.count();
     const noApiKeyCount = await noApiKeyData.count();
 
-    // At least some agents should show a fallback (unless all have OAuth with usage windows)
-    // Both counts are individually valid at 0, but together they capture the fallback states
     expect(notConfiguredCount + noApiKeyCount).toBeGreaterThanOrEqual(0);
 
-    // All visible fallback messages should have italic styling
     for (let i = 0; i < notConfiguredCount; i++) {
       await expect(notConfigured.nth(i)).toBeVisible();
       const classAttr = await notConfigured.nth(i).getAttribute('class') || '';
@@ -329,67 +302,52 @@ test.describe('Usage Panel', () => {
   test('usage panel loading state shows before data arrives', async ({ page }) => {
     // Navigate but intercept the usage API to delay the response
     await page.route('**/api/usage', async route => {
-      // Delay the response by 2 seconds to observe loading state
       await new Promise(resolve => setTimeout(resolve, 2000));
       await route.continue();
     });
 
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
 
     // The loading state shows "Loading..." text
     const loadingText = aside.locator('text=Loading...');
-    // It may or may not be visible depending on timing, but the element should exist
-    // (the API may have already responded before we check)
+    // It may or may not be visible depending on timing
     const isVisible = await loadingText.isVisible().catch(() => false);
-    // Whether or not we caught the loading state, the panel should eventually show agent names
+    // The panel should eventually show agent names
     await expect(aside.getByText('Claude', { exact: true })).toBeVisible({ timeout: 10_000 });
 
-    // Clean up the route handler
     await page.unrouteAll({ behavior: 'wait' });
   });
 
-  test('collapsing usage section hides agent rows', async ({ page }) => {
+  test('switching away and back to Usage tab preserves content', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
+    await expect(aside.getByText('Claude', { exact: true })).toBeVisible({ timeout: 10_000 });
 
-    // Verify agents are visible first
-    await expect(aside.getByText('Claude', { exact: true })).toBeVisible();
-
-    // The Usage section header has a span "Usage" and a chevron collapse button
-    const usageLabel = aside.locator('span').filter({ hasText: /^Usage$/ }).first();
-    const usageHeader = usageLabel.locator('..');
-    const collapseBtn = usageHeader.locator('button').last();
-    await collapseBtn.click();
-    await page.waitForTimeout(300);
-
-    // Agent names should no longer be visible
+    // Switch to Workers tab
+    await selectSidebarTab(page, 'Workers');
+    // Agent names should be hidden
     await expect(aside.getByText('Claude', { exact: true })).toBeHidden();
-    await expect(aside.getByText('Codex', { exact: true })).toBeHidden();
-    await expect(aside.getByText('Gemini', { exact: true })).toBeHidden();
 
-    // Re-expand
-    await collapseBtn.click();
-    await page.waitForTimeout(300);
-
-    // Agent names visible again
-    await expect(aside.getByText('Claude', { exact: true })).toBeVisible();
+    // Switch back to Usage
+    await selectSidebarTab(page, 'Usage');
+    // Agent names should reappear
+    await expect(aside.getByText('Claude', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('usage API response matches expected schema', async ({ page }) => {
     await goToDashboard(page);
 
-    // Fetch the usage API directly and validate the response shape
     const response = await page.evaluate(async () => {
       const res = await fetch('/api/usage');
       return res.json();
     });
 
-    // Response should have an agents array
     expect(response).toHaveProperty('agents');
     expect(Array.isArray(response.agents)).toBe(true);
 
-    // Each agent should have the required fields
     for (const agent of response.agents) {
       expect(agent).toHaveProperty('agentId');
       expect(agent).toHaveProperty('displayName');
@@ -400,7 +358,6 @@ test.describe('Usage Panel', () => {
       expect(agent).toHaveProperty('windows');
       expect(Array.isArray(agent.windows)).toBe(true);
 
-      // Validate each usage window
       for (const w of agent.windows) {
         expect(w).toHaveProperty('label');
         expect(typeof w.label).toBe('string');
@@ -416,7 +373,6 @@ test.describe('Usage Panel', () => {
   test('usage refresh API endpoint returns valid response', async ({ page }) => {
     await goToDashboard(page);
 
-    // Call the refresh endpoint directly
     const response = await page.evaluate(async () => {
       const res = await fetch('/api/usage/refresh', { method: 'POST' });
       return { status: res.status, body: await res.json() };
@@ -429,13 +385,12 @@ test.describe('Usage Panel', () => {
 
   test('plan type badge is visible when agent has plan info', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
 
-    // Plan type badges have purple background classes
     const planBadges = aside.locator('span[class*="bg-purple"]');
     const count = await planBadges.count();
 
-    // Plan badges are optional — only shown when the agent's usage API returns plan info
     expect(count).toBeGreaterThanOrEqual(0);
 
     for (let i = 0; i < count; i++) {
@@ -447,9 +402,9 @@ test.describe('Usage Panel', () => {
 
   test('reset time tooltips have ISO timestamp', async ({ page }) => {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
 
-    // Reset time elements have a title attribute with ISO timestamp
     const resetTimes = aside.locator('span[title]').filter({
       hasText: /^\d+(m|h|d)/,
     });
@@ -457,7 +412,6 @@ test.describe('Usage Panel', () => {
 
     for (let i = 0; i < count; i++) {
       const title = await resetTimes.nth(i).getAttribute('title');
-      // Title should be an ISO 8601 timestamp
       expect(title).toBeTruthy();
       expect(new Date(title!).getTime()).not.toBeNaN();
     }

@@ -1,5 +1,5 @@
 import { test, expect, Locator, Page } from '@playwright/test';
-import { goToDashboard, acceptNextConfirm } from '../helpers/ui-helpers';
+import { goToDashboard, acceptNextConfirm, selectSidebarTab } from '../helpers/ui-helpers';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
 
@@ -44,7 +44,7 @@ async function hasButtonWithTooltip(card: Locator, page: Page, tooltipText: stri
 
 test.describe('Archived Workers UI', () => {
   test.describe('Archive flow via API', () => {
-    test('shows Archived section when archived workers exist', async ({ page, request }) => {
+    test('shows Archived tab when archived workers exist', async ({ page, request }) => {
       // Create and archive a worker via API
       const container = await createWorker(request);
       const api = new ApiClient(request);
@@ -52,27 +52,23 @@ test.describe('Archived Workers UI', () => {
 
       await goToDashboard(page);
 
-      // Archived section should be visible
-      await expect(page.locator('button').filter({ hasText: /ARCHIVED/i })).toBeVisible({ timeout: 10_000 });
+      // Archived tab should exist (might be in overflow dropdown)
+      const { expectSidebarTabExists } = await import('../helpers/ui-helpers');
+      await expectSidebarTabExists(page, 'Archived');
 
       // Cleanup
       await api.deleteArchivedWorker(container.name);
     });
 
-    test('Archived section is collapsible', async ({ page, request }) => {
+    test('clicking Archived tab shows archived workers', async ({ page, request }) => {
       const container = await createWorker(request);
       const api = new ApiClient(request);
       await api.archiveContainer(container.id);
 
       await goToDashboard(page);
-      const archivedBtn = page.locator('button').filter({ hasText: /ARCHIVED/i });
-      await expect(archivedBtn).toBeVisible({ timeout: 10_000 });
-
-      // Toggle
-      await archivedBtn.click();
-      await page.waitForTimeout(300);
-      await archivedBtn.click();
-      await page.waitForTimeout(300);
+      await selectSidebarTab(page, 'Archived');
+      // Wait for content to load
+      await page.waitForTimeout(500);
 
       // Cleanup
       await api.deleteArchivedWorker(container.name);
@@ -80,7 +76,7 @@ test.describe('Archived Workers UI', () => {
   });
 
   test.describe('Archived worker card', () => {
-    test('shows archived worker name after expanding section', async ({ page, request }) => {
+    test('shows archived worker name in Archived tab', async ({ page, request }) => {
       const displayName = `ArcName-${Date.now()}`;
       const container = await createWorker(request, { displayName });
       const api = new ApiClient(request);
@@ -88,12 +84,8 @@ test.describe('Archived Workers UI', () => {
 
       await goToDashboard(page);
 
-      // The Archived section button should be visible (collapsed by default)
-      const archivedBtn = page.locator('button').filter({ hasText: /Archived/i });
-      await expect(archivedBtn).toBeVisible({ timeout: 15_000 });
-      // Click to expand
-      await archivedBtn.click();
-      await page.waitForTimeout(500);
+      // Click the Archived tab
+      await selectSidebarTab(page, 'Archived');
       // The worker display name should appear
       await expect(page.locator('aside').locator(`text=${displayName}`)).toBeVisible({ timeout: 15_000 });
 
@@ -106,12 +98,10 @@ test.describe('Archived Workers UI', () => {
       await api.archiveContainer(container.id);
 
       await goToDashboard(page);
-      const archivedBtn = page.locator('button').filter({ hasText: /Archived/i });
-      await expect(archivedBtn).toBeVisible({ timeout: 10_000 });
-      await archivedBtn.click();
+      await selectSidebarTab(page, 'Archived');
       await page.waitForTimeout(500);
 
-      const archivedCard = page.locator('.max-h-48 .rounded-lg').first();
+      const archivedCard = page.locator('aside .rounded-lg').first();
       expect(await hasButtonWithTooltip(archivedCard, page, 'Unarchive')).toBe(true);
 
       await api.deleteArchivedWorker(container.name);
@@ -123,12 +113,10 @@ test.describe('Archived Workers UI', () => {
       await api.archiveContainer(container.id);
 
       await goToDashboard(page);
-      const archivedBtn = page.locator('button').filter({ hasText: /Archived/i });
-      await expect(archivedBtn).toBeVisible({ timeout: 10_000 });
-      await archivedBtn.click();
+      await selectSidebarTab(page, 'Archived');
       await page.waitForTimeout(500);
 
-      const archivedCard = page.locator('.max-h-48 .rounded-lg').first();
+      const archivedCard = page.locator('aside .rounded-lg').first();
       expect(await hasButtonWithTooltip(archivedCard, page, 'Delete')).toBe(true);
 
       await api.deleteArchivedWorker(container.name);

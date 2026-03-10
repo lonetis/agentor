@@ -28,7 +28,7 @@ test.describe.serial('Split Pane Layout', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
     // Click Terminal button
-    const buttons = card.locator('button').filter({ has: page.locator('svg') });
+    const buttons = card.locator('button');
     await buttons.first().click();
 
     // Terminal should appear
@@ -40,7 +40,7 @@ test.describe.serial('Split Pane Layout', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    const buttons = card.locator('button').filter({ has: page.locator('svg') });
+    const buttons = card.locator('button');
     await buttons.first().click();
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 

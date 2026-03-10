@@ -1,27 +1,29 @@
 import { test, expect } from '@playwright/test';
-import { goToDashboard } from '../helpers/ui-helpers';
+import { goToDashboard, selectSidebarTab, expectSidebarTabExists } from '../helpers/ui-helpers';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
 
 test.describe('Port Mappings Panel', () => {
   test.describe('Without workers', () => {
-    test('Port Mappings section is visible', async ({ page }) => {
+    test('Ports tab is visible in sidebar', async ({ page }) => {
       await goToDashboard(page);
-      await expect(page.locator('text=PORT MAPPINGS')).toBeVisible();
+      await expectSidebarTabExists(page, 'Ports');
     });
 
     test('shows + Map button', async ({ page }) => {
       await goToDashboard(page);
+      await selectSidebarTab(page, 'Ports');
       await expect(page.locator('button:has-text("+ Map")').first()).toBeVisible();
     });
 
-    test('shows no active mappings message', async ({ page, request }) => {
+    test('shows no active port mappings message', async ({ page, request }) => {
       const api = new ApiClient(request);
       const { body: mappings } = await api.listPortMappings();
       test.skip(mappings.length > 0, 'Port mappings exist from parallel tests');
 
       await goToDashboard(page);
-      await expect(page.locator('text=No active mappings')).toBeVisible();
+      await selectSidebarTab(page, 'Ports');
+      await expect(page.locator('text=No active port mappings')).toBeVisible();
     });
   });
 
@@ -55,6 +57,7 @@ test.describe('Port Mappings Panel', () => {
       });
 
       await goToDashboard(page);
+      await selectSidebarTab(page, 'Ports');
       // Wait for the port mapping to appear
       await expect(page.locator('text=18000')).toBeVisible({ timeout: 15_000 });
     });
@@ -69,48 +72,53 @@ test.describe('Port Mappings Panel', () => {
       });
 
       await goToDashboard(page);
+      await selectSidebarTab(page, 'Ports');
       await expect(page.locator('text=18001')).toBeVisible({ timeout: 15_000 });
-      // localhost type is rendered as "local" badge
-      await expect(page.locator('aside').locator('text=local').first()).toBeVisible();
+      // localhost type is rendered as "internal" badge
+      await expect(page.locator('aside').locator('text=internal').first()).toBeVisible();
     });
 
     test('clicking + Map opens the form', async ({ page }) => {
       await goToDashboard(page);
+      await selectSidebarTab(page, 'Ports');
       const aside = page.locator('aside');
       await aside.locator('button:has-text("+ Map")').first().click();
       // Form should appear with Add and Cancel buttons
       await expect(aside.locator('button:has-text("Add")').first()).toBeVisible({ timeout: 5_000 });
       await expect(aside.locator('button:has-text("Cancel")').first()).toBeVisible();
       // External port input should be visible
-      await expect(aside.locator('input[placeholder="Ext port"]')).toBeVisible();
-      await expect(aside.locator('input[placeholder="Int port"]')).toBeVisible();
+      await expect(aside.locator('input[placeholder="External port"]')).toBeVisible();
+      await expect(aside.locator('input[placeholder="Internal port"]')).toBeVisible();
     });
 
     test('Cancel closes the form', async ({ page }) => {
       await goToDashboard(page);
+      await selectSidebarTab(page, 'Ports');
       const aside = page.locator('aside');
       await aside.locator('button:has-text("+ Map")').first().click();
       await expect(aside.locator('button:has-text("Cancel")').first()).toBeVisible({ timeout: 5_000 });
       await aside.locator('button:has-text("Cancel")').first().click();
       // Form should be hidden, + Map button should reappear
       await expect(aside.locator('button:has-text("+ Map")').first()).toBeVisible({ timeout: 5_000 });
-      await expect(aside.locator('input[placeholder="Ext port"]')).toBeHidden();
+      await expect(aside.locator('input[placeholder="External port"]')).toBeHidden();
     });
 
-    test('form has type selector with local and ext options', async ({ page }) => {
+    test('form has type selector with internal and external options', async ({ page }) => {
       await goToDashboard(page);
+      await selectSidebarTab(page, 'Ports');
       const aside = page.locator('aside');
       await aside.locator('button:has-text("+ Map")').first().click();
       // Type selector is the first select in the form
       const typeSelect = aside.locator('select').first();
       await expect(typeSelect).toBeVisible({ timeout: 5_000 });
-      // Should have local and ext options
+      // Should have internal and external options
       const options = typeSelect.locator('option');
       await expect(options).toHaveCount(2);
     });
 
     test('form has worker selector with Worker placeholder', async ({ page }) => {
       await goToDashboard(page);
+      await selectSidebarTab(page, 'Ports');
       const aside = page.locator('aside');
       await aside.locator('button:has-text("+ Map")').first().click();
       // Worker selector has a disabled "Worker" placeholder
@@ -119,7 +127,7 @@ test.describe('Port Mappings Panel', () => {
       await expect(workerSelect.locator('option[disabled]')).toHaveText('Worker');
     });
 
-    test('shows external type badge for ext mapping', async ({ page, request }) => {
+    test('shows external type badge for external mapping', async ({ page, request }) => {
       const api = new ApiClient(request);
       await api.createPortMapping({
         externalPort: 18003,
@@ -129,9 +137,10 @@ test.describe('Port Mappings Panel', () => {
       });
 
       await goToDashboard(page);
+      await selectSidebarTab(page, 'Ports');
       await expect(page.locator('text=18003')).toBeVisible({ timeout: 15_000 });
-      // external type is rendered as "ext" badge
-      await expect(page.locator('aside').locator('text=ext').first()).toBeVisible();
+      // external type is rendered as "external" badge
+      await expect(page.locator('aside').locator('text=external').first()).toBeVisible();
     });
 
     test('delete button removes port mapping', async ({ page, request }) => {
@@ -144,6 +153,7 @@ test.describe('Port Mappings Panel', () => {
       });
 
       await goToDashboard(page);
+      await selectSidebarTab(page, 'Ports');
       await expect(page.locator('text=18004')).toBeVisible({ timeout: 15_000 });
 
       // Find the mapping row and click its delete button
@@ -164,6 +174,7 @@ test.describe('Port Mappings Panel', () => {
       });
 
       await goToDashboard(page);
+      await selectSidebarTab(page, 'Ports');
       await expect(page.locator('text=18002')).toBeVisible({ timeout: 15_000 });
       // Each mapping row should have a delete/remove button
       const aside = page.locator('aside');

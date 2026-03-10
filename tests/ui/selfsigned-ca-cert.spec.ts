@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { goToDashboard } from '../helpers/ui-helpers';
+import { goToDashboard, selectSidebarTab } from '../helpers/ui-helpers';
 import { ApiClient } from '../helpers/api-client';
 
 test.describe('Self-Signed CA Certificate UI', () => {
@@ -17,6 +17,7 @@ test.describe('Self-Signed CA Certificate UI', () => {
     );
 
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
 
     if (hasSelfSigned) {
@@ -45,6 +46,7 @@ test.describe('Self-Signed CA Certificate UI', () => {
     }
 
     await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     const caCertBtn = aside.locator('button:has-text("CA cert")');
     await expect(caCertBtn).not.toBeVisible({ timeout: 5_000 });

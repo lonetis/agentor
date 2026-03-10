@@ -1,42 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { goToDashboard } from '../helpers/ui-helpers';
+import { goToDashboard, selectSidebarTab } from '../helpers/ui-helpers';
 
 test.describe('Settings Modal', () => {
   async function openSettingsModal(page: import('@playwright/test').Page) {
     await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
 
-    // The "System Settings" button is inside the Settings section at the bottom of the sidebar.
-    // It may be off-screen — scroll it into view if needed.
     const systemSettingsBtn = page.locator('button:has-text("System Settings")');
-
-    // If not visible, the Settings section might be collapsed or off-screen
-    const isVisible = await systemSettingsBtn.isVisible().catch(() => false);
-    if (!isVisible) {
-      // Try scrolling the sidebar to the bottom
-      await page.evaluate(() => {
-        const sidebar = document.querySelector('[class*="sidebar"], [class*="overflow-y-auto"]');
-        if (sidebar) sidebar.scrollTop = sidebar.scrollHeight;
-      });
-      await page.waitForTimeout(300);
-
-      // If still not visible, the section might be collapsed — expand it
-      const stillNotVisible = !(await systemSettingsBtn.isVisible().catch(() => false));
-      if (stillNotVisible) {
-        // Click the Settings section header to expand it
-        const settingsHeaders = page.locator('button:has-text("Settings")');
-        const count = await settingsHeaders.count();
-        // Find the section header (not "System Settings")
-        for (let i = 0; i < count; i++) {
-          const text = await settingsHeaders.nth(i).textContent();
-          if (text?.trim() === 'Settings' || (text?.includes('Settings') && !text?.includes('System'))) {
-            await settingsHeaders.nth(i).click();
-            await page.waitForTimeout(300);
-            break;
-          }
-        }
-      }
-    }
-
     await expect(systemSettingsBtn).toBeVisible({ timeout: 5_000 });
     await systemSettingsBtn.click();
 
@@ -45,9 +15,9 @@ test.describe('Settings Modal', () => {
     return dialog;
   }
 
-  test('Settings section is visible in sidebar', async ({ page }) => {
+  test('System tab shows System Settings button', async ({ page }) => {
     await goToDashboard(page);
-    // The sidebar always has a Settings section
+    await selectSidebarTab(page, 'System');
     await expect(page.getByText('System Settings').first()).toBeVisible({ timeout: 10_000 });
   });
 

@@ -107,13 +107,14 @@ test.describe('Theme Toggle', () => {
       }
     });
 
-    test('each button contains an SVG icon', async ({ page }) => {
+    test('each button contains an icon', async ({ page }) => {
       await freshStart(page);
       const buttons = themeToggleGroup(page).locator('button');
 
       for (let i = 0; i < 3; i++) {
-        const svgCount = await buttons.nth(i).locator('svg, span[class*="i-heroicons"]').count();
-        expect(svgCount).toBeGreaterThanOrEqual(1);
+        // Icons may render as SVG or CSS icon spans depending on the icon provider
+        const iconCount = await buttons.nth(i).locator('svg, span[class*="i-heroicons"], span[class*="i-lucide"], span[class*="iconify"]').count();
+        expect(iconCount).toBeGreaterThanOrEqual(1);
       }
     });
 

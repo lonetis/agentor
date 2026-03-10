@@ -1,5 +1,5 @@
 import { test, expect, Page, Locator } from '@playwright/test';
-import { goToDashboard, collapseSidebar, expandSidebar } from '../helpers/ui-helpers';
+import { goToDashboard, collapseSidebar, expandSidebar, selectSidebarTab } from '../helpers/ui-helpers';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
@@ -39,7 +39,7 @@ async function freshStart(page: Page, seeds?: Record<string, string>): Promise<v
 /** Build a full seeded UiState JSON string with overrides */
 function buildSeededState(overrides: Record<string, unknown> = {}): string {
   const base = {
-    sidebar: { width: 320, collapsed: false, panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false } },
+    sidebar: { width: 320, collapsed: false, activeTab: 'workers', panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false, settings: false } },
     panes: { rootNode: null, focusedNodeId: null },
     tmux: { activeWindows: {} },
     ...overrides,
@@ -95,13 +95,7 @@ test.describe('UI State Persistence', () => {
       const sidebar = state!.sidebar as Record<string, unknown>;
       expect(sidebar.width).toBe(320);
       expect(sidebar.collapsed).toBe(false);
-
-      const panels = sidebar.panels as Record<string, boolean>;
-      expect(panels.archived).toBe(true);
-      expect(panels.portMappings).toBe(false);
-      expect(panels.domainMappings).toBe(false);
-      expect(panels.usage).toBe(false);
-      expect(panels.images).toBe(false);
+      expect(sidebar.activeTab).toBe('workers');
 
       const panes = state!.panes as Record<string, unknown>;
       expect(panes.rootNode).toBeNull();
@@ -113,7 +107,7 @@ test.describe('UI State Persistence', () => {
 
     test('width is clamped to min 200 when loading', async ({ page }) => {
       await freshStart(page, {
-        [STORAGE_KEY]: buildSeededState({ sidebar: { width: 50, collapsed: false, panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false } } }),
+        [STORAGE_KEY]: buildSeededState({ sidebar: { width: 50, collapsed: false, activeTab: 'workers', panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false, settings: false } } }),
       });
 
       const state = await getUiState(page);
@@ -122,7 +116,7 @@ test.describe('UI State Persistence', () => {
 
     test('width is clamped to max 700 when loading', async ({ page }) => {
       await freshStart(page, {
-        [STORAGE_KEY]: buildSeededState({ sidebar: { width: 1200, collapsed: false, panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false } } }),
+        [STORAGE_KEY]: buildSeededState({ sidebar: { width: 1200, collapsed: false, activeTab: 'workers', panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false, settings: false } } }),
       });
 
       const state = await getUiState(page);
@@ -142,11 +136,8 @@ test.describe('UI State Persistence', () => {
       expect(sidebar.width).toBe(400);
       // collapsed should default to false
       expect(sidebar.collapsed).toBe(false);
-
-      // panels should have all defaults
-      const panels = sidebar.panels as Record<string, boolean>;
-      expect(panels.archived).toBe(true);
-      expect(panels.portMappings).toBe(false);
+      // activeTab should default to 'workers'
+      expect(sidebar.activeTab).toBe('workers');
 
       // panes should have defaults
       const panes = state!.panes as Record<string, unknown>;
@@ -171,7 +162,7 @@ test.describe('UI State Persistence', () => {
   test.describe('Sidebar Width Persistence', () => {
     test('seeded width persists across reload', async ({ page }) => {
       await freshStart(page, {
-        [STORAGE_KEY]: buildSeededState({ sidebar: { width: 450, collapsed: false, panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false } } }),
+        [STORAGE_KEY]: buildSeededState({ sidebar: { width: 450, collapsed: false, activeTab: 'workers', panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false, settings: false } } }),
       });
 
       const state = await getUiState(page);
@@ -269,88 +260,88 @@ test.describe('UI State Persistence', () => {
     });
   });
 
-  test.describe('Panel Collapse Persistence', () => {
-    test('Port Mappings collapse persists', async ({ page }) => {
+  test.describe('Tab Selection Persistence', () => {
+    test('active tab persists across reload', async ({ page }) => {
       await freshStart(page);
 
-      const btn = page.locator('button:has-text("PORT MAPPINGS")');
-      await btn.click();
-      await page.waitForTimeout(300);
+      // Switch to Usage tab
+      await selectSidebarTab(page, 'Usage');
+      await waitForWrite(page);
+
+      const state = await getUiState(page);
+      expect((state!.sidebar as Record<string, unknown>).activeTab).toBe('usage');
 
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('text=Agentor', { timeout: 10_000 });
 
-      const state = await getUiState(page);
-      const panels = (state!.sidebar as Record<string, unknown>).panels as Record<string, boolean>;
-      expect(panels.portMappings).toBe(true);
+      // Persisted state should still have usage as active tab
+      const state2 = await getUiState(page);
+      expect((state2!.sidebar as Record<string, unknown>).activeTab).toBe('usage');
     });
 
-    test('Images collapse persists', async ({ page }) => {
+    test('System tab persists across reload', async ({ page }) => {
       await freshStart(page);
 
-      const btn = page.locator('button.w-full').filter({ hasText: /Images/i }).first();
-      await btn.click();
-      await page.waitForTimeout(300);
+      await selectSidebarTab(page, 'System');
+      await waitForWrite(page);
 
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('text=Agentor', { timeout: 10_000 });
 
       const state = await getUiState(page);
-      const panels = (state!.sidebar as Record<string, unknown>).panels as Record<string, boolean>;
-      expect(panels.images).toBe(true);
+      expect((state!.sidebar as Record<string, unknown>).activeTab).toBe('system');
     });
 
-    test('Usage collapse persists', async ({ page }) => {
+    test('Ports tab persists across reload', async ({ page }) => {
       await freshStart(page);
 
-      const btn = page.locator('div.flex.items-center').filter({ hasText: /Usage/i }).locator('button.ml-auto');
-      await btn.click();
-      await page.waitForTimeout(300);
+      await selectSidebarTab(page, 'Ports');
+      await waitForWrite(page);
 
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('text=Agentor', { timeout: 10_000 });
 
-      const state = await getUiState(page);
-      const panels = (state!.sidebar as Record<string, unknown>).panels as Record<string, boolean>;
-      expect(panels.usage).toBe(true);
+      const activeTab = page.locator('aside .sidebar-tab-active');
+      await expect(activeTab).toContainText('Ports');
     });
 
-    test('multiple panel states persist independently', async ({ page }) => {
+    test('switching tabs updates persisted state', async ({ page }) => {
       await freshStart(page);
 
-      // Collapse Port Mappings and Images, leave Usage expanded
-      await page.locator('button:has-text("PORT MAPPINGS")').click();
-      await page.waitForTimeout(200);
-      await page.locator('button.w-full').filter({ hasText: /Images/i }).first().click();
-      await page.waitForTimeout(200);
+      // Default should be workers
+      let state = await getUiState(page);
+      expect((state!.sidebar as Record<string, unknown>).activeTab).toBe('workers');
 
-      await page.reload({ waitUntil: 'networkidle' });
-      await page.waitForSelector('text=Agentor', { timeout: 10_000 });
+      // Switch to System
+      await selectSidebarTab(page, 'System');
+      await waitForWrite(page);
 
-      const state = await getUiState(page);
-      const panels = (state!.sidebar as Record<string, unknown>).panels as Record<string, boolean>;
-      expect(panels.portMappings).toBe(true); // collapsed
-      expect(panels.images).toBe(true); // collapsed
-      expect(panels.usage).toBe(false); // still expanded
+      state = await getUiState(page);
+      expect((state!.sidebar as Record<string, unknown>).activeTab).toBe('system');
+
+      // Switch to Usage
+      await selectSidebarTab(page, 'Usage');
+      await waitForWrite(page);
+
+      state = await getUiState(page);
+      expect((state!.sidebar as Record<string, unknown>).activeTab).toBe('usage');
+
+      // Switch back to Workers
+      await selectSidebarTab(page, 'Workers');
+      await waitForWrite(page);
+
+      state = await getUiState(page);
+      expect((state!.sidebar as Record<string, unknown>).activeTab).toBe('workers');
     });
 
-    test('panel re-expand persists', async ({ page }) => {
-      await freshStart(page);
+    test('seeded activeTab is restored on load', async ({ page }) => {
+      await freshStart(page, {
+        [STORAGE_KEY]: buildSeededState({ sidebar: { width: 320, collapsed: false, activeTab: 'system', panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false, settings: false } } }),
+      });
 
-      const btn = page.locator('button:has-text("PORT MAPPINGS")');
-      // Collapse
-      await btn.click();
-      await page.waitForTimeout(200);
-      // Re-expand
-      await btn.click();
-      await page.waitForTimeout(200);
-
-      await page.reload({ waitUntil: 'networkidle' });
-      await page.waitForSelector('text=Agentor', { timeout: 10_000 });
-
+      // Verify persisted state was restored
       const state = await getUiState(page);
-      const panels = (state!.sidebar as Record<string, unknown>).panels as Record<string, boolean>;
-      expect(panels.portMappings).toBe(false); // re-expanded
+      expect((state!.sidebar as Record<string, unknown>).activeTab).toBe('system');
     });
   });
 
@@ -379,7 +370,7 @@ test.describe('UI State Persistence', () => {
       await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
       // Open terminal
-      const buttons = card.locator('button').filter({ has: page.locator('svg') });
+      const buttons = card.locator('button');
       await buttons.first().click();
       await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
@@ -407,7 +398,7 @@ test.describe('UI State Persistence', () => {
       await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
       // Open terminal
-      const buttons = card.locator('button').filter({ has: page.locator('svg') });
+      const buttons = card.locator('button');
       await buttons.first().click();
       await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
@@ -436,7 +427,7 @@ test.describe('UI State Persistence', () => {
       await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
       // Open terminal
-      const buttons = card.locator('button').filter({ has: page.locator('svg') });
+      const buttons = card.locator('button');
       await buttons.first().click();
       await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
@@ -456,7 +447,7 @@ test.describe('UI State Persistence', () => {
       // Click the desktop button (second icon button on the card)
       const card2 = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
       await expect(card2.locator('text=running')).toBeVisible({ timeout: 15_000 });
-      const desktopButtons = card2.locator('button').filter({ has: page.locator('svg') });
+      const desktopButtons = card2.locator('button');
       // Desktop is typically the second button
       await desktopButtons.nth(1).click();
       await page.waitForTimeout(1000);
@@ -479,7 +470,7 @@ test.describe('UI State Persistence', () => {
       const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
       await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-      const buttons = card.locator('button').filter({ has: page.locator('svg') });
+      const buttons = card.locator('button');
       await buttons.first().click();
       await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
@@ -521,7 +512,7 @@ test.describe('UI State Persistence', () => {
       await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
       // Open terminal
-      const buttons = card.locator('button').filter({ has: page.locator('svg') });
+      const buttons = card.locator('button');
       await buttons.first().click();
       await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
@@ -543,7 +534,7 @@ test.describe('UI State Persistence', () => {
       await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
       // Open terminal
-      const buttons = card.locator('button').filter({ has: page.locator('svg') });
+      const buttons = card.locator('button');
       await buttons.first().click();
       await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
@@ -580,7 +571,7 @@ test.describe('UI State Persistence', () => {
       await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
       // Open terminal
-      const buttons = card.locator('button').filter({ has: page.locator('svg') });
+      const buttons = card.locator('button');
       await buttons.first().click();
       await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
@@ -628,7 +619,7 @@ test.describe('UI State Persistence', () => {
       await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
       // Open terminal
-      const buttons = card.locator('button').filter({ has: page.locator('svg') });
+      const buttons = card.locator('button');
       await buttons.first().click();
       await expect(page.locator('.xterm').first()).toBeVisible({ timeout: 15_000 });
 
