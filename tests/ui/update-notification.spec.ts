@@ -7,12 +7,13 @@ test.describe('Update Notification / Images Section', () => {
     await expect(page.locator('aside .sidebar-tab').filter({ hasText: 'System' })).toBeVisible();
   });
 
-  test('shows at least one image name', async ({ page }) => {
+  test('shows all four image names', async ({ page }) => {
     await goToDashboard(page);
     await selectSidebarTab(page, 'System');
-    // At least traefik should always be present (pulled as a Docker Hub image).
     const aside = page.locator('aside');
-    await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
+    for (const name of ['orchestrator', 'mapper', 'worker', 'traefik']) {
+      await expect(aside.getByText(name, { exact: true })).toBeVisible({ timeout: 10_000 });
+    }
   });
 
   test('System tab shows Images card with content', async ({ page }) => {
@@ -94,7 +95,7 @@ test.describe('Update Notification / Images Section', () => {
     await expect(nameSpan).toBeVisible({ timeout: 10_000 });
   });
 
-  test('image rows show a digest or status indicator', async ({ page }) => {
+  test('image rows show digest hashes for locally available images', async ({ page }) => {
     await goToDashboard(page);
     await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
@@ -102,14 +103,11 @@ test.describe('Update Notification / Images Section', () => {
     // Wait for image list to load
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
 
-    // Each visible image row should show either:
-    // - A 12-char hex digest (font-mono)
-    // - "not found" text
-    // - "error" text
-    // At minimum, traefik should have a digest displayed
+    // At least mapper, worker, and traefik should have digests (font-mono spans).
+    // The orchestrator image may show "not found" in dev mode (runs from node:22-alpine).
     const digests = aside.locator('span.font-mono');
     const digestCount = await digests.count();
-    expect(digestCount).toBeGreaterThanOrEqual(1);
+    expect(digestCount).toBeGreaterThanOrEqual(3);
   });
 
   test('"Check for updates" or "Re-check" button is visible in production mode', async ({ page }) => {
@@ -234,7 +232,7 @@ test.describe('Update Notification / Images Section', () => {
     await expect(aside.getByText('Prune dangling images')).toBeVisible({ timeout: 10_000 });
   });
 
-  test('null images (no local Docker image) do not render a row', async ({ page }) => {
+  test('all four images render a row', async ({ page }) => {
     await goToDashboard(page);
     await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
@@ -242,21 +240,9 @@ test.describe('Update Notification / Images Section', () => {
     // Wait for images section to load
     await expect(aside.getByText('Prune dangling images')).toBeVisible({ timeout: 10_000 });
 
-    // Query the API to see which images are null
-    const status = await page.evaluate(() =>
-      fetch('/api/updates').then((r) => r.json()),
-    );
-
-    // For each image key, verify that null entries do not render a row
-    // and non-null entries do render a row in the sidebar
-    const imageKeys = ['orchestrator', 'mapper', 'worker', 'traefik'] as const;
-    for (const key of imageKeys) {
-      const imageEl = aside.getByText(key, { exact: true });
-      if (status[key] === null) {
-        await expect(imageEl).toBeHidden();
-      } else {
-        await expect(imageEl).toBeVisible();
-      }
+    // All 4 images should always render a row (both dev and prod mode)
+    for (const key of ['orchestrator', 'mapper', 'worker', 'traefik']) {
+      await expect(aside.getByText(key, { exact: true })).toBeVisible();
     }
   });
 
@@ -270,12 +256,11 @@ test.describe('Update Notification / Images Section', () => {
 
     // Check if production mode (checkmark only shown in production mode)
     const status = await page.evaluate(() => fetch('/api/updates').then(r => r.json()));
-    const isProductionMode = status.orchestrator !== null || status.worker !== null;
-    test.skip(!isProductionMode, 'Green checkmark only shows in production mode');
+    test.skip(!status.isProductionMode, 'Green checkmark only shows in production mode');
 
     // In production mode with no update available, a green checkmark should display
-    const traefikRow = aside.locator('div:has(> span.font-medium:has-text("traefik"))');
-    const checkmark = traefikRow.locator('span').filter({ hasText: '\u2713' });
+    // Use adjacent sibling selector: the digest div follows the name span in the grid
+    const checkmark = aside.locator('span.font-medium:has-text("traefik") + div span:has-text("✓")');
     await expect(checkmark).toBeVisible({ timeout: 5_000 });
   });
 
@@ -287,12 +272,10 @@ test.describe('Update Notification / Images Section', () => {
     // Wait for traefik row to load
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
 
-    // The digest is shown in a font-mono span — either:
-    // - A single 12-char hex hash (up to date)
-    // - "hash1 → hash2" format (update available)
-    const traefikRow = aside.locator('div:has(> span.font-medium:has-text("traefik"))');
-    const digestSpan = traefikRow.locator('span.font-mono');
-    await expect(digestSpan).toBeVisible();
+    // The digest is shown in a font-mono span adjacent to the name span in the grid.
+    // Either a single 12-char hex hash (up to date) or "hash1 → hash2" (update available).
+    const digestSpan = aside.locator('span.font-medium:has-text("traefik") + div span.font-mono');
+    await expect(digestSpan).toBeVisible({ timeout: 5_000 });
 
     const digestText = await digestSpan.textContent();
     expect(digestText).toBeTruthy();

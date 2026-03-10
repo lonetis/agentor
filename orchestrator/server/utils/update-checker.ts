@@ -98,11 +98,12 @@ export class UpdateChecker {
 
     const results = await Promise.all(checks);
 
+    // Preserve existing local-only entries for images not checked remotely
     this.status = {
-      orchestrator: results[0] ?? null,
-      mapper: results[1] ?? null,
-      worker: results[2] ?? null,
-      traefik: results[3] ?? null,
+      orchestrator: results[0] ?? this.status.orchestrator,
+      mapper: results[1] ?? this.status.mapper,
+      worker: results[2] ?? this.status.worker,
+      traefik: results[3] ?? this.status.traefik,
       isProductionMode: hasPrefix || hasBaseDomains,
     };
 
@@ -223,7 +224,10 @@ export class UpdateChecker {
 
       // Last resort: use first digest entry
       const firstDigest = repoDigests.find((d: string) => d.includes('@'));
-      return firstDigest?.split('@')[1] || '';
+      if (firstDigest) return firstDigest.split('@')[1] || '';
+
+      // Locally-built images have no RepoDigests — use the image ID
+      return info.Id || '';
     } catch {
       return '';
     }

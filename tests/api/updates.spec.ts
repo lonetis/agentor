@@ -94,5 +94,55 @@ test.describe('Updates API', () => {
       expect('worker' in body).toBe(true);
       expect('traefik' in body).toBe(true);
     });
+
+    test('all four images are non-null with name and localDigest fields', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status, body } = await api.getUpdateStatus();
+      expect(status).toBe(200);
+      for (const key of ['orchestrator', 'mapper', 'worker', 'traefik'] as const) {
+        const info = body[key];
+        expect(info).not.toBeNull();
+        expect(typeof info.name).toBe('string');
+        expect(info.name.length).toBeGreaterThan(0);
+        expect(typeof info.localDigest).toBe('string');
+      }
+    });
+
+    test('mapper, worker, and traefik images have non-empty localDigest', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body } = await api.getUpdateStatus();
+      // These images always exist locally (built or pulled).
+      // The orchestrator image may not exist in dev mode (runs from node:22-alpine).
+      for (const key of ['mapper', 'worker', 'traefik'] as const) {
+        expect(body[key].localDigest.length).toBeGreaterThan(0);
+      }
+    });
+
+    test('check preserves local-only image entries', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: before } = await api.getUpdateStatus();
+      const { body: after } = await api.checkForUpdates();
+
+      // Every image that was non-null before check must remain non-null after
+      for (const key of ['orchestrator', 'mapper', 'worker', 'traefik'] as const) {
+        if (before[key] !== null) {
+          expect(after[key]).not.toBeNull();
+          // localDigest should be preserved (not cleared by check)
+          expect(after[key].localDigest).toBe(before[key].localDigest);
+        }
+      }
+    });
+
+    test('localDigest is a sha256 hash or image ID', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body } = await api.getUpdateStatus();
+      for (const key of ['orchestrator', 'mapper', 'worker', 'traefik'] as const) {
+        const info = body[key];
+        if (info?.localDigest) {
+          // Either "sha256:<hex>" (registry digest or image ID) or bare hex
+          expect(info.localDigest).toMatch(/^(sha256:)?[0-9a-f]+$/);
+        }
+      }
+    });
   });
 });
