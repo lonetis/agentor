@@ -47,6 +47,11 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
+  async rebuildContainer(id: string) {
+    const res = await this.request.post(`${BASE_URL}/api/containers/${id}/rebuild`);
+    return { status: res.status(), body: await res.json() };
+  }
+
   async archiveContainer(id: string) {
     const res = await this.request.post(`${BASE_URL}/api/containers/${id}/archive`);
     return { status: res.status(), body: await res.json() };
