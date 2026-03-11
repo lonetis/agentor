@@ -7,7 +7,7 @@ defineRouteMeta({
     responses: {
       200: {
         description: 'Mapper status',
-        content: { 'application/json': { schema: { type: 'object', properties: { localhost: { type: 'integer' }, external: { type: 'integer' }, total: { type: 'integer' } } } } },
+        content: { 'application/json': { schema: { type: 'object', properties: { totalMappings: { type: 'integer' }, localhostCount: { type: 'integer' }, externalCount: { type: 'integer' } } } } },
       },
     },
   },

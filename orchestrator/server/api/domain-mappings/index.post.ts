@@ -10,15 +10,15 @@ defineRouteMeta({
         'application/json': {
           schema: {
             type: 'object',
-            required: ['baseDomain', 'workerId', 'internalPort'],
+            required: ['baseDomain', 'protocol', 'internalPort'],
             properties: {
               subdomain: { type: 'string', description: 'Subdomain (empty for bare domain)' },
               baseDomain: { type: 'string', description: 'Base domain from BASE_DOMAINS' },
               protocol: { type: 'string', enum: ['http', 'https', 'tcp'], description: 'Routing protocol' },
-              workerId: { type: 'string', description: 'Target worker container ID' },
+              workerId: { type: 'string', description: 'Target worker container ID (either workerId or workerName required)' },
+              workerName: { type: 'string', description: 'Target worker container name (either workerId or workerName required)' },
               internalPort: { type: 'integer', description: 'Worker internal port' },
-              authUser: { type: 'string', description: 'HTTP basic auth username' },
-              authPassword: { type: 'string', description: 'HTTP basic auth password' },
+              basicAuth: { type: 'object', description: 'HTTP basic auth credentials', properties: { username: { type: 'string' }, password: { type: 'string' } } },
             },
           },
         },

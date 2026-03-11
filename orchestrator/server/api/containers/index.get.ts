@@ -67,7 +67,7 @@ defineRouteMeta({
           SuccessResponse: {
             type: 'object',
             properties: {
-              success: { type: 'boolean' },
+              ok: { type: 'boolean' },
             },
           },
         },

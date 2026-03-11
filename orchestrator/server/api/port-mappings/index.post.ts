@@ -10,11 +10,12 @@ defineRouteMeta({
         'application/json': {
           schema: {
             type: 'object',
-            required: ['externalPort', 'type', 'workerId', 'internalPort'],
+            required: ['externalPort', 'type', 'internalPort'],
             properties: {
               externalPort: { type: 'integer', description: 'Host port to expose' },
               type: { type: 'string', enum: ['localhost', 'external'], description: 'Binding type' },
-              workerId: { type: 'string', description: 'Target worker container ID' },
+              workerId: { type: 'string', description: 'Target worker container ID (either workerId or workerName required)' },
+              workerName: { type: 'string', description: 'Target worker container name (either workerId or workerName required)' },
               internalPort: { type: 'integer', description: 'Worker internal port' },
               appType: { type: 'string', description: 'Optional app type reference' },
               instanceId: { type: 'string', description: 'Optional app instance ID' },

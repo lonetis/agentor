@@ -7,7 +7,7 @@ defineRouteMeta({
     responses: {
       200: {
         description: 'Array of git providers',
-        content: { 'application/json': { schema: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, urlPlaceholder: { type: 'string' } } } } } },
+        content: { 'application/json': { schema: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, displayName: { type: 'string' }, placeholder: { type: 'string' }, tokenConfigured: { type: 'boolean' } } } } } },
       },
     },
   },

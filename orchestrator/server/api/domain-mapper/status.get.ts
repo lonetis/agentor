@@ -7,7 +7,7 @@ defineRouteMeta({
     responses: {
       200: {
         description: 'Domain mapper status',
-        content: { 'application/json': { schema: { type: 'object', properties: { enabled: { type: 'boolean' }, baseDomains: { type: 'array', items: { type: 'string' } } } } } },
+        content: { 'application/json': { schema: { type: 'object', properties: { enabled: { type: 'boolean' }, baseDomains: { type: 'array', items: { type: 'string' } }, baseDomainConfigs: { type: 'array', items: { type: 'object', properties: { domain: { type: 'string' }, challengeType: { type: 'string' }, dnsProvider: { type: 'string' } } } }, totalMappings: { type: 'integer' }, hasSelfSignedCa: { type: 'boolean' }, dashboardUrl: { type: 'string' } } } } },
       },
     },
   },
