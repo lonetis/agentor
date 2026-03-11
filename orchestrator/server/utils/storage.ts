@@ -27,7 +27,7 @@ export class StorageManager {
   async init(): Promise<void> {
     const hostname = process.env.HOSTNAME;
     if (!hostname) {
-      console.log('[storage] HOSTNAME not set — falling back to volume mode');
+      useLogger().info('[storage] HOSTNAME not set — falling back to volume mode');
       this.mode = 'volume';
       this.dataRef = this.config.dataVolume;
       return;
@@ -42,7 +42,7 @@ export class StorageManager {
       );
 
       if (!dataMount) {
-        console.log('[storage] /data not mounted — falling back to volume mode');
+        useLogger().info('[storage] /data not mounted — falling back to volume mode');
         this.mode = 'volume';
         this.dataRef = this.config.dataVolume;
         return;
@@ -51,14 +51,14 @@ export class StorageManager {
       if (dataMount.Type === 'bind') {
         this.mode = 'directory';
         this.dataRef = dataMount.Source;
-        console.log(`[storage] directory mode — host path: ${this.dataRef}`);
+        useLogger().info(`[storage] directory mode — host path: ${this.dataRef}`);
       } else {
         this.mode = 'volume';
         this.dataRef = dataMount.Name || this.config.dataVolume;
-        console.log(`[storage] volume mode — volume: ${this.dataRef}`);
+        useLogger().info(`[storage] volume mode — volume: ${this.dataRef}`);
       }
     } catch (err: unknown) {
-      console.error('[storage] init failed, falling back to volume mode:', err instanceof Error ? err.message : err);
+      useLogger().error(`[storage] init failed, falling back to volume mode: ${err instanceof Error ? err.message : err}`);
       this.mode = 'volume';
       this.dataRef = this.config.dataVolume;
     }

@@ -91,3 +91,17 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `useSplitPanes` initializes `rootNode`/`focusedNodeId` from stored state, rehydrates `_nextNodeId` from the restored tree, and deep-watches for changes
 - `useTmuxTabs` uses `getTmuxActiveWindow()`/`setTmuxActiveWindow()` instead of a module-level Map
 - `_resetUiState()` export for testing (clears singleton + timers)
+
+## Log Pane
+
+Centralized log viewer opened via the "Logs" button in the System tab's Quick Links. Opens as a singleton pane tab (ID `__logs__`, type `logs`).
+
+**Architecture** (`LogPane.vue` + `useLogs` composable):
+- `useLogs()` manages module-level singleton state: log entries array, filter state, WebSocket connection
+- WebSocket connects to `/ws/logs` for live streaming, auto-reconnects after 3s on disconnect
+- On first mount, fetches 500 most recent entries via `GET /api/logs`, then switches to WebSocket for live updates
+- Client-side buffer capped at 5000 entries
+- Filter bar: source toggles (orchestrator, worker, mapper, traefik), level toggles (debug, info, warn, error), text search (300ms debounce)
+- Color-coded badges: level (debug=gray, info=blue, warn=amber, error=red), source (orchestrator=purple, worker=green, mapper=cyan, traefik=orange)
+- Auto-scroll to bottom on new entries; disables on manual scroll up, re-enables when scrolled to bottom
+- Uses terminal CSS variables (`--terminal-*`) for seamless theme integration

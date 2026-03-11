@@ -69,14 +69,14 @@ function handleTerminalOpen(peer: Peer): void {
       });
 
       stream.on('error', (err) => {
-        console.error('[terminal-ws] Docker stream error:', err.message);
+        useLogger().error(`[terminal-ws] Docker stream error: ${err.message}`);
         ctx.closed = true;
         cleanupPeerContext(peer);
         try { peer.close(); } catch {}
       });
     })
     .catch((err) => {
-      console.error('[terminal-ws] Exec error:', err.message);
+      useLogger().error(`[terminal-ws] Exec error: ${err.message}`);
       try { peer.send(`\r\nError connecting to container: ${err.message}\r\n`); } catch {}
       ctx.closed = true;
       cleanupPeerContext(peer);

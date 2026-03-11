@@ -89,7 +89,7 @@ export default defineEventHandler(async (event) => {
       try {
         await checker.recreateOrchestrator();
       } catch (err: unknown) {
-        console.error(`[update-checker] orchestrator self-replace failed: ${err instanceof Error ? err.message : String(err)}`);
+        useLogger().error(`[update-checker] orchestrator self-replace failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }, 2000);
   }

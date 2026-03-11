@@ -29,6 +29,7 @@ Four managed containers:
 | Networking | @docs/networking.md | Port mapper, domain mapping (Traefik), TLS challenges, self-signed certs, config drift detection |
 | UI | @docs/ui.md | Split pane layout, tmux tab integration, theme system, VS Code editor, UI state persistence |
 | Environments | @docs/environments.md | Environment system, network firewall, skills, AGENTS.md, worker API exposure |
+| Logging | @docs/logging.md | Centralized logging, log collection, rotation, WebSocket streaming, log pane UI |
 | Production | @docs/production.md | Update mechanism, agent usage monitoring |
 | Apps | @docs/apps.md | Modular app system, adding new apps |
 | API | @docs/api.md | API documentation (OpenAPI), adding docs to routes |

@@ -71,7 +71,7 @@ export class UsageChecker {
       await this.fetchAll();
     } else {
       const oldest = Math.min(...[...this.agentStates.values()].map((s) => s.lastFetchTime));
-      console.log(`[usage-checker] skipping initial fetch (${Math.round((now - oldest) / 1000)}s since oldest check, serving persisted data)`);
+      useLogger().info(`[usage-checker] skipping initial fetch (${Math.round((now - oldest) / 1000)}s since oldest check, serving persisted data)`);
     }
 
     // Detect OAuth from credential files so polling starts even when the initial fetch was skipped
@@ -79,7 +79,7 @@ export class UsageChecker {
     if (hasAnyOAuth) {
       this.pollInterval = setInterval(() => {
         this.fetchAll().catch((err) => {
-          console.error('[usage-checker] poll error:', err instanceof Error ? err.message : err);
+          useLogger().error(`[usage-checker] poll error: ${err instanceof Error ? err.message : err}`);
         });
       }, POLL_INTERVAL_MS);
     }
@@ -142,7 +142,7 @@ export class UsageChecker {
     try {
       await writeFile(this.stateFilePath, JSON.stringify({ agents }));
     } catch (err) {
-      console.error('[usage-checker] failed to save state:', err instanceof Error ? err.message : err);
+      useLogger().error(`[usage-checker] failed to save state: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -453,7 +453,7 @@ export class UsageChecker {
     };
 
     await writeFile(join(CRED_DIR, 'codex.json'), JSON.stringify(updated, null, 2));
-    console.log('[usage-checker] refreshed Codex OAuth token');
+    useLogger().info('[usage-checker] refreshed Codex OAuth token');
     return data.access_token;
   }
 

@@ -399,6 +399,30 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
+  // ─── Logs ────────────────────────────────────────────────────────
+  async queryLogs(query?: Record<string, string | number>) {
+    const params = new URLSearchParams();
+    if (query) {
+      for (const [k, v] of Object.entries(query)) {
+        params.set(k, String(v));
+      }
+    }
+    const qs = params.toString();
+    const url = qs ? `${BASE_URL}/api/logs?${qs}` : `${BASE_URL}/api/logs`;
+    const res = await this.request.get(url);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async clearLogs() {
+    const res = await this.request.delete(`${BASE_URL}/api/logs`);
+    return { status: res.status(), body: await res.json() };
+  }
+
+  async getLogSources() {
+    const res = await this.request.get(`${BASE_URL}/api/log-sources`);
+    return { status: res.status(), body: await res.json() };
+  }
+
   // ─── Domain Mappings Batch ─────────────────────────────────────
   async createDomainMappingsBatch(data: Record<string, unknown>) {
     const res = await this.request.post(`${BASE_URL}/api/domain-mappings/batch`, { data });

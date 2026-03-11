@@ -24,6 +24,9 @@ export type {
   AgentsMdEntryInfo,
   CredentialInfo,
   InitScriptInfo,
+  LogLevel,
+  LogSource,
+  LogEntry,
 } from '../../shared/types';
 
 export interface GitProviderInfo {
@@ -141,7 +144,7 @@ export interface ArchivedWorker {
   image: string;
 }
 
-export type TabType = 'terminal' | 'desktop' | 'apps' | 'editor';
+export type TabType = 'terminal' | 'desktop' | 'apps' | 'editor' | 'logs';
 
 export interface Tab {
   id: string;

@@ -17,6 +17,10 @@ import { AgentsMdStore } from './agents-md-store';
 import { InitScriptStore } from './init-script-store';
 import { StorageManager } from './storage';
 import { SelfSignedCertManager } from './selfsigned-certs';
+import { LogStore } from './log-store';
+import { LogBroadcaster } from './log-broadcaster';
+import { Logger } from './logger';
+import { LogCollector } from './log-collector';
 
 function singleton<T>(factory: () => T): () => T {
   let instance: T | undefined;
@@ -48,6 +52,10 @@ export const useCredentialMountManager = singleton(
 export const useSkillStore = singleton(() => new SkillStore(useConfig().dataDir));
 export const useAgentsMdStore = singleton(() => new AgentsMdStore(useConfig().dataDir));
 export const useInitScriptStore = singleton(() => new InitScriptStore(useConfig().dataDir));
+export const useLogStore = singleton(() => new LogStore(useConfig()));
+export const useLogBroadcaster = singleton(() => new LogBroadcaster());
+export const useLogger = singleton(() => new Logger(useConfig(), useLogStore(), useLogBroadcaster()));
+export const useLogCollector = singleton(() => new LogCollector(useConfig(), useLogStore(), useLogBroadcaster()));
 
 /**
  * Removes all port and domain mappings for a worker and reconciles the

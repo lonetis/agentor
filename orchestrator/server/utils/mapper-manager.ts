@@ -27,14 +27,14 @@ export class MapperManager {
 
   reconcile(): Promise<void> {
     this.reconcileQueue = this.reconcileQueue.then(() => this.reconcileNow()).catch((err) => {
-      console.error('[mapper-manager] reconcile failed:', err instanceof Error ? err.message : err);
+      useLogger().error(`[mapper-manager] reconcile failed: ${err instanceof Error ? err.message : err}`);
     });
     return this.reconcileQueue;
   }
 
   forceRecreate(): Promise<void> {
     this.reconcileQueue = this.reconcileQueue.then(() => this.forceRecreateNow()).catch((err) => {
-      console.error('[mapper-manager] force recreate failed:', err instanceof Error ? err.message : err);
+      useLogger().error(`[mapper-manager] force recreate failed: ${err instanceof Error ? err.message : err}`);
     });
     return this.reconcileQueue;
   }
@@ -96,7 +96,8 @@ export class MapperManager {
     });
 
     await container.start();
-    console.log(`[mapper-manager] created mapper with ${mappings.length} mapping(s)`);
+    useLogger().info(`[mapper-manager] created mapper with ${mappings.length} mapping(s)`);
+    useLogCollector().attach(MAPPER_CONTAINER_NAME, container.id, 'mapper').catch(() => {});
   }
 
   private async forceRecreateNow(): Promise<void> {
@@ -112,12 +113,12 @@ export class MapperManager {
     try {
       await this.docker.getImage(image).inspect();
     } catch {
-      console.log(`[mapper-manager] pulling image ${image}...`);
+      useLogger().info(`[mapper-manager] pulling image ${image}...`);
       const stream = await this.docker.pull(image);
       await new Promise<void>((resolve, reject) => {
         this.docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()));
       });
-      console.log(`[mapper-manager] pulled image ${image}`);
+      useLogger().info(`[mapper-manager] pulled image ${image}`);
     }
   }
 
@@ -126,9 +127,10 @@ export class MapperManager {
     if (!container) return;
 
     try {
+      useLogCollector().detach(container.Id);
       const c = this.docker.getContainer(container.Id);
       await c.remove({ force: true });
-      console.log('[mapper-manager] removed mapper container');
+      useLogger().info('[mapper-manager] removed mapper container');
     } catch (err: unknown) {
       const statusCode = (err as { statusCode?: number }).statusCode;
       if (statusCode !== 404) throw err;

@@ -217,6 +217,8 @@ export class ContainerManager {
         agentsMdNames: worker?.agentsMdNames,
       });
     }
+
+    useLogger().debug(`[container] synced ${this.containers.size} containers`);
   }
 
   list(): ContainerInfo[] {
@@ -312,6 +314,11 @@ export class ContainerManager {
       await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
     }
 
+    // Attach log collector to the new container
+    useLogCollector().attach(name, container.id, 'worker', request.displayName || undefined).catch(() => {});
+
+    useLogger().info(`[container] created worker ${name} (${container.id.slice(0, 12)})`);
+
     return containerInfo;
   }
 
@@ -334,22 +341,29 @@ export class ContainerManager {
   }
 
   async stop(id: string): Promise<void> {
+    useLogCollector().detach(id);
     await this.dockerService.stopContainer(id);
     const info = this.containers.get(id);
     if (info) {
       info.status = 'stopped';
+      useLogger().info(`[container] stopped ${info.name}`);
     }
   }
 
   async restart(id: string): Promise<void> {
+    useLogCollector().detach(id);
     await this.dockerService.restartContainer(id);
     const info = this.containers.get(id);
     if (info) {
       info.status = 'running';
+      // Re-attach log collector after restart
+      useLogCollector().attach(info.name, id, 'worker', info.displayName).catch(() => {});
+      useLogger().info(`[container] restarted ${info.name}`);
     }
   }
 
   async remove(id: string): Promise<void> {
+    useLogCollector().detach(id);
     const info = this.containers.get(id);
     await this.dockerService.removeContainer(id);
     if (info?.name) {
@@ -362,14 +376,18 @@ export class ContainerManager {
       }
       if (this.workerStore) {
         await this.workerStore.delete(info.name).catch((err) => {
-          console.error(`[container] failed to delete worker record '${info.name}':`, err instanceof Error ? err.message : err);
+          useLogger().error(`[container] failed to delete worker record '${info.name}': ${err instanceof Error ? err.message : err}`);
         });
       }
+    }
+    if (info) {
+      useLogger().info(`[container] removed ${info.name}`);
     }
     this.containers.delete(id);
   }
 
   async archive(id: string): Promise<void> {
+    useLogCollector().detach(id);
     const info = this.containers.get(id);
     if (!info) throw new Error('Container not found');
 
@@ -384,10 +402,12 @@ export class ContainerManager {
       await this.workerStore.archive(info.name);
     }
 
+    useLogger().info(`[container] archived ${info.name}`);
     this.containers.delete(id);
   }
 
   async rebuild(id: string): Promise<ContainerInfo> {
+    useLogCollector().detach(id);
     const info = this.containers.get(id);
     if (!info) throw new Error('Container not found');
 
@@ -485,6 +505,11 @@ export class ContainerManager {
       await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
     }
 
+    // Attach log collector to the rebuilt container
+    useLogCollector().attach(info.name, container.id, 'worker', info.displayName).catch(() => {});
+
+    useLogger().info(`[container] rebuilt ${info.name} (${container.id.slice(0, 12)})`);
+
     return containerInfo;
   }
 
@@ -572,6 +597,12 @@ export class ContainerManager {
     };
 
     this.containers.set(container.id, containerInfo);
+
+    // Attach log collector to the unarchived container
+    useLogCollector().attach(worker.name, container.id, 'worker', worker.displayName).catch(() => {});
+
+    useLogger().info(`[container] unarchived ${name} (${container.id.slice(0, 12)})`);
+
     return containerInfo;
   }
 

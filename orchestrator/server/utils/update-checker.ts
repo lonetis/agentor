@@ -35,7 +35,7 @@ export class UpdateChecker {
       await this.check();
       this.pollInterval = setInterval(() => {
         this.check().catch((err) => {
-          console.error('[update-checker] poll error:', err.message || err);
+          useLogger().error(`[update-checker] poll error: ${err.message || err}`);
         });
       }, 5 * 60 * 1000);
     }
@@ -109,7 +109,7 @@ export class UpdateChecker {
 
     const updates = results.filter((i) => i?.updateAvailable);
     if (updates.length > 0) {
-      console.log(`[update-checker] ${updates.length} update(s) available: ${updates.map((u) => u!.name).join(', ')}`);
+      useLogger().info(`[update-checker] ${updates.length} update(s) available: ${updates.map((u) => u!.name).join(', ')}`);
     }
 
     return this.status;
@@ -375,7 +375,7 @@ export class UpdateChecker {
       createOpts.NetworkingConfig = { EndpointsConfig: endpointsConfig };
     }
 
-    console.log(`[update-checker] recreating orchestrator: ${containerName} with image ${newImage}`);
+    useLogger().info(`[update-checker] recreating orchestrator: ${containerName} with image ${newImage}`);
 
     // Clean up leftover containers from a previous failed attempt
     await this.removeContainerIfExists(tempName);
@@ -425,7 +425,7 @@ export class UpdateChecker {
     });
 
     await swapper.start();
-    console.log('[update-checker] swapper started — orchestrator will be replaced shortly');
+    useLogger().info('[update-checker] swapper started — orchestrator will be replaced shortly');
   }
 
   async pruneImages(): Promise<PruneResult> {

@@ -23,6 +23,7 @@ export class GitHubService {
 
   constructor(config: Config) {
     this.token = config.githubToken;
+    useLogger().info(`[github] initialized (token ${this.hasToken ? 'configured' : 'not set'})`);
   }
 
   get hasToken(): boolean {
@@ -46,6 +47,7 @@ export class GitHubService {
       defaultBranch: r.default_branch,
     }));
 
+    useLogger().debug(`[github] fetched ${repos.length} repos`);
     this.setCache('repos', repos);
     return repos;
   }
@@ -75,6 +77,8 @@ export class GitHubService {
       ? `https://api.github.com/orgs/${owner}/repos`
       : 'https://api.github.com/user/repos';
 
+    useLogger().info(`[github] creating repo ${owner}/${name} (private=${isPrivate}, org=${isOrg})`);
+
     const res = await fetch(url, {
       method: 'POST',
       headers: { ...this.headers(), 'Content-Type': 'application/json' },
@@ -83,9 +87,11 @@ export class GitHubService {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({ message: res.statusText }));
+      const message = (body as { message?: string }).message || res.statusText;
+      useLogger().error(`[github] failed to create repo ${owner}/${name}: ${res.status} ${message}`);
       throw createError({
         statusCode: res.status,
-        statusMessage: (body as { message?: string }).message || res.statusText,
+        statusMessage: message,
       });
     }
 
@@ -93,6 +99,8 @@ export class GitHubService {
 
     // Invalidate repos cache so next list includes the new repo
     this.cache.delete('repos');
+
+    useLogger().info(`[github] created repo ${data.full_name}`);
 
     return {
       fullName: data.full_name,
@@ -122,6 +130,7 @@ export class GitHubService {
       defaultBranch,
     };
 
+    useLogger().debug(`[github] fetched ${result.branches.length} branches for ${owner}/${repo} (default: ${defaultBranch})`);
     this.setCache(cacheKey, result);
     return result;
   }
@@ -129,6 +138,7 @@ export class GitHubService {
   private async apiFetch<T>(url: string): Promise<T> {
     const res = await fetch(url, { headers: this.headers() });
     if (!res.ok) {
+      useLogger().error(`[github] API request failed: ${res.status} ${res.statusText} (${url})`);
       throw createError({ statusCode: res.status, statusMessage: `GitHub API error: ${res.statusText}` });
     }
     return res.json() as Promise<T>;
@@ -141,6 +151,7 @@ export class GitHubService {
     while (nextUrl) {
       const res = await fetch(nextUrl, { headers: this.headers() });
       if (!res.ok) {
+        useLogger().error(`[github] paginated request failed: ${res.status} ${res.statusText} (${nextUrl})`);
         throw createError({ statusCode: res.status, statusMessage: `GitHub API error: ${res.statusText}` });
       }
       const page = (await res.json()) as T[];

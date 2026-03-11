@@ -53,6 +53,7 @@ export class DockerService {
         Name: this.config.dockerNetwork,
         Driver: 'bridge',
       });
+      useLogger().info(`[docker] created network ${this.config.dockerNetwork}`);
     }
   }
 
@@ -157,6 +158,7 @@ export class DockerService {
     });
 
     await container.start();
+    useLogger().info(`[docker] created container ${opts.name}`);
     return container;
   }
 
@@ -266,17 +268,20 @@ export class DockerService {
   async stopContainer(containerId: string): Promise<void> {
     const container = this.docker.getContainer(containerId);
     await container.stop();
+    useLogger().debug(`[docker] stopped container ${containerId.slice(0, 12)}`);
   }
 
   async removeContainer(containerId: string): Promise<void> {
     const container = this.docker.getContainer(containerId);
     await container.remove({ force: true });
+    useLogger().debug(`[docker] removed container ${containerId.slice(0, 12)}`);
   }
 
   async removeVolume(name: string): Promise<void> {
     try {
       const volume = this.docker.getVolume(name);
       await volume.remove();
+      useLogger().debug(`[docker] removed volume ${name}`);
     } catch {
       // Volume may not exist — ignore
     }
@@ -357,12 +362,12 @@ export class DockerService {
     try {
       await this.docker.getImage(image).inspect();
     } catch {
-      console.log(`[docker] pulling image ${image}...`);
+      useLogger().info(`[docker] pulling image ${image}...`);
       const stream = await this.docker.pull(image);
       await new Promise<void>((resolve, reject) => {
         this.docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()));
       });
-      console.log(`[docker] pulled image ${image}`);
+      useLogger().info(`[docker] pulled image ${image}`);
     }
   }
 

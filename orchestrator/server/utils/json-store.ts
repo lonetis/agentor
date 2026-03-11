@@ -13,13 +13,19 @@ export class JsonStore<K, V> {
   }
 
   async init(): Promise<void> {
+    const logger = useLogger();
     try {
       const data = await readFile(this.filePath, 'utf-8');
       for (const item of JSON.parse(data) as V[]) {
         this.items.set(this.keyFn(item), item);
       }
+      logger.debug(`[json-store] loaded ${this.items.size} items from ${this.filePath}`);
     } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug(`[json-store] no file at ${this.filePath} — starting empty`);
+        return;
+      }
+      logger.error(`[json-store] failed to load ${this.filePath}: ${err instanceof Error ? err.message : err}`);
       throw err;
     }
   }
@@ -48,8 +54,13 @@ export class JsonStore<K, V> {
 
   protected persist(): Promise<void> {
     this.saveQueue = this.saveQueue.then(async () => {
-      await mkdir(dirname(this.filePath), { recursive: true });
-      await writeFile(this.filePath, JSON.stringify(this.list(), null, 2));
+      try {
+        await mkdir(dirname(this.filePath), { recursive: true });
+        await writeFile(this.filePath, JSON.stringify(this.list(), null, 2));
+      } catch (err) {
+        useLogger().error(`[json-store] failed to save ${this.filePath}: ${err instanceof Error ? err.message : err}`);
+        throw err;
+      }
     });
     return this.saveQueue;
   }

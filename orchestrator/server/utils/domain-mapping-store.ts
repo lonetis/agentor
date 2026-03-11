@@ -20,12 +20,13 @@ export class DomainMappingStore extends JsonStore<string, DomainMapping> {
   }
 
   async add(mapping: DomainMapping): Promise<void> {
+    const fullDomain = mapping.subdomain ? `${mapping.subdomain}.${mapping.baseDomain}` : mapping.baseDomain;
+
     for (const existing of this.items.values()) {
       if (existing.subdomain !== mapping.subdomain || existing.baseDomain !== mapping.baseDomain) continue;
 
-      const fullDomain = mapping.subdomain ? `${mapping.subdomain}.${mapping.baseDomain}` : mapping.baseDomain;
-
       if (existing.protocol === mapping.protocol) {
+        useLogger().warn(`[domain-mappings] duplicate ${mapping.protocol} mapping for '${fullDomain}' rejected`);
         throw new Error(`'${fullDomain}' is already mapped for protocol '${mapping.protocol}'`);
       }
 
@@ -33,24 +34,37 @@ export class DomainMappingStore extends JsonStore<string, DomainMapping> {
       // TCP's HostSNI matches at the TLS layer before HTTP routing, so they conflict.
       const pair = new Set([existing.protocol, mapping.protocol]);
       if (pair.has('https') && pair.has('tcp')) {
+        useLogger().warn(`[domain-mappings] HTTPS/TCP conflict for '${fullDomain}' rejected`);
         throw new Error(`'${fullDomain}' cannot have both HTTPS and TCP mappings (both use port 443)`);
       }
     }
     this.items.set(mapping.id, mapping);
     await this.persist();
+    useLogger().info(`[domain-mappings] added ${mapping.protocol} mapping ${fullDomain} → ${mapping.workerName}:${mapping.internalPort}${mapping.basicAuth ? ' (auth)' : ''}`);
   }
 
   async remove(id: string): Promise<boolean> {
+    const mapping = this.items.get(id);
     const existed = this.items.delete(id);
-    if (existed) await this.persist();
+    if (existed) {
+      await this.persist();
+      const fullDomain = mapping!.subdomain ? `${mapping!.subdomain}.${mapping!.baseDomain}` : mapping!.baseDomain;
+      useLogger().info(`[domain-mappings] removed ${mapping!.protocol} mapping ${fullDomain} (${id})`);
+    } else {
+      useLogger().debug(`[domain-mappings] remove called for non-existent id ${id}`);
+    }
     return existed;
   }
 
-  removeForWorker(workerId: string): Promise<number> {
-    return this.removeWhere((m) => m.workerId === workerId);
+  async removeForWorker(workerId: string): Promise<number> {
+    const count = await this.removeWhere((m) => m.workerId === workerId);
+    if (count > 0) useLogger().info(`[domain-mappings] removed ${count} mapping(s) for worker ${workerId}`);
+    return count;
   }
 
-  cleanupStaleWorkers(activeWorkerIds: Set<string>): Promise<number> {
-    return this.removeWhere((m) => !activeWorkerIds.has(m.workerId));
+  async cleanupStaleWorkers(activeWorkerIds: Set<string>): Promise<number> {
+    const count = await this.removeWhere((m) => !activeWorkerIds.has(m.workerId));
+    if (count > 0) useLogger().warn(`[domain-mappings] cleaned up ${count} stale mapping(s)`);
+    return count;
   }
 }

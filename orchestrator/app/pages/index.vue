@@ -30,6 +30,10 @@ const showSettingsModal = ref(false);
 
 const { sidebarWidth, isDragging, isCollapsed, isMobile, startDrag, toggleCollapse } = useSidebarResize();
 
+function handleOpenLogs() {
+  openTab('__logs__', 'Logs', 'logs');
+}
+
 function handleOpenTab(containerId: string, type: 'terminal' | 'desktop' | 'apps' | 'editor') {
   const container = containers.value.find((c) => c.id === containerId);
   const name = container?.displayName || shortName(container?.name || containerId.slice(0, 12));
@@ -140,6 +144,7 @@ function openInitScriptsFromModal() {
       @unarchive-worker="handleUnarchive"
       @delete-archived-worker="handleDeleteArchived"
       @open-settings="showSettingsModal = true"
+      @open-logs="handleOpenLogs"
       @toggle-collapse="toggleCollapse"
     />
 

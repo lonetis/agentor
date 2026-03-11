@@ -38,6 +38,19 @@ export interface Config {
   traefikImage: string;
   dashboardAuthUser: string;
   dashboardAuthPassword: string;
+  logLevel: import('../../shared/types').LogLevel;
+  logMaxSize: number;
+  logMaxFiles: number;
+}
+
+function parseLogSize(raw: string): number {
+  const match = raw.trim().match(/^(\d+(?:\.\d+)?)\s*([kmg])?$/i);
+  if (!match) return 50 * 1024 * 1024;
+  const num = parseFloat(match[1]!);
+  const unit = (match[2] || '').toLowerCase();
+  if (unit === 'k') return Math.floor(num * 1024);
+  if (unit === 'g') return Math.floor(num * 1024 * 1024 * 1024);
+  return Math.floor(num * 1024 * 1024); // default: megabytes
 }
 
 function parseBaseDomains(raw: string): BaseDomainConfig[] {
@@ -68,6 +81,7 @@ function parseDnsProviderConfigs(baseDomainConfigs: BaseDomainConfig[]): Record<
     const upper = provider.toUpperCase().replace(/-/g, '_');
     const varsEnv = process.env[`ACME_DNS_${upper}_VARS`]?.trim() || '';
     if (!varsEnv) {
+      // Logger may not be initialized yet during config loading — use console for this early warning
       console.warn(`[config] DNS provider '${provider}' used in BASE_DOMAINS but ACME_DNS_${upper}_VARS is not set`);
     }
     const delayEnv = process.env[`ACME_DNS_${upper}_DELAY`]?.trim() || '';
@@ -122,5 +136,8 @@ export function loadConfig(): Config {
     traefikImage: process.env.TRAEFIK_IMAGE || 'traefik:v3',
     dashboardAuthUser: process.env.DASHBOARD_AUTH_USER || '',
     dashboardAuthPassword: process.env.DASHBOARD_AUTH_PASSWORD || '',
+    logLevel: (process.env.LOG_LEVEL || 'info') as import('../../shared/types').LogLevel,
+    logMaxSize: parseLogSize(process.env.LOG_MAX_SIZE || '50m'),
+    logMaxFiles: parseInt(process.env.LOG_MAX_FILES || '5', 10) || 5,
   };
 }

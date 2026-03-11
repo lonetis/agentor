@@ -164,3 +164,15 @@ export interface InitScriptInfo {
   createdAt: string;
   updatedAt: string;
 }
+
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogSource = 'orchestrator' | 'worker' | 'mapper' | 'traefik';
+
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  source: LogSource;
+  sourceId?: string;
+  sourceName?: string;
+  message: string;
+}

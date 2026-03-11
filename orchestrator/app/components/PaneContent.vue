@@ -41,6 +41,10 @@ const activeTab = computed(() => {
       icon-name="i-lucide-code"
       :url="`/editor/${activeTab.containerId}/?folder=/workspace`"
     />
+    <LogPane
+      v-else-if="activeTab?.type === 'logs'"
+      :key="activeTab.id"
+    />
     <TerminalPlaceholder v-else />
   </div>
 </template>

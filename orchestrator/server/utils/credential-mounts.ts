@@ -30,7 +30,7 @@ export class CredentialMountManager {
     // Resolve host path of /cred mount via container self-inspection
     const hostname = process.env.HOSTNAME;
     if (!hostname) {
-      console.log('[credential-mounts] HOSTNAME not set — credential bind mounts disabled');
+      useLogger().info('[credential-mounts] HOSTNAME not set — credential bind mounts disabled');
       return;
     }
 
@@ -42,12 +42,12 @@ export class CredentialMountManager {
         (m: { Destination: string }) => m.Destination === CRED_CONTAINER_PATH
       );
       if (!credMount) {
-        console.log('[credential-mounts] /cred not mounted on orchestrator — credential bind mounts disabled');
+        useLogger().info('[credential-mounts] /cred not mounted on orchestrator — credential bind mounts disabled');
         return;
       }
 
       this.hostPath = credMount.Source;
-      console.log(`[credential-mounts] resolved host path: ${this.hostPath}`);
+      useLogger().info(`[credential-mounts] resolved host path: ${this.hostPath}`);
 
       // Ensure each credential file exists (create as {} if missing)
       for (const mapping of AGENT_CREDENTIAL_MAPPINGS) {
@@ -57,11 +57,11 @@ export class CredentialMountManager {
         } catch {
           await writeFile(filePath, '{}', { mode: 0o600 });
           await chown(filePath, AGENT_UID, AGENT_GID);
-          console.log(`[credential-mounts] created ${mapping.fileName}`);
+          useLogger().info(`[credential-mounts] created ${mapping.fileName}`);
         }
       }
     } catch (err: unknown) {
-      console.error('[credential-mounts] init failed:', err instanceof Error ? err.message : err);
+      useLogger().error(`[credential-mounts] init failed: ${err instanceof Error ? err.message : err}`);
     }
   }
 

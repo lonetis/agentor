@@ -17,23 +17,34 @@ export class PortMappingStore extends JsonStore<number, PortMapping> {
 
   async add(mapping: PortMapping): Promise<void> {
     if (this.has(mapping.externalPort)) {
+      useLogger().warn(`[port-mappings] duplicate port ${mapping.externalPort} rejected`);
       throw new Error(`Port ${mapping.externalPort} is already mapped`);
     }
     this.items.set(mapping.externalPort, mapping);
     await this.persist();
+    useLogger().info(`[port-mappings] added ${mapping.type} mapping :${mapping.externalPort} → ${mapping.workerName}:${mapping.internalPort}`);
   }
 
   async remove(externalPort: number): Promise<boolean> {
     const existed = this.items.delete(externalPort);
-    if (existed) await this.persist();
+    if (existed) {
+      await this.persist();
+      useLogger().info(`[port-mappings] removed mapping :${externalPort}`);
+    } else {
+      useLogger().debug(`[port-mappings] remove called for non-existent port ${externalPort}`);
+    }
     return existed;
   }
 
-  removeForWorker(workerId: string): Promise<number> {
-    return this.removeWhere((m) => m.workerId === workerId);
+  async removeForWorker(workerId: string): Promise<number> {
+    const count = await this.removeWhere((m) => m.workerId === workerId);
+    if (count > 0) useLogger().info(`[port-mappings] removed ${count} mapping(s) for worker ${workerId}`);
+    return count;
   }
 
-  cleanupStaleWorkers(activeWorkerIds: Set<string>): Promise<number> {
-    return this.removeWhere((m) => !activeWorkerIds.has(m.workerId));
+  async cleanupStaleWorkers(activeWorkerIds: Set<string>): Promise<number> {
+    const count = await this.removeWhere((m) => !activeWorkerIds.has(m.workerId));
+    if (count > 0) useLogger().warn(`[port-mappings] cleaned up ${count} stale mapping(s)`);
+    return count;
   }
 }

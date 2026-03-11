@@ -1,7 +1,12 @@
-import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useStorageManager, useSkillStore, useAgentsMdStore, useInitScriptStore } from '../utils/services';
+import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useStorageManager, useSkillStore, useAgentsMdStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
 import { loadBuiltInSkills, loadBuiltInAgentsMd, loadBuiltInInitScripts, loadBuiltInEnvironments } from '../utils/built-in-content';
 
 export default defineNitroPlugin(async () => {
+  // Initialize logging infrastructure first
+  const logStore = useLogStore();
+  await logStore.init();
+  const logger = useLogger();
+
   const dockerService = useDockerService();
   await dockerService.ensureNetwork();
 
@@ -55,7 +60,7 @@ export default defineNitroPlugin(async () => {
   const activeWorkerIds = new Set(containerManager.list().map((c) => c.id));
   const staleCount = await portMappingStore.cleanupStaleWorkers(activeWorkerIds);
   if (staleCount > 0) {
-    console.log(`[agentor] cleaned up ${staleCount} stale port mapping(s)`);
+    logger.info(`[agentor] cleaned up ${staleCount} stale port mapping(s)`);
   }
 
   // Initialize mapper manager (reconcile mapper container with persisted mappings)
@@ -68,7 +73,7 @@ export default defineNitroPlugin(async () => {
 
   const staleDomainCount = await domainMappingStore.cleanupStaleWorkers(activeWorkerIds);
   if (staleDomainCount > 0) {
-    console.log(`[agentor] cleaned up ${staleDomainCount} stale domain mapping(s)`);
+    logger.info(`[agentor] cleaned up ${staleDomainCount} stale domain mapping(s)`);
   }
 
   // Initialize Traefik manager (reconcile Traefik container with persisted domain mappings)
@@ -83,5 +88,10 @@ export default defineNitroPlugin(async () => {
   const usageChecker = useUsageChecker();
   await usageChecker.init();
 
-  console.log(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${skillStore.list().length} skills, ${agentsMdStore.list().length} agents-md entries, ${initScriptStore.list().length} init scripts, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
+  logger.info(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${skillStore.list().length} skills, ${agentsMdStore.list().length} agents-md entries, ${initScriptStore.list().length} init scripts, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
+
+  // Mark logger as ready (flushes buffered entries) and start log collector
+  logger.setReady();
+  const logCollector = useLogCollector();
+  await logCollector.init();
 });

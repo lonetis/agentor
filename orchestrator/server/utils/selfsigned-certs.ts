@@ -27,7 +27,7 @@ export class SelfSignedCertManager {
       await this.ensureDomainCert(domain);
     }
 
-    console.log(`[selfsigned-certs] initialized CA + ${selfSignedDomains.length} domain cert(s)`);
+    useLogger().info(`[selfsigned-certs] initialized CA + ${selfSignedDomains.length} domain cert(s)`);
   }
 
   async getCaCertPem(): Promise<string> {
@@ -57,7 +57,7 @@ export class SelfSignedCertManager {
 
     if (await this.fileExists(keyPath) && await this.fileExists(certPath)) return;
 
-    console.log('[selfsigned-certs] generating CA certificate...');
+    useLogger().info('[selfsigned-certs] generating CA certificate...');
     const keys = forge.pki.rsa.generateKeyPair(2048);
     const cert = forge.pki.createCertificate();
 
@@ -84,7 +84,7 @@ export class SelfSignedCertManager {
 
     await writeFile(keyPath, forge.pki.privateKeyToPem(keys.privateKey));
     await writeFile(certPath, forge.pki.certificateToPem(cert));
-    console.log('[selfsigned-certs] CA certificate generated');
+    useLogger().info('[selfsigned-certs] CA certificate generated');
   }
 
   private async ensureDomainCert(domain: string): Promise<void> {
@@ -93,7 +93,7 @@ export class SelfSignedCertManager {
 
     if (await this.fileExists(certPath) && await this.fileExists(keyPath)) return;
 
-    console.log(`[selfsigned-certs] generating wildcard certificate for ${domain}...`);
+    useLogger().info(`[selfsigned-certs] generating wildcard certificate for ${domain}...`);
 
     const caKeyPem = await readFile(join(this.certDir, CA_KEY_FILE), 'utf-8');
     const caCertPem = await readFile(join(this.certDir, CA_CERT_FILE), 'utf-8');
@@ -134,7 +134,7 @@ export class SelfSignedCertManager {
 
     await writeFile(keyPath, forge.pki.privateKeyToPem(keys.privateKey));
     await writeFile(certPath, forge.pki.certificateToPem(cert));
-    console.log(`[selfsigned-certs] wildcard certificate for ${domain} generated`);
+    useLogger().info(`[selfsigned-certs] wildcard certificate for ${domain} generated`);
   }
 
   private async fileExists(path: string): Promise<boolean> {

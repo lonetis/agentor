@@ -176,13 +176,20 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
     const env: Environment = { ...data, id: nanoid(12), builtIn: false, createdAt: now, updatedAt: now };
     this.items.set(env.id, env);
     await this.persist();
+    useLogger().info(`[environments] created "${env.name}" (${env.id})`);
     return env;
   }
 
   async update(id: string, data: Partial<Omit<Environment, 'id' | 'builtIn' | 'createdAt' | 'updatedAt'>>): Promise<Environment> {
     const existing = this.items.get(id);
-    if (!existing) throw new Error(`Environment not found: ${id}`);
-    if (existing.builtIn) throw new Error('Cannot modify built-in environments');
+    if (!existing) {
+      useLogger().warn(`[environments] update failed — not found: ${id}`);
+      throw new Error(`Environment not found: ${id}`);
+    }
+    if (existing.builtIn) {
+      useLogger().warn(`[environments] update rejected — built-in: "${existing.name}" (${id})`);
+      throw new Error('Cannot modify built-in environments');
+    }
     const updated: Environment = {
       ...existing,
       ...data,
@@ -193,24 +200,34 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
     };
     this.items.set(id, updated);
     await this.persist();
+    useLogger().info(`[environments] updated "${updated.name}" (${id})`);
     return updated;
   }
 
   async delete(id: string): Promise<void> {
     const existing = this.items.get(id);
-    if (!existing) throw new Error(`Environment not found: ${id}`);
-    if (existing.builtIn) throw new Error('Cannot delete built-in environments');
+    if (!existing) {
+      useLogger().warn(`[environments] delete failed — not found: ${id}`);
+      throw new Error(`Environment not found: ${id}`);
+    }
+    if (existing.builtIn) {
+      useLogger().warn(`[environments] delete rejected — built-in: "${existing.name}" (${id})`);
+      throw new Error('Cannot delete built-in environments');
+    }
     this.items.delete(id);
     await this.persist();
+    useLogger().info(`[environments] deleted "${existing.name}" (${id})`);
   }
 
   async seedBuiltIns(items: BuiltInEnvironment[]): Promise<void> {
     let changed = false;
     const now = new Date().toISOString();
     const incomingIds = new Set(items.map((i) => i.id));
+    useLogger().debug(`[environments] seeding ${items.length} built-in environment(s)`);
 
     for (const [id, entry] of this.items) {
       if (entry.builtIn && !incomingIds.has(id)) {
+        useLogger().info(`[environments] removing stale built-in "${entry.name}" (${id})`);
         this.items.delete(id);
         changed = true;
       }
@@ -219,6 +236,7 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
     for (const item of items) {
       const existing = this.items.get(item.id);
       if (!existing) {
+        useLogger().info(`[environments] adding built-in "${item.name}" (${item.id})`);
         this.items.set(item.id, {
           id: item.id,
           name: item.name,
@@ -239,6 +257,7 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
         });
         changed = true;
       } else if (this.builtInChanged(existing, item)) {
+        useLogger().info(`[environments] updating built-in "${item.name}" (${item.id})`);
         this.items.set(item.id, {
           ...existing,
           name: item.name,
@@ -259,6 +278,7 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
       }
     }
     if (changed) await this.persist();
+    useLogger().info(`[environments] seeded built-ins — ${this.items.size} environment(s) total`);
   }
 
   private builtInChanged(existing: Environment, incoming: BuiltInEnvironment): boolean {

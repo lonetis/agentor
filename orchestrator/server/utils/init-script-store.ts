@@ -14,6 +14,7 @@ export interface InitScript {
 export class InitScriptStore extends JsonStore<string, InitScript> {
   constructor(dataDir: string) {
     super(dataDir, 'init-scripts.json', (s) => s.id);
+    useLogger().info(`[init-scripts] store initialized (${this.items.size} scripts loaded)`);
   }
 
   override list(): InitScript[] {
@@ -36,13 +37,17 @@ export class InitScriptStore extends JsonStore<string, InitScript> {
     };
     this.items.set(script.id, script);
     await this.persist();
+    useLogger().info(`[init-scripts] created '${script.name}' (${script.id})`);
     return script;
   }
 
   async update(id: string, data: { name?: string; content?: string }): Promise<InitScript> {
     const existing = this.items.get(id);
     if (!existing) throw new Error(`Init script not found: ${id}`);
-    if (existing.builtIn) throw new Error('Cannot modify built-in init scripts');
+    if (existing.builtIn) {
+      useLogger().warn(`[init-scripts] rejected update to built-in script '${existing.name}' (${id})`);
+      throw new Error('Cannot modify built-in init scripts');
+    }
     const updated: InitScript = {
       ...existing,
       ...(data.name !== undefined ? { name: data.name } : {}),
@@ -51,15 +56,20 @@ export class InitScriptStore extends JsonStore<string, InitScript> {
     };
     this.items.set(id, updated);
     await this.persist();
+    useLogger().info(`[init-scripts] updated '${updated.name}' (${id})`);
     return updated;
   }
 
   async delete(id: string): Promise<void> {
     const existing = this.items.get(id);
     if (!existing) throw new Error(`Init script not found: ${id}`);
-    if (existing.builtIn) throw new Error('Cannot delete built-in init scripts');
+    if (existing.builtIn) {
+      useLogger().warn(`[init-scripts] rejected deletion of built-in script '${existing.name}' (${id})`);
+      throw new Error('Cannot delete built-in init scripts');
+    }
     this.items.delete(id);
     await this.persist();
+    useLogger().info(`[init-scripts] deleted '${existing.name}' (${id})`);
   }
 
   async seedBuiltIns(items: BuiltInInitScript[]): Promise<void> {
@@ -70,11 +80,14 @@ export class InitScriptStore extends JsonStore<string, InitScript> {
     // Remove stale built-in entries no longer present in source files
     for (const [id, entry] of this.items) {
       if (entry.builtIn && !incomingIds.has(id)) {
+        useLogger().info(`[init-scripts] removed stale built-in '${entry.name}' (${id})`);
         this.items.delete(id);
         changed = true;
       }
     }
 
+    let added = 0;
+    let updated = 0;
     for (const item of items) {
       const existing = this.items.get(item.id);
       if (!existing) {
@@ -87,6 +100,7 @@ export class InitScriptStore extends JsonStore<string, InitScript> {
           updatedAt: now,
         });
         changed = true;
+        added++;
       } else if (existing.content !== item.content || existing.name !== item.name) {
         this.items.set(item.id, {
           ...existing,
@@ -95,8 +109,10 @@ export class InitScriptStore extends JsonStore<string, InitScript> {
           updatedAt: now,
         });
         changed = true;
+        updated++;
       }
     }
     if (changed) await this.persist();
+    useLogger().info(`[init-scripts] seeded built-ins: ${items.length} total, ${added} added, ${updated} updated`);
   }
 }

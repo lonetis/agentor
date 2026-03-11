@@ -50,20 +50,20 @@ export class TraefikManager {
       await mkdir(dirname(configPath), { recursive: true });
       await writeFile(configPath, '{}');
       this.configFileJustCreated = true;
-      console.log('[traefik-manager] created empty config file');
+      useLogger().info('[traefik-manager] created empty config file');
     }
   }
 
   reconcile(): Promise<void> {
     this.reconcileQueue = this.reconcileQueue.then(() => this.reconcileNow()).catch((err) => {
-      console.error('[traefik-manager] reconcile failed:', err instanceof Error ? err.message : err);
+      useLogger().error(`[traefik-manager] reconcile failed: ${err instanceof Error ? err.message : err}`);
     });
     return this.reconcileQueue;
   }
 
   forceRecreate(): Promise<void> {
     this.reconcileQueue = this.reconcileQueue.then(() => this.forceRecreateNow()).catch((err) => {
-      console.error('[traefik-manager] force recreate failed:', err instanceof Error ? err.message : err);
+      useLogger().error(`[traefik-manager] force recreate failed: ${err instanceof Error ? err.message : err}`);
     });
     return this.reconcileQueue;
   }
@@ -102,9 +102,9 @@ export class TraefikManager {
       } else if (this.configFileJustCreated) {
         this.configFileJustCreated = false;
         await c.restart();
-        console.log('[traefik-manager] restarted Traefik (config file was recreated)');
+        useLogger().info('[traefik-manager] restarted Traefik (config file was recreated)');
       } else if (this.hasContainerConfigDrift(info)) {
-        console.log('[traefik-manager] config drift detected — recreating Traefik container');
+        useLogger().info('[traefik-manager] config drift detected — recreating Traefik container');
         await this.removeTraefik();
         await this.createTraefik();
       }
@@ -296,7 +296,7 @@ export class TraefikManager {
   private async createTraefik(): Promise<void> {
     const hasAcmeCerts = this.config.baseDomainConfigs.some((c) => c.challengeType === 'http' || c.challengeType === 'dns');
     if (hasAcmeCerts && !this.config.acmeEmail) {
-      console.warn('[traefik-manager] ACME_EMAIL not configured — TLS certificates will not be issued');
+      useLogger().warn('[traefik-manager] ACME_EMAIL not configured — TLS certificates will not be issued');
     }
 
     await this.storageManager.ensureCertDir();
@@ -338,19 +338,20 @@ export class TraefikManager {
     });
 
     await container.start();
-    console.log('[traefik-manager] created Traefik container');
+    useLogger().info('[traefik-manager] created Traefik container');
+    useLogCollector().attach(TRAEFIK_CONTAINER_NAME, container.id, 'traefik').catch(() => {});
   }
 
   private async ensureImage(image: string): Promise<void> {
     try {
       await this.docker.getImage(image).inspect();
     } catch {
-      console.log(`[traefik-manager] pulling image ${image}...`);
+      useLogger().info(`[traefik-manager] pulling image ${image}...`);
       const stream = await this.docker.pull(image);
       await new Promise<void>((resolve, reject) => {
         this.docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()));
       });
-      console.log(`[traefik-manager] pulled image ${image}`);
+      useLogger().info(`[traefik-manager] pulled image ${image}`);
     }
   }
 
@@ -359,9 +360,10 @@ export class TraefikManager {
     if (!container) return;
 
     try {
+      useLogCollector().detach(container.Id);
       const c = this.docker.getContainer(container.Id);
       await c.remove({ force: true });
-      console.log('[traefik-manager] removed Traefik container');
+      useLogger().info('[traefik-manager] removed Traefik container');
     } catch (err: unknown) {
       const statusCode = (err as { statusCode?: number }).statusCode;
       if (statusCode !== 404) throw err;

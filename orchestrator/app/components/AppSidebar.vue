@@ -27,6 +27,7 @@ const emit = defineEmits<{
   unarchiveWorker: [name: string];
   deleteArchivedWorker: [name: string];
   openSettings: [];
+  openLogs: [];
   toggleCollapse: [];
 }>();
 
@@ -335,6 +336,13 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             <span>Quick Links</span>
           </div>
           <div class="p-1.5">
+            <button
+              class="system-card-link"
+              @click="emit('openLogs')"
+            >
+              <UIcon name="i-lucide-scroll-text" class="size-3.5 flex-shrink-0" />
+              Logs
+            </button>
             <button
               class="system-card-link"
               @click="emit('openSettings')"

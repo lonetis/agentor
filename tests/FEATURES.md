@@ -32,7 +32,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - **Domain Mappings** — only visible when domain mapper is enabled (BASE_DOMAINS configured)
 - **Usage** — always visible, has refresh button
 - **Images** — always visible
-- **Settings** — always visible, contains "System Settings" button and "API Docs" link
+- **Settings** — always visible, contains "Logs" button, "System Settings" button, and "API Docs" link
 
 ---
 
@@ -344,6 +344,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Desktop (noVNC iframe)
 - Editor (code-server iframe)
 - Apps (app instance management)
+- Logs (centralized log viewer)
 
 ### 16.2 Tab Bar (PaneGroupTabBar)
 - Per-tab: type icon + "[Container] - [Type]" label (truncated 140px) + close button (visible on hover, middle-click also closes)
@@ -484,12 +485,54 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ---
 
-## 23. API Endpoints (Server-Side Features)
+## 23. Log Pane
 
-### 23.1 Health
+### 23.1 Opening
+- "Logs" button in System tab's Quick Links section opens the log pane
+- Opens as a split pane tab (type "logs", singleton ID "__logs__")
+- Tab shows "Logs" label with scroll-text icon
+
+### 23.2 Filter Bar
+- Source filter buttons: Orch, Worker, Mapper, Traefik (toggle each source on/off)
+- Level filter buttons: DBG, INF, WRN, ERR (toggle each level on/off)
+- When no filters active, all entries shown (buttons appear inactive)
+- Active filter button shows accent border color
+- Search input with 300ms debounce — filters entries by message substring
+
+### 23.3 Log Entries
+- Each entry shows: timestamp (HH:MM:SS.mmm) + level badge + source badge + source ID (for container logs) + message
+- Level badges color-coded: debug (gray), info (blue), warn (amber), error (red)
+- Source badges color-coded: orchestrator (purple), worker (green), mapper (cyan), traefik (orange)
+- Source ID shows display name or container name (hidden for orchestrator entries)
+- Error-level entries: red text
+- Warn-level entries: amber text
+- Hover highlights entry row
+- Empty state: "No log entries" / "No log entries matching filters"
+
+### 23.4 Auto-scroll
+- Auto-scrolls to bottom when new entries arrive
+- Manual scroll up disables auto-scroll
+- Scrolling back to bottom re-enables auto-scroll
+- Auto-scroll toggle button in filter bar
+
+### 23.5 Actions
+- Clear button: clears all log files (with confirmation dialog)
+- Status bar: green/red connection dot + "Connected"/"Disconnected" text + entry count
+
+### 23.6 Live Streaming
+- WebSocket connection to `/ws/logs` for real-time log entries
+- Auto-reconnect on disconnect (3s delay)
+- History loaded from REST API on mount (500 most recent entries)
+- Client-side buffer capped at 5000 entries
+
+---
+
+## 24. API Endpoints (Server-Side Features)
+
+### 24.1 Health
 - `GET /api/health` — returns `{ status: 'ok', containers: N }`
 
-### 23.2 Containers
+### 24.2 Containers
 - `GET /api/containers` — list all workers
 - `POST /api/containers` — create worker (name, displayName, environmentId, initScript, repos, mounts)
 - `GET /api/containers/generate-name` — random name generation
@@ -504,27 +547,27 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `GET /api/containers/:id/desktop/status` — desktop service status
 - `GET /api/containers/:id/editor/status` — editor service status
 
-### 23.3 Tmux Panes
+### 24.3 Tmux Panes
 - `GET /api/containers/:id/panes` — list tmux windows
 - `POST /api/containers/:id/panes` — create window (optional name, auto-generated "shell-xxxx")
 - `PUT /api/containers/:id/panes/:windowIndex` — rename window (name validation: alphanumeric/underscore/hyphen)
 - `DELETE /api/containers/:id/panes/:windowIndex` — kill window (window 0 protected: 403)
 
-### 23.4 Apps
+### 24.4 Apps
 - `GET /api/containers/:id/apps` — list all app instances
 - `GET /api/containers/:id/apps/:appType` — list by type
 - `POST /api/containers/:id/apps/:appType` — start instance
 - `DELETE /api/containers/:id/apps/:appType/:instanceId` — stop instance
 - `GET /api/app-types` — list app type definitions
 
-### 23.5 Port Mappings
+### 24.5 Port Mappings
 - `GET /api/port-mappings` — list all
 - `POST /api/port-mappings` — create (externalPort, internalPort, type, workerId/workerName)
 - `DELETE /api/port-mappings/:port` — remove
 - `GET /api/port-mapper/status` — counts by type
 - Validations: port range 1-65535, type localhost/external, worker must exist and be running, duplicate port 409
 
-### 23.6 Domain Mappings
+### 24.6 Domain Mappings
 - `GET /api/domain-mappings` — list all
 - `POST /api/domain-mappings` — create (subdomain, baseDomain, protocol, workerId/workerName, internalPort, basicAuth)
 - `POST /api/domain-mappings/batch` — batch create (single Traefik reconcile)
@@ -533,7 +576,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `GET /api/domain-mapper/ca-cert` — download self-signed CA certificate PEM (404 when no selfsigned domains)
 - Validations: protocol http/https/tcp, HTTPS/TCP require TLS, subdomain format, port range, duplicate 409, protocol conflict 409
 
-### 23.7 Environments
+### 24.7 Environments
 - `GET /api/environments` — list all
 - `POST /api/environments` — create
 - `GET /api/environments/:id` — get single
@@ -541,7 +584,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `DELETE /api/environments/:id` — delete
 - Built-in "default" environment: cannot edit/delete
 
-### 23.8 Skills
+### 24.8 Skills
 - `GET /api/skills` — list all
 - `POST /api/skills` — create custom
 - `GET /api/skills/:id` — get single
@@ -549,7 +592,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `DELETE /api/skills/:id` — delete custom
 - Built-in skills: port-mapping, domain-mapping, usage, tmux
 
-### 23.9 AGENTS.md
+### 24.9 AGENTS.md
 - `GET /api/agents-md` — list all
 - `POST /api/agents-md` — create custom
 - `GET /api/agents-md/:id` — get single
@@ -557,7 +600,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `DELETE /api/agents-md/:id` — delete custom
 - Built-in entry: platform-guide
 
-### 23.10 Init Scripts
+### 24.10 Init Scripts
 - `GET /api/init-scripts` — list all
 - `POST /api/init-scripts` — create custom
 - `GET /api/init-scripts/:id` — get single
@@ -565,27 +608,27 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `DELETE /api/init-scripts/:id` — delete custom
 - Built-in scripts: claude, codex, gemini
 
-### 23.11 Archived Workers
+### 24.11 Archived Workers
 - `GET /api/archived` — list
 - `POST /api/archived/:name/unarchive` — restore
 - `DELETE /api/archived/:name` — permanently delete
 
-### 23.12 Updates
+### 24.12 Updates
 - `GET /api/updates` — status for 4 images
 - `POST /api/updates/check` — trigger manual check
 - `POST /api/updates/apply` — pull + recreate (optional { images } body for per-image)
 - `POST /api/updates/prune` — prune dangling images
 
-### 23.13 Usage
+### 24.13 Usage
 - `GET /api/usage` — agent usage status (per-agent auth type, windows, timestamps)
 - `POST /api/usage/refresh` — trigger immediate refresh
 
-### 23.14 GitHub
+### 24.14 GitHub
 - `GET /api/github/repos` — list repos + orgs
 - `POST /api/github/repos` — create repo (name, owner, private)
 - `GET /api/github/repos/:owner/:repo/branches` — list branches + default
 
-### 23.15 Configuration
+### 24.15 Configuration
 - `GET /api/settings` — all settings (categorized, read-only)
 - `GET /api/orchestrator-env-vars` — env vars with configured status
 - `GET /api/git-providers` — provider list with token status
@@ -593,7 +636,13 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `GET /api/package-manager-domains` — PM domain list
 - `GET /api/credentials` — credential file status per agent
 
-### 23.16 WebSocket/Proxy
+### 24.16 Logs
+- `GET /api/logs` — query log entries with filters (sources, sourceIds, levels, since, until, limit, search)
+- `DELETE /api/logs` — clear all log files
+- `GET /api/log-sources` — list known container log sources
+- `WS /ws/logs` — live log stream (JSON-encoded LogEntry per message, read-only)
+
+### 24.17 WebSocket/Proxy
 - `WS /ws/terminal/:containerId` — terminal (default window)
 - `WS /ws/terminal/:containerId/:windowIndex` — terminal (specific window)
 - `WS /ws/desktop/:containerId` — VNC relay
@@ -602,20 +651,20 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ---
 
-## 24. UI State Persistence
+## 25. UI State Persistence
 
-### 24.1 localStorage Key
+### 25.1 localStorage Key
 - Single key: `agentor-ui-state`
 - 500ms debounced writes + `beforeunload` flush
 
-### 24.2 Persisted State
+### 25.2 Persisted State
 - Sidebar width (clamped 200-700)
 - Sidebar collapsed state
 - Panel collapse states (archived, portMappings, domainMappings, usage, images, settings)
 - Split pane tree (rootNode + focusedNodeId)
 - Tmux active windows per container
 
-### 24.3 Graceful Degradation
+### 25.3 Graceful Degradation
 - Corrupt localStorage: falls back to defaults
 - Partial state: fills missing fields with defaults
 - Width clamping: below 200 → 200, above 700 → 700

@@ -35,13 +35,20 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
     };
     this.items.set(entry.id, entry);
     await this.persist();
+    useLogger().info(`[agents-md] created entry '${entry.name}' (${entry.id})`);
     return entry;
   }
 
   async update(id: string, data: { name?: string; content?: string }): Promise<AgentsMdEntry> {
     const existing = this.items.get(id);
-    if (!existing) throw new Error(`AGENTS.md entry not found: ${id}`);
-    if (existing.builtIn) throw new Error('Cannot modify built-in AGENTS.md entries');
+    if (!existing) {
+      useLogger().warn(`[agents-md] update failed — entry not found: ${id}`);
+      throw new Error(`AGENTS.md entry not found: ${id}`);
+    }
+    if (existing.builtIn) {
+      useLogger().warn(`[agents-md] update rejected — built-in entry '${existing.name}' (${id})`);
+      throw new Error('Cannot modify built-in AGENTS.md entries');
+    }
     const updated: AgentsMdEntry = {
       ...existing,
       ...(data.name !== undefined ? { name: data.name } : {}),
@@ -50,18 +57,27 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
     };
     this.items.set(id, updated);
     await this.persist();
+    useLogger().info(`[agents-md] updated entry '${updated.name}' (${id})`);
     return updated;
   }
 
   async delete(id: string): Promise<void> {
     const existing = this.items.get(id);
-    if (!existing) throw new Error(`AGENTS.md entry not found: ${id}`);
-    if (existing.builtIn) throw new Error('Cannot delete built-in AGENTS.md entries');
+    if (!existing) {
+      useLogger().warn(`[agents-md] delete failed — entry not found: ${id}`);
+      throw new Error(`AGENTS.md entry not found: ${id}`);
+    }
+    if (existing.builtIn) {
+      useLogger().warn(`[agents-md] delete rejected — built-in entry '${existing.name}' (${id})`);
+      throw new Error('Cannot delete built-in AGENTS.md entries');
+    }
     this.items.delete(id);
     await this.persist();
+    useLogger().info(`[agents-md] deleted entry '${existing.name}' (${id})`);
   }
 
   async seedBuiltIns(items: BuiltInAgentsMdEntry[]): Promise<void> {
+    const log = useLogger();
     let changed = false;
     const now = new Date().toISOString();
     const incomingIds = new Set(items.map((i) => i.id));
@@ -69,6 +85,7 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
     for (const [id, entry] of this.items) {
       if (entry.builtIn && !incomingIds.has(id)) {
         this.items.delete(id);
+        log.debug(`[agents-md] removed stale built-in '${entry.name}' (${id})`);
         changed = true;
       }
     }
@@ -84,6 +101,7 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
           createdAt: now,
           updatedAt: now,
         });
+        log.debug(`[agents-md] seeded built-in '${item.name}' (${item.id})`);
         changed = true;
       } else if (existing.content !== item.content || existing.name !== item.name) {
         this.items.set(item.id, {
@@ -92,9 +110,11 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
           content: item.content,
           updatedAt: now,
         });
+        log.debug(`[agents-md] updated built-in '${item.name}' (${item.id})`);
         changed = true;
       }
     }
     if (changed) await this.persist();
+    log.info(`[agents-md] seeded ${items.length} built-in entries (${changed ? 'store updated' : 'no changes'})`);
   }
 }
