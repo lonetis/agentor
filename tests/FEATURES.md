@@ -93,6 +93,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ### 4.3 Action Buttons
 - "Stop" — visible when running, stops the container
 - "Restart" — visible when stopped, restarts the container
+- "Rebuild" — always visible, destroys and recreates container with latest image (confirm dialog, preserves workspace)
 - "Archive" — always visible, archives with confirm dialog
 - "Remove" — always visible, removes with confirm dialog
 
@@ -495,6 +496,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `POST /api/containers/:id/stop` — stop worker
 - `POST /api/containers/:id/restart` — restart worker
 - `DELETE /api/containers/:id` — remove worker (cleans up mappings, volumes, store)
+- `POST /api/containers/:id/rebuild` — rebuild worker (destroys and recreates with latest image, preserves workspace and metadata)
 - `POST /api/containers/:id/archive` — archive (cleans up mappings)
 - `GET /api/containers/:id/logs` — logs with optional ?tail=N (default 200, max 10000)
 - `GET /api/containers/:id/workspace` — download workspace .tar.gz

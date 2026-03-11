@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **~917 tests** across 67 test files (~465 API + ~452 UI)
+- **~964 tests** across 69 test files (~487 API + ~477 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting

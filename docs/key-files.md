@@ -15,7 +15,7 @@
 - `orchestrator/app.config.ts` - App-level configuration
 
 ## Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo, InitScriptInfo)
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo, InitScriptInfo, CredentialInfo, UpdatableImage)
 
 ## Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build
@@ -47,7 +47,7 @@
 - `orchestrator/server/built-in/agents-md/` - Built-in AGENTS.md entry files (filename = ID, name parsed from first `# Heading`)
 - `orchestrator/server/built-in/init-scripts/` - Built-in init script files (plain .sh, filename = ID and name)
 - `orchestrator/server/built-in/environments/` - Built-in environment JSON files (filename = ID, contains environment config)
-- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useAgentsMdStore, useInitScriptStore) + shared `cleanupWorkerMappings()` utility
+- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useAgentsMdStore, useInitScriptStore) + shared `cleanupWorkerMappings()` utility
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)
 - `orchestrator/server/utils/terminal-handler.ts` - Docker stream WebSocket terminal logic (uses ws-utils, exports terminalWsHandler)
@@ -117,7 +117,8 @@
 - `orchestrator/app/composables/useTmuxTabs.ts` - Tmux window management (fetch, poll, create, close, activate, rename)
 - `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only)
 - `orchestrator/app/composables/useUsage.ts` - Agent usage status polling (60s)
-- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo, InitScriptInfo) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone
+- `orchestrator/app/utils/container-name.ts` - Utility for container name display (shortName helper)
+- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo, InitScriptInfo, CredentialInfo) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone, ChallengeType, BaseDomainConfig
 
 ## Worker
 - `worker/Dockerfile` - Unified worker image (Node.js 22, all agent CLIs, code-server, display stack, Chromium, Playwright, Firefox, microsocks, utility packages, agent user, entrypoint)
@@ -140,7 +141,7 @@
 - `tests/helpers/worker-lifecycle.ts` - Container create/cleanup helpers with timeouts
 - `tests/helpers/terminal-ws.ts` - WebSocket terminal client with ANSI stripping
 - `tests/helpers/ui-helpers.ts` - Page navigation and interaction helpers
-- `tests/api/*.spec.ts` - API integration tests (31 files)
-- `tests/ui/*.spec.ts` - UI integration tests (36 files)
+- `tests/api/*.spec.ts` - API integration tests (32 files)
+- `tests/ui/*.spec.ts` - UI integration tests (37 files)
 - `tests/FEATURES.md` - Feature inventory driving test coverage
 - `tests/TESTS.md` - Test suite documentation with counts per file

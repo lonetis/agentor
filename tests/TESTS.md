@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~935 tests** across 69 test files (~477 API + ~458 UI)
+- **~964 tests** across 69 test files (~487 API + ~477 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -74,18 +74,18 @@ tests/
     worker-lifecycle.ts    # Container create/cleanup utilities
     ui-helpers.ts          # Page navigation and interaction helpers
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
-  api/                     # API endpoint tests (~477 tests across 32 files)
-  ui/                      # UI interaction tests (~458 tests across 37 files)
+  api/                     # API endpoint tests (~487 tests across 32 files)
+  ui/                      # UI interaction tests (~477 tests across 37 files)
 ```
 
 ## Test Categories
 
-### API Tests (~477 tests, 32 files)
+### API Tests (~487 tests, 32 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `health.spec.ts` | 4 | Health check endpoint, container count validation, exact status 'ok', no sensitive info exposure |
-| `containers.spec.ts` | 41 | CRUD, validation, field completeness, name format, stop/restart/archive/delete on non-existent, logs (running/stopped/non-empty/non-numeric tail graceful default), memoryLimit, initScript, environmentId, dockerEnabled, displayName persistence, state transitions (double-stop, restart running, archive stopped), list exclusion, response fields, snapshotted environment data fields, no labels |
+| `containers.spec.ts` | 47 | CRUD, validation, field completeness, name format, stop/restart/archive/delete on non-existent, logs (running/stopped/non-empty/non-numeric tail graceful default), memoryLimit, initScript, environmentId, dockerEnabled, displayName persistence, state transitions (double-stop, restart running, archive stopped), list exclusion, response fields, snapshotted environment data fields, no labels |
 | `containers-edge-cases.spec.ts` | 10 | Edge case container operations |
 | `rebuild.spec.ts` | 12 | Rebuild running/stopped container, preserves metadata (name, displayName, createdAt, initScript, environment config), returns new container ID, removes old ID from list, cleans up port mappings, non-existent container error, response field completeness |
 | `tmux-panes.spec.ts` | 29 | Window CRUD, name validation, main window protection, duplicates, rename verify, whitespace name, non-existent container, auto-generated name format, rename/delete idempotency, main always present, 50-char name, rename main behavior, missing newName in body |
@@ -112,17 +112,17 @@ tests/
 | `package-manager-domains.spec.ts` | 4 | Domain list, npm/pypi, valid domain format |
 | `orchestrator-env-vars.spec.ts` | 4 | Env var list, fields, token/credential entries |
 | `github.spec.ts` | 14 | Repos list, username, orgs, repo field validation, branches, branch field validation, create repo validation (missing owner/name, empty owner/name, no token), response shape validation, non-existent repo branches |
-| `updates.spec.ts` | 7 | Update status, manual check trigger, apply rejection, response structure (image keys), check consistency |
+| `updates.spec.ts` | 11 | Update status, manual check trigger, apply rejection, response structure (image keys), check consistency |
 | `usage.spec.ts` | 7 | Usage endpoint, agent usage status |
 | `terminal-exec.spec.ts` | 12 | WebSocket connect, initial output, echo command, pwd /workspace, HOME /home/agent, exit codes, named tmux window, resize, concurrent window isolation, multiline output, whoami agent user, non-existent container |
 | `agent-prompting.spec.ts` | 6 | Agent CLI start + prompt response for Claude, Codex, Gemini (2 tests each, skipped without credentials) |
 
-### UI Tests (~458 tests, 37 files)
+### UI Tests (~477 tests, 37 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `dashboard.spec.ts` | 11 | Page load, title, buttons, sections, images, sidebar labels |
-| `sidebar.spec.ts` | 17 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design |
+| `sidebar.spec.ts` | 19 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design |
 | `create-worker-modal.spec.ts` | 29 | Open/close, form fields, name input, add repo/mount, environment dropdown, init preset dropdown, Create action |
 | `create-worker-modal-advanced.spec.ts` | 8 | Advanced modal interactions |
 | `cross-modal-navigation.spec.ts` | 6 | Manage button navigation between modals |
@@ -154,8 +154,8 @@ tests/
 | `split-pane.spec.ts` | 3 | Placeholder, terminal pane, tab bar |
 | `theme-toggle.spec.ts` | 29 | Dark default, light switch, persistence, all modes |
 | `ui-state-persistence.spec.ts` | 23 | UI state persistence across reloads |
-| `usage-panel.spec.ts` | 25 | Usage panel display, progress bars, auth badges |
-| `update-notification.spec.ts` | 26 | Images section, image names, toggle, update status |
+| `usage-panel.spec.ts` | 24 | Usage panel display, progress bars, auth badges |
+| `update-notification.spec.ts` | 24 | Images section, image names, toggle, update status |
 | `archived-workers.spec.ts` | 6 | Archived section, collapsible, UI archive, worker card (name, Unarchive, Delete buttons) |
 | `archived-workers-actions.spec.ts` | 4 | Archived worker unarchive/delete actions |
 
