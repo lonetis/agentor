@@ -65,7 +65,11 @@ cd orchestrator && docker build -t agentor-orchestrator:latest .
 
 # Typecheck (run from orchestrator/)
 cd orchestrator && npx nuxi prepare && npx vue-tsc --noEmit -p .nuxt/tsconfig.json
+```
 
+## Testing
+
+```bash
 # Integration tests (requires running orchestrator at localhost:3000)
 cd tests && npm test            # All tests (API + UI)
 cd tests && npm run test:api    # API only (headless, fast)
@@ -78,7 +82,15 @@ cd tests && npm test 2>&1 | tee /tmp/test-results.txt  # Full run, save output
 cd tests && npx playwright test ui/container-card.spec.ts  # Re-run single file
 ```
 
-**Testing approach**: Do not repeatedly run the entire test suite. Run it once, save the output, then re-run only the individual failing test files to iterate on fixes.
+**Approach**: Do not repeatedly run the entire test suite. Run it once, save the output, then re-run only the individual failing test files to iterate on fixes.
+
+**Requirements**:
+- Every new feature or behavior change **must** include tests. Add API tests (`tests/api/`) for new endpoints and UI tests (`tests/ui/`) for new UI interactions. Follow existing patterns in the test suite.
+- Always **run the affected tests** after adding or modifying them (`cd tests && npx playwright test <file>`) to verify they pass before committing.
+- Always **update `tests/FEATURES.md`** whenever a feature is added, changed, or removed. This is the canonical feature inventory that drives test coverage — keep it in sync with the actual product.
+- Always **update `tests/TESTS.md`** whenever tests are added, removed, or changed. Update the per-file test counts, file totals, and overview numbers to stay accurate.
+
+See @docs/testing.md for full details (writing tests, conventions, helpers, debugging).
 
 ## Gotchas
 

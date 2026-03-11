@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~917 tests** across 67 test files (~465 API + ~452 UI)
+- **~935 tests** across 69 test files (~477 API + ~458 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -74,19 +74,20 @@ tests/
     worker-lifecycle.ts    # Container create/cleanup utilities
     ui-helpers.ts          # Page navigation and interaction helpers
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
-  api/                     # API endpoint tests (~465 tests across 31 files)
-  ui/                      # UI interaction tests (~452 tests across 36 files)
+  api/                     # API endpoint tests (~477 tests across 32 files)
+  ui/                      # UI interaction tests (~458 tests across 37 files)
 ```
 
 ## Test Categories
 
-### API Tests (~465 tests, 31 files)
+### API Tests (~477 tests, 32 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `health.spec.ts` | 4 | Health check endpoint, container count validation, exact status 'ok', no sensitive info exposure |
 | `containers.spec.ts` | 41 | CRUD, validation, field completeness, name format, stop/restart/archive/delete on non-existent, logs (running/stopped/non-empty/non-numeric tail graceful default), memoryLimit, initScript, environmentId, dockerEnabled, displayName persistence, state transitions (double-stop, restart running, archive stopped), list exclusion, response fields, snapshotted environment data fields, no labels |
 | `containers-edge-cases.spec.ts` | 10 | Edge case container operations |
+| `rebuild.spec.ts` | 12 | Rebuild running/stopped container, preserves metadata (name, displayName, createdAt, initScript, environment config), returns new container ID, removes old ID from list, cleans up port mappings, non-existent container error, response field completeness |
 | `tmux-panes.spec.ts` | 29 | Window CRUD, name validation, main window protection, duplicates, rename verify, whitespace name, non-existent container, auto-generated name format, rename/delete idempotency, main always present, 50-char name, rename main behavior, missing newName in body |
 | `apps.spec.ts` | 14 | App lifecycle (socks5 start/stop, chromium), error handling (invalid type, non-existent container/instance), response fields (id/port on start, instance fields on list, ok on stop) |
 | `environments.spec.ts` | 38 | Full CRUD, all 5 network modes, field validation, partial update, timestamps, dockerEnabled, includePackageManagerDomains, list field completeness, networkMode change (full→custom), non-existent environmentId, name type validation (number/null/boolean), update with same name, delete+re-fetch, list sorting, cpuLimit zero, all fields populated, empty name rejection, negative cpuLimit |
@@ -116,7 +117,7 @@ tests/
 | `terminal-exec.spec.ts` | 12 | WebSocket connect, initial output, echo command, pwd /workspace, HOME /home/agent, exit codes, named tmux window, resize, concurrent window isolation, multiline output, whoami agent user, non-existent container |
 | `agent-prompting.spec.ts` | 6 | Agent CLI start + prompt response for Claude, Codex, Gemini (2 tests each, skipped without credentials) |
 
-### UI Tests (~452 tests, 36 files)
+### UI Tests (~458 tests, 37 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -127,6 +128,7 @@ tests/
 | `cross-modal-navigation.spec.ts` | 6 | Manage button navigation between modals |
 | `container-card.spec.ts` | 14 | Name, status, buttons, icons, stop/restart/archive, Restart hidden when running |
 | `container-card-advanced.spec.ts` | 7 | Advanced container card interactions, icon-only action buttons, single button row layout, compact card design |
+| `rebuild.spec.ts` | 6 | Rebuild button visibility (running + stopped), confirm dialog dismiss cancels, rebuild state transition, display name preserved, new container ID after rebuild |
 | `container-detail-modal.spec.ts` | 43 | Modal content, Worker section (Container/ID/Image/ImageID/Created), Configuration section (Environment/CPU/Memory/Docker), Network (Mode/Allowed Domains/Package Managers), Repositories, Mounts, Init Script, Exposed Worker APIs (badges), Skills (badges), AGENTS.md (badges), Env Vars, Setup Script, status badge color, section order, close (Escape + overlay), custom environment name, snapshotted config |
 | `environments-modal.spec.ts` | 20 | Open/close, pre-created env, create button, form fields (network, Docker, resources), Setup Script, Init Script, Create button |
 | `environments-modal-advanced.spec.ts` | 5 | Advanced environment modal interactions |
