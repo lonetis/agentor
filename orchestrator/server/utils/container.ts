@@ -420,12 +420,11 @@ export class ContainerManager {
     const memoryLimit = envConfig.memoryLimit || worker.memoryLimit || this.config.defaultMemoryLimit || undefined;
     const dockerEnabled = envConfig.dockerEnabled ?? worker.dockerEnabled ?? true;
 
-    // Unarchived workers don't re-run init scripts (sentinel file exists)
     const workerJson: WorkerJsonPayload = {
       name: worker.name,
       displayName: worker.displayName || '',
       repos: worker.repos || [],
-      initScript: '',
+      initScript: worker.initScript || '',
     };
 
     const container = await this.dockerService.createWorkerContainer({
