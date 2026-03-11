@@ -13,6 +13,7 @@ const emit = defineEmits<{
   openEditor: [containerId: string];
   stop: [id: string];
   restart: [id: string];
+  rebuild: [id: string];
   remove: [id: string];
   archive: [id: string];
   downloadWorkspace: [id: string];
@@ -145,6 +146,15 @@ const isRunning = computed(() => props.container.status === 'running');
           variant="subtle"
           icon="i-lucide-square"
           @click="emit('stop', container.id)"
+        />
+      </UTooltip>
+      <UTooltip text="Rebuild">
+        <UButton
+          size="xs"
+          color="info"
+          variant="subtle"
+          icon="i-lucide-hammer"
+          @click="emit('rebuild', container.id)"
         />
       </UTooltip>
       <UTooltip text="Archive">

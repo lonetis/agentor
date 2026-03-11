@@ -387,6 +387,107 @@ export class ContainerManager {
     this.containers.delete(id);
   }
 
+  async rebuild(id: string): Promise<ContainerInfo> {
+    const info = this.containers.get(id);
+    if (!info) throw new Error('Container not found');
+
+    // Stop and remove the old container
+    if (info.status === 'running') {
+      await this.dockerService.stopContainer(id);
+    }
+    await this.dockerService.removeContainer(id);
+
+    // Remove DinD volume (ephemeral — workspace is preserved)
+    if (this.storageManager) {
+      await this.storageManager.removeWorkerDocker(info.name);
+    } else {
+      await this.dockerService.removeVolume(`${info.name}-docker`);
+    }
+
+    this.containers.delete(id);
+
+    // Resolve environment config (graceful fallback to current container info if environment was deleted)
+    const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
+    let envConfig: ResolvedEnvConfig = {
+      environmentJson: {
+        networkMode: info.networkMode || 'full',
+        allowedDomains: info.allowedDomains || [],
+        dockerEnabled: info.dockerEnabled ?? true,
+        setupScript: info.setupScript || '',
+        envVars: info.envVars || '',
+        exposeApis: info.exposeApis || defaultExposeApis,
+      },
+      includePackageManagerDomains: info.includePackageManagerDomains,
+      skillsJson: info.skillNames?.map((name) => ({ name, content: '' })) || [],
+      agentsMdJson: info.agentsMdNames?.map((name) => ({ name, content: '' })) || [],
+    };
+    try {
+      envConfig = this.resolveEnvironmentConfig(info.environmentId);
+    } catch {
+      // Environment may have been deleted — use current container info
+    }
+
+    const cpuLimit = envConfig.cpuLimit ?? info.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
+    const memoryLimit = envConfig.memoryLimit || info.memoryLimit || this.config.defaultMemoryLimit || undefined;
+    const dockerEnabled = envConfig.dockerEnabled ?? info.dockerEnabled ?? true;
+
+    const workerJson: WorkerJsonPayload = {
+      name: info.name,
+      displayName: info.displayName || '',
+      repos: info.repos || [],
+      initScript: info.initScript || '',
+    };
+
+    const container = await this.dockerService.createWorkerContainer({
+      name: info.name,
+      displayName: info.displayName,
+      cpuLimit,
+      memoryLimit,
+      dockerEnabled,
+      credentialBinds: this.credentialMountManager?.getBindMounts(),
+      environmentJson: envConfig.environmentJson,
+      skillsJson: envConfig.skillsJson,
+      agentsMdJson: envConfig.agentsMdJson,
+      workerJson,
+      storageManager: this.storageManager,
+    });
+
+    const image = this.config.workerImagePrefix + this.config.workerImage;
+    const containerInfo: ContainerInfo = {
+      id: container.id,
+      name: info.name,
+      displayName: info.displayName,
+      repos: info.repos,
+      mounts: info.mounts,
+      initScript: info.initScript,
+      status: 'running',
+      createdAt: info.createdAt,
+      image,
+      imageId: '',
+      environmentId: info.environmentId,
+      environmentName: envConfig.environmentName || info.environmentName,
+      cpuLimit,
+      memoryLimit,
+      networkMode: info.networkMode,
+      dockerEnabled,
+      allowedDomains: info.allowedDomains,
+      includePackageManagerDomains: info.includePackageManagerDomains,
+      setupScript: info.setupScript,
+      envVars: info.envVars,
+      exposeApis: info.exposeApis,
+      skillNames: info.skillNames,
+      agentsMdNames: info.agentsMdNames,
+    };
+
+    this.containers.set(container.id, containerInfo);
+
+    if (this.workerStore) {
+      await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
+    }
+
+    return containerInfo;
+  }
+
   async unarchive(name: string): Promise<ContainerInfo> {
     if (!this.workerStore) throw new Error('WorkerStore not available');
 

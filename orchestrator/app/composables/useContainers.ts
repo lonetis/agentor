@@ -26,6 +26,12 @@ export function useContainers() {
     await refresh();
   }
 
+  async function rebuildContainer(id: string): Promise<ContainerInfo> {
+    const result = await $fetch<ContainerInfo>(`/api/containers/${id}/rebuild`, { method: 'POST' });
+    await refresh();
+    return result;
+  }
+
   async function removeContainer(id: string) {
     await $fetch(`/api/containers/${id}`, { method: 'DELETE' });
     await refresh();
@@ -37,6 +43,7 @@ export function useContainers() {
     createContainer,
     stopContainer,
     restartContainer,
+    rebuildContainer,
     removeContainer,
   };
 }

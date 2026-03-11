@@ -4,7 +4,7 @@ import type { CreateContainerRequest } from '~/types';
 useHead({ title: 'Agentor' });
 
 const { gitProviders } = useGitProviders();
-const { containers, refresh: refreshContainers, createContainer, stopContainer, restartContainer, removeContainer } = useContainers();
+const { containers, refresh: refreshContainers, createContainer, stopContainer, restartContainer, rebuildContainer, removeContainer } = useContainers();
 const { archivedWorkers, refresh: refreshArchived, archiveWorker, unarchiveWorker, deleteArchivedWorker } = useArchivedWorkers();
 const {
   rootNode,
@@ -51,6 +51,15 @@ function handleDownloadWorkspace(id: string) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+async function handleRebuild(id: string) {
+  if (!confirm('Rebuild this worker? The container will be destroyed and recreated with the latest image. Workspace data is preserved.')) return;
+  closeTabsForContainer(id);
+  const rebuilt = await rebuildContainer(id);
+  if (rebuilt) {
+    handleOpenTab(rebuilt.id, 'terminal');
+  }
 }
 
 async function handleRemove(id: string) {
@@ -124,6 +133,7 @@ function openInitScriptsFromModal() {
       @open-editor="(cid) => handleOpenTab(cid, 'editor')"
       @stop-container="stopContainer"
       @restart-container="restartContainer"
+      @rebuild-container="handleRebuild"
       @remove-container="handleRemove"
       @archive-container="handleArchive"
       @download-workspace="handleDownloadWorkspace"

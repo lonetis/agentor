@@ -20,6 +20,7 @@ const emit = defineEmits<{
   openEditor: [containerId: string];
   stopContainer: [id: string];
   restartContainer: [id: string];
+  rebuildContainer: [id: string];
   removeContainer: [id: string];
   archiveContainer: [id: string];
   downloadWorkspace: [id: string];
@@ -258,6 +259,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             @open-editor="(cid) => emit('openEditor', cid)"
             @stop="(id) => emit('stopContainer', id)"
             @restart="(id) => emit('restartContainer', id)"
+            @rebuild="(id) => emit('rebuildContainer', id)"
             @remove="(id) => emit('removeContainer', id)"
             @archive="(id) => emit('archiveContainer', id)"
             @download-workspace="(id) => emit('downloadWorkspace', id)"
