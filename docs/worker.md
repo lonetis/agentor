@@ -10,7 +10,7 @@ A single Docker image (`agentor-worker`, built from `worker/`) contains all agen
 - `AGENTS_MD` — array of `{ name, content }` entries
 - `WORKER` — name, displayName, repos, initScript
 
-Individual env vars that CLIs read directly remain as-is: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`.
+Individual env vars that CLIs read directly remain as-is: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`.
 
 ### Worker Image Contents
 

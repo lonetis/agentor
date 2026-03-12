@@ -25,6 +25,10 @@ Log in once: open a worker terminal, run `claude`, then use `/login`.
 The credentials are written back to this file automatically and all
 current and future workers are authenticated.
 
+Alternative: set CLAUDE_CODE_OAUTH_TOKEN in .env instead.
+Generate on a machine with a browser: claude setup-token
+Valid for 1 year, no refresh rotation issues. See .env.example.
+
 codex.json
 ----------
 Path in worker: ~/.codex/auth.json

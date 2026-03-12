@@ -20,10 +20,10 @@ Automatic image update detection and per-image or bulk updates for production de
 
 ## Agent Usage Monitoring
 
-Polls agent usage APIs to show remaining capacity in the sidebar. Only works for OAuth-authenticated agents (credential files in `.cred/`). API key auth has no usage endpoints.
+Polls agent usage APIs to show remaining capacity in the sidebar. Works for OAuth-authenticated agents (credential files in `.cred/` or `CLAUDE_CODE_OAUTH_TOKEN` env var). API key auth has no usage endpoints.
 
 **Architecture:**
-- `UsageChecker` (`usage-checker.ts`): Singleton + 5min polling. Per-agent state (results, backoff, last fetch time) persisted to `usage.json` in the data directory — each agent tracks its own fetch time and backoff independently, so a failure in one agent doesn't affect others. On restart, serves persisted results immediately; only re-fetches agents whose data is stale. Reads credential files from `/cred/`, detects auth type per agent (OAuth > API key > none), fetches usage in parallel
+- `UsageChecker` (`usage-checker.ts`): Singleton + 5min polling. Per-agent state (results, backoff, last fetch time) persisted to `usage.json` in the data directory — each agent tracks its own fetch time and backoff independently, so a failure in one agent doesn't affect others. On restart, serves persisted results immediately; only re-fetches agents whose data is stale. Reads credential files from `/cred/` and `CLAUDE_CODE_OAUTH_TOKEN` env var, detects auth type per agent (OAuth > API key > none), fetches usage in parallel
 - `UsagePanel.vue`: Sidebar component showing per-agent auth badge + progress bars per usage window + "Fetched Xm ago" relative timestamp
 - `useUsage.ts`: composable for 5min polling of `/api/usage`
 
@@ -31,7 +31,7 @@ Polls agent usage APIs to show remaining capacity in the sidebar. Only works for
 
 | Agent | Endpoint | Auth | Token Refresh |
 |-------|----------|------|---------------|
-| Claude | `GET https://api.anthropic.com/api/oauth/usage` | Bearer + `anthropic-beta: oauth-2025-04-20` | Not needed (CLI handles it) |
+| Claude | `GET https://api.anthropic.com/api/oauth/usage` | Bearer + `anthropic-beta: oauth-2025-04-20` | Not needed (CLI handles it). Supports `.cred/claude.json` OAuth or `CLAUDE_CODE_OAUTH_TOKEN` env var |
 | Codex | `GET https://chatgpt.com/backend-api/wham/usage` | Bearer (+ optional `ChatGPT-Account-Id`) | Hardcoded client_id, refreshes when `last_refresh` > 8 days |
 | Gemini | `POST https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota` | Bearer | Not implemented (CLI client_id/secret not available in orchestrator); reports error if token expired |
 

@@ -40,7 +40,7 @@ export async function checkAgentCredentials(request: APIRequestContext): Promise
   const hasCred = (agentId: string) => credFiles.find(c => c.agentId === agentId)?.configured ?? false;
 
   return {
-    claude: hasEnv('ANTHROPIC_API_KEY') || hasCred('claude'),
+    claude: hasEnv('ANTHROPIC_API_KEY') || hasEnv('CLAUDE_CODE_OAUTH_TOKEN') || hasCred('claude'),
     codex: hasEnv('OPENAI_API_KEY') || hasCred('codex'),
     gemini: hasEnv('GEMINI_API_KEY') || hasCred('gemini'),
   };

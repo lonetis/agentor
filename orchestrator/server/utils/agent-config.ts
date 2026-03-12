@@ -19,7 +19,10 @@ const AGENT_CONFIGS: AgentConfig[] = [
       'sentry.io',
       'storage.googleapis.com',
     ],
-    envVars: { ANTHROPIC_API_KEY: 'anthropicApiKey' },
+    envVars: {
+      ANTHROPIC_API_KEY: 'anthropicApiKey',
+      CLAUDE_CODE_OAUTH_TOKEN: 'claudeCodeOauthToken',
+    },
   },
   {
     id: 'codex',

@@ -16,6 +16,7 @@ export interface DnsProviderConfig {
 export interface Config {
   githubToken: string;
   anthropicApiKey: string;
+  claudeCodeOauthToken: string;
   openaiApiKey: string;
   geminiApiKey: string;
   dockerNetwork: string;
@@ -112,6 +113,7 @@ export function loadConfig(): Config {
   return {
     githubToken: process.env.GITHUB_TOKEN || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+    claudeCodeOauthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN || '',
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     geminiApiKey: process.env.GEMINI_API_KEY || '',
     dockerNetwork: process.env.DOCKER_NETWORK || 'agentor-net',

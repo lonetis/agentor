@@ -104,7 +104,7 @@ export class UsageChecker {
       this.readCredFile<CodexCredFile>('codex.json'),
       this.readCredFile<GeminiCredFile>('gemini.json'),
     ]);
-    return !!(claude?.claudeAiOauth?.accessToken || codex?.tokens?.access_token || gemini?.access_token);
+    return !!(claude?.claudeAiOauth?.accessToken || this.config.claudeCodeOauthToken || codex?.tokens?.access_token || gemini?.access_token);
   }
 
   private async loadState(): Promise<void> {
@@ -206,6 +206,7 @@ export class UsageChecker {
 
   private detectAuthType(agentId: string, hasOAuth: boolean): AgentAuthType {
     if (hasOAuth) return 'oauth';
+    if (agentId === 'claude' && this.config.claudeCodeOauthToken) return 'oauth';
     const keyMap: Record<string, string> = {
       claude: 'anthropicApiKey',
       codex: 'openaiApiKey',
@@ -221,8 +222,8 @@ export class UsageChecker {
   private async fetchClaudeUsage(): Promise<AgentUsageInfo> {
     const now = new Date().toISOString();
     const cred = await this.readCredFile<ClaudeCredFile>('claude.json');
-    const token = cred?.claudeAiOauth?.accessToken;
-    const authType = this.detectAuthType('claude', !!token);
+    const token = cred?.claudeAiOauth?.accessToken || this.config.claudeCodeOauthToken || '';
+    const authType = this.detectAuthType('claude', !!(cred?.claudeAiOauth?.accessToken || this.config.claudeCodeOauthToken));
 
     const base: AgentUsageInfo = {
       agentId: 'claude',

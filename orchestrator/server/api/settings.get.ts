@@ -80,7 +80,10 @@ export default defineEventHandler(async () => {
   // --- Agent Authentication ---
   const authItems: SettingItem[] = [];
 
-  // API keys
+  // API keys + setup tokens
+  const envVarLabels: Record<string, string> = {
+    CLAUDE_CODE_OAUTH_TOKEN: 'Claude Setup Token',
+  };
   const seen = new Set<string>();
   for (const agent of listAgentConfigs()) {
     for (const [envName, configKey] of Object.entries(agent.envVars)) {
@@ -89,7 +92,7 @@ export default defineEventHandler(async () => {
       const value = config[configKey as keyof Config] as string;
       authItems.push({
         key: envName,
-        label: `${agent.displayName} API Key`,
+        label: envVarLabels[envName] || `${agent.displayName} API Key`,
         value: statusValue(!!value),
         type: 'status',
         sensitive: true,

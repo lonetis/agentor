@@ -109,4 +109,4 @@ See @docs/testing.md for full details (writing tests, conventions, helpers, debu
 
 ## Environment Variables
 
-See @.env.example for full list. Agent API keys (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) are optional — for OAuth/subscription auth, log in once inside any worker instead (see @.cred.example/README).
+See @.env.example for full list. Agent API keys (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) are optional — for OAuth/subscription auth, log in once inside any worker instead (see @.cred.example/README). Claude also supports `CLAUDE_CODE_OAUTH_TOKEN` (1-year setup token, generated via `claude setup-token`).
