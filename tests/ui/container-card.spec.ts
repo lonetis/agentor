@@ -159,8 +159,8 @@ test.describe.serial('Container Card', () => {
     // are hidden (v-if="isRunning") but action buttons (Restart, Archive, Remove) remain
     const iconButtons = card.locator('button');
     const count = await iconButtons.count();
-    // 3 action buttons remain: Restart, Archive, Remove
-    expect(count).toBe(3);
+    // 4 action buttons remain: Restart, Rebuild, Archive, Remove
+    expect(count).toBe(4);
   });
 
   test('Restart button appears when stopped', async ({ page }) => {

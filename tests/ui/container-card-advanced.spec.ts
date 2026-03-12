@@ -116,8 +116,8 @@ test.describe.serial('Container Card — Advanced', () => {
     // but action buttons (Restart, Archive, Remove) remain as icon buttons
     const iconButtons = card.locator('button');
     const count = await iconButtons.count();
-    // 3 action buttons remain: Restart, Archive, Remove
-    expect(count).toBe(3);
+    // 4 action buttons remain: Restart, Rebuild, Archive, Remove
+    expect(count).toBe(4);
   });
 
   test('restart transitions card back to running state', async ({ page }) => {
