@@ -668,3 +668,17 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Corrupt localStorage: falls back to defaults
 - Partial state: fills missing fields with defaults
 - Width clamping: below 200 → 200, above 700 → 700
+
+---
+
+## 26. Agent Setup Defaults
+
+### 26.1 Default MCP Servers
+- All agents get two MCP servers pre-configured on first startup
+- **Playwright MCP** (`@playwright/mcp@latest`): browser automation via Playwright
+- **Chrome DevTools MCP** (`chrome-devtools-mcp@latest`): Chrome DevTools Protocol access
+- Claude: configured in `~/.claude.json` under `mcpServers` (user scope)
+- Codex: configured in `~/.codex/config.toml` under `[mcp_servers.*]` sections
+- Gemini: configured in `~/.gemini/settings.json` under `mcpServers`
+- Write-once: user modifications to config files are preserved on restart/rebuild
+- MCP packages are downloaded via `npx -y` on first agent use

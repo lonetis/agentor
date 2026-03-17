@@ -14,11 +14,16 @@ if [ ! -f ~/.gemini/trustedFolders.json ]; then
 fi
 
 if [ ! -f ~/.gemini/settings.json ]; then
+    # MCP servers shared across all auth methods
+    MCP_SERVERS='"mcpServers":{"playwright":{"command":"npx","args":["-y","@playwright/mcp@latest"]},"chrome-devtools":{"command":"npx","args":["-y","chrome-devtools-mcp@latest"]}}'
+
     # Detect auth method and write initial settings
     if [ -f ~/.gemini/oauth_creds.json ] && [ "$(wc -c < ~/.gemini/oauth_creds.json)" -gt 3 ]; then
-        echo '{"security":{"auth":{"selectedType":"oauth-personal"}}}' > ~/.gemini/settings.json
+        echo "{\"security\":{\"auth\":{\"selectedType\":\"oauth-personal\"}},${MCP_SERVERS}}" > ~/.gemini/settings.json
     elif [ -n "$GEMINI_API_KEY" ]; then
-        echo '{"security":{"auth":{"selectedType":"gemini-api-key"}}}' > ~/.gemini/settings.json
+        echo "{\"security\":{\"auth\":{\"selectedType\":\"gemini-api-key\"}},${MCP_SERVERS}}" > ~/.gemini/settings.json
+    else
+        echo "{${MCP_SERVERS}}" > ~/.gemini/settings.json
     fi
 fi
 

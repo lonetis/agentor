@@ -27,6 +27,7 @@ EOF
 fi
 
 # ~/.claude.json — entrypoint seeds the volume with {} on first creation
+# MCP servers go here (user scope — visible in `claude mcp list`)
 CLAUDE_JSON=~/.claude.json
 if [ ! -f "$CLAUDE_JSON" ] || [ "$(cat "$CLAUDE_JSON" 2>/dev/null)" = "{}" ]; then
     cat > "$CLAUDE_JSON" <<'EOF'
@@ -36,6 +37,16 @@ if [ ! -f "$CLAUDE_JSON" ] || [ "$(cat "$CLAUDE_JSON" 2>/dev/null)" = "{}" ]; th
   "projects": {
     "/workspace": {
       "hasTrustDialogAccepted": true
+    }
+  },
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
     }
   }
 }

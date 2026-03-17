@@ -63,6 +63,18 @@ test.describe.serial('Agent data persistence — mount verification', () => {
     expect(output).toContain('bypassPermissions');
   });
 
+  test('claude.json contains playwright MCP server', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.claude.json');
+    expect(output).toContain('"playwright"');
+    expect(output).toContain('@playwright/mcp@latest');
+  });
+
+  test('claude.json contains chrome-devtools MCP server', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.claude.json');
+    expect(output).toContain('"chrome-devtools"');
+    expect(output).toContain('chrome-devtools-mcp@latest');
+  });
+
   test('claude.json exists with onboarding and trust keys', async () => {
     const output = await execInWorker(containerId, 'cat ~/.claude.json');
     expect(output).toContain('hasCompletedOnboarding');
@@ -75,10 +87,34 @@ test.describe.serial('Agent data persistence — mount verification', () => {
     expect(output).toContain('/workspace');
   });
 
+  test('codex config.toml contains playwright MCP server', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.codex/config.toml');
+    expect(output).toContain('[mcp_servers.playwright]');
+    expect(output).toContain('@playwright/mcp@latest');
+  });
+
+  test('codex config.toml contains chrome-devtools MCP server', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.codex/config.toml');
+    expect(output).toContain('[mcp_servers.chrome-devtools]');
+    expect(output).toContain('chrome-devtools-mcp@latest');
+  });
+
   test('gemini trustedFolders.json exists with workspace trust', async () => {
     const output = await execInWorker(containerId, 'cat ~/.gemini/trustedFolders.json');
     expect(output).toContain('TRUST_FOLDER');
     expect(output).toContain('/workspace');
+  });
+
+  test('gemini settings.json contains playwright MCP server', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.gemini/settings.json');
+    expect(output).toContain('playwright');
+    expect(output).toContain('@playwright/mcp@latest');
+  });
+
+  test('gemini settings.json contains chrome-devtools MCP server', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.gemini/settings.json');
+    expect(output).toContain('chrome-devtools');
+    expect(output).toContain('chrome-devtools-mcp@latest');
   });
 });
 

@@ -12,6 +12,14 @@ if [ ! -f ~/.codex/config.toml ]; then
     cat > ~/.codex/config.toml <<'EOF'
 [projects."/workspace"]
 trust_level = "trusted"
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp@latest"]
+
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = ["-y", "chrome-devtools-mcp@latest"]
 EOF
 fi
 
