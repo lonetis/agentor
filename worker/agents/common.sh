@@ -9,7 +9,7 @@ safe_name() {
 }
 
 # Merge AGENTS_MD JSON entries and write to a single markdown file.
-# Appends if the file already exists, creates otherwise.
+# Always overwrites — on rebuild, we want fresh Agentor content (not duplicated appends).
 # Usage: write_agents_md ~/.claude/CLAUDE.md
 write_agents_md() {
     local output_path="$1"
@@ -34,11 +34,7 @@ ${content}"
     done
 
     mkdir -p "$(dirname "$output_path")"
-    if [ -f "$output_path" ]; then
-        printf '\n\n%s' "$merged" >> "$output_path"
-    else
-        echo "$merged" > "$output_path"
-    fi
+    echo "$merged" > "$output_path"
 }
 
 # Write each SKILLS JSON entry as a markdown SKILL.md file.
