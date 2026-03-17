@@ -39,10 +39,11 @@ fi
 # Merge ~/.claude.json (preserve user MCP servers, custom preferences)
 CLAUDE_JSON=~/.claude.json
 if [ -f "$CLAUDE_JSON" ] && [ -s "$CLAUDE_JSON" ] && [ "$(cat "$CLAUDE_JSON")" != "{}" ]; then
+    # Write to /tmp then redirect back (shell > follows symlinks; mv would replace the symlink)
     jq '.hasCompletedOnboarding = true |
         .effortCalloutDismissed = true |
         .projects["/workspace"].hasTrustDialogAccepted = true' \
-        "$CLAUDE_JSON" > "$CLAUDE_JSON.tmp" && mv "$CLAUDE_JSON.tmp" "$CLAUDE_JSON"
+        "$CLAUDE_JSON" > /tmp/claude-json-merge.tmp && cat /tmp/claude-json-merge.tmp > "$CLAUDE_JSON" && rm /tmp/claude-json-merge.tmp
 else
     cat > "$CLAUDE_JSON" <<'EOF'
 {

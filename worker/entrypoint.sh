@@ -109,6 +109,11 @@ if [ -d "$AGENT_DATA" ]; then
     done
 
     # ~/.claude.json (MCP servers, preferences — separate file outside ~/.claude/)
+    # Tools doing atomic writes (temp+rename) replace the symlink with a regular file.
+    # On restart, sync the regular file back to the volume before re-creating the symlink.
+    if [ -e /home/agent/.claude.json ] && [ ! -L /home/agent/.claude.json ] && [ -s /home/agent/.claude.json ]; then
+        cp /home/agent/.claude.json "$AGENT_DATA/.claude.json"
+    fi
     if [ ! -f "$AGENT_DATA/.claude.json" ]; then
         echo '{}' > "$AGENT_DATA/.claude.json"
     fi

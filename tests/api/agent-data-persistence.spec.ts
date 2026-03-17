@@ -1,0 +1,243 @@
+import { test, expect } from '@playwright/test';
+import { ApiClient } from '../helpers/api-client';
+import { createWorker, cleanupWorker, waitForWorkerRunning } from '../helpers/worker-lifecycle';
+import { TerminalWsClient } from '../helpers/terminal-ws';
+
+/**
+ * Helper: connect to terminal, wait for prompt, run a command, return output.
+ */
+async function execInWorker(containerId: string, command: string, timeoutMs = 15_000): Promise<string> {
+  const ws = new TerminalWsClient(containerId);
+  try {
+    await ws.connect();
+    await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
+    ws.clearBuffer();
+
+    const marker = `__END_${Date.now()}__`;
+    ws.sendLine(`${command}; echo ${marker}`);
+    await ws.waitForOutput(new RegExp(marker), timeoutMs);
+
+    return ws.getBuffer();
+  } finally {
+    ws.close();
+  }
+}
+
+// -- Symlink and mount verification (single worker, serial) --
+
+test.describe.serial('Agent data persistence — mount verification', () => {
+  let containerId: string;
+  let containerName: string;
+
+  test.beforeAll(async ({ request }) => {
+    const container = await createWorker(request, { displayName: `AgentData-${Date.now()}` });
+    containerId = container.id;
+    containerName = container.name;
+  });
+
+  test.afterAll(async ({ request }) => {
+    await cleanupWorker(request, containerId);
+  });
+
+  test('agent config dirs are symlinked to .agent-data volume', async () => {
+    const output = await execInWorker(containerId, 'readlink ~/.claude && readlink ~/.gemini && readlink ~/.codex && readlink ~/.agents');
+    expect(output).toContain('/home/agent/.agent-data/.claude');
+    expect(output).toContain('/home/agent/.agent-data/.gemini');
+    expect(output).toContain('/home/agent/.agent-data/.codex');
+    expect(output).toContain('/home/agent/.agent-data/.agents');
+  });
+
+  test('~/.claude.json is symlinked to .agent-data volume', async () => {
+    const output = await execInWorker(containerId, 'readlink ~/.claude.json');
+    expect(output).toContain('/home/agent/.agent-data/.claude.json');
+  });
+
+  test('credential files are symlinked from .agent-creds', async () => {
+    const output = await execInWorker(containerId, 'readlink ~/.claude/.credentials.json 2>/dev/null; readlink ~/.codex/auth.json 2>/dev/null; readlink ~/.gemini/oauth_creds.json 2>/dev/null');
+    expect(output).toContain('/home/agent/.agent-creds/claude.json');
+    expect(output).toContain('/home/agent/.agent-creds/codex.json');
+    expect(output).toContain('/home/agent/.agent-creds/gemini.json');
+  });
+
+  test('claude settings.json exists with expected keys', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.claude/settings.json');
+    expect(output).toContain('skipDangerousModePermissionPrompt');
+    expect(output).toContain('bypassPermissions');
+  });
+
+  test('claude.json exists with onboarding and trust keys', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.claude.json');
+    expect(output).toContain('hasCompletedOnboarding');
+    expect(output).toContain('/workspace');
+  });
+
+  test('codex config.toml exists with workspace trust', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.codex/config.toml');
+    expect(output).toContain('trust_level');
+    expect(output).toContain('/workspace');
+  });
+
+  test('gemini trustedFolders.json exists with workspace trust', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.gemini/trustedFolders.json');
+    expect(output).toContain('TRUST_FOLDER');
+    expect(output).toContain('/workspace');
+  });
+});
+
+// -- Persistence across restart (serial, single worker) --
+
+test.describe.serial('Agent data persistence — restart', () => {
+  let containerId: string;
+  const MARKER = `restart-persist-${Date.now()}`;
+
+  test.beforeAll(async ({ request }) => {
+    const container = await createWorker(request, { displayName: `Restart-${Date.now()}` });
+    containerId = container.id;
+  });
+
+  test.afterAll(async ({ request }) => {
+    await cleanupWorker(request, containerId);
+  });
+
+  test('write marker file to agent config dir', async () => {
+    const output = await execInWorker(containerId, `echo "${MARKER}" > ~/.claude/test-marker.txt && cat ~/.claude/test-marker.txt`);
+    expect(output).toContain(MARKER);
+  });
+
+  test('marker file persists after container restart', async ({ request }) => {
+    const api = new ApiClient(request);
+    await api.stopContainer(containerId);
+    await new Promise(r => setTimeout(r, 2000));
+    await api.restartContainer(containerId);
+    await waitForWorkerRunning(request, containerId, 90_000);
+
+    const output = await execInWorker(containerId, `cat ~/.claude/test-marker.txt`);
+    expect(output).toContain(MARKER);
+  });
+});
+
+// -- Persistence across rebuild (serial, single worker) --
+
+test.describe.serial('Agent data persistence — rebuild', () => {
+  let containerId: string;
+  const MARKER = `rebuild-persist-${Date.now()}`;
+
+  test.beforeAll(async ({ request }) => {
+    const container = await createWorker(request, { displayName: `Rebuild-${Date.now()}` });
+    containerId = container.id;
+  });
+
+  test.afterAll(async ({ request }) => {
+    await cleanupWorker(request, containerId);
+  });
+
+  test('write marker file to agent config dir', async () => {
+    const output = await execInWorker(containerId, `echo "${MARKER}" > ~/.gemini/test-marker.txt && cat ~/.gemini/test-marker.txt`);
+    expect(output).toContain(MARKER);
+  });
+
+  test('marker file persists after container rebuild', async ({ request }) => {
+    const api = new ApiClient(request);
+    const { status, body } = await api.rebuildContainer(containerId);
+    expect(status).toBe(200);
+    containerId = body.id;
+
+    await waitForWorkerRunning(request, containerId, 90_000);
+
+    const output = await execInWorker(containerId, `cat ~/.gemini/test-marker.txt`);
+    expect(output).toContain(MARKER);
+  });
+});
+
+// -- Persistence across archive/unarchive (serial, single worker) --
+
+test.describe.serial('Agent data persistence — archive/unarchive', () => {
+  let containerId: string;
+  let containerName: string;
+  const MARKER = `archive-persist-${Date.now()}`;
+
+  test.beforeAll(async ({ request }) => {
+    const container = await createWorker(request, { displayName: `Archive-${Date.now()}` });
+    containerId = container.id;
+    containerName = container.name;
+  });
+
+  test.afterAll(async ({ request }) => {
+    await cleanupWorker(request, containerId);
+  });
+
+  test('write marker file to agent config dir', async () => {
+    const output = await execInWorker(containerId, `echo "${MARKER}" > ~/.codex/test-marker.txt && cat ~/.codex/test-marker.txt`);
+    expect(output).toContain(MARKER);
+  });
+
+  test('marker file persists after archive and unarchive', async ({ request }) => {
+    const api = new ApiClient(request);
+    await api.archiveContainer(containerId);
+
+    const { status, body } = await api.unarchiveWorker(containerName);
+    expect(status).toBe(200);
+    containerId = body.id;
+
+    await waitForWorkerRunning(request, containerId, 90_000);
+
+    const output = await execInWorker(containerId, `cat ~/.codex/test-marker.txt`);
+    expect(output).toContain(MARKER);
+  });
+});
+
+// -- Config merging on restart (serial, single worker) --
+
+test.describe.serial('Agent data persistence — config merging', () => {
+  let containerId: string;
+
+  test.beforeAll(async ({ request }) => {
+    const container = await createWorker(request, { displayName: `Merge-${Date.now()}` });
+    containerId = container.id;
+  });
+
+  test.afterAll(async ({ request }) => {
+    await cleanupWorker(request, containerId);
+  });
+
+  test('user additions to claude settings.json survive restart', async ({ request }) => {
+    // Add a user key to settings.json
+    await execInWorker(containerId,
+      `jq '.myCustomKey = "user-value"' ~/.claude/settings.json > /tmp/s.json && mv /tmp/s.json ~/.claude/settings.json`);
+
+    // Verify it's there
+    let output = await execInWorker(containerId, 'cat ~/.claude/settings.json');
+    expect(output).toContain('user-value');
+
+    // Restart
+    const api = new ApiClient(request);
+    await api.stopContainer(containerId);
+    await new Promise(r => setTimeout(r, 2000));
+    await api.restartContainer(containerId);
+    await waitForWorkerRunning(request, containerId, 90_000);
+
+    // Verify both user key and Agentor keys are present
+    output = await execInWorker(containerId, 'cat ~/.claude/settings.json');
+    expect(output).toContain('user-value');
+    expect(output).toContain('bypassPermissions');
+  });
+
+  test('user additions to claude.json survive restart', async ({ request }) => {
+    // Add a user MCP server config
+    await execInWorker(containerId,
+      `jq '.mcpServers.test = {"command":"echo"}' ~/.claude.json > /tmp/c.json && mv /tmp/c.json ~/.claude.json`);
+
+    let output = await execInWorker(containerId, 'cat ~/.claude.json');
+    expect(output).toContain('mcpServers');
+
+    const api = new ApiClient(request);
+    await api.stopContainer(containerId);
+    await new Promise(r => setTimeout(r, 2000));
+    await api.restartContainer(containerId);
+    await waitForWorkerRunning(request, containerId, 90_000);
+
+    output = await execInWorker(containerId, 'cat ~/.claude.json');
+    expect(output).toContain('mcpServers');
+    expect(output).toContain('hasCompletedOnboarding');
+  });
+});
