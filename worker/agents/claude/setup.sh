@@ -34,6 +34,7 @@ if [ ! -f "$CLAUDE_JSON" ] || [ "$(cat "$CLAUDE_JSON" 2>/dev/null)" = "{}" ]; th
 {
   "hasCompletedOnboarding": true,
   "effortCalloutDismissed": true,
+  "remoteControlAtStartup": true,
   "projects": {
     "/workspace": {
       "hasTrustDialogAccepted": true
