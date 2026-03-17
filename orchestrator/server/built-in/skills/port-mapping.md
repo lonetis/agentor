@@ -1,5 +1,5 @@
 ---
-name: port-mapping
+name: agentor-port-mapping
 description: Expose a port from your worker to the host machine or network. Use when you need to make a dev server, API, database, or any service running inside this container accessible from outside.
 user-invocable: false
 ---

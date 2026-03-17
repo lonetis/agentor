@@ -86,6 +86,49 @@ tmux set-option -w -t "main:$WINDOW_NAME" automatic-rename off
 _log "Tmux: ready"
 
 # ==========================================================================
+# Phase 0a: Persistent agent config (symlinks to .agent-data volume)
+# The orchestrator mounts a persistent volume at ~/.agent-data. We symlink
+# each agent's config directory so history, MCP servers, memory, plugins,
+# etc. survive container restarts, rebuilds, and archive/unarchive cycles.
+# ==========================================================================
+AGENT_DATA=/home/agent/.agent-data
+if [ -d "$AGENT_DATA" ]; then
+    # Fix ownership (Docker may create subdirs as root for credential bind mounts)
+    sudo chown -R agent:agent "$AGENT_DATA"
+
+    # Ensure subdirectories exist in the volume (named same as home dir targets)
+    mkdir -p "$AGENT_DATA"/{.claude,.gemini,.codex,.agents}
+
+    # Symlink agent config dirs to persistent volume
+    for dir in .claude .gemini .codex .agents; do
+        target="/home/agent/$dir"
+        if [ -e "$target" ] && [ ! -L "$target" ]; then
+            rm -rf "$target"
+        fi
+        ln -sfn "$AGENT_DATA/$dir" "$target"
+    done
+
+    # ~/.claude.json (MCP servers, preferences — separate file outside ~/.claude/)
+    if [ ! -f "$AGENT_DATA/.claude.json" ]; then
+        echo '{}' > "$AGENT_DATA/.claude.json"
+    fi
+    if [ -e /home/agent/.claude.json ] && [ ! -L /home/agent/.claude.json ]; then
+        rm -f /home/agent/.claude.json
+    fi
+    ln -sfn "$AGENT_DATA/.claude.json" /home/agent/.claude.json
+
+    # Symlink credential files from neutral mount path into the persistent agent dirs
+    # (credential bind mounts go to ~/.agent-creds/ to avoid nested bind mount issues)
+    if [ -d /home/agent/.agent-creds ]; then
+        [ -f /home/agent/.agent-creds/claude.json ] && ln -sfn /home/agent/.agent-creds/claude.json "$AGENT_DATA/.claude/.credentials.json"
+        [ -f /home/agent/.agent-creds/codex.json ] && ln -sfn /home/agent/.agent-creds/codex.json "$AGENT_DATA/.codex/auth.json"
+        [ -f /home/agent/.agent-creds/gemini.json ] && ln -sfn /home/agent/.agent-creds/gemini.json "$AGENT_DATA/.gemini/oauth_creds.json"
+    fi
+
+    _log "Agent data: symlinks created"
+fi
+
+# ==========================================================================
 # Phase 0b: Export env vars from structured JSON payloads
 # EXPOSE_* flags are needed by skills at runtime; custom env vars from the
 # environment config are exported so they're available in all subsequent phases.

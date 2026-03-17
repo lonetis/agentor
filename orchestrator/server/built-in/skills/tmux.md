@@ -1,5 +1,5 @@
 ---
-name: tmux
+name: agentor-tmux
 description: Manage tmux sessions, windows, and panes inside your worker container. Use when you need to run multiple processes side by side, create background tasks, or organize your terminal workspace.
 user-invocable: false
 ---

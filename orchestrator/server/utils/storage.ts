@@ -83,6 +83,14 @@ export class StorageManager {
     return `${name}-docker:/var/lib/docker`;
   }
 
+  /** Bind string for a worker's persistent agent config data (~/.claude, ~/.gemini, ~/.codex, ~/.agents) */
+  getWorkerAgentsBind(name: string): string {
+    if (this.mode === 'directory') {
+      return `${join(this.dataRef, 'agents', name)}:/home/agent/.agent-data`;
+    }
+    return `${name}-agents:/home/agent/.agent-data`;
+  }
+
   /** Bind string for Traefik certificate storage */
   getCertBind(): string {
     if (this.mode === 'directory') {
@@ -91,13 +99,17 @@ export class StorageManager {
     return 'agentor-traefik-certs:/letsencrypt';
   }
 
-  /** Ensure workspace directory exists with correct ownership (directory mode only) */
+  /** Ensure workspace and agents directories exist with correct ownership (directory mode only) */
   async ensureWorkerDirs(name: string): Promise<void> {
     if (this.mode !== 'directory') return;
 
     const workspaceDir = join(this.dataDir, 'workspaces', name);
     await mkdir(workspaceDir, { recursive: true });
     await this.chownDir(workspaceDir);
+
+    const agentsDir = join(this.dataDir, 'agents', name);
+    await mkdir(agentsDir, { recursive: true });
+    await this.chownDir(agentsDir);
   }
 
   /** Remove a worker's workspace (volume or directory) */
@@ -112,6 +124,15 @@ export class StorageManager {
   /** Remove a worker's Docker-in-Docker volume (always a named volume) */
   async removeWorkerDocker(name: string): Promise<void> {
     await this.removeVolume(`${name}-docker`);
+  }
+
+  /** Remove a worker's persistent agent config data (volume or directory) */
+  async removeWorkerAgents(name: string): Promise<void> {
+    if (this.mode === 'directory') {
+      await rm(join(this.dataDir, 'agents', name), { recursive: true, force: true });
+    } else {
+      await this.removeVolume(`${name}-agents`);
+    }
   }
 
   /** Ensure Traefik cert directory exists (directory mode only) */

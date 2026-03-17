@@ -1,5 +1,5 @@
 ---
-name: usage-monitoring
+name: agentor-usage-monitoring
 description: Check your remaining agent usage quota. Use when you need to check rate limits, remaining capacity, or plan around quota resets before starting a large task.
 user-invocable: false
 ---

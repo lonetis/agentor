@@ -370,9 +370,11 @@ export class ContainerManager {
       if (this.storageManager) {
         await this.storageManager.removeWorkerDocker(info.name);
         await this.storageManager.removeWorkerWorkspace(info.name);
+        await this.storageManager.removeWorkerAgents(info.name);
       } else {
         await this.dockerService.removeVolume(`${info.name}-docker`);
         await this.dockerService.removeVolume(`${info.name}-workspace`);
+        await this.dockerService.removeVolume(`${info.name}-agents`);
       }
       if (this.workerStore) {
         await this.workerStore.delete(info.name).catch((err) => {
@@ -617,9 +619,11 @@ export class ContainerManager {
     if (this.storageManager) {
       await this.storageManager.removeWorkerWorkspace(name);
       await this.storageManager.removeWorkerDocker(name);
+      await this.storageManager.removeWorkerAgents(name);
     } else {
       await this.dockerService.removeVolume(`${name}-workspace`);
       await this.dockerService.removeVolume(`${name}-docker`);
+      await this.dockerService.removeVolume(`${name}-agents`);
     }
     await this.workerStore.delete(name);
   }

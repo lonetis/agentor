@@ -111,6 +111,14 @@ export class DockerService {
       binds.push(`${opts.name}-workspace:/workspace`);
     }
 
+    // Persistent agent config data (~/.claude, ~/.gemini, ~/.codex, ~/.agents)
+    // Mounted at /home/agent/.agent-data, symlinked by entrypoint to expected paths
+    if (opts.storageManager) {
+      binds.push(opts.storageManager.getWorkerAgentsBind(opts.name));
+    } else {
+      binds.push(`${opts.name}-agents:/home/agent/.agent-data`);
+    }
+
     // Docker-in-Docker: overlay2 cannot nest on the container's overlayfs root,
     // but works on a volume or host directory. Data persists across container restarts.
     if (opts.dockerEnabled) {

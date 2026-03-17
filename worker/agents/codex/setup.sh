@@ -7,16 +7,23 @@ mkdir -p ~/.codex
 # Docker may create this dir as root when bind-mounting credential files
 sudo chown agent:agent ~/.codex
 
-# --- Auth + settings (runs every restart) ---
+# --- Auth + settings (runs every restart, merges with existing) ---
 # OAuth credentials are bind-mounted at ~/.codex/auth.json
 # (shared across all workers via .cred/codex.json on the host)
 # API key auth — OPENAI_API_KEY is read from the environment directly by the CLI
 
-# Trust /workspace so the CLI doesn't prompt on startup
-cat > ~/.codex/config.toml << 'EOF'
+# Ensure /workspace trust config exists (append if missing, preserve existing config)
+CONFIG_FILE=~/.codex/config.toml
+if [ -f "$CONFIG_FILE" ]; then
+    if ! grep -q '^\[projects\."/workspace"\]' "$CONFIG_FILE" 2>/dev/null; then
+        printf '\n[projects."/workspace"]\ntrust_level = "trusted"\n' >> "$CONFIG_FILE"
+    fi
+else
+    cat > "$CONFIG_FILE" <<'EOF'
 [projects."/workspace"]
 trust_level = "trusted"
 EOF
+fi
 
 # --- Platform files (first startup only) ---
 SENTINEL="/home/agent/.agentor-platform-init"

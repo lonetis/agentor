@@ -1,5 +1,5 @@
 ---
-name: domain-mapping
+name: agentor-domain-mapping
 description: Map a domain or subdomain to a port in your worker. Use when you need to serve traffic on a proper domain name with HTTPS, set up webhook endpoints, or expose a public-facing service.
 user-invocable: false
 ---

@@ -9,9 +9,9 @@ interface AgentCredentialMapping {
 }
 
 export const AGENT_CREDENTIAL_MAPPINGS: AgentCredentialMapping[] = [
-  { agentId: 'claude', fileName: 'claude.json', containerPath: '/home/agent/.claude/.credentials.json' },
-  { agentId: 'codex', fileName: 'codex.json', containerPath: '/home/agent/.codex/auth.json' },
-  { agentId: 'gemini', fileName: 'gemini.json', containerPath: '/home/agent/.gemini/oauth_creds.json' },
+  { agentId: 'claude', fileName: 'claude.json', containerPath: '/home/agent/.agent-creds/claude.json' },
+  { agentId: 'codex', fileName: 'codex.json', containerPath: '/home/agent/.agent-creds/codex.json' },
+  { agentId: 'gemini', fileName: 'gemini.json', containerPath: '/home/agent/.agent-creds/gemini.json' },
 ];
 
 const CRED_CONTAINER_PATH = '/cred';

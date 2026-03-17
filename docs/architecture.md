@@ -40,6 +40,14 @@ Switch modes by changing one line in the compose file — no env vars needed. `S
 ├── workspaces/          ← worker workspace dirs
 │   ├── agentor-worker-happy-panda/
 │   └── agentor-worker-cool-tiger/
+├── agents/              ← agent config dirs (~/.claude, ~/.gemini, etc.)
+│   ├── agentor-worker-happy-panda/
+│   │   ├── .claude/     ← symlinked to ~/.claude
+│   │   ├── .gemini/     ← symlinked to ~/.gemini
+│   │   ├── .codex/      ← symlinked to ~/.codex
+│   │   ├── .agents/     ← symlinked to ~/.agents
+│   │   └── .claude.json ← symlinked to ~/.claude.json
+│   └── agentor-worker-cool-tiger/
 └── traefik-certs/       ← ACME certificates
     └── acme.json
 ```
@@ -52,6 +60,7 @@ DinD data always uses Docker named volumes (`<name>-docker`) regardless of stora
 |----------|------------|----------------|
 | Data (mapper/traefik) | `<volumeName>:/data:ro` | `<hostPath>:/data:ro` |
 | Worker workspace | `<name>-workspace:/workspace` | `<hostPath>/workspaces/<name>:/workspace` |
+| Worker agents | `<name>-agents:/home/agent/.agent-data` | `<hostPath>/agents/<name>:/home/agent/.agent-data` |
 | Worker DinD | `<name>-docker:/var/lib/docker` | `<name>-docker:/var/lib/docker` (always named volume) |
 | Traefik certs | `agentor-traefik-certs:/letsencrypt` | `<hostPath>/traefik-certs:/letsencrypt` |
 
@@ -60,22 +69,25 @@ DinD data always uses Docker named volumes (`<name>-docker`) regardless of stora
 | Operation | Volume mode | Directory mode |
 |-----------|------------|----------------|
 | Remove workspace | `docker volume rm <name>-workspace` | `rm -rf /data/workspaces/<name>/` |
+| Remove agents | `docker volume rm <name>-agents` | `rm -rf /data/agents/<name>/` |
 | Remove DinD | `docker volume rm <name>-docker` | `docker volume rm <name>-docker` (same) |
 
 ## Worker State & Persistence
 
 Workers exist in four states:
 
-| State | Container | Workspace + DinD | WorkerStore |
-|-------|-----------|------------------|-------------|
+| State | Container | Workspace + Agents + DinD | WorkerStore |
+|-------|-----------|---------------------------|-------------|
 | **running** | Running | Mounted | `active` |
 | **stopped** | Stopped | Mounted | `active` |
 | **archived** | Removed | Kept on disk | `archived` |
 | **deleted** | Removed | Removed | Removed |
 
-### Workspace & DinD Storage
+### Workspace, Agents & DinD Storage
 
-Each worker gets persistent storage mounted at `/workspace` and (when DinD is enabled) `/var/lib/docker`. In **volume mode**, these are Docker named volumes (`${containerName}-workspace`, `${containerName}-docker`). In **directory mode**, these are host directories (`<dataDir>/workspaces/${containerName}/`, `<dataDir>/docker/${containerName}/`). Both survive container stops, restarts, and archiving. On archive, only the container is removed — workspace and DinD data persist for unarchiving. On delete, both are removed.
+Each worker gets persistent storage mounted at `/workspace`, `/home/agent/.agent-data`, and (when DinD is enabled) `/var/lib/docker`. In **volume mode**, these are Docker named volumes (`${containerName}-workspace`, `${containerName}-agents`, `${containerName}-docker`). In **directory mode**, workspace and agents are host directories (`<dataDir>/workspaces/${containerName}/`, `<dataDir>/agents/${containerName}/`). All survive container stops, restarts, and archiving. On archive, only the container is removed — workspace, agents, and DinD data persist for unarchiving. On delete, all are removed.
+
+The agents volume stores agent CLI configuration directories (`claude/`, `gemini/`, `codex/`, `shared/`, `claude.json`). The entrypoint symlinks these to their expected home directory paths (`~/.claude`, `~/.gemini`, `~/.codex`, `~/.agents`, `~/.claude.json`). This preserves MCP server configs, conversation history, auto-memory, installed plugins/extensions, custom commands, and other agent state across container lifecycle events. Credential files (OAuth tokens) are bind-mounted on top of the volume subdirectories — Docker processes the volume mount first, then overlays the individual file bind mounts.
 
 ### WorkerStore
 
