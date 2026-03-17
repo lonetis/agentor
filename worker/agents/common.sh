@@ -28,7 +28,10 @@ write_agents_md() {
 ---
 
 "
-        merged="${merged}# ${name}
+        local underline
+        underline=$(printf '=%.0s' $(seq 1 ${#name}))
+        merged="${merged}${name}
+${underline}
 
 ${content}"
     done
