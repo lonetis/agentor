@@ -27,12 +27,10 @@ async function execInWorker(containerId: string, command: string, timeoutMs = 15
 
 test.describe.serial('Agent data persistence — mount verification', () => {
   let containerId: string;
-  let containerName: string;
 
   test.beforeAll(async ({ request }) => {
     const container = await createWorker(request, { displayName: `AgentData-${Date.now()}` });
     containerId = container.id;
-    containerName = container.name;
   });
 
   test.afterAll(async ({ request }) => {
@@ -186,13 +184,13 @@ test.describe.serial('Agent data persistence — archive/unarchive', () => {
   });
 });
 
-// -- Config merging on restart (serial, single worker) --
+// -- Config files are NOT overwritten on restart/rebuild (serial, single worker) --
 
-test.describe.serial('Agent data persistence — config merging', () => {
+test.describe.serial('Agent data persistence — no overwrite', () => {
   let containerId: string;
 
   test.beforeAll(async ({ request }) => {
-    const container = await createWorker(request, { displayName: `Merge-${Date.now()}` });
+    const container = await createWorker(request, { displayName: `NoOverwrite-${Date.now()}` });
     containerId = container.id;
   });
 
@@ -200,35 +198,25 @@ test.describe.serial('Agent data persistence — config merging', () => {
     await cleanupWorker(request, containerId);
   });
 
-  test('user additions to claude settings.json survive restart', async ({ request }) => {
-    // Add a user key to settings.json
-    await execInWorker(containerId,
-      `jq '.myCustomKey = "user-value"' ~/.claude/settings.json > /tmp/s.json && mv /tmp/s.json ~/.claude/settings.json`);
+  test('user modifications to settings.json are not overwritten on restart', async ({ request }) => {
+    // Replace settings.json with custom content
+    await execInWorker(containerId, 'echo \'{"custom":"user-owned"}\' > ~/.claude/settings.json');
 
-    // Verify it's there
-    let output = await execInWorker(containerId, 'cat ~/.claude/settings.json');
-    expect(output).toContain('user-value');
-
-    // Restart
     const api = new ApiClient(request);
     await api.stopContainer(containerId);
     await new Promise(r => setTimeout(r, 2000));
     await api.restartContainer(containerId);
     await waitForWorkerRunning(request, containerId, 90_000);
 
-    // Verify both user key and Agentor keys are present
-    output = await execInWorker(containerId, 'cat ~/.claude/settings.json');
-    expect(output).toContain('user-value');
-    expect(output).toContain('bypassPermissions');
+    // Setup script must NOT overwrite — file already existed
+    const output = await execInWorker(containerId, 'cat ~/.claude/settings.json');
+    expect(output).toContain('user-owned');
+    expect(output).not.toContain('bypassPermissions');
   });
 
-  test('user additions to claude.json survive restart', async ({ request }) => {
-    // Add a user MCP server config
-    await execInWorker(containerId,
-      `jq '.mcpServers.test = {"command":"echo"}' ~/.claude.json > /tmp/c.json && mv /tmp/c.json ~/.claude.json`);
-
-    let output = await execInWorker(containerId, 'cat ~/.claude.json');
-    expect(output).toContain('mcpServers');
+  test('user modifications to claude.json are not overwritten on restart', async ({ request }) => {
+    // Replace claude.json with custom content (use cat > to write through symlink)
+    await execInWorker(containerId, 'echo \'{"mcpServers":{"my-server":{"command":"test"}}}\' > ~/.claude.json');
 
     const api = new ApiClient(request);
     await api.stopContainer(containerId);
@@ -236,8 +224,22 @@ test.describe.serial('Agent data persistence — config merging', () => {
     await api.restartContainer(containerId);
     await waitForWorkerRunning(request, containerId, 90_000);
 
-    output = await execInWorker(containerId, 'cat ~/.claude.json');
+    const output = await execInWorker(containerId, 'cat ~/.claude.json');
     expect(output).toContain('mcpServers');
-    expect(output).toContain('hasCompletedOnboarding');
+    expect(output).not.toContain('hasCompletedOnboarding');
+  });
+
+  test('user modifications to settings.json are not overwritten on rebuild', async ({ request }) => {
+    // Write custom settings (previous test left custom claude.json)
+    await execInWorker(containerId, 'echo \'{"rebuilt":"still-here"}\' > ~/.claude/settings.json');
+
+    const api = new ApiClient(request);
+    const { body } = await api.rebuildContainer(containerId);
+    containerId = body.id;
+    await waitForWorkerRunning(request, containerId, 90_000);
+
+    const output = await execInWorker(containerId, 'cat ~/.claude/settings.json');
+    expect(output).toContain('still-here');
+    expect(output).not.toContain('bypassPermissions');
   });
 });

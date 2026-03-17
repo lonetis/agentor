@@ -4,30 +4,21 @@ source /home/agent/agents/common.sh
 
 # --- Directory + ownership (runs every restart) ---
 mkdir -p ~/.codex
-# Docker may create this dir as root when bind-mounting credential files
 sudo chown agent:agent ~/.codex
 
-# --- Auth + settings (runs every restart, merges with existing) ---
-# OAuth credentials are bind-mounted at ~/.codex/auth.json
-# (shared across all workers via .cred/codex.json on the host)
-# API key auth — OPENAI_API_KEY is read from the environment directly by the CLI
+# --- Config files (created once, never overwritten) ---
 
-# Ensure /workspace trust config exists (append if missing, preserve existing config)
-CONFIG_FILE=~/.codex/config.toml
-if [ -f "$CONFIG_FILE" ]; then
-    if ! grep -q '^\[projects\."/workspace"\]' "$CONFIG_FILE" 2>/dev/null; then
-        printf '\n[projects."/workspace"]\ntrust_level = "trusted"\n' >> "$CONFIG_FILE"
-    fi
-else
-    cat > "$CONFIG_FILE" <<'EOF'
+if [ ! -f ~/.codex/config.toml ]; then
+    cat > ~/.codex/config.toml <<'EOF'
 [projects."/workspace"]
 trust_level = "trusted"
 EOF
 fi
 
-# --- Platform files (first startup only) ---
-SENTINEL="/home/agent/.agentor-platform-init"
-[ -f "$SENTINEL" ] && exit 0
+# --- Platform files (created once, never overwritten) ---
 
-write_agents_md ~/.codex/AGENTS.md
-write_skills_md ~/.agents/skills
+[ -f ~/.codex/AGENTS.md ] || write_agents_md ~/.codex/AGENTS.md
+
+if ! ls -d ~/.agents/skills/agentor-* >/dev/null 2>&1; then
+    write_skills_md ~/.agents/skills
+fi

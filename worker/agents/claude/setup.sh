@@ -4,24 +4,14 @@ source /home/agent/agents/common.sh
 
 # --- Directory + ownership (runs every restart) ---
 mkdir -p ~/.claude
-# Docker may create this dir as root when bind-mounting credential files
 sudo chown agent:agent ~/.claude
 
-# --- Auth + settings (runs every restart, merges with existing) ---
-# OAuth credentials are bind-mounted at ~/.claude/.credentials.json
-# (shared across all workers via .cred/claude.json on the host)
+# --- Config files (created once, never overwritten) ---
+# All files below are only written if they don't exist yet. Once created,
+# the user owns them — changes (MCP servers, hooks, etc.) persist forever.
 
-# Merge settings (preserve user additions like hooks, MCP servers, custom env)
-SETTINGS_FILE=~/.claude/settings.json
-if [ -f "$SETTINGS_FILE" ] && [ -s "$SETTINGS_FILE" ]; then
-    jq '.skipDangerousModePermissionPrompt = true |
-        .alwaysThinkingEnabled = true |
-        .effortLevel = "high" |
-        .env = ((.env // {}) + {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}) |
-        .permissions.defaultMode = "bypassPermissions"' \
-        "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
-else
-    cat > "$SETTINGS_FILE" <<'EOF'
+if [ ! -f ~/.claude/settings.json ]; then
+    cat > ~/.claude/settings.json <<'EOF'
 {
   "skipDangerousModePermissionPrompt": true,
   "alwaysThinkingEnabled": true,
@@ -36,15 +26,9 @@ else
 EOF
 fi
 
-# Merge ~/.claude.json (preserve user MCP servers, custom preferences)
+# ~/.claude.json — entrypoint seeds the volume with {} on first creation
 CLAUDE_JSON=~/.claude.json
-if [ -f "$CLAUDE_JSON" ] && [ -s "$CLAUDE_JSON" ] && [ "$(cat "$CLAUDE_JSON")" != "{}" ]; then
-    # Write to /tmp then redirect back (shell > follows symlinks; mv would replace the symlink)
-    jq '.hasCompletedOnboarding = true |
-        .effortCalloutDismissed = true |
-        .projects["/workspace"].hasTrustDialogAccepted = true' \
-        "$CLAUDE_JSON" > /tmp/claude-json-merge.tmp && cat /tmp/claude-json-merge.tmp > "$CLAUDE_JSON" && rm /tmp/claude-json-merge.tmp
-else
+if [ ! -f "$CLAUDE_JSON" ] || [ "$(cat "$CLAUDE_JSON" 2>/dev/null)" = "{}" ]; then
     cat > "$CLAUDE_JSON" <<'EOF'
 {
   "hasCompletedOnboarding": true,
@@ -58,9 +42,11 @@ else
 EOF
 fi
 
-# --- Platform files (first startup only) ---
-SENTINEL="/home/agent/.agentor-platform-init"
-[ -f "$SENTINEL" ] && exit 0
+# --- Platform files (created once, never overwritten) ---
 
-write_agents_md ~/.claude/CLAUDE.md
-write_skills_md ~/.claude/skills
+[ -f ~/.claude/CLAUDE.md ] || write_agents_md ~/.claude/CLAUDE.md
+
+# Skills: check if any agentor skill dir exists
+if ! ls -d ~/.claude/skills/agentor-* >/dev/null 2>&1; then
+    write_skills_md ~/.claude/skills
+fi

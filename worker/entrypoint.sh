@@ -111,7 +111,9 @@ if [ -d "$AGENT_DATA" ]; then
     # ~/.claude.json (MCP servers, preferences — separate file outside ~/.claude/)
     # Tools doing atomic writes (temp+rename) replace the symlink with a regular file.
     # On restart, sync the regular file back to the volume before re-creating the symlink.
-    if [ -e /home/agent/.claude.json ] && [ ! -L /home/agent/.claude.json ] && [ -s /home/agent/.claude.json ]; then
+    # Only sync if the volume already has the file (skip on first start to avoid copying
+    # the image's install-time file over the empty volume).
+    if [ -f "$AGENT_DATA/.claude.json" ] && [ -e /home/agent/.claude.json ] && [ ! -L /home/agent/.claude.json ] && [ -s /home/agent/.claude.json ]; then
         cp /home/agent/.claude.json "$AGENT_DATA/.claude.json"
     fi
     if [ ! -f "$AGENT_DATA/.claude.json" ]; then
@@ -155,8 +157,8 @@ done <<< "$ENV_VARS"
 
 # ==========================================================================
 # Phase 1: Agent setup
-# All setup scripts configure auth credentials, CLI settings, and platform
-# files (skills, AGENTS.md) — each agent handles its own paths/formats.
+# Each setup script creates config files only if they don't exist yet.
+# Once created, files are never overwritten — the user owns them.
 # ==========================================================================
 _step agents "Agent setup"
 _log "Agent setup: start"
@@ -166,13 +168,6 @@ for setup_script in /home/agent/agents/*/setup.sh; do
         "$setup_script" || echo "[agent] Warning: $AGENT_NAME setup failed, continuing"
     fi
 done
-
-# Touch sentinel after all agent scripts have run (they check it internally)
-PLATFORM_SENTINEL="/home/agent/.agentor-platform-init"
-if [ ! -f "$PLATFORM_SENTINEL" ]; then
-    touch "$PLATFORM_SENTINEL"
-    _log "Platform setup: sentinel created"
-fi
 
 _done agents "Agent setup"
 _log "Agent setup: done"
