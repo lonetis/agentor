@@ -9,6 +9,8 @@ interface TerminalState {
   ws: WebSocket;
   containerEl: HTMLElement;
   eventCleanup: () => void;
+  writeBatch: (Uint8Array | string)[];
+  writeRafId: number | null;
 }
 
 const DARK_THEME: ITheme = {
@@ -141,10 +143,29 @@ export function useTerminal() {
       }, 200);
     };
 
+    // Batch incoming WebSocket data per animation frame. Claude Code and other
+    // TUI agents redraw the full screen on each update (cursor home → rewrite
+    // everything). These redraws arrive as multiple WebSocket messages spread
+    // across frames. Without batching, xterm.js renders partial states — causing
+    // a visible scroll-from-top flicker on each update. By accumulating all
+    // data within one frame and writing it in a single term.write() call, the
+    // parser processes the complete redraw atomically.
+    const writeBatch: (Uint8Array | string)[] = [];
+    let writeRafId: number | null = null;
+
     ws.onmessage = (event) => {
       const data =
         event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data;
-      term.write(data);
+      writeBatch.push(data);
+      if (writeRafId === null) {
+        writeRafId = requestAnimationFrame(() => {
+          for (const chunk of writeBatch) {
+            term.write(chunk);
+          }
+          writeBatch.length = 0;
+          writeRafId = null;
+        });
+      }
     };
 
     ws.onclose = () => {
@@ -177,7 +198,7 @@ export function useTerminal() {
       }
     });
 
-    activeTerminal.value = { containerId, windowIndex, term, fitAddon, ws, containerEl, eventCleanup };
+    activeTerminal.value = { containerId, windowIndex, term, fitAddon, ws, containerEl, eventCleanup, writeBatch, writeRafId };
   }
 
   function fitTerminal(immediate = false) {
@@ -205,6 +226,7 @@ export function useTerminal() {
   function closeTerminal() {
     const t = activeTerminal.value;
     if (!t) return;
+    if (t.writeRafId !== null) cancelAnimationFrame(t.writeRafId);
     t.eventCleanup();
     t.ws?.close();
     t.term?.dispose();
