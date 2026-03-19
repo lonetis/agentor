@@ -91,6 +91,11 @@ export function useTerminal() {
     term.loadAddon(fitAddon);
     term.open(containerEl);
 
+    // Fit immediately so the terminal has correct dimensions before data arrives.
+    // This prevents the "scroll from top" effect where data rendered at a wrong
+    // size causes visible reflow when the proper fit happens later.
+    fitAddon.fit();
+
     // Force xterm.js to use native text selection for click/drag.
     // xterm.js's shouldForceSelection() checks altKey+macOptionClickForcesSelection
     // on Mac, or shiftKey on other platforms. We override the relevant modifier
@@ -117,20 +122,21 @@ export function useTerminal() {
     ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
-      requestAnimationFrame(() => {
+      // Send proper dimensions immediately — terminal is already fitted
+      const dims = fitAddon.proposeDimensions();
+      if (dims && dims.cols > 0 && dims.rows > 0) {
+        ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+      }
+      // Second fit after layout fully settles, then scroll to bottom
+      // to suppress the visual scroll-from-top caused by the initial data burst
+      setTimeout(() => {
         fitAddon.fit();
-        const dims = fitAddon.proposeDimensions();
-        if (dims && dims.cols > 0 && dims.rows > 0) {
-          ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+        const dims2 = fitAddon.proposeDimensions();
+        if (dims2 && dims2.cols > 0 && dims2.rows > 0 && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'resize', cols: dims2.cols, rows: dims2.rows }));
         }
-        setTimeout(() => {
-          fitAddon.fit();
-          const dims2 = fitAddon.proposeDimensions();
-          if (dims2 && dims2.cols > 0 && dims2.rows > 0 && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'resize', cols: dims2.cols, rows: dims2.rows }));
-          }
-        }, 150);
-      });
+        term.scrollToBottom();
+      }, 200);
     };
 
     ws.onmessage = (event) => {
