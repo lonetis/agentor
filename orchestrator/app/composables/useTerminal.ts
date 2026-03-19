@@ -89,11 +89,12 @@ export function useTerminal() {
 
     const fitAddon = new FitAddonClass();
     term.loadAddon(fitAddon);
-    term.open(containerEl);
+    // Hide terminal while the initial tmux screen redraw streams in.
+    // Without this, xterm.js progressively renders lines top-to-bottom,
+    // causing a visible scroll effect. We reveal after the data settles.
+    containerEl.style.visibility = 'hidden';
 
-    // Fit immediately so the terminal has correct dimensions before data arrives.
-    // This prevents the "scroll from top" effect where data rendered at a wrong
-    // size causes visible reflow when the proper fit happens later.
+    term.open(containerEl);
     fitAddon.fit();
 
     // Force xterm.js to use native text selection for click/drag.
@@ -127,8 +128,8 @@ export function useTerminal() {
       if (dims && dims.cols > 0 && dims.rows > 0) {
         ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
       }
-      // Second fit after layout fully settles, then scroll to bottom
-      // to suppress the visual scroll-from-top caused by the initial data burst
+      // Wait for the initial tmux screen redraw to finish, then refit,
+      // scroll to bottom, and reveal the terminal in its final state.
       setTimeout(() => {
         fitAddon.fit();
         const dims2 = fitAddon.proposeDimensions();
@@ -136,6 +137,7 @@ export function useTerminal() {
           ws.send(JSON.stringify({ type: 'resize', cols: dims2.cols, rows: dims2.rows }));
         }
         term.scrollToBottom();
+        containerEl.style.visibility = '';
       }, 200);
     };
 
