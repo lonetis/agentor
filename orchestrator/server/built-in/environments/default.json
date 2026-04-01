@@ -8,6 +8,6 @@
   "envVars": "",
   "setupScript": "",
   "exposeApis": { "portMappings": true, "domainMappings": true, "usage": true },
-  "enabledSkillIds": null,
-  "enabledAgentsMdIds": null
+  "enabledCapabilityIds": null,
+  "enabledInstructionIds": null
 }
