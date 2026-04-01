@@ -200,6 +200,7 @@ test.describe('Domain Mappings API', () => {
           expect(typeof body.id).toBe('string');
           expect(body.subdomain).toBe(uniqueSub);
           expect(body.baseDomain).toBe(mapperStatus.baseDomains[0]);
+          expect(body.path).toBe('');
           expect(body.protocol).toBe('https');
           expect(typeof body.workerName).toBe('string');
           expect(body.internalPort).toBe(8080);
@@ -833,6 +834,249 @@ test.describe('Domain Mappings API', () => {
           expect(body.protocol).toBe('tcp');
           expect(body.internalPort).toBe(5432);
 
+          await api.deleteDomainMapping(body.id);
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+  });
+
+  test.describe('Path validation', () => {
+    test('rejects path without leading slash', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const { status } = await api.createDomainMapping({
+            subdomain: `pathval-${Date.now()}`,
+            baseDomain: mapperStatus.baseDomains[0],
+            protocol: 'http',
+            workerId: container.id,
+            internalPort: 8080,
+            path: 'no-leading-slash',
+          });
+          expect(status).toBe(400);
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+
+    test('rejects path with invalid characters', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const { status } = await api.createDomainMapping({
+          subdomain: 'pathchars',
+          baseDomain: mapperStatus.baseDomains[0],
+          protocol: 'http',
+          workerId: 'test',
+          internalPort: 8080,
+          path: '/api/foo bar',
+        });
+        expect(status).toBe(400);
+      }
+    });
+
+    test('rejects path for TCP protocol', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const { status, body } = await api.createDomainMapping({
+            subdomain: `tcppath-${Date.now()}`,
+            baseDomain: mapperStatus.baseDomains[0],
+            protocol: 'tcp',
+            workerId: container.id,
+            internalPort: 5432,
+            path: '/api',
+          });
+          expect(status).toBe(400);
+          expect(body.statusMessage).toContain('TCP');
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+
+    test('normalizes path "/" to empty string (no path)', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const uniqueSub = `rootpath-${Date.now()}`;
+          const { status, body } = await api.createDomainMapping({
+            subdomain: uniqueSub,
+            baseDomain: mapperStatus.baseDomains[0],
+            protocol: 'http',
+            workerId: container.id,
+            internalPort: 8080,
+            path: '/',
+          });
+          expect(status).toBe(201);
+          expect(body.path).toBe('');
+          await api.deleteDomainMapping(body.id);
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+
+    test('strips trailing slash from path', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const uniqueSub = `trailslash-${Date.now()}`;
+          const { status, body } = await api.createDomainMapping({
+            subdomain: uniqueSub,
+            baseDomain: mapperStatus.baseDomains[0],
+            protocol: 'http',
+            workerId: container.id,
+            internalPort: 8080,
+            path: '/api/',
+          });
+          expect(status).toBe(201);
+          expect(body.path).toBe('/api');
+          await api.deleteDomainMapping(body.id);
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+
+    test('creates mapping with valid path', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const uniqueSub = `validpath-${Date.now()}`;
+          const { status, body } = await api.createDomainMapping({
+            subdomain: uniqueSub,
+            baseDomain: mapperStatus.baseDomains[0],
+            protocol: 'http',
+            workerId: container.id,
+            internalPort: 8080,
+            path: '/api/v2',
+          });
+          expect(status).toBe(201);
+          expect(body.path).toBe('/api/v2');
+          expect(body.subdomain).toBe(uniqueSub);
+          await api.deleteDomainMapping(body.id);
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+
+    test('allows same domain with different paths', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const uniqueSub = `multipath-${Date.now()}`;
+          const baseDomain = mapperStatus.baseDomains[0];
+
+          const { status: s1, body: first } = await api.createDomainMapping({
+            subdomain: uniqueSub,
+            baseDomain,
+            protocol: 'http',
+            workerId: container.id,
+            internalPort: 8080,
+            path: '/api',
+          });
+          expect(s1).toBe(201);
+
+          try {
+            const { status: s2, body: second } = await api.createDomainMapping({
+              subdomain: uniqueSub,
+              baseDomain,
+              protocol: 'http',
+              workerId: container.id,
+              internalPort: 9090,
+              path: '/app',
+            });
+            expect(s2).toBe(201);
+            await api.deleteDomainMapping(second.id);
+          } finally {
+            await api.deleteDomainMapping(first.id);
+          }
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+
+    test('rejects duplicate domain+path+protocol', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const uniqueSub = `duppath-${Date.now()}`;
+          const baseDomain = mapperStatus.baseDomains[0];
+
+          const { status: s1, body: first } = await api.createDomainMapping({
+            subdomain: uniqueSub,
+            baseDomain,
+            protocol: 'http',
+            workerId: container.id,
+            internalPort: 8080,
+            path: '/api',
+          });
+          expect(s1).toBe(201);
+
+          try {
+            const { status: s2 } = await api.createDomainMapping({
+              subdomain: uniqueSub,
+              baseDomain,
+              protocol: 'http',
+              workerId: container.id,
+              internalPort: 9090,
+              path: '/api',
+            });
+            expect(s2).toBe(409);
+          } finally {
+            await api.deleteDomainMapping(first.id);
+          }
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+
+    test('path defaults to empty string when omitted', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const uniqueSub = `nopath-${Date.now()}`;
+          const { status, body } = await api.createDomainMapping({
+            subdomain: uniqueSub,
+            baseDomain: mapperStatus.baseDomains[0],
+            protocol: 'http',
+            workerId: container.id,
+            internalPort: 8080,
+          });
+          expect(status).toBe(201);
+          expect(body.path).toBe('');
           await api.deleteDomainMapping(body.id);
         } finally {
           await cleanupWorker(request, container.id);

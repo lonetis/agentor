@@ -469,6 +469,97 @@ test.describe('Domain Mappings Batch API', () => {
       }
     });
 
+    test('batch creates mapping with path', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const uniqueSub = `batchpath-${Date.now()}`;
+          const baseDomain = mapperStatus.baseDomains[0];
+
+          const { status, body } = await api.createDomainMappingsBatch({
+            items: [
+              {
+                subdomain: uniqueSub,
+                baseDomain,
+                protocol: 'http',
+                workerId: container.id,
+                internalPort: 8080,
+                path: '/api',
+              },
+            ],
+          });
+          expect(status).toBe(201);
+          expect(body).toHaveLength(1);
+          expect(body[0].path).toBe('/api');
+
+          await api.deleteDomainMapping(body[0].id);
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+
+    test('batch rejects path for TCP protocol', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const { status, body } = await api.createDomainMappingsBatch({
+            items: [
+              {
+                subdomain: `batchtcppath-${Date.now()}`,
+                baseDomain: mapperStatus.baseDomains[0],
+                protocol: 'tcp',
+                workerId: container.id,
+                internalPort: 5432,
+                path: '/api',
+              },
+            ],
+          });
+          expect(status).toBe(400);
+          expect(body.statusMessage).toContain('TCP');
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+
+    test('batch defaults path to empty string when omitted', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (mapperStatus.enabled && mapperStatus.baseDomains.length > 0) {
+        const container = await createWorker(request);
+        try {
+          const uniqueSub = `batchnopath-${Date.now()}`;
+          const baseDomain = mapperStatus.baseDomains[0];
+
+          const { status, body } = await api.createDomainMappingsBatch({
+            items: [
+              {
+                subdomain: uniqueSub,
+                baseDomain,
+                protocol: 'http',
+                workerId: container.id,
+                internalPort: 8080,
+              },
+            ],
+          });
+          expect(status).toBe(201);
+          expect(body[0].path).toBe('');
+
+          await api.deleteDomainMapping(body[0].id);
+        } finally {
+          await cleanupWorker(request, container.id);
+        }
+      }
+    });
+
     test('batch defaults subdomain to empty string when omitted', async ({ request }) => {
       const api = new ApiClient(request);
       const { body: mapperStatus } = await api.getDomainMapperStatus();

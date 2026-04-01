@@ -14,6 +14,7 @@ defineRouteMeta({
             properties: {
               subdomain: { type: 'string', description: 'Subdomain (empty for bare domain)' },
               baseDomain: { type: 'string', description: 'Base domain from BASE_DOMAINS' },
+              path: { type: 'string', description: 'URL path prefix for routing (e.g. /api). Prefix is stripped before forwarding. Not supported for TCP.' },
               protocol: { type: 'string', enum: ['http', 'https', 'tcp'], description: 'Routing protocol' },
               workerId: { type: 'string', description: 'Target worker container ID (either workerId or workerName required)' },
               workerName: { type: 'string', description: 'Target worker container name (either workerId or workerName required)' },
@@ -56,6 +57,11 @@ export default defineEventHandler(async (event) => {
     body.subdomain = '';
   }
 
+  // Normalize path: undefined/null/empty/'/' all mean "no path"
+  if (!body.path || body.path === '/') {
+    body.path = '';
+  }
+
   if (!config.baseDomains.includes(body.baseDomain)) {
     throw createError({
       statusCode: 400,
@@ -85,6 +91,23 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: 'subdomain must be a valid DNS label (alphanumeric and hyphens, no consecutive dots)',
     });
+  }
+
+  if (body.path) {
+    if (body.protocol === 'tcp') {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'path is not supported for TCP protocol (TCP operates at the transport layer)',
+      });
+    }
+    if (!/^\/[a-zA-Z0-9\/_.-]+$/.test(body.path)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'path must start with / and contain only alphanumeric characters, hyphens, underscores, dots, and slashes',
+      });
+    }
+    // Strip trailing slash
+    body.path = body.path.replace(/\/+$/, '') || '';
   }
 
   const intPort = Number(body.internalPort);
@@ -123,6 +146,7 @@ export default defineEventHandler(async (event) => {
     id: nanoid(),
     subdomain: body.subdomain,
     baseDomain: body.baseDomain,
+    path: body.path || '',
     protocol: body.protocol,
     workerId: containerInfo.id,
     workerName: containerInfo.name,

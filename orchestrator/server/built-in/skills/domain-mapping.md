@@ -50,7 +50,27 @@ This makes `https://myapp.example.com` route to port 3000 inside your container.
 
 **Optional fields:**
 - `subdomain` (string) — The subdomain prefix. Leave empty (`""`) to map the bare base domain itself (e.g. `example.com` instead of `something.example.com`)
+- `path` (string) — URL path prefix for routing (e.g. `"/api"`). Must start with `/`. The path prefix is stripped before forwarding — a request to `/api/users` with `path: "/api"` arrives at the worker as `/users`. Not supported for TCP protocol.
 - `basicAuth` (object) — `{ "username": "user", "password": "pass" }` to protect with HTTP basic authentication
+
+### Path-based routing example
+
+Route different paths on the same domain to different workers:
+
+```bash
+# Route /api/* to backend worker (port 8080)
+curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "baseDomain": "example.com",
+    "path": "/api",
+    "protocol": "https",
+    "workerName": "'"$WORKER_CONTAINER_NAME"'",
+    "internalPort": 8080
+  }'
+```
+
+The path prefix is stripped before forwarding to the worker, so `/api/users` becomes `/users` at the worker. Multiple path mappings on the same domain are supported — longer paths take priority over shorter ones.
 
 ### List all domain mappings
 
@@ -73,3 +93,4 @@ Replace `MAPPING_ID` with the `id` from the list response.
 1. **Public web app** — Deploy a site accessible at `https://myapp.example.com` with automatic TLS
 2. **Webhook receiver** — Create an HTTPS endpoint for GitHub webhooks, Stripe callbacks, etc.
 3. **API gateway** — Expose a backend API on a clean domain with optional basic auth protection
+4. **Path-based routing** — Route different paths of the same domain to different workers (e.g. `/api` to backend, `/app` to frontend)

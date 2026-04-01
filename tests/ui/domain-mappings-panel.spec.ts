@@ -183,6 +183,65 @@ test.describe('Domain Mappings Panel', () => {
     }
   });
 
+  test('domain mapping form shows path input for http protocol', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.getDomainMapperStatus();
+    test.skip(!body.enabled, 'Domain mapping not enabled');
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
+    const aside = page.locator('aside');
+    await openDmForm(aside);
+    // Path input should be visible (default protocol is http)
+    await expect(aside.locator('input[placeholder*="path"]')).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('switching protocol to TCP hides path input', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.getDomainMapperStatus();
+    test.skip(!body.enabled, 'Domain mapping not enabled');
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
+    const aside = page.locator('aside');
+    await openDmForm(aside);
+    await expect(aside.locator('input[placeholder*="path"]')).toBeVisible({ timeout: 5_000 });
+    await aside.locator('button:has-text("tcp")').first().click();
+    await expect(aside.locator('input[placeholder*="path"]')).toBeHidden({ timeout: 5_000 });
+  });
+
+  test('API-created mapping with path shows path in display', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const { body: mapperStatus } = await api.getDomainMapperStatus();
+    test.skip(!mapperStatus.enabled, 'Domain mapping not enabled');
+
+    const { createWorker, cleanupWorker } = await import('../helpers/worker-lifecycle');
+    const container = await createWorker(request);
+    const uniqueSub = `uipath-${Date.now()}`;
+
+    try {
+      const { body: mapping } = await api.createDomainMapping({
+        subdomain: uniqueSub,
+        baseDomain: mapperStatus.baseDomains[0],
+        protocol: 'http',
+        workerId: container.id,
+        internalPort: 8080,
+        path: '/api',
+      });
+
+      try {
+        await goToDashboard(page);
+        await selectSidebarTab(page, 'Domains');
+        // The domain with path should appear in the sidebar
+        await expect(page.locator('aside').locator(`text=${uniqueSub}.${mapperStatus.baseDomains[0]}/api`)).toBeVisible({ timeout: 15_000 });
+      } finally {
+        await api.deleteDomainMapping(mapping.id);
+      }
+    } finally {
+      await cleanupWorker(request, container.id);
+    }
+  });
+
   test('switching protocol to TCP hides Basic auth checkbox', async ({ page, request }) => {
     const api = new ApiClient(request);
     const { body } = await api.getDomainMapperStatus();

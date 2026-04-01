@@ -13,6 +13,7 @@ const formProtocols = ref<Set<'http' | 'https' | 'tcp'>>(new Set(['http']));
 const formWorkerId = ref('');
 const formInternalPort = ref<number | undefined>();
 const formBaseDomains = ref<Set<string>>(new Set());
+const formPath = ref('');
 const formAuthEnabled = ref(false);
 const formAuthUsername = ref('');
 const formAuthPassword = ref('');
@@ -93,6 +94,7 @@ watch(selectedDomainsAllHaveTls, (hasTls) => {
 
 function resetForm() {
   formSubdomain.value = '';
+  formPath.value = '';
   formBaseDomains.value = new Set(status.value.baseDomains.length > 0 ? [status.value.baseDomains[0]!] : []);
   formProtocols.value = new Set(['http']);
   formWorkerId.value = '';
@@ -111,6 +113,7 @@ async function handleCreate() {
     protocols.map((protocol) => ({
       subdomain: formSubdomain.value,
       baseDomain,
+      ...(protocol !== 'tcp' && formPath.value ? { path: formPath.value } : {}),
       protocol,
       workerId: formWorkerId.value,
       internalPort: formInternalPort.value!,
@@ -203,6 +206,13 @@ function downloadCaCert() {
       </div>
       <div class="flex gap-1.5 items-center">
         <input
+          v-if="!formProtocols.has('tcp')"
+          v-model="formPath"
+          type="text"
+          placeholder="path (optional, e.g. /api)"
+          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
+        />
+        <input
           v-model.number="formInternalPort"
           type="number"
           placeholder="Internal port"
@@ -282,7 +292,7 @@ function downloadCaCert() {
       >
         {{ getChallengeType(m.baseDomain) === 'dns' ? getDnsProvider(m.baseDomain) : getChallengeType(m.baseDomain) === 'selfsigned' ? 'self' : getChallengeType(m.baseDomain) }}
       </span>
-      <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.subdomain ? `${m.subdomain}.${m.baseDomain}` : m.baseDomain }}</span>
+      <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.subdomain ? `${m.subdomain}.${m.baseDomain}` : m.baseDomain }}{{ m.path || '' }}</span>
       <UIcon
         v-if="m.basicAuth"
         name="i-lucide-lock"

@@ -193,6 +193,21 @@ test.describe('Domain Mappings Panel — UI', () => {
     await expect(aside.locator('text=Basic auth')).toBeHidden({ timeout: 5_000 });
   });
 
+  test('switching protocol back from TCP restores path input', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.getDomainMapperStatus();
+    test.skip(!body.enabled, 'Domain mapping not enabled');
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
+    const aside = page.locator('aside');
+    await openDmForm(aside);
+    await aside.locator('button:has-text("tcp")').first().click();
+    await expect(aside.locator('input[placeholder*="path"]')).toBeHidden({ timeout: 5_000 });
+    await aside.locator('button:has-text("http")').first().click();
+    await expect(aside.locator('input[placeholder*="path"]')).toBeVisible({ timeout: 5_000 });
+  });
+
   test('switching protocol back from TCP restores Basic auth', async ({ page, request }) => {
     const api = new ApiClient(request);
     const { body } = await api.getDomainMapperStatus();

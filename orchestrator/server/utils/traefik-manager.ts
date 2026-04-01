@@ -178,6 +178,13 @@ export class TraefikManager {
       } else {
         const middlewares: string[] = [];
 
+        if (m.path) {
+          config.http.middlewares[`strip-${safeId}`] = {
+            stripPrefix: { prefixes: [m.path] },
+          };
+          middlewares.push(`strip-${safeId}`);
+        }
+
         if (m.basicAuth?.username && m.basicAuth?.password) {
           const htpasswd = generateHtpasswd(m.basicAuth.username, m.basicAuth.password);
           config.http.middlewares[`auth-${safeId}`] = {
@@ -186,10 +193,13 @@ export class TraefikManager {
           middlewares.push(`auth-${safeId}`);
         }
 
+        const rule = m.path
+          ? `Host(\`${host}\`) && PathPrefix(\`${m.path}\`)`
+          : `Host(\`${host}\`)`;
         const isHttpOnly = m.protocol === 'http';
         const tls = isHttpOnly ? undefined : this.getTlsConfig(m.baseDomain);
         config.http.routers[`http-${safeId}`] = {
-          rule: `Host(\`${host}\`)`,
+          rule,
           service: `http-${safeId}`,
           entryPoints: [tls ? 'websecure' : 'web'],
           ...(tls ? { tls } : {}),

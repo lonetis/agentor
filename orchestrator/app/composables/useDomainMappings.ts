@@ -23,6 +23,7 @@ export function useDomainMappings() {
   async function createMapping(opts: {
     subdomain: string;
     baseDomain: string;
+    path?: string;
     protocol: 'http' | 'https' | 'tcp';
     workerId: string;
     internalPort: number;
@@ -39,6 +40,7 @@ export function useDomainMappings() {
   async function createMappings(items: {
     subdomain: string;
     baseDomain: string;
+    path?: string;
     protocol: 'http' | 'https' | 'tcp';
     workerId: string;
     internalPort: number;
