@@ -6,8 +6,8 @@ A single Docker image (`agentor-worker`, built from `worker/`) contains all agen
 
 **Structured JSON env vars** — the orchestrator passes 4 JSON env vars to workers instead of 20+ individual variables:
 - `ENVIRONMENT` — network mode, allowed domains, dockerEnabled, setupScript, envVars, exposeApis
-- `SKILLS` — array of `{ name, content }` entries
-- `AGENTS_MD` — array of `{ name, content }` entries
+- `CAPABILITIES` — array of `{ name, content }` entries
+- `INSTRUCTIONS` — array of `{ name, content }` entries
 - `WORKER` — name, displayName, repos, initScript
 
 Individual env vars that CLIs read directly remain as-is: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`.
@@ -37,7 +37,7 @@ The unified worker image (`worker/`) provides:
 ### Adding a New Agent
 
 1. Install the CLI in `worker/Dockerfile`
-2. Create `worker/agents/<agent-id>/setup.sh` (auth/settings + skills/AGENTS.md writing — reads from `SKILLS` and `AGENTS_MD` JSON env vars)
+2. Create `worker/agents/<agent-id>/setup.sh` (auth/settings + capabilities/instructions writing — reads from `CAPABILITIES` and `INSTRUCTIONS` JSON env vars)
 3. Create `worker/agents/<agent-id>/git-identity` (two lines: name, email — used by the git wrapper)
 4. Add an agent config entry in `orchestrator/server/utils/agent-config.ts` (API domains, env vars)
 5. Add a built-in init script file in `orchestrator/server/built-in/init-scripts/`
@@ -45,7 +45,7 @@ The unified worker image (`worker/`) provides:
 7. Add a template file in `.cred.example/` and document in `.cred.example/README`
 8. Rebuild the worker image
 
-No entrypoint changes needed — agent setup scripts handle all agent-specific logic (auth, settings, skills, AGENTS.md).
+No entrypoint changes needed — agent setup scripts handle all agent-specific logic (auth, settings, capabilities, instructions).
 
 ## Init Script System
 
@@ -111,7 +111,7 @@ Fully synchronous — every phase runs foreground and completes before the next 
 0. **Tmux session** with animated loading screen (`bash /home/agent/loading-screen.sh`)
 0a. **Agent data symlinks** — if `/home/agent/.agent-data` is mounted, create symlinks from `~/.claude`, `~/.gemini`, `~/.codex`, `~/.agents`, `~/.claude.json` to volume subdirectories. Fixes ownership (`chown -R agent:agent`).
 0b. **Export env vars** — `EXPOSE_*` flags from `ENVIRONMENT.exposeApis`, custom env vars from `ENVIRONMENT.envVars` (exported + set in tmux environment)
-1. **Agent setup** — all `agents/*/setup.sh` scripts (CLI config merged with existing, skills + AGENTS.md on first startup — OAuth credentials are bind-mounted on top of agent data volume). Sentinel file touched after all scripts complete.
+1. **Agent setup** — all `agents/*/setup.sh` scripts (CLI config merged with existing, capabilities + instructions on first startup — OAuth credentials are bind-mounted on top of agent data volume). Sentinel file touched after all scripts complete.
 2. **Docker daemon** — if `ENVIRONMENT.dockerEnabled`: start dockerd, wait for socket (up to 30s); otherwise skipped
 3. **Display stack** — Xvfb + fluxbox + x11vnc + websockify/noVNC, wait for each service
 3b. **Code editor** — code-server on port 8443 (`--auth none --bind-addr 0.0.0.0:8443`), wait for port ready

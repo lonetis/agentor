@@ -1,17 +1,17 @@
 defineRouteMeta({
   openAPI: {
-    tags: ['AGENTS.md'],
-    summary: 'List AGENTS.md entries',
-    description: 'Returns all AGENTS.md entries (built-in and custom).',
-    operationId: 'listAgentsMdEntries',
+    tags: ['Instructions'],
+    summary: 'List instructions',
+    description: 'Returns all instructions (built-in and custom).',
+    operationId: 'listInstructions',
     responses: {
       200: {
-        description: 'Array of AGENTS.md entries',
+        description: 'Array of instructions',
         content: {
           'application/json': {
             schema: {
               type: 'array',
-              items: { $ref: '#/components/schemas/AgentsMdEntry' },
+              items: { $ref: '#/components/schemas/Instruction' },
             },
           },
         },
@@ -20,7 +20,7 @@ defineRouteMeta({
     $global: {
       components: {
         schemas: {
-          AgentsMdEntry: {
+          Instruction: {
             type: 'object',
             properties: {
               id: { type: 'string' },
@@ -37,8 +37,8 @@ defineRouteMeta({
   },
 });
 
-import { useAgentsMdStore } from '../../utils/services';
+import { useInstructionStore } from '../../utils/services';
 
 export default defineEventHandler(() => {
-  return useAgentsMdStore().list();
+  return useInstructionStore().list();
 });

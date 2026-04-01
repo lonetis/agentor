@@ -231,10 +231,10 @@ Use `test.describe.serial` when tests share state (e.g., stop then restart a con
 ## Test Helpers
 
 ### `api-client.ts`
-Typed wrapper for all API endpoints. Every method returns `{ status, body }` tuples. Covers containers, tmux, apps, port/domain mappings, environments, skills, agents-md, init scripts, archived workers, updates, usage, github, settings, and more.
+Typed wrapper for all API endpoints. Every method returns `{ status, body }` tuples. Covers containers, tmux, apps, port/domain mappings, environments, capabilities, instructions, init scripts, archived workers, updates, usage, github, settings, and more.
 
 ### `worker-lifecycle.ts`
-Container create/cleanup helpers with 90s timeout. `createWorker(api, options?)` creates a container and waits for it to be running. `cleanupWorker(api, id)` safely removes a container (idempotent). Also provides cleanup helpers for port mappings, domain mappings, environments, skills, agents-md, and init scripts.
+Container create/cleanup helpers with 90s timeout. `createWorker(api, options?)` creates a container and waits for it to be running. `cleanupWorker(api, id)` safely removes a container (idempotent). Also provides cleanup helpers for port mappings, domain mappings, environments, capabilities, instructions, and init scripts.
 
 ### `terminal-ws.ts`
 WebSocket terminal client with ANSI stripping for pattern matching. `TerminalWsClient` connects to the terminal WebSocket, sends commands, and waits for output patterns. Also provides credential detection for agent prompting tests.

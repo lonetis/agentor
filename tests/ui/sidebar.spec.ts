@@ -101,15 +101,15 @@ test.describe('Sidebar', () => {
       await expect(btn).toBeVisible();
     });
 
-    test('"Skills" button is visible', async ({ page }) => {
+    test('"Capabilities" button is visible', async ({ page }) => {
       await goToDashboard(page);
-      const btn = page.locator('aside button:has-text("Skills")');
+      const btn = page.locator('aside button:has-text("Capabilities")');
       await expect(btn).toBeVisible();
     });
 
-    test('"AGENTS.md" button is visible', async ({ page }) => {
+    test('"Instructions" button is visible', async ({ page }) => {
       await goToDashboard(page);
-      const btn = page.locator('aside button:has-text("AGENTS.md")');
+      const btn = page.locator('aside button:has-text("Instructions")');
       await expect(btn).toBeVisible();
     });
 

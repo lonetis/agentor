@@ -1,21 +1,21 @@
 defineRouteMeta({
   openAPI: {
-    tags: ['Skills'],
-    summary: 'Create skill',
-    description: 'Creates a new custom skill.',
-    operationId: 'createSkill',
+    tags: ['Capabilities'],
+    summary: 'Create capability',
+    description: 'Creates a new custom capability.',
+    operationId: 'createCapability',
     requestBody: {
       required: true,
-      content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } },
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/Capability' } } },
     },
     responses: {
-      201: { description: 'Created skill', content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } } },
+      201: { description: 'Created capability', content: { 'application/json': { schema: { $ref: '#/components/schemas/Capability' } } } },
       400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
     },
   },
 });
 
-import { useSkillStore } from '../../utils/services';
+import { useCapabilityStore } from '../../utils/services';
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
@@ -27,8 +27,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'content is required' });
   }
 
-  const store = useSkillStore();
-  const skill = await store.create({ name: body.name, content: body.content });
+  const store = useCapabilityStore();
+  const capability = await store.create({ name: body.name, content: body.content });
   setResponseStatus(event, 201);
-  return skill;
+  return capability;
 });

@@ -56,9 +56,9 @@ fi
 
 # --- Platform files (created once, never overwritten) ---
 
-[ -f ~/.claude/CLAUDE.md ] || write_agents_md ~/.claude/CLAUDE.md
+[ -f ~/.claude/CLAUDE.md ] || write_instructions ~/.claude/CLAUDE.md
 
-# Skills: check if any agentor skill dir exists
+# Capabilities: check if any agentor capability dir exists
 if ! ls -d ~/.claude/skills/agentor-* >/dev/null 2>&1; then
-    write_skills_md ~/.claude/skills
+    write_capabilities_md ~/.claude/skills
 fi

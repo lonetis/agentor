@@ -28,7 +28,7 @@ Four managed containers:
 | Worker System | @docs/worker.md | Unified worker image, init scripts, agents, git identity wrapper, DinD, host bind mounts, startup sequence |
 | Networking | @docs/networking.md | Port mapper, domain mapping (Traefik), TLS challenges, self-signed certs, config drift detection |
 | UI | @docs/ui.md | Split pane layout, tmux tab integration, theme system, VS Code editor, UI state persistence |
-| Environments | @docs/environments.md | Environment system, network firewall, skills, AGENTS.md, worker API exposure |
+| Environments | @docs/environments.md | Environment system, network firewall, capabilities, instructions, worker API exposure |
 | Logging | @docs/logging.md | Centralized logging, log collection, rotation, WebSocket streaming, log pane UI |
 | Production | @docs/production.md | Update mechanism, agent usage monitoring |
 | Apps | @docs/apps.md | Modular app system, adding new apps |

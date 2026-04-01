@@ -513,28 +513,28 @@ test.describe('Containers API', () => {
       }
     });
 
-    test('container created with environment includes skillNames and agentsMdNames', async ({ request }) => {
+    test('container created with environment includes capabilityNames and instructionNames', async ({ request }) => {
       const api = new ApiClient(request);
 
-      // Create a custom skill
-      const { status: skillStatus, body: skill } = await api.createSkill({
-        name: `TestSkill-${Date.now()}`,
-        content: 'Test skill content',
+      // Create a custom capability
+      const { status: capabilityStatus, body: capability } = await api.createCapability({
+        name: `TestCapability-${Date.now()}`,
+        content: 'Test capability content',
       });
-      expect(skillStatus).toBe(201);
+      expect(capabilityStatus).toBe(201);
 
-      // Create a custom AGENTS.md entry
-      const { status: agentsMdStatus, body: agentsMd } = await api.createAgentsMd({
-        name: `TestAgentsMd-${Date.now()}`,
-        content: 'Test agents md content',
+      // Create a custom instruction
+      const { status: instructionStatus, body: instruction } = await api.createInstruction({
+        name: `TestInstruction-${Date.now()}`,
+        content: 'Test instruction content',
       });
-      expect(agentsMdStatus).toBe(201);
+      expect(instructionStatus).toBe(201);
 
-      // Create environment with all skills/agents.md enabled (null = all enabled)
+      // Create environment with all capabilities/instructions enabled (null = all enabled)
       const { status: envStatus, body: env } = await api.createEnvironment({
-        name: `SkillAgentsEnv-${Date.now()}`,
-        enabledSkillIds: null,
-        enabledAgentsMdIds: null,
+        name: `CapabilityInstructionEnv-${Date.now()}`,
+        enabledCapabilityIds: null,
+        enabledInstructionIds: null,
       });
       expect(envStatus).toBe(201);
 
@@ -546,17 +546,17 @@ test.describe('Containers API', () => {
         const found = containers.find((c: { id: string }) => c.id === container.id);
         expect(found).toBeTruthy();
 
-        // skillNames should include the custom skill name
-        expect(Array.isArray(found.skillNames)).toBe(true);
-        expect(found.skillNames).toEqual(expect.arrayContaining([skill.name]));
+        // capabilityNames should include the custom capability name
+        expect(Array.isArray(found.capabilityNames)).toBe(true);
+        expect(found.capabilityNames).toEqual(expect.arrayContaining([capability.name]));
 
-        // agentsMdNames should include the custom AGENTS.md entry name
-        expect(Array.isArray(found.agentsMdNames)).toBe(true);
-        expect(found.agentsMdNames).toEqual(expect.arrayContaining([agentsMd.name]));
+        // instructionNames should include the custom instruction name
+        expect(Array.isArray(found.instructionNames)).toBe(true);
+        expect(found.instructionNames).toEqual(expect.arrayContaining([instruction.name]));
       } finally {
         await api.deleteEnvironment(env.id);
-        await api.deleteSkill(skill.id);
-        await api.deleteAgentsMd(agentsMd.id);
+        await api.deleteCapability(capability.id);
+        await api.deleteInstruction(instruction.id);
       }
     });
 

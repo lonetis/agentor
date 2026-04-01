@@ -1,8 +1,8 @@
 import { nanoid } from 'nanoid';
 import { JsonStore } from './json-store';
-import type { BuiltInAgentsMdEntry } from './built-in-content';
+import type { BuiltInCapability } from './built-in-content';
 
-export interface AgentsMdEntry {
+export interface Capability {
   id: string;
   name: string;
   content: string;
@@ -11,21 +11,21 @@ export interface AgentsMdEntry {
   updatedAt: string;
 }
 
-export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
+export class CapabilityStore extends JsonStore<string, Capability> {
   constructor(dataDir: string) {
-    super(dataDir, 'agents-md.json', (i) => i.id);
+    super(dataDir, 'capabilities.json', (s) => s.id);
   }
 
-  override list(): AgentsMdEntry[] {
+  override list(): Capability[] {
     return super.list().sort((a, b) => {
       if (a.builtIn !== b.builtIn) return a.builtIn ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
   }
 
-  async create(data: { name: string; content: string }): Promise<AgentsMdEntry> {
+  async create(data: { name: string; content: string }): Promise<Capability> {
     const now = new Date().toISOString();
-    const entry: AgentsMdEntry = {
+    const capability: Capability = {
       id: nanoid(12),
       name: data.name,
       content: data.content,
@@ -33,23 +33,23 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
       createdAt: now,
       updatedAt: now,
     };
-    this.items.set(entry.id, entry);
+    this.items.set(capability.id, capability);
     await this.persist();
-    useLogger().info(`[agents-md] created entry '${entry.name}' (${entry.id})`);
-    return entry;
+    useLogger().info(`[capabilities] created capability '${capability.name}' (${capability.id})`);
+    return capability;
   }
 
-  async update(id: string, data: { name?: string; content?: string }): Promise<AgentsMdEntry> {
+  async update(id: string, data: { name?: string; content?: string }): Promise<Capability> {
     const existing = this.items.get(id);
     if (!existing) {
-      useLogger().warn(`[agents-md] update failed — entry not found: ${id}`);
-      throw new Error(`AGENTS.md entry not found: ${id}`);
+      useLogger().warn(`[capabilities] update failed — capability not found: ${id}`);
+      throw new Error(`Capability not found: ${id}`);
     }
     if (existing.builtIn) {
-      useLogger().warn(`[agents-md] update rejected — built-in entry '${existing.name}' (${id})`);
-      throw new Error('Cannot modify built-in AGENTS.md entries');
+      useLogger().warn(`[capabilities] update rejected — built-in capability '${existing.name}' (${id})`);
+      throw new Error('Cannot modify built-in capabilities');
     }
-    const updated: AgentsMdEntry = {
+    const updated: Capability = {
       ...existing,
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.content !== undefined ? { content: data.content } : {}),
@@ -57,27 +57,26 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
     };
     this.items.set(id, updated);
     await this.persist();
-    useLogger().info(`[agents-md] updated entry '${updated.name}' (${id})`);
+    useLogger().info(`[capabilities] updated capability '${updated.name}' (${id})`);
     return updated;
   }
 
   async delete(id: string): Promise<void> {
     const existing = this.items.get(id);
     if (!existing) {
-      useLogger().warn(`[agents-md] delete failed — entry not found: ${id}`);
-      throw new Error(`AGENTS.md entry not found: ${id}`);
+      useLogger().warn(`[capabilities] delete failed — capability not found: ${id}`);
+      throw new Error(`Capability not found: ${id}`);
     }
     if (existing.builtIn) {
-      useLogger().warn(`[agents-md] delete rejected — built-in entry '${existing.name}' (${id})`);
-      throw new Error('Cannot delete built-in AGENTS.md entries');
+      useLogger().warn(`[capabilities] delete rejected — built-in capability '${existing.name}' (${id})`);
+      throw new Error('Cannot delete built-in capabilities');
     }
     this.items.delete(id);
     await this.persist();
-    useLogger().info(`[agents-md] deleted entry '${existing.name}' (${id})`);
+    useLogger().info(`[capabilities] deleted capability '${existing.name}' (${id})`);
   }
 
-  async seedBuiltIns(items: BuiltInAgentsMdEntry[]): Promise<void> {
-    const log = useLogger();
+  async seedBuiltIns(items: BuiltInCapability[]): Promise<void> {
     let changed = false;
     const now = new Date().toISOString();
     const incomingIds = new Set(items.map((i) => i.id));
@@ -85,7 +84,7 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
     for (const [id, entry] of this.items) {
       if (entry.builtIn && !incomingIds.has(id)) {
         this.items.delete(id);
-        log.debug(`[agents-md] removed stale built-in '${entry.name}' (${id})`);
+        useLogger().debug(`[capabilities] removed stale built-in '${entry.name}' (${id})`);
         changed = true;
       }
     }
@@ -101,7 +100,7 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
           createdAt: now,
           updatedAt: now,
         });
-        log.debug(`[agents-md] seeded built-in '${item.name}' (${item.id})`);
+        useLogger().debug(`[capabilities] seeded built-in '${item.name}' (${item.id})`);
         changed = true;
       } else if (existing.content !== item.content || existing.name !== item.name) {
         this.items.set(item.id, {
@@ -110,11 +109,11 @@ export class AgentsMdStore extends JsonStore<string, AgentsMdEntry> {
           content: item.content,
           updatedAt: now,
         });
-        log.debug(`[agents-md] updated built-in '${item.name}' (${item.id})`);
+        useLogger().debug(`[capabilities] updated built-in '${item.name}' (${item.id})`);
         changed = true;
       }
     }
     if (changed) await this.persist();
-    log.info(`[agents-md] seeded ${items.length} built-in entries (${changed ? 'store updated' : 'no changes'})`);
+    useLogger().info(`[capabilities] initialized — ${this.items.size} capability(ies) (${items.length} built-in)`);
   }
 }

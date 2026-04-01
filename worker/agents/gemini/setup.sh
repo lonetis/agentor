@@ -34,8 +34,8 @@ fi
 
 # --- Platform files (created once, never overwritten) ---
 
-[ -f ~/.gemini/GEMINI.md ] || write_agents_md ~/.gemini/GEMINI.md
+[ -f ~/.gemini/GEMINI.md ] || write_instructions ~/.gemini/GEMINI.md
 
 if ! ls -d ~/.gemini/commands/agentor-* >/dev/null 2>&1; then
-    write_skills_toml ~/.gemini/commands
+    write_capabilities_toml ~/.gemini/commands
 fi

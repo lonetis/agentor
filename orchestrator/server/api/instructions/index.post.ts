@@ -1,21 +1,21 @@
 defineRouteMeta({
   openAPI: {
-    tags: ['AGENTS.md'],
-    summary: 'Create AGENTS.md entry',
-    description: 'Creates a new custom AGENTS.md entry.',
-    operationId: 'createAgentsMdEntry',
+    tags: ['Instructions'],
+    summary: 'Create instruction',
+    description: 'Creates a new custom instruction.',
+    operationId: 'createInstruction',
     requestBody: {
       required: true,
-      content: { 'application/json': { schema: { $ref: '#/components/schemas/AgentsMdEntry' } } },
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/Instruction' } } },
     },
     responses: {
-      201: { description: 'Created AGENTS.md entry', content: { 'application/json': { schema: { $ref: '#/components/schemas/AgentsMdEntry' } } } },
+      201: { description: 'Created instruction', content: { 'application/json': { schema: { $ref: '#/components/schemas/Instruction' } } } },
       400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
     },
   },
 });
 
-import { useAgentsMdStore } from '../../utils/services';
+import { useInstructionStore } from '../../utils/services';
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'content is required' });
   }
 
-  const store = useAgentsMdStore();
+  const store = useInstructionStore();
   const entry = await store.create({ name: body.name, content: body.content });
 
   setResponseStatus(event, 201);

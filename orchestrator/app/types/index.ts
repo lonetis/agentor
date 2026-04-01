@@ -20,8 +20,8 @@ export type {
   AgentUsageInfo,
   AgentUsageStatus,
   ExposeApis,
-  SkillInfo,
-  AgentsMdEntryInfo,
+  CapabilityInfo,
+  InstructionInfo,
   CredentialInfo,
   InitScriptInfo,
   LogLevel,
@@ -107,8 +107,8 @@ export interface EnvironmentInfo {
   envVars: string;
   setupScript: string;
   exposeApis: ExposeApisType;
-  enabledSkillIds: string[] | null;
-  enabledAgentsMdIds: string[] | null;
+  enabledCapabilityIds: string[] | null;
+  enabledInstructionIds: string[] | null;
   builtIn: boolean;
   createdAt: string;
   updatedAt: string;
@@ -139,8 +139,8 @@ export interface ArchivedWorker {
   setupScript?: string;
   envVars?: string;
   exposeApis?: ExposeApisType;
-  skillNames?: string[];
-  agentsMdNames?: string[];
+  capabilityNames?: string[];
+  instructionNames?: string[];
   image: string;
 }
 

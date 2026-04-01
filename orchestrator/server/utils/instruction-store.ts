@@ -1,8 +1,8 @@
 import { nanoid } from 'nanoid';
 import { JsonStore } from './json-store';
-import type { BuiltInSkill } from './built-in-content';
+import type { BuiltInInstruction } from './built-in-content';
 
-export interface Skill {
+export interface Instruction {
   id: string;
   name: string;
   content: string;
@@ -11,21 +11,21 @@ export interface Skill {
   updatedAt: string;
 }
 
-export class SkillStore extends JsonStore<string, Skill> {
+export class InstructionStore extends JsonStore<string, Instruction> {
   constructor(dataDir: string) {
-    super(dataDir, 'skills.json', (s) => s.id);
+    super(dataDir, 'instructions.json', (i) => i.id);
   }
 
-  override list(): Skill[] {
+  override list(): Instruction[] {
     return super.list().sort((a, b) => {
       if (a.builtIn !== b.builtIn) return a.builtIn ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
   }
 
-  async create(data: { name: string; content: string }): Promise<Skill> {
+  async create(data: { name: string; content: string }): Promise<Instruction> {
     const now = new Date().toISOString();
-    const skill: Skill = {
+    const entry: Instruction = {
       id: nanoid(12),
       name: data.name,
       content: data.content,
@@ -33,23 +33,23 @@ export class SkillStore extends JsonStore<string, Skill> {
       createdAt: now,
       updatedAt: now,
     };
-    this.items.set(skill.id, skill);
+    this.items.set(entry.id, entry);
     await this.persist();
-    useLogger().info(`[skills] created skill '${skill.name}' (${skill.id})`);
-    return skill;
+    useLogger().info(`[instructions] created entry '${entry.name}' (${entry.id})`);
+    return entry;
   }
 
-  async update(id: string, data: { name?: string; content?: string }): Promise<Skill> {
+  async update(id: string, data: { name?: string; content?: string }): Promise<Instruction> {
     const existing = this.items.get(id);
     if (!existing) {
-      useLogger().warn(`[skills] update failed — skill not found: ${id}`);
-      throw new Error(`Skill not found: ${id}`);
+      useLogger().warn(`[instructions] update failed — entry not found: ${id}`);
+      throw new Error(`Instruction not found: ${id}`);
     }
     if (existing.builtIn) {
-      useLogger().warn(`[skills] update rejected — built-in skill '${existing.name}' (${id})`);
-      throw new Error('Cannot modify built-in skills');
+      useLogger().warn(`[instructions] update rejected — built-in entry '${existing.name}' (${id})`);
+      throw new Error('Cannot modify built-in instructions');
     }
-    const updated: Skill = {
+    const updated: Instruction = {
       ...existing,
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.content !== undefined ? { content: data.content } : {}),
@@ -57,26 +57,27 @@ export class SkillStore extends JsonStore<string, Skill> {
     };
     this.items.set(id, updated);
     await this.persist();
-    useLogger().info(`[skills] updated skill '${updated.name}' (${id})`);
+    useLogger().info(`[instructions] updated entry '${updated.name}' (${id})`);
     return updated;
   }
 
   async delete(id: string): Promise<void> {
     const existing = this.items.get(id);
     if (!existing) {
-      useLogger().warn(`[skills] delete failed — skill not found: ${id}`);
-      throw new Error(`Skill not found: ${id}`);
+      useLogger().warn(`[instructions] delete failed — entry not found: ${id}`);
+      throw new Error(`Instruction not found: ${id}`);
     }
     if (existing.builtIn) {
-      useLogger().warn(`[skills] delete rejected — built-in skill '${existing.name}' (${id})`);
-      throw new Error('Cannot delete built-in skills');
+      useLogger().warn(`[instructions] delete rejected — built-in entry '${existing.name}' (${id})`);
+      throw new Error('Cannot delete built-in instructions');
     }
     this.items.delete(id);
     await this.persist();
-    useLogger().info(`[skills] deleted skill '${existing.name}' (${id})`);
+    useLogger().info(`[instructions] deleted entry '${existing.name}' (${id})`);
   }
 
-  async seedBuiltIns(items: BuiltInSkill[]): Promise<void> {
+  async seedBuiltIns(items: BuiltInInstruction[]): Promise<void> {
+    const log = useLogger();
     let changed = false;
     const now = new Date().toISOString();
     const incomingIds = new Set(items.map((i) => i.id));
@@ -84,7 +85,7 @@ export class SkillStore extends JsonStore<string, Skill> {
     for (const [id, entry] of this.items) {
       if (entry.builtIn && !incomingIds.has(id)) {
         this.items.delete(id);
-        useLogger().debug(`[skills] removed stale built-in '${entry.name}' (${id})`);
+        log.debug(`[instructions] removed stale built-in '${entry.name}' (${id})`);
         changed = true;
       }
     }
@@ -100,7 +101,7 @@ export class SkillStore extends JsonStore<string, Skill> {
           createdAt: now,
           updatedAt: now,
         });
-        useLogger().debug(`[skills] seeded built-in '${item.name}' (${item.id})`);
+        log.debug(`[instructions] seeded built-in '${item.name}' (${item.id})`);
         changed = true;
       } else if (existing.content !== item.content || existing.name !== item.name) {
         this.items.set(item.id, {
@@ -109,11 +110,11 @@ export class SkillStore extends JsonStore<string, Skill> {
           content: item.content,
           updatedAt: now,
         });
-        useLogger().debug(`[skills] updated built-in '${item.name}' (${item.id})`);
+        log.debug(`[instructions] updated built-in '${item.name}' (${item.id})`);
         changed = true;
       }
     }
     if (changed) await this.persist();
-    useLogger().info(`[skills] initialized — ${this.items.size} skill(s) (${items.length} built-in)`);
+    log.info(`[instructions] seeded ${items.length} built-in entries (${changed ? 'store updated' : 'no changes'})`);
   }
 }

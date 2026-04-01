@@ -1,17 +1,17 @@
 defineRouteMeta({
   openAPI: {
-    tags: ['Skills'],
-    summary: 'List skills',
-    description: 'Returns all skills (built-in and custom).',
-    operationId: 'listSkills',
+    tags: ['Capabilities'],
+    summary: 'List capabilities',
+    description: 'Returns all capabilities (built-in and custom).',
+    operationId: 'listCapabilities',
     responses: {
       200: {
-        description: 'Array of skills',
+        description: 'Array of capabilities',
         content: {
           'application/json': {
             schema: {
               type: 'array',
-              items: { $ref: '#/components/schemas/Skill' },
+              items: { $ref: '#/components/schemas/Capability' },
             },
           },
         },
@@ -20,7 +20,7 @@ defineRouteMeta({
     $global: {
       components: {
         schemas: {
-          Skill: {
+          Capability: {
             type: 'object',
             properties: {
               id: { type: 'string' },
@@ -37,8 +37,8 @@ defineRouteMeta({
   },
 });
 
-import { useSkillStore } from '../../utils/services';
+import { useCapabilityStore } from '../../utils/services';
 
 export default defineEventHandler(() => {
-  return useSkillStore().list();
+  return useCapabilityStore().list();
 });

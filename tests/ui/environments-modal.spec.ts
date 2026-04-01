@@ -152,25 +152,25 @@ test.describe('Environments Modal', () => {
     await expect(dialog.getByText('Usage Monitoring')).toBeVisible();
   });
 
-  test('editor has Skills section with checkboxes', async ({ page }) => {
+  test('editor has Capabilities section with checkboxes', async ({ page }) => {
     await goToDashboard(page);
     await openEnvironmentsModal(page);
     const dialog = page.locator('[role="dialog"]');
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
 
-    // Skills fieldset with Select All toggle
-    await expect(dialog.getByText('Skills').first()).toBeVisible({ timeout: 5_000 });
+    // Capabilities fieldset with Select All toggle
+    await expect(dialog.getByText('Capabilities').first()).toBeVisible({ timeout: 5_000 });
     await expect(dialog.getByText('Select All').first()).toBeVisible();
   });
 
-  test('editor has AGENTS.md section with checkboxes', async ({ page }) => {
+  test('editor has Instructions section with checkboxes', async ({ page }) => {
     await goToDashboard(page);
     await openEnvironmentsModal(page);
     const dialog = page.locator('[role="dialog"]');
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
 
-    // AGENTS.md fieldset
-    await expect(dialog.getByText('AGENTS.md').first()).toBeVisible({ timeout: 5_000 });
+    // Instructions fieldset
+    await expect(dialog.getByText('Instructions').first()).toBeVisible({ timeout: 5_000 });
   });
 
   test('editor has Environment Variables section', async ({ page }) => {

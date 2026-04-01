@@ -25,8 +25,8 @@ fi
 
 # --- Platform files (created once, never overwritten) ---
 
-[ -f ~/.codex/AGENTS.md ] || write_agents_md ~/.codex/AGENTS.md
+[ -f ~/.codex/AGENTS.md ] || write_instructions ~/.codex/AGENTS.md
 
 if ! ls -d ~/.agents/skills/agentor-* >/dev/null 2>&1; then
-    write_skills_md ~/.agents/skills
+    write_capabilities_md ~/.agents/skills
 fi

@@ -16,12 +16,12 @@ export interface EnvironmentJsonPayload {
   exposeApis: ExposeApis;
 }
 
-export interface SkillJsonEntry {
+export interface CapabilityJsonEntry {
   name: string;
   content: string;
 }
 
-export interface AgentsMdJsonEntry {
+export interface InstructionJsonEntry {
   name: string;
   content: string;
 }
@@ -66,8 +66,8 @@ export class DockerService {
     dockerEnabled?: boolean;
     credentialBinds?: string[];
     environmentJson: EnvironmentJsonPayload;
-    skillsJson: SkillJsonEntry[];
-    agentsMdJson: AgentsMdJsonEntry[];
+    capabilitiesJson: CapabilityJsonEntry[];
+    instructionsJson: InstructionJsonEntry[];
     workerJson: WorkerJsonPayload;
     storageManager?: StorageManager;
   }): Promise<Docker.Container> {
@@ -75,8 +75,8 @@ export class DockerService {
 
     // 4 structured JSON env vars
     env.push(`ENVIRONMENT=${JSON.stringify(opts.environmentJson)}`);
-    env.push(`SKILLS=${JSON.stringify(opts.skillsJson)}`);
-    env.push(`AGENTS_MD=${JSON.stringify(opts.agentsMdJson)}`);
+    env.push(`CAPABILITIES=${JSON.stringify(opts.capabilitiesJson)}`);
+    env.push(`INSTRUCTIONS=${JSON.stringify(opts.instructionsJson)}`);
     env.push(`WORKER=${JSON.stringify(opts.workerJson)}`);
 
     // Individual: agent API keys (CLIs read directly from env)

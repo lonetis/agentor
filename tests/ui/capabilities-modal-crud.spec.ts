@@ -2,61 +2,61 @@ import { test, expect } from '@playwright/test';
 import { goToDashboard } from '../helpers/ui-helpers';
 import { ApiClient } from '../helpers/api-client';
 
-test.describe('Skills Modal — CRUD Operations', () => {
+test.describe('Capabilities Modal — CRUD Operations', () => {
 
-  test('create a custom skill via the UI', async ({ page, request }) => {
+  test('create a custom capability via the UI', async ({ page, request }) => {
     const api = new ApiClient(request);
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    const skillName = `ui-skill-create-${Date.now()}`;
-    const skillContent = '---\ndescription: A test skill created via UI\n---\n\nThis is the skill content.';
+    const capabilityName = `ui-capability-create-${Date.now()}`;
+    const capabilityContent = '---\ndescription: A test capability created via UI\n---\n\nThis is the capability content.';
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Skill name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 5_000 });
 
-    await dialog.locator('input[placeholder="Skill name"]').fill(skillName);
-    await dialog.locator('textarea').fill(skillContent);
+    await dialog.locator('input[placeholder="Capability name"]').fill(capabilityName);
+    await dialog.locator('textarea').fill(capabilityContent);
 
     await dialog.locator('button:has-text("Create")').click();
 
-    // Should return to list view and show the new skill
+    // Should return to list view and show the new capability
     await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.getByText(skillName)).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText(capabilityName)).toBeVisible({ timeout: 10_000 });
 
-    // The new skill should have Edit and Delete buttons
-    const skillRow = dialog.locator('.rounded-lg').filter({ hasText: skillName });
-    await expect(skillRow.locator('button:has-text("Edit")')).toBeVisible({ timeout: 5_000 });
+    // The new capability should have Edit and Delete buttons
+    const capabilityRow = dialog.locator('.rounded-lg').filter({ hasText: capabilityName });
+    await expect(capabilityRow.locator('button:has-text("Edit")')).toBeVisible({ timeout: 5_000 });
 
-    // Cleanup: delete the skill we just created
-    const { body: skills } = await api.listSkills();
-    const created = skills.find((s: { name: string }) => s.name === skillName);
-    if (created) await api.deleteSkill(created.id);
+    // Cleanup: delete the capability we just created
+    const { body: capabilities } = await api.listCapabilities();
+    const created = capabilities.find((s: { name: string }) => s.name === capabilityName);
+    if (created) await api.deleteCapability(created.id);
   });
 
-  test('edit a custom skill', async ({ page, request }) => {
+  test('edit a custom capability', async ({ page, request }) => {
     const api = new ApiClient(request);
-    const skillName = `ui-skill-edit-${Date.now()}`;
+    const capabilityName = `ui-capability-edit-${Date.now()}`;
     const originalContent = '---\ndescription: Original\n---\n\nOriginal content.';
-    const { body: created } = await api.createSkill({ name: skillName, content: originalContent });
-    const skillId = created.id;
+    const { body: created } = await api.createCapability({ name: capabilityName, content: originalContent });
+    const capabilityId = created.id;
 
     try {
       await goToDashboard(page);
-      await page.locator('button:has-text("Skills")').click();
+      await page.locator('button:has-text("Capabilities")').click();
       const dialog = page.locator('[role="dialog"]');
       await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-      await expect(dialog.getByText(skillName)).toBeVisible({ timeout: 10_000 });
+      await expect(dialog.getByText(capabilityName)).toBeVisible({ timeout: 10_000 });
 
-      const skillRow = dialog.locator('.rounded-lg').filter({ hasText: skillName });
-      await skillRow.locator('button:has-text("Edit")').click();
+      const capabilityRow = dialog.locator('.rounded-lg').filter({ hasText: capabilityName });
+      await capabilityRow.locator('button:has-text("Edit")').click();
 
-      const nameInput = dialog.locator('input[placeholder="Skill name"]');
+      const nameInput = dialog.locator('input[placeholder="Capability name"]');
       await expect(nameInput).toBeVisible({ timeout: 5_000 });
-      await expect(nameInput).toHaveValue(skillName);
+      await expect(nameInput).toHaveValue(capabilityName);
 
       const updatedContent = '---\ndescription: Updated\n---\n\nUpdated content.';
       await dialog.locator('textarea').fill(updatedContent);
@@ -68,39 +68,39 @@ test.describe('Skills Modal — CRUD Operations', () => {
 
       // Should return to list
       await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 10_000 });
-      await expect(dialog.getByText(skillName)).toBeVisible({ timeout: 10_000 });
+      await expect(dialog.getByText(capabilityName)).toBeVisible({ timeout: 10_000 });
     } finally {
       // Cleanup
-      try { await api.deleteSkill(skillId); } catch { /* ignore */ }
+      try { await api.deleteCapability(capabilityId); } catch { /* ignore */ }
     }
   });
 
-  test('delete a custom skill', async ({ page, request }) => {
+  test('delete a custom capability', async ({ page, request }) => {
     const api = new ApiClient(request);
-    const skillName = `ui-skill-delete-${Date.now()}`;
-    const { body: created } = await api.createSkill({ name: skillName, content: '---\ndescription: To delete\n---\n\nContent.' });
+    const capabilityName = `ui-capability-delete-${Date.now()}`;
+    const { body: created } = await api.createCapability({ name: capabilityName, content: '---\ndescription: To delete\n---\n\nContent.' });
 
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    await expect(dialog.getByText(skillName)).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText(capabilityName)).toBeVisible({ timeout: 10_000 });
 
-    const skillRow = dialog.locator('.rounded-lg').filter({ hasText: skillName });
-    await skillRow.locator('button:has-text("Delete")').click();
+    const capabilityRow = dialog.locator('.rounded-lg').filter({ hasText: capabilityName });
+    await capabilityRow.locator('button:has-text("Delete")').click();
 
-    await expect(dialog.getByText(skillName)).toBeHidden({ timeout: 10_000 });
+    await expect(dialog.getByText(capabilityName)).toBeHidden({ timeout: 10_000 });
 
-    // Built-in skills should still be visible
+    // Built-in capabilities should still be visible
     await expect(dialog.getByText('tmux')).toBeVisible({ timeout: 5_000 });
 
-    // No cleanup needed — skill already deleted via UI
+    // No cleanup needed — capability already deleted via UI
   });
 
-  test('view a built-in skill (read-only)', async ({ page }) => {
+  test('view a built-in capability (read-only)', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -108,7 +108,7 @@ test.describe('Skills Modal — CRUD Operations', () => {
     await expect(builtInRow).toBeVisible({ timeout: 10_000 });
     await builtInRow.locator('button:has-text("View")').click();
 
-    const nameInput = dialog.locator('input[placeholder="Skill name"]');
+    const nameInput = dialog.locator('input[placeholder="Capability name"]');
     await expect(nameInput).toBeVisible({ timeout: 5_000 });
     await expect(nameInput).toBeDisabled();
 
@@ -124,12 +124,12 @@ test.describe('Skills Modal — CRUD Operations', () => {
 
   test('save button is disabled when name is empty', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Skill name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 5_000 });
 
     await dialog.locator('textarea').fill('Some content');
 
@@ -139,14 +139,14 @@ test.describe('Skills Modal — CRUD Operations', () => {
 
   test('save button is disabled when content is empty', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Skill name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 5_000 });
 
-    await dialog.locator('input[placeholder="Skill name"]').fill('test-skill');
+    await dialog.locator('input[placeholder="Capability name"]').fill('test-capability');
 
     const createButton = dialog.locator('button:has-text("Create")');
     await expect(createButton).toBeDisabled();
@@ -154,17 +154,17 @@ test.describe('Skills Modal — CRUD Operations', () => {
 
   test('save button becomes enabled when both name and content are filled', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Skill name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 5_000 });
 
     const createButton = dialog.locator('button:has-text("Create")');
     await expect(createButton).toBeDisabled();
 
-    await dialog.locator('input[placeholder="Skill name"]').fill('test-skill');
+    await dialog.locator('input[placeholder="Capability name"]').fill('test-capability');
     await dialog.locator('textarea').fill('Some content');
 
     await expect(createButton).toBeEnabled();

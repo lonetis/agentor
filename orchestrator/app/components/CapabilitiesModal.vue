@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { SkillInfo } from '~/types';
+import type { CapabilityInfo } from '~/types';
 
 const open = defineModel<boolean>('open', { default: false });
 
-const { skills, createSkill, updateSkill, deleteSkill } = useSkills();
+const { capabilities, createCapability, updateCapability, deleteCapability } = useCapabilities();
 
 const editingId = ref<string | null>(null);
 const creating = ref(false);
@@ -21,20 +21,20 @@ function startCreate() {
   creating.value = true;
 }
 
-function startEdit(skill: SkillInfo) {
+function startEdit(capability: CapabilityInfo) {
   creating.value = false;
   viewing.value = null;
-  editingId.value = skill.id;
-  editForm.name = skill.name;
-  editForm.content = skill.content;
+  editingId.value = capability.id;
+  editForm.name = capability.name;
+  editForm.content = capability.content;
 }
 
-function startView(skill: SkillInfo) {
+function startView(capability: CapabilityInfo) {
   creating.value = false;
   editingId.value = null;
-  viewing.value = skill.id;
-  editForm.name = skill.name;
-  editForm.content = skill.content;
+  viewing.value = capability.id;
+  editForm.name = capability.name;
+  editForm.content = capability.content;
 }
 
 function cancelEdit() {
@@ -46,15 +46,15 @@ function cancelEdit() {
 async function handleSave() {
   if (!editForm.name.trim() || !editForm.content.trim()) return;
   if (editingId.value) {
-    await updateSkill(editingId.value, { name: editForm.name, content: editForm.content });
+    await updateCapability(editingId.value, { name: editForm.name, content: editForm.content });
   } else {
-    await createSkill({ name: editForm.name, content: editForm.content });
+    await createCapability({ name: editForm.name, content: editForm.content });
   }
   cancelEdit();
 }
 
 async function handleDelete(id: string) {
-  await deleteSkill(id);
+  await deleteCapability(id);
   if (editingId.value === id) cancelEdit();
 }
 </script>
@@ -64,7 +64,7 @@ async function handleDelete(id: string) {
     <template #content>
       <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Skills</h2>
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Capabilities</h2>
           <div class="flex gap-2">
             <UButton v-if="!showEditor" size="sm" @click="startCreate">
               New
@@ -75,20 +75,20 @@ async function handleDelete(id: string) {
           </div>
         </div>
 
-        <!-- Skill list -->
+        <!-- Capability list -->
         <div v-if="!showEditor" class="space-y-2">
-          <template v-if="skills.length > 0">
+          <template v-if="capabilities.length > 0">
             <div
-              v-for="skill in skills"
-              :key="skill.id"
+              v-for="capability in capabilities"
+              :key="capability.id"
               class="flex items-center justify-between bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3"
             >
               <div class="flex items-center gap-3 min-w-0">
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
-                    <span class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{{ skill.name }}</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{{ capability.name }}</span>
                     <span
-                      v-if="skill.builtIn"
+                      v-if="capability.builtIn"
                       class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
                     >
                       Built-in
@@ -97,14 +97,14 @@ async function handleDelete(id: string) {
                 </div>
               </div>
               <div class="flex gap-1 shrink-0">
-                <UButton v-if="skill.builtIn" size="xs" color="neutral" variant="ghost" @click="startView(skill)">
+                <UButton v-if="capability.builtIn" size="xs" color="neutral" variant="ghost" @click="startView(capability)">
                   View
                 </UButton>
                 <template v-else>
-                  <UButton size="xs" color="neutral" variant="ghost" @click="startEdit(skill)">
+                  <UButton size="xs" color="neutral" variant="ghost" @click="startEdit(capability)">
                     Edit
                   </UButton>
-                  <UButton size="xs" color="error" variant="ghost" @click="handleDelete(skill.id)">
+                  <UButton size="xs" color="error" variant="ghost" @click="handleDelete(capability.id)">
                     Delete
                   </UButton>
                 </template>
@@ -113,24 +113,24 @@ async function handleDelete(id: string) {
           </template>
 
           <div v-else class="text-gray-400 dark:text-gray-500 text-sm text-center py-4">
-            No skills yet. Create one to get started.
+            No capabilities yet. Create one to get started.
           </div>
         </div>
 
         <!-- Inline editor -->
         <div v-if="showEditor" class="border border-gray-300 dark:border-gray-700 rounded-lg p-4 space-y-4">
           <UFormField label="Name">
-            <UInput v-model="editForm.name" placeholder="Skill name" class="w-full" :disabled="!!viewing" />
+            <UInput v-model="editForm.name" placeholder="Capability name" class="w-full" :disabled="!!viewing" />
           </UFormField>
           <UFormField label="Content" hint="SKILL.md (YAML frontmatter + Markdown)">
             <UTextarea
               v-model="editForm.content"
               :rows="16"
               placeholder="---
-description: What this skill does
+description: What this capability does
 ---
 
-Skill instructions here..."
+Capability content here..."
               class="w-full font-mono text-xs"
               :disabled="!!viewing"
             />

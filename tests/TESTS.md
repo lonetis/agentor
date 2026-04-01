@@ -100,8 +100,8 @@ tests/
 | `archived-workers.spec.ts` | 13 | Archive/unarchive/delete flow, error handling, response fields (name/createdAt/archivedAt/displayName), unarchive returns new id, unarchive preserves displayName, unarchive and verify running, double archive error, image/environmentId fields |
 | `workspace.spec.ts` | 9 | Upload (single/multi/subdirectory/empty), path traversal (basic + encoded), non-existent container, download |
 | `service-status.spec.ts` | 8 | Desktop/editor status, non-existent container handling, response field validation, stopped container returns not running |
-| `skills.spec.ts` | 24 | Skills CRUD, built-in skills, validation |
-| `agents-md.spec.ts` | 27 | AGENTS.md entry CRUD, built-in entries, validation |
+| `capabilities.spec.ts` | 24 | Capabilities CRUD, built-in capabilities, validation |
+| `instructions.spec.ts` | 27 | Instruction entry CRUD, built-in entries, validation |
 | `init-scripts.spec.ts` | 25 | Init script CRUD, built-in scripts, validation |
 | `settings.spec.ts` | 11 | Settings endpoint, categorized sections |
 | `credentials.spec.ts` | 6 | Credential file status per agent |
@@ -132,14 +132,14 @@ tests/
 | `container-card.spec.ts` | 14 | Name, status, buttons, icons, stop/restart/archive, Restart hidden when running |
 | `container-card-advanced.spec.ts` | 7 | Advanced container card interactions, icon-only action buttons, single button row layout, compact card design |
 | `rebuild.spec.ts` | 6 | Rebuild button visibility (running + stopped), confirm dialog dismiss cancels, rebuild state transition, display name preserved, new container ID after rebuild |
-| `container-detail-modal.spec.ts` | 43 | Modal content, Worker section (Container/ID/Image/ImageID/Created), Configuration section (Environment/CPU/Memory/Docker), Network (Mode/Allowed Domains/Package Managers), Repositories, Mounts, Init Script, Exposed Worker APIs (badges), Skills (badges), AGENTS.md (badges), Env Vars, Setup Script, status badge color, section order, close (Escape + overlay), custom environment name, snapshotted config |
+| `container-detail-modal.spec.ts` | 43 | Modal content, Worker section (Container/ID/Image/ImageID/Created), Configuration section (Environment/CPU/Memory/Docker), Network (Mode/Allowed Domains/Package Managers), Repositories, Mounts, Init Script, Exposed Worker APIs (badges), Capabilities (badges), Instructions (badges), Env Vars, Setup Script, status badge color, section order, close (Escape + overlay), custom environment name, snapshotted config |
 | `environments-modal.spec.ts` | 20 | Open/close, pre-created env, create button, form fields (network, Docker, resources), Setup Script, Init Script, Create button |
 | `environments-modal-advanced.spec.ts` | 5 | Advanced environment modal interactions |
 | `environment-editor-network.spec.ts` | 11 | Network mode selector, custom domains, package manager toggle |
-| `skills-modal.spec.ts` | 10 | Skills modal list, view built-in, create/edit/delete custom |
-| `skills-modal-crud.spec.ts` | 7 | Skills CRUD operations via UI |
-| `agents-md-modal.spec.ts` | 8 | AGENTS.md modal list, view built-in, create/edit/delete |
-| `agents-md-crud.spec.ts` | 7 | AGENTS.md CRUD operations via UI |
+| `capabilities-modal.spec.ts` | 10 | Capabilities modal list, view built-in, create/edit/delete custom |
+| `capabilities-modal-crud.spec.ts` | 7 | Capabilities CRUD operations via UI |
+| `instructions-modal.spec.ts` | 8 | Instructions modal list, view built-in, create/edit/delete |
+| `instructions-modal-crud.spec.ts` | 7 | Instructions CRUD operations via UI |
 | `init-scripts-modal.spec.ts` | 9 | Init scripts modal list, view built-in, create/edit/delete |
 | `init-scripts-crud.spec.ts` | 8 | Init scripts CRUD operations via UI |
 | `init-preset-selector.spec.ts` | 6 | Default None, textarea, Custom/None sync |

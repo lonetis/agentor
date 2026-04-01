@@ -301,30 +301,30 @@ test.describe.serial('Container Detail Modal', () => {
     await expect(apisSection.getByText('Usage')).toBeVisible();
   });
 
-  test('shows Skills section header', async ({ page }) => {
+  test('shows Capabilities section header', async ({ page }) => {
     const dialog = await openDetailModal(page);
-    await expect(dialog.getByText('Skills', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Capabilities', { exact: true })).toBeVisible();
   });
 
-  test('Skills section shows skill badges for default worker', async ({ page }) => {
+  test('Capabilities section shows capability badges for default worker', async ({ page }) => {
     const dialog = await openDetailModal(page);
-    // The default worker has skills from the default environment
-    const skillsSection = dialog.locator('section').filter({ hasText: 'Skills' });
-    // At least one skill badge should be visible (not "None")
-    await expect(skillsSection.locator('span').filter({ hasText: /^[a-z]/ }).first()).toBeVisible();
+    // The default worker has capabilities from the default environment
+    const capabilitiesSection = dialog.locator('section').filter({ hasText: 'Capabilities' });
+    // At least one capability badge should be visible (not "None")
+    await expect(capabilitiesSection.locator('span').filter({ hasText: /^[a-z]/ }).first()).toBeVisible();
   });
 
-  test('shows AGENTS.md section header', async ({ page }) => {
+  test('shows Instructions section header', async ({ page }) => {
     const dialog = await openDetailModal(page);
-    await expect(dialog.getByText('AGENTS.md', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Instructions', { exact: true })).toBeVisible();
   });
 
-  test('AGENTS.md section shows entry badges for default worker', async ({ page }) => {
+  test('Instructions section shows entry badges for default worker', async ({ page }) => {
     const dialog = await openDetailModal(page);
-    // The default worker has AGENTS.md entries from the default environment
-    const agentsSection = dialog.locator('section').filter({ hasText: 'AGENTS.md' });
+    // The default worker has instruction entries from the default environment
+    const instructionsSection = dialog.locator('section').filter({ hasText: 'Instructions' });
     // At least one entry badge should be visible (not "None")
-    await expect(agentsSection.locator('span').filter({ hasText: /^[a-z]/ }).first()).toBeVisible();
+    await expect(instructionsSection.locator('span').filter({ hasText: /^[a-z]/ }).first()).toBeVisible();
   });
 
   test('shows Environment Variables section header', async ({ page }) => {
@@ -355,7 +355,7 @@ test.describe.serial('Container Detail Modal', () => {
     const dialog = await openDetailModal(page);
     // Verify all section headers appear in the modal
     // Sections: Worker, Configuration, Network, Repositories, Mounts, Init Script,
-    // Exposed Worker APIs, Skills, AGENTS.md, Environment Variables, Setup Script
+    // Exposed Worker APIs, Capabilities, Instructions, Environment Variables, Setup Script
     const sections = dialog.locator('section h3');
     const sectionTexts: string[] = [];
     const count = await sections.count();

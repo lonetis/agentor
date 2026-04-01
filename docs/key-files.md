@@ -15,12 +15,12 @@
 - `orchestrator/app.config.ts` - App-level configuration
 
 ## Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo, InitScriptInfo, CredentialInfo, UpdatableImage, LogLevel, LogSource, LogEntry)
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UpdatableImage, LogLevel, LogSource, LogEntry)
 
 ## Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build
 - `orchestrator/nuxt.config.ts` - Nuxt configuration (modules, SPA mode, Nitro WebSocket)
-- `orchestrator/server/plugins/services.ts` - Nitro startup: init Logger + LogStore + LogBroadcaster + LogCollector + Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + SkillStore + AgentsMdStore + InitScriptStore + WorkerStore + UpdateChecker + UsageChecker
+- `orchestrator/server/plugins/services.ts` - Nitro startup: init Logger + LogStore + LogBroadcaster + LogCollector + Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + CapabilityStore + InstructionStore + InitScriptStore + WorkerStore + UpdateChecker + UsageChecker
 - `orchestrator/server/utils/config.ts` - Environment variable parsing
 - `orchestrator/server/utils/init-script-store.ts` - InitScriptStore class (extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/agent-config.ts` - Static agent configuration registry (API domains, env var mappings per agent)
@@ -40,11 +40,11 @@
 - `orchestrator/server/utils/credential-mounts.ts` - CredentialMountManager class (resolves host path of /cred mount, generates bind mount strings for worker containers) + AGENT_CREDENTIAL_MAPPINGS registry
 - `orchestrator/server/utils/storage.ts` - StorageManager class (auto-detects volume vs directory storage mode, provides bind string construction and cleanup for worker workspaces, agent config data, DinD, Traefik certs)
 - `orchestrator/server/utils/selfsigned-certs.ts` - SelfSignedCertManager class (CA + wildcard cert generation using node-forge for selfsigned domains)
-- `orchestrator/server/utils/skill-store.ts` - SkillStore class (extends JsonStore, built-in seeding)
-- `orchestrator/server/utils/agents-md-store.ts` - AgentsMdStore class (AGENTS.md entries, extends JsonStore, built-in seeding)
+- `orchestrator/server/utils/capability-store.ts` - CapabilityStore class (extends JsonStore, built-in seeding)
+- `orchestrator/server/utils/instruction-store.ts` - InstructionStore class (instruction entries, extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/built-in-content.ts` - Built-in content loader (reads markdown files from server assets via `useStorage()`)
-- `orchestrator/server/built-in/skills/` - Built-in skill markdown files (filename = ID, content = skill markdown with YAML frontmatter)
-- `orchestrator/server/built-in/agents-md/` - Built-in AGENTS.md entry files (filename = ID, name parsed from first `# Heading`)
+- `orchestrator/server/built-in/capabilities/` - Built-in capability markdown files (filename = ID, content = capability markdown with YAML frontmatter)
+- `orchestrator/server/built-in/instructions/` - Built-in instruction files (filename = ID, name parsed from first `# Heading`)
 - `orchestrator/server/built-in/init-scripts/` - Built-in init script files (plain .sh, filename = ID and name)
 - `orchestrator/server/built-in/environments/` - Built-in environment JSON files (filename = ID, contains environment config)
 - `orchestrator/server/utils/logger.ts` - Logger class (replaces console.log/warn/error, buffers during startup, writes to LogStore + LogBroadcaster)
@@ -52,7 +52,7 @@
 - `orchestrator/server/utils/log-broadcaster.ts` - LogBroadcaster class (manages WebSocket peers for live log streaming)
 - `orchestrator/server/utils/log-collector.ts` - LogCollector class (attaches to Docker containers via dockerode logs, handles TTY/non-TTY streams, heuristic level detection)
 - `orchestrator/server/utils/log-levels.ts` - Log level utilities (shouldLog, parseLogLevel)
-- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useCredentialMountManager, useSkillStore, useAgentsMdStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility
+- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useCredentialMountManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)
 - `orchestrator/server/utils/terminal-handler.ts` - Docker stream WebSocket terminal logic (uses ws-utils, exports terminalWsHandler)
@@ -81,10 +81,10 @@
 - `orchestrator/app/components/CreateContainerModal.vue` - New worker modal (environment selector, init preset, repos)
 - `orchestrator/app/components/ServicePane.vue` - Unified iframe pane for desktop (noVNC) and editor (code-server)
 - `orchestrator/app/components/DomainMappingsPanel.vue` - Domain mapping CRUD panel (subdomain, protocol, basic auth)
-- `orchestrator/app/components/EnvironmentEditor.vue` - Environment form (resources, network, Docker, expose APIs, skills, AGENTS.md, scripts)
+- `orchestrator/app/components/EnvironmentEditor.vue` - Environment form (resources, network, Docker, expose APIs, capabilities, instructions, scripts)
 - `orchestrator/app/components/EnvironmentsModal.vue` - Environment list + editor (CRUD)
-- `orchestrator/app/components/SkillsModal.vue` - Skills management modal (list, view built-in, create/edit/delete custom)
-- `orchestrator/app/components/AgentsMdModal.vue` - AGENTS.md entries management modal (same pattern as SkillsModal)
+- `orchestrator/app/components/CapabilitiesModal.vue` - Capabilities management modal (list, view built-in, create/edit/delete custom)
+- `orchestrator/app/components/InstructionsModal.vue` - Instructions management modal (same pattern as CapabilitiesModal)
 - `orchestrator/app/components/InitScriptsModal.vue` - Init scripts management modal (list, view built-in, create/edit/delete custom)
 - `orchestrator/app/components/SettingsModal.vue` - System settings viewer (auto-renders categorized sections from `/api/settings`)
 - `orchestrator/app/components/FileDropZone.vue` - Drag-and-drop file zone for uploads
@@ -113,8 +113,8 @@
 - `orchestrator/app/composables/useInitScriptSync.ts` - Bidirectional sync between init script dropdown and init script textarea
 - `orchestrator/app/composables/useDragTab.ts` - Tab drag-and-drop (HTML5 DnD)
 - `orchestrator/app/composables/useEnvironments.ts` - Environment CRUD
-- `orchestrator/app/composables/useSkills.ts` - Skill CRUD
-- `orchestrator/app/composables/useAgentsMd.ts` - AGENTS.md entry CRUD
+- `orchestrator/app/composables/useCapabilities.ts` - Capability CRUD
+- `orchestrator/app/composables/useInstructions.ts` - Instruction entry CRUD
 - `orchestrator/app/composables/useGitHubRepos.ts` - GitHub repos list, org filter, create repo
 - `orchestrator/app/composables/useGitProviders.ts` - Git provider list
 - `orchestrator/app/composables/useInitScripts.ts` - Init script CRUD
@@ -129,7 +129,7 @@
 - `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only)
 - `orchestrator/app/composables/useUsage.ts` - Agent usage status polling (60s)
 - `orchestrator/app/utils/container-name.ts` - Utility for container name display (shortName helper)
-- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, SkillInfo, AgentsMdEntryInfo, InitScriptInfo, CredentialInfo, LogLevel, LogSource, LogEntry) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone, ChallengeType, BaseDomainConfig
+- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, LogLevel, LogSource, LogEntry) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone, ChallengeType, BaseDomainConfig
 
 ## Worker
 - `worker/Dockerfile` - Unified worker image (Node.js 22, all agent CLIs, code-server, display stack, Chromium, Playwright, Firefox, microsocks, utility packages, agent user, entrypoint)
@@ -141,9 +141,9 @@
 - `worker/git-wrapper.sh` - Process-tree-aware git identity wrapper (installed at /usr/local/bin/git)
 - `worker/apps/chromium/manage.sh` - Chromium app manager (start/stop/list via docker exec)
 - `worker/apps/socks5/manage.sh` - SOCKS5 proxy app manager
-- `worker/agents/claude/setup.sh` - Claude auth + config + skills/AGENTS.md writing (reads SKILLS/AGENTS_MD JSON env vars)
-- `worker/agents/codex/setup.sh` - Codex auth + config + skills/AGENTS.md writing
-- `worker/agents/gemini/setup.sh` - Gemini auth + config + skills/AGENTS.md writing
+- `worker/agents/claude/setup.sh` - Claude auth + config + capabilities/instructions writing (reads CAPABILITIES/INSTRUCTIONS JSON env vars)
+- `worker/agents/codex/setup.sh` - Codex auth + config + capabilities/instructions writing
+- `worker/agents/gemini/setup.sh` - Gemini auth + config + capabilities/instructions writing
 - `worker/agents/*/git-identity` - Per-agent git identity (two lines: name, email)
 
 ## Tests

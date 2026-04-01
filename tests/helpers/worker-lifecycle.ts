@@ -129,27 +129,27 @@ export async function cleanupAllEnvironments(request: APIRequestContext): Promis
 }
 
 /**
- * Cleans up all custom skills (built-in skills cannot be deleted).
+ * Cleans up all custom capabilities (built-in capabilities cannot be deleted).
  */
-export async function cleanupAllCustomSkills(request: APIRequestContext): Promise<void> {
+export async function cleanupAllCustomCapabilities(request: APIRequestContext): Promise<void> {
   const api = new ApiClient(request);
-  const { body: skills } = await api.listSkills();
-  for (const s of skills) {
+  const { body: capabilities } = await api.listCapabilities();
+  for (const s of capabilities) {
     if (!s.builtIn) {
-      try { await api.deleteSkill(s.id); } catch { /* ignore */ }
+      try { await api.deleteCapability(s.id); } catch { /* ignore */ }
     }
   }
 }
 
 /**
- * Cleans up all custom AGENTS.md entries (built-in entries cannot be deleted).
+ * Cleans up all custom instructions (built-in instructions cannot be deleted).
  */
-export async function cleanupAllCustomAgentsMd(request: APIRequestContext): Promise<void> {
+export async function cleanupAllCustomInstructions(request: APIRequestContext): Promise<void> {
   const api = new ApiClient(request);
-  const { body: entries } = await api.listAgentsMd();
+  const { body: entries } = await api.listInstructions();
   for (const e of entries) {
     if (!e.builtIn) {
-      try { await api.deleteAgentsMd(e.id); } catch { /* ignore */ }
+      try { await api.deleteInstruction(e.id); } catch { /* ignore */ }
     }
   }
 }

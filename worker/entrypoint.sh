@@ -137,7 +137,7 @@ fi
 
 # ==========================================================================
 # Phase 0b: Export env vars from structured JSON payloads
-# EXPOSE_* flags are needed by skills at runtime; custom env vars from the
+# EXPOSE_* flags are needed by capabilities at runtime; custom env vars from the
 # environment config are exported so they're available in all subsequent phases.
 # ==========================================================================
 export EXPOSE_PORT_MAPPINGS=$(echo "$ENVIRONMENT" | jq -r 'if .exposeApis.portMappings == null then true else .exposeApis.portMappings end')

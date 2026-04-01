@@ -1,32 +1,32 @@
 import { test, expect } from '@playwright/test';
 import { goToDashboard } from '../helpers/ui-helpers';
-import { cleanupAllCustomAgentsMd } from '../helpers/worker-lifecycle';
+import { cleanupAllCustomInstructions } from '../helpers/worker-lifecycle';
 
-test.describe('AGENTS.md Modal', () => {
+test.describe('Instructions Modal', () => {
   test.afterEach(async ({ request }) => {
-    await cleanupAllCustomAgentsMd(request);
+    await cleanupAllCustomInstructions(request);
   });
 
-  test('AGENTS.md button is visible and opens modal', async ({ page }) => {
+  test('Instructions button is visible and opens modal', async ({ page }) => {
     await goToDashboard(page);
-    const btn = page.locator('button:has-text("AGENTS.md")');
+    const btn = page.locator('button:has-text("Instructions")');
     await expect(btn).toBeVisible({ timeout: 10_000 });
     await btn.click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
   });
 
-  test('modal has "AGENTS.md" title', async ({ page }) => {
+  test('modal has "Instructions" title', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.locator('h2')).toHaveText('AGENTS.md');
+    await expect(dialog.locator('h2')).toHaveText('Instructions');
   });
 
   test('built-in entry (platform-guide) is listed', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -38,7 +38,7 @@ test.describe('AGENTS.md Modal', () => {
 
   test('Close button closes the modal', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -48,7 +48,7 @@ test.describe('AGENTS.md Modal', () => {
 
   test('Escape key closes the modal', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -58,7 +58,7 @@ test.describe('AGENTS.md Modal', () => {
 
   test('"New" button shows editor form', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -72,7 +72,7 @@ test.describe('AGENTS.md Modal', () => {
 
   test('Cancel in editor returns to list view', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -89,7 +89,7 @@ test.describe('AGENTS.md Modal', () => {
 
   test('create custom entry flow', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 

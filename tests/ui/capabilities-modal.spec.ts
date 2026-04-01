@@ -1,65 +1,65 @@
 import { test, expect } from '@playwright/test';
 import { goToDashboard } from '../helpers/ui-helpers';
-import { cleanupAllCustomSkills } from '../helpers/worker-lifecycle';
+import { cleanupAllCustomCapabilities } from '../helpers/worker-lifecycle';
 
-test.describe('Skills Modal', () => {
+test.describe('Capabilities Modal', () => {
   test.afterEach(async ({ request }) => {
-    await cleanupAllCustomSkills(request);
+    await cleanupAllCustomCapabilities(request);
   });
 
-  test('Skills button is visible in sidebar and opens modal dialog', async ({ page }) => {
+  test('Capabilities button is visible in sidebar and opens modal dialog', async ({ page }) => {
     await goToDashboard(page);
-    const skillsBtn = page.locator('button:has-text("Skills")');
-    await expect(skillsBtn).toBeVisible({ timeout: 10_000 });
-    await skillsBtn.click();
+    const capabilitiesBtn = page.locator('button:has-text("Capabilities")');
+    await expect(capabilitiesBtn).toBeVisible({ timeout: 10_000 });
+    await capabilitiesBtn.click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
   });
 
-  test('modal has "Skills" title', async ({ page }) => {
+  test('modal has "Capabilities" title', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.locator('h2')).toHaveText('Skills');
+    await expect(dialog.locator('h2')).toHaveText('Capabilities');
   });
 
   test('modal has "New" and "Close" buttons', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
     await expect(dialog.locator('button:has-text("New")')).toBeVisible();
     await expect(dialog.locator('button:has-text("Close")')).toBeVisible();
   });
 
-  test('built-in skills are listed', async ({ page }) => {
+  test('built-in capabilities are listed', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    const builtInSkills = ['port-mapping', 'domain-mapping', 'usage', 'tmux'];
-    for (const name of builtInSkills) {
+    const builtInCapabilities = ['port-mapping', 'domain-mapping', 'usage', 'tmux'];
+    for (const name of builtInCapabilities) {
       await expect(dialog.getByText(name, { exact: false })).toBeVisible({ timeout: 10_000 });
     }
   });
 
-  test('built-in skills show "Built-in" badge', async ({ page }) => {
+  test('built-in capabilities show "Built-in" badge', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
     const badges = dialog.getByText('Built-in');
     await expect(badges.first()).toBeVisible({ timeout: 10_000 });
-    // There should be at least 4 built-in badges (one per built-in skill)
+    // There should be at least 4 built-in badges (one per built-in capability)
     expect(await badges.count()).toBeGreaterThanOrEqual(4);
   });
 
   test('Close button closes the modal', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -69,7 +69,7 @@ test.describe('Skills Modal', () => {
 
   test('Escape key closes the modal', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -79,7 +79,7 @@ test.describe('Skills Modal', () => {
 
   test('"New" button shows editor form with name input and content textarea', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -90,13 +90,13 @@ test.describe('Skills Modal', () => {
     await expect(dialog.getByText('Content')).toBeVisible({ timeout: 5_000 });
 
     // Input and textarea should be present
-    await expect(dialog.locator('input[placeholder="Skill name"]')).toBeVisible();
+    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible();
     await expect(dialog.locator('textarea')).toBeVisible();
   });
 
   test('Cancel in editor returns to list view', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -107,28 +107,28 @@ test.describe('Skills Modal', () => {
 
     // Should be back at the list — "New" button should be visible again
     await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 5_000 });
-    // Built-in skills should be visible again
+    // Built-in capabilities should be visible again
     await expect(dialog.getByText('tmux')).toBeVisible({ timeout: 5_000 });
   });
 
   test('create flow: fill name + content, save, verify appears in list', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("Skills")').click();
+    await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    const skillName = `test-skill-${Date.now()}`;
+    const capabilityName = `test-capability-${Date.now()}`;
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Skill name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 5_000 });
 
-    await dialog.locator('input[placeholder="Skill name"]').fill(skillName);
-    await dialog.locator('textarea').fill('---\ndescription: Test skill\n---\n\nTest content');
+    await dialog.locator('input[placeholder="Capability name"]').fill(capabilityName);
+    await dialog.locator('textarea').fill('---\ndescription: Test capability\n---\n\nTest content');
 
     await dialog.locator('button:has-text("Create")').click();
 
-    // Should return to list and show the new skill
+    // Should return to list and show the new capability
     await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.getByText(skillName)).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText(capabilityName)).toBeVisible({ timeout: 10_000 });
   });
 });

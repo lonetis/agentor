@@ -12,8 +12,8 @@ import { WorkerStore } from './worker-store';
 import { UpdateChecker } from './update-checker';
 import { UsageChecker } from './usage-checker';
 import { CredentialMountManager } from './credential-mounts';
-import { SkillStore } from './skill-store';
-import { AgentsMdStore } from './agents-md-store';
+import { CapabilityStore } from './capability-store';
+import { InstructionStore } from './instruction-store';
 import { InitScriptStore } from './init-script-store';
 import { StorageManager } from './storage';
 import { SelfSignedCertManager } from './selfsigned-certs';
@@ -49,8 +49,8 @@ export const useUsageChecker = singleton(() => new UsageChecker(useConfig()));
 export const useCredentialMountManager = singleton(
   () => new CredentialMountManager(new Docker({ socketPath: '/var/run/docker.sock' }))
 );
-export const useSkillStore = singleton(() => new SkillStore(useConfig().dataDir));
-export const useAgentsMdStore = singleton(() => new AgentsMdStore(useConfig().dataDir));
+export const useCapabilityStore = singleton(() => new CapabilityStore(useConfig().dataDir));
+export const useInstructionStore = singleton(() => new InstructionStore(useConfig().dataDir));
 export const useInitScriptStore = singleton(() => new InitScriptStore(useConfig().dataDir));
 export const useLogStore = singleton(() => new LogStore(useConfig()));
 export const useLogBroadcaster = singleton(() => new LogBroadcaster());

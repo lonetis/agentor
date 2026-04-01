@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { AgentsMdEntryInfo } from '~/types';
+import type { InstructionInfo } from '~/types';
 
 const open = defineModel<boolean>('open', { default: false });
 
-const { entries, createEntry, updateEntry, deleteEntry } = useAgentsMd();
+const { entries, createEntry, updateEntry, deleteEntry } = useInstructions();
 
 const editingId = ref<string | null>(null);
 const creating = ref(false);
@@ -21,7 +21,7 @@ function startCreate() {
   creating.value = true;
 }
 
-function startEdit(entry: AgentsMdEntryInfo) {
+function startEdit(entry: InstructionInfo) {
   creating.value = false;
   viewing.value = null;
   editingId.value = entry.id;
@@ -29,7 +29,7 @@ function startEdit(entry: AgentsMdEntryInfo) {
   editForm.content = entry.content;
 }
 
-function startView(entry: AgentsMdEntryInfo) {
+function startView(entry: InstructionInfo) {
   creating.value = false;
   editingId.value = null;
   viewing.value = entry.id;
@@ -64,7 +64,7 @@ async function handleDelete(id: string) {
     <template #content>
       <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">AGENTS.md</h2>
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Instructions</h2>
           <div class="flex gap-2">
             <UButton v-if="!showEditor" size="sm" @click="startCreate">
               New
@@ -113,7 +113,7 @@ async function handleDelete(id: string) {
           </template>
 
           <div v-else class="text-gray-400 dark:text-gray-500 text-sm text-center py-4">
-            No AGENTS.md entries yet. Create one to get started.
+            No instructions yet. Create one to get started.
           </div>
         </div>
 

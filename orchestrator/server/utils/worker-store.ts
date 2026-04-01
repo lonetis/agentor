@@ -20,8 +20,8 @@ export interface WorkerRecord {
   setupScript?: string;
   envVars?: string;
   exposeApis?: ExposeApis;
-  skillNames?: string[];
-  agentsMdNames?: string[];
+  capabilityNames?: string[];
+  instructionNames?: string[];
   image: string;
   imageId: string;
   status: 'active' | 'archived';

@@ -2,12 +2,12 @@ import { test, expect } from '@playwright/test';
 import { goToDashboard } from '../helpers/ui-helpers';
 import { ApiClient } from '../helpers/api-client';
 
-test.describe('AGENTS.md Modal — CRUD Operations', () => {
+test.describe('Instructions Modal — CRUD Operations', () => {
 
   test('create a custom entry via the UI', async ({ page, request }) => {
     const api = new ApiClient(request);
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -30,21 +30,21 @@ test.describe('AGENTS.md Modal — CRUD Operations', () => {
     await expect(entryRow.locator('button:has-text("Delete")')).toBeVisible({ timeout: 5_000 });
 
     // Cleanup
-    const { body: entries } = await api.listAgentsMd();
+    const { body: entries } = await api.listInstructions();
     const created = entries.find((e: { name: string }) => e.name === entryName);
-    if (created) await api.deleteAgentsMd(created.id);
+    if (created) await api.deleteInstruction(created.id);
   });
 
   test('edit a custom entry', async ({ page, request }) => {
     const api = new ApiClient(request);
     const entryName = `ui-entry-edit-${Date.now()}`;
     const originalContent = '# Original\n\nOriginal content.';
-    const { body: created } = await api.createAgentsMd({ name: entryName, content: originalContent });
+    const { body: created } = await api.createInstruction({ name: entryName, content: originalContent });
     const entryId = created.id;
 
     try {
       await goToDashboard(page);
-      await page.locator('button:has-text("AGENTS.md")').click();
+      await page.locator('button:has-text("Instructions")').click();
       const dialog = page.locator('[role="dialog"]');
       await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -68,17 +68,17 @@ test.describe('AGENTS.md Modal — CRUD Operations', () => {
       await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 10_000 });
       await expect(dialog.getByText(entryName)).toBeVisible({ timeout: 10_000 });
     } finally {
-      try { await api.deleteAgentsMd(entryId); } catch { /* ignore */ }
+      try { await api.deleteInstruction(entryId); } catch { /* ignore */ }
     }
   });
 
   test('delete a custom entry', async ({ page, request }) => {
     const api = new ApiClient(request);
     const entryName = `ui-entry-delete-${Date.now()}`;
-    await api.createAgentsMd({ name: entryName, content: '# To Delete\n\nContent.' });
+    await api.createInstruction({ name: entryName, content: '# To Delete\n\nContent.' });
 
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -95,7 +95,7 @@ test.describe('AGENTS.md Modal — CRUD Operations', () => {
 
   test('view a built-in entry (read-only)', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -119,7 +119,7 @@ test.describe('AGENTS.md Modal — CRUD Operations', () => {
 
   test('save button is disabled when name is empty', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -134,7 +134,7 @@ test.describe('AGENTS.md Modal — CRUD Operations', () => {
 
   test('save button is disabled when content is empty', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -149,7 +149,7 @@ test.describe('AGENTS.md Modal — CRUD Operations', () => {
 
   test('save button becomes enabled when both fields are filled', async ({ page }) => {
     await goToDashboard(page);
-    await page.locator('button:has-text("AGENTS.md")').click();
+    await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 

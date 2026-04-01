@@ -1,22 +1,22 @@
 import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
-import { cleanupAllCustomAgentsMd } from '../helpers/worker-lifecycle';
+import { cleanupAllCustomInstructions } from '../helpers/worker-lifecycle';
 
-test.describe('AGENTS.md API', () => {
+test.describe('Instructions API', () => {
   const createdIds: string[] = [];
 
   test.afterEach(async ({ request }) => {
     const api = new ApiClient(request);
     for (const id of createdIds) {
-      try { await api.deleteAgentsMd(id); } catch { /* ignore */ }
+      try { await api.deleteInstruction(id); } catch { /* ignore */ }
     }
     createdIds.length = 0;
   });
 
-  test.describe('GET /api/agents-md', () => {
+  test.describe('GET /api/instructions', () => {
     test('returns array with built-in entries', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status, body } = await api.listAgentsMd();
+      const { status, body } = await api.listInstructions();
       expect(status).toBe(200);
       expect(Array.isArray(body)).toBe(true);
       expect(body.length).toBeGreaterThanOrEqual(1);
@@ -24,7 +24,7 @@ test.describe('AGENTS.md API', () => {
 
     test('built-in platform-guide entry has builtIn: true', async ({ request }) => {
       const api = new ApiClient(request);
-      const { body } = await api.listAgentsMd();
+      const { body } = await api.listInstructions();
       const platformGuide = body.find((e: { id: string }) => e.id === 'platform-guide');
       expect(platformGuide).toBeTruthy();
       expect(platformGuide.builtIn).toBe(true);
@@ -35,24 +35,24 @@ test.describe('AGENTS.md API', () => {
     test('list includes newly created custom entry', async ({ request }) => {
       const api = new ApiClient(request);
       const ts = Date.now();
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: `List-Test-${ts}`,
         content: `# List Test ${ts}\nContent for list test.`,
       });
       createdIds.push(created.id);
 
-      const { body: list } = await api.listAgentsMd();
+      const { body: list } = await api.listInstructions();
       const found = list.find((e: { id: string }) => e.id === created.id);
       expect(found).toBeTruthy();
       expect(found.name).toBe(`List-Test-${ts}`);
     });
   });
 
-  test.describe('POST /api/agents-md', () => {
+  test.describe('POST /api/instructions', () => {
     test('creates custom entry and returns 201', async ({ request }) => {
       const api = new ApiClient(request);
       const ts = Date.now();
-      const { status, body } = await api.createAgentsMd({
+      const { status, body } = await api.createInstruction({
         name: `Custom Entry ${ts}`,
         content: `# Custom Entry\nThis is test content for ${ts}.`,
       });
@@ -66,7 +66,7 @@ test.describe('AGENTS.md API', () => {
 
     test('rejects missing name', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.createAgentsMd({
+      const { status } = await api.createInstruction({
         content: '# No Name\nContent without a name.',
       });
       expect(status).toBe(400);
@@ -74,7 +74,7 @@ test.describe('AGENTS.md API', () => {
 
     test('rejects missing content', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.createAgentsMd({
+      const { status } = await api.createInstruction({
         name: `No Content ${Date.now()}`,
       });
       expect(status).toBe(400);
@@ -82,7 +82,7 @@ test.describe('AGENTS.md API', () => {
 
     test('rejects empty name string', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.createAgentsMd({
+      const { status } = await api.createInstruction({
         name: '',
         content: '# Empty Name\nContent here.',
       });
@@ -91,7 +91,7 @@ test.describe('AGENTS.md API', () => {
 
     test('rejects empty content string', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.createAgentsMd({
+      const { status } = await api.createInstruction({
         name: `Empty Content ${Date.now()}`,
         content: '',
       });
@@ -100,22 +100,22 @@ test.describe('AGENTS.md API', () => {
 
     test('rejects empty body', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.createAgentsMd({});
+      const { status } = await api.createInstruction({});
       expect(status).toBe(400);
     });
   });
 
-  test.describe('GET /api/agents-md/:id', () => {
+  test.describe('GET /api/instructions/:id', () => {
     test('returns a single entry by ID', async ({ request }) => {
       const api = new ApiClient(request);
       const ts = Date.now();
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: `Get Test ${ts}`,
         content: `# Get Test\nContent for ${ts}.`,
       });
       createdIds.push(created.id);
 
-      const { status, body } = await api.getAgentsMd(created.id);
+      const { status, body } = await api.getInstruction(created.id);
       expect(status).toBe(200);
       expect(body.id).toBe(created.id);
       expect(body.name).toBe(`Get Test ${ts}`);
@@ -124,7 +124,7 @@ test.describe('AGENTS.md API', () => {
 
     test('returns built-in entry by ID', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status, body } = await api.getAgentsMd('platform-guide');
+      const { status, body } = await api.getInstruction('platform-guide');
       expect(status).toBe(200);
       expect(body.id).toBe('platform-guide');
       expect(body.builtIn).toBe(true);
@@ -132,22 +132,22 @@ test.describe('AGENTS.md API', () => {
 
     test('returns 404 for non-existent ID', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.getAgentsMd('non-existent-id');
+      const { status } = await api.getInstruction('non-existent-id');
       expect(status).toBe(404);
     });
   });
 
-  test.describe('PUT /api/agents-md/:id', () => {
+  test.describe('PUT /api/instructions/:id', () => {
     test('updates a custom entry', async ({ request }) => {
       const api = new ApiClient(request);
       const ts = Date.now();
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: `Update Test ${ts}`,
         content: `# Original\nOriginal content.`,
       });
       createdIds.push(created.id);
 
-      const { status, body } = await api.updateAgentsMd(created.id, {
+      const { status, body } = await api.updateInstruction(created.id, {
         name: `Updated Name ${ts}`,
         content: `# Updated\nUpdated content for ${ts}.`,
       });
@@ -158,7 +158,7 @@ test.describe('AGENTS.md API', () => {
 
     test('returns 400 when updating built-in entry', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.updateAgentsMd('platform-guide', {
+      const { status } = await api.updateInstruction('platform-guide', {
         name: 'Modified Built-in',
       });
       expect(status).toBe(400);
@@ -166,7 +166,7 @@ test.describe('AGENTS.md API', () => {
 
     test('returns 404 for non-existent ID', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.updateAgentsMd('non-existent-id', {
+      const { status } = await api.updateInstruction('non-existent-id', {
         name: 'Does Not Exist',
       });
       expect(status).toBe(404);
@@ -174,54 +174,54 @@ test.describe('AGENTS.md API', () => {
 
     test('rejects empty name on update', async ({ request }) => {
       const api = new ApiClient(request);
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: `Empty Name Update ${Date.now()}`,
         content: '# Test\nContent.',
       });
       createdIds.push(created.id);
 
-      const { status } = await api.updateAgentsMd(created.id, { name: '' });
+      const { status } = await api.updateInstruction(created.id, { name: '' });
       expect(status).toBe(400);
     });
   });
 
-  test.describe('DELETE /api/agents-md/:id', () => {
+  test.describe('DELETE /api/instructions/:id', () => {
     test('deletes a custom entry and returns { ok: true }', async ({ request }) => {
       const api = new ApiClient(request);
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: `Delete Test ${Date.now()}`,
         content: '# Delete Me\nThis will be deleted.',
       });
 
-      const { status, body } = await api.deleteAgentsMd(created.id);
+      const { status, body } = await api.deleteInstruction(created.id);
       expect(status).toBe(200);
       expect(body.ok).toBe(true);
     });
 
     test('returns 400 when deleting built-in entry', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.deleteAgentsMd('platform-guide');
+      const { status } = await api.deleteInstruction('platform-guide');
       expect(status).toBe(400);
     });
 
     test('returns 404 for non-existent ID', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.deleteAgentsMd('non-existent-id');
+      const { status } = await api.deleteInstruction('non-existent-id');
       expect(status).toBe(404);
     });
 
     test('deleted entry returns 404 on get', async ({ request }) => {
       const api = new ApiClient(request);
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: `Delete Refetch ${Date.now()}`,
         content: '# Refetch Test\nContent.',
       });
       const entryId = created.id;
 
-      const { status: deleteStatus } = await api.deleteAgentsMd(entryId);
+      const { status: deleteStatus } = await api.deleteInstruction(entryId);
       expect(deleteStatus).toBe(200);
 
-      const { status: getStatus } = await api.getAgentsMd(entryId);
+      const { status: getStatus } = await api.getInstruction(entryId);
       expect(getStatus).toBe(404);
     });
   });
@@ -230,7 +230,7 @@ test.describe('AGENTS.md API', () => {
     test('entry has all expected fields (id, name, content, builtIn, timestamps)', async ({ request }) => {
       const api = new ApiClient(request);
       const ts = Date.now();
-      const { body } = await api.createAgentsMd({
+      const { body } = await api.createInstruction({
         name: `Fields Test ${ts}`,
         content: `# Fields\nContent for ${ts}.`,
       });
@@ -247,7 +247,7 @@ test.describe('AGENTS.md API', () => {
 
     test('custom entry has builtIn: false', async ({ request }) => {
       const api = new ApiClient(request);
-      const { body } = await api.createAgentsMd({
+      const { body } = await api.createInstruction({
         name: `BuiltIn Flag ${Date.now()}`,
         content: '# Flag Test\nContent.',
       });
@@ -261,14 +261,14 @@ test.describe('AGENTS.md API', () => {
       const api = new ApiClient(request);
       const ts = Date.now();
       const originalContent = `# Partial\nOriginal content for ${ts}.`;
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: `Partial Test ${ts}`,
         content: originalContent,
       });
       createdIds.push(created.id);
 
       // Update only the name
-      const { body: updated } = await api.updateAgentsMd(created.id, {
+      const { body: updated } = await api.updateInstruction(created.id, {
         name: `Partial Updated ${ts}`,
       });
       expect(updated.name).toBe(`Partial Updated ${ts}`);
@@ -280,14 +280,14 @@ test.describe('AGENTS.md API', () => {
       const api = new ApiClient(request);
       const ts = Date.now();
       const originalName = `Content Only ${ts}`;
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: originalName,
         content: '# Original\nOriginal content.',
       });
       createdIds.push(created.id);
 
       const newContent = `# Updated\nUpdated content for ${ts}.`;
-      const { body: updated } = await api.updateAgentsMd(created.id, {
+      const { body: updated } = await api.updateInstruction(created.id, {
         content: newContent,
       });
       expect(updated.content).toBe(newContent);
@@ -298,7 +298,7 @@ test.describe('AGENTS.md API', () => {
     test('updatedAt changes after update', async ({ request }) => {
       const api = new ApiClient(request);
       const ts = Date.now();
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: `Timestamp Test ${ts}`,
         content: '# Timestamp\nContent.',
       });
@@ -307,7 +307,7 @@ test.describe('AGENTS.md API', () => {
       // Small delay to ensure timestamps differ
       await new Promise(r => setTimeout(r, 100));
 
-      const { body: updated } = await api.updateAgentsMd(created.id, {
+      const { body: updated } = await api.updateInstruction(created.id, {
         name: `Timestamp Updated ${ts}`,
       });
       expect(updated.createdAt).toBe(created.createdAt);
@@ -319,13 +319,13 @@ test.describe('AGENTS.md API', () => {
     test('list entries include all fields', async ({ request }) => {
       const api = new ApiClient(request);
       const ts = Date.now();
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: `ListFields Test ${ts}`,
         content: `# ListFields\nContent for ${ts}.`,
       });
       createdIds.push(created.id);
 
-      const { body: list } = await api.listAgentsMd();
+      const { body: list } = await api.listInstructions();
       const found = list.find((e: { id: string }) => e.id === created.id);
       expect(found).toBeTruthy();
       expect(found.name).toBe(`ListFields Test ${ts}`);
@@ -341,13 +341,13 @@ test.describe('AGENTS.md API', () => {
       const api = new ApiClient(request);
       const ts = Date.now();
       const entryName = `SameName-${ts}`;
-      const { body: created } = await api.createAgentsMd({
+      const { body: created } = await api.createInstruction({
         name: entryName,
         content: '# Same Name\nContent.',
       });
       createdIds.push(created.id);
 
-      const { status, body } = await api.updateAgentsMd(created.id, { name: entryName });
+      const { status, body } = await api.updateInstruction(created.id, { name: entryName });
       expect(status).toBe(200);
       expect(body.name).toBe(entryName);
     });

@@ -37,8 +37,8 @@ defineRouteMeta({
               setupScript: { type: 'string' },
               envVars: { type: 'string' },
               exposeApis: { type: 'object', properties: { portMappings: { type: 'boolean' }, domainMappings: { type: 'boolean' }, usage: { type: 'boolean' } } },
-              skillNames: { type: 'array', items: { type: 'string' } },
-              agentsMdNames: { type: 'array', items: { type: 'string' } },
+              capabilityNames: { type: 'array', items: { type: 'string' } },
+              instructionNames: { type: 'array', items: { type: 'string' } },
             },
           },
           RepoConfig: {

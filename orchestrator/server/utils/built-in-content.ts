@@ -1,10 +1,10 @@
-export interface BuiltInSkill {
+export interface BuiltInCapability {
   id: string;
   name: string;
   content: string;
 }
 
-export interface BuiltInAgentsMdEntry {
+export interface BuiltInInstruction {
   id: string;
   name: string;
   content: string;
@@ -28,8 +28,8 @@ export interface BuiltInEnvironment {
   envVars: string;
   setupScript: string;
   exposeApis: { portMappings: boolean; domainMappings: boolean; usage: boolean };
-  enabledSkillIds: string[] | null;
-  enabledAgentsMdIds: string[] | null;
+  enabledCapabilityIds: string[] | null;
+  enabledInstructionIds: string[] | null;
 }
 
 function toText(raw: unknown): string {
@@ -39,32 +39,32 @@ function toText(raw: unknown): string {
 }
 
 /**
- * Load all built-in skills from server assets (server/built-in/skills/*.md).
- * Each file's basename (without extension) is used as the skill ID.
+ * Load all built-in capabilities from server assets (server/built-in/capabilities/*.md).
+ * Each file's basename (without extension) is used as the capability ID.
  */
-export async function loadBuiltInSkills(): Promise<BuiltInSkill[]> {
-  const storage = useStorage('assets:builtin-skills');
+export async function loadBuiltInCapabilities(): Promise<BuiltInCapability[]> {
+  const storage = useStorage('assets:builtin-capabilities');
   const keys = await storage.getKeys();
-  const skills: BuiltInSkill[] = [];
+  const capabilities: BuiltInCapability[] = [];
   for (const key of keys) {
     if (!key.endsWith('.md')) continue;
     const raw = await storage.getItem(key);
     if (!raw) continue;
     const content = toText(raw);
     const id = key.replace(/\.md$/, '');
-    skills.push({ id, name: id, content });
+    capabilities.push({ id, name: id, content });
   }
-  return skills;
+  return capabilities;
 }
 
 /**
- * Load all built-in AGENTS.md entries from server assets (server/built-in/agents-md/*.md).
+ * Load all built-in instructions from server assets (server/built-in/instructions/*.md).
  * The filename (without extension) is both the ID and the name.
  */
-export async function loadBuiltInAgentsMd(): Promise<BuiltInAgentsMdEntry[]> {
-  const storage = useStorage('assets:builtin-agents-md');
+export async function loadBuiltInInstructions(): Promise<BuiltInInstruction[]> {
+  const storage = useStorage('assets:builtin-instructions');
   const keys = await storage.getKeys();
-  const entries: BuiltInAgentsMdEntry[] = [];
+  const entries: BuiltInInstruction[] = [];
   for (const key of keys) {
     if (!key.endsWith('.md')) continue;
     const raw = await storage.getItem(key);

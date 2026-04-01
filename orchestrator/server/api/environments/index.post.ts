@@ -42,8 +42,8 @@ export default defineEventHandler(async (event) => {
     envVars: body.envVars || '',
     setupScript: body.setupScript || '',
     exposeApis: body.exposeApis ?? { portMappings: true, domainMappings: true, usage: true },
-    enabledSkillIds: body.enabledSkillIds ?? null,
-    enabledAgentsMdIds: body.enabledAgentsMdIds ?? null,
+    enabledCapabilityIds: body.enabledCapabilityIds ?? null,
+    enabledInstructionIds: body.enabledInstructionIds ?? null,
   });
 
   setResponseStatus(event, 201);

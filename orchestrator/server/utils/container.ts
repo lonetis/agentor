@@ -3,7 +3,7 @@ import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generato
 import type { Config } from './config';
 import { getAppType } from './apps';
 import { DockerService } from './docker';
-import type { EnvironmentJsonPayload, SkillJsonEntry, AgentsMdJsonEntry, WorkerJsonPayload } from './docker';
+import type { EnvironmentJsonPayload, CapabilityJsonEntry, InstructionJsonEntry, WorkerJsonPayload } from './docker';
 import type { AppInstanceInfo, TmuxWindow } from '../../shared/types';
 import { getAllGitCloneDomains } from './git-providers';
 import { getAllAgentApiDomains } from './agent-config';
@@ -11,8 +11,8 @@ import { getPackageManagerDomains } from './environments';
 import type { EnvironmentStore } from './environments';
 import type { WorkerStore, WorkerRecord } from './worker-store';
 import type { CredentialMountManager } from './credential-mounts';
-import type { SkillStore } from './skill-store';
-import type { AgentsMdStore } from './agents-md-store';
+import type { CapabilityStore } from './capability-store';
+import type { InstructionStore } from './instruction-store';
 import type { StorageManager } from './storage';
 import type { NetworkMode, ExposeApis, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest } from '../../shared/types';
 
@@ -24,8 +24,8 @@ interface ResolvedEnvConfig {
   environmentName?: string;
   includePackageManagerDomains?: boolean;
   environmentJson: EnvironmentJsonPayload;
-  skillsJson: SkillJsonEntry[];
-  agentsMdJson: AgentsMdJsonEntry[];
+  capabilitiesJson: CapabilityJsonEntry[];
+  instructionsJson: InstructionJsonEntry[];
 }
 
 export class ContainerManager {
@@ -35,8 +35,8 @@ export class ContainerManager {
   private environmentStore?: EnvironmentStore;
   private workerStore?: WorkerStore;
   private credentialMountManager?: CredentialMountManager;
-  private skillStore?: SkillStore;
-  private agentsMdStore?: AgentsMdStore;
+  private capabilityStore?: CapabilityStore;
+  private instructionStore?: InstructionStore;
   private storageManager?: StorageManager;
   constructor(dockerService: DockerService, config: Config) {
     this.dockerService = dockerService;
@@ -55,65 +55,65 @@ export class ContainerManager {
     this.credentialMountManager = manager;
   }
 
-  setSkillStore(store: SkillStore): void {
-    this.skillStore = store;
+  setCapabilityStore(store: CapabilityStore): void {
+    this.capabilityStore = store;
   }
 
-  setAgentsMdStore(store: AgentsMdStore): void {
-    this.agentsMdStore = store;
+  setInstructionStore(store: InstructionStore): void {
+    this.instructionStore = store;
   }
 
   setStorageManager(manager: StorageManager): void {
     this.storageManager = manager;
   }
 
-  private resolveSkillsAndAgentsMd(
-    enabledSkillIds: string[] | null | undefined,
-    enabledAgentsMdIds: string[] | null | undefined,
+  private resolveCapabilitiesAndInstructions(
+    enabledCapabilityIds: string[] | null | undefined,
+    enabledInstructionIds: string[] | null | undefined,
     exposeApis: ExposeApis,
-  ): { skillsJson: SkillJsonEntry[]; agentsMdJson: AgentsMdJsonEntry[] } {
-    const agentsMdJson: AgentsMdJsonEntry[] = [];
-    if (this.agentsMdStore) {
-      const allEntries = this.agentsMdStore.list();
-      const enabledEntries = enabledAgentsMdIds === null || enabledAgentsMdIds === undefined
+  ): { capabilitiesJson: CapabilityJsonEntry[]; instructionsJson: InstructionJsonEntry[] } {
+    const instructionsJson: InstructionJsonEntry[] = [];
+    if (this.instructionStore) {
+      const allEntries = this.instructionStore.list();
+      const enabledEntries = enabledInstructionIds === null || enabledInstructionIds === undefined
         ? allEntries
-        : allEntries.filter((i) => enabledAgentsMdIds!.includes(i.id));
+        : allEntries.filter((i) => enabledInstructionIds!.includes(i.id));
 
       for (const entry of enabledEntries) {
-        agentsMdJson.push({ name: entry.name, content: entry.content });
+        instructionsJson.push({ name: entry.name, content: entry.content });
       }
     }
 
-    const skillsJson: SkillJsonEntry[] = [];
-    if (this.skillStore) {
-      const allSkills = this.skillStore.list();
-      let enabledSkills = enabledSkillIds === null || enabledSkillIds === undefined
-        ? allSkills
-        : allSkills.filter((s) => enabledSkillIds!.includes(s.id));
+    const capabilitiesJson: CapabilityJsonEntry[] = [];
+    if (this.capabilityStore) {
+      const allCapabilities = this.capabilityStore.list();
+      let enabledCapabilities = enabledCapabilityIds === null || enabledCapabilityIds === undefined
+        ? allCapabilities
+        : allCapabilities.filter((s) => enabledCapabilityIds!.includes(s.id));
 
-      const apiSkillFilter: Record<string, keyof ExposeApis> = {
+      const apiCapabilityFilter: Record<string, keyof ExposeApis> = {
         'port-mapping': 'portMappings',
         'domain-mapping': 'domainMappings',
         'usage': 'usage',
       };
-      enabledSkills = enabledSkills.filter((s) => {
-        const apiKey = apiSkillFilter[s.id];
+      enabledCapabilities = enabledCapabilities.filter((s) => {
+        const apiKey = apiCapabilityFilter[s.id];
         return !apiKey || exposeApis[apiKey];
       });
 
-      for (const skill of enabledSkills) {
-        skillsJson.push({ name: skill.name, content: skill.content });
+      for (const capability of enabledCapabilities) {
+        capabilitiesJson.push({ name: capability.name, content: capability.content });
       }
     }
 
-    return { skillsJson, agentsMdJson };
+    return { capabilitiesJson, instructionsJson };
   }
 
   private resolveEnvironmentConfig(environmentId?: string): ResolvedEnvConfig {
     const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
 
     if (!this.environmentStore) {
-      const { skillsJson, agentsMdJson } = this.resolveSkillsAndAgentsMd(null, null, defaultExposeApis);
+      const { capabilitiesJson, instructionsJson } = this.resolveCapabilitiesAndInstructions(null, null, defaultExposeApis);
       return {
         includePackageManagerDomains: true,
         environmentJson: {
@@ -124,8 +124,8 @@ export class ContainerManager {
           envVars: '',
           exposeApis: defaultExposeApis,
         },
-        skillsJson,
-        agentsMdJson,
+        capabilitiesJson,
+        instructionsJson,
       };
     }
 
@@ -149,8 +149,8 @@ export class ContainerManager {
     }
 
     const exposeApis: ExposeApis = env.exposeApis ?? defaultExposeApis;
-    const { skillsJson, agentsMdJson } = this.resolveSkillsAndAgentsMd(
-      env.enabledSkillIds, env.enabledAgentsMdIds, exposeApis,
+    const { capabilitiesJson, instructionsJson } = this.resolveCapabilitiesAndInstructions(
+      env.enabledCapabilityIds, env.enabledInstructionIds, exposeApis,
     );
 
     const dockerEnabled = env.dockerEnabled ?? true;
@@ -169,8 +169,8 @@ export class ContainerManager {
         envVars: env.envVars || '',
         exposeApis,
       },
-      skillsJson,
-      agentsMdJson,
+      capabilitiesJson,
+      instructionsJson,
     };
   }
 
@@ -213,8 +213,8 @@ export class ContainerManager {
         setupScript: worker?.setupScript,
         envVars: worker?.envVars,
         exposeApis: worker?.exposeApis,
-        skillNames: worker?.skillNames,
-        agentsMdNames: worker?.agentsMdNames,
+        capabilityNames: worker?.capabilityNames,
+        instructionNames: worker?.instructionNames,
       });
     }
 
@@ -263,8 +263,8 @@ export class ContainerManager {
       dockerEnabled,
       credentialBinds: this.credentialMountManager?.getBindMounts(),
       environmentJson: envConfig.environmentJson,
-      skillsJson: envConfig.skillsJson,
-      agentsMdJson: envConfig.agentsMdJson,
+      capabilitiesJson: envConfig.capabilitiesJson,
+      instructionsJson: envConfig.instructionsJson,
       workerJson,
       storageManager: this.storageManager,
     });
@@ -279,8 +279,8 @@ export class ContainerManager {
     const setupScript = envConfig.environmentJson.setupScript || undefined;
     const envVars = envConfig.environmentJson.envVars || undefined;
     const exposeApis = envConfig.environmentJson.exposeApis;
-    const skillNames = envConfig.skillsJson.length > 0 ? envConfig.skillsJson.map((s) => s.name) : undefined;
-    const agentsMdNames = envConfig.agentsMdJson.length > 0 ? envConfig.agentsMdJson.map((e) => e.name) : undefined;
+    const capabilityNames = envConfig.capabilitiesJson.length > 0 ? envConfig.capabilitiesJson.map((s) => s.name) : undefined;
+    const instructionNames = envConfig.instructionsJson.length > 0 ? envConfig.instructionsJson.map((e) => e.name) : undefined;
 
     const containerInfo: ContainerInfo = {
       id: container.id,
@@ -304,8 +304,8 @@ export class ContainerManager {
       setupScript,
       envVars,
       exposeApis,
-      skillNames,
-      agentsMdNames,
+      capabilityNames,
+      instructionNames,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -440,8 +440,8 @@ export class ContainerManager {
         exposeApis: info.exposeApis || defaultExposeApis,
       },
       includePackageManagerDomains: info.includePackageManagerDomains,
-      skillsJson: info.skillNames?.map((name) => ({ name, content: '' })) || [],
-      agentsMdJson: info.agentsMdNames?.map((name) => ({ name, content: '' })) || [],
+      capabilitiesJson: info.capabilityNames?.map((name) => ({ name, content: '' })) || [],
+      instructionsJson: info.instructionNames?.map((name) => ({ name, content: '' })) || [],
     };
     try {
       envConfig = this.resolveEnvironmentConfig(info.environmentId);
@@ -468,8 +468,8 @@ export class ContainerManager {
       dockerEnabled,
       credentialBinds: this.credentialMountManager?.getBindMounts(),
       environmentJson: envConfig.environmentJson,
-      skillsJson: envConfig.skillsJson,
-      agentsMdJson: envConfig.agentsMdJson,
+      capabilitiesJson: envConfig.capabilitiesJson,
+      instructionsJson: envConfig.instructionsJson,
       workerJson,
       storageManager: this.storageManager,
     });
@@ -497,8 +497,8 @@ export class ContainerManager {
       setupScript: info.setupScript,
       envVars: info.envVars,
       exposeApis: info.exposeApis,
-      skillNames: info.skillNames,
-      agentsMdNames: info.agentsMdNames,
+      capabilityNames: info.capabilityNames,
+      instructionNames: info.instructionNames,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -535,8 +535,8 @@ export class ContainerManager {
         exposeApis: worker.exposeApis || defaultExposeApis,
       },
       includePackageManagerDomains: worker.includePackageManagerDomains,
-      skillsJson: worker.skillNames?.map((name) => ({ name, content: '' })) || [],
-      agentsMdJson: worker.agentsMdNames?.map((name) => ({ name, content: '' })) || [],
+      capabilitiesJson: worker.capabilityNames?.map((name) => ({ name, content: '' })) || [],
+      instructionsJson: worker.instructionNames?.map((name) => ({ name, content: '' })) || [],
     };
     try {
       envConfig = this.resolveEnvironmentConfig(worker.environmentId);
@@ -563,8 +563,8 @@ export class ContainerManager {
       dockerEnabled,
       credentialBinds: this.credentialMountManager?.getBindMounts(),
       environmentJson: envConfig.environmentJson,
-      skillsJson: envConfig.skillsJson,
-      agentsMdJson: envConfig.agentsMdJson,
+      capabilitiesJson: envConfig.capabilitiesJson,
+      instructionsJson: envConfig.instructionsJson,
       workerJson,
       storageManager: this.storageManager,
     });
@@ -594,8 +594,8 @@ export class ContainerManager {
       setupScript: worker.setupScript,
       envVars: worker.envVars,
       exposeApis: worker.exposeApis,
-      skillNames: worker.skillNames,
-      agentsMdNames: worker.agentsMdNames,
+      capabilityNames: worker.capabilityNames,
+      instructionNames: worker.instructionNames,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -672,8 +672,8 @@ export class ContainerManager {
       setupScript: info.setupScript,
       envVars: info.envVars,
       exposeApis: info.exposeApis,
-      skillNames: info.skillNames,
-      agentsMdNames: info.agentsMdNames,
+      capabilityNames: info.capabilityNames,
+      instructionNames: info.instructionNames,
       image: info.image,
       imageId: info.imageId,
       status: 'active',

@@ -297,55 +297,55 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
-  // ─── Skills ────────────────────────────────────────────────────
-  async listSkills() {
-    const res = await this.request.get(`${BASE_URL}/api/skills`);
+  // ─── Capabilities ──────────────────────────────────────────────
+  async listCapabilities() {
+    const res = await this.request.get(`${BASE_URL}/api/capabilities`);
     return { status: res.status(), body: await res.json() };
   }
 
-  async createSkill(data: Record<string, unknown>) {
-    const res = await this.request.post(`${BASE_URL}/api/skills`, { data });
+  async createCapability(data: Record<string, unknown>) {
+    const res = await this.request.post(`${BASE_URL}/api/capabilities`, { data });
     return { status: res.status(), body: await res.json() };
   }
 
-  async getSkill(id: string) {
-    const res = await this.request.get(`${BASE_URL}/api/skills/${id}`);
+  async getCapability(id: string) {
+    const res = await this.request.get(`${BASE_URL}/api/capabilities/${id}`);
     return { status: res.status(), body: await res.json() };
   }
 
-  async updateSkill(id: string, data: Record<string, unknown>) {
-    const res = await this.request.put(`${BASE_URL}/api/skills/${id}`, { data });
+  async updateCapability(id: string, data: Record<string, unknown>) {
+    const res = await this.request.put(`${BASE_URL}/api/capabilities/${id}`, { data });
     return { status: res.status(), body: await res.json() };
   }
 
-  async deleteSkill(id: string) {
-    const res = await this.request.delete(`${BASE_URL}/api/skills/${id}`);
+  async deleteCapability(id: string) {
+    const res = await this.request.delete(`${BASE_URL}/api/capabilities/${id}`);
     return { status: res.status(), body: await res.json() };
   }
 
-  // ─── AGENTS.md ─────────────────────────────────────────────────
-  async listAgentsMd() {
-    const res = await this.request.get(`${BASE_URL}/api/agents-md`);
+  // ─── Instructions ──────────────────────────────────────────────
+  async listInstructions() {
+    const res = await this.request.get(`${BASE_URL}/api/instructions`);
     return { status: res.status(), body: await res.json() };
   }
 
-  async createAgentsMd(data: Record<string, unknown>) {
-    const res = await this.request.post(`${BASE_URL}/api/agents-md`, { data });
+  async createInstruction(data: Record<string, unknown>) {
+    const res = await this.request.post(`${BASE_URL}/api/instructions`, { data });
     return { status: res.status(), body: await res.json() };
   }
 
-  async getAgentsMd(id: string) {
-    const res = await this.request.get(`${BASE_URL}/api/agents-md/${id}`);
+  async getInstruction(id: string) {
+    const res = await this.request.get(`${BASE_URL}/api/instructions/${id}`);
     return { status: res.status(), body: await res.json() };
   }
 
-  async updateAgentsMd(id: string, data: Record<string, unknown>) {
-    const res = await this.request.put(`${BASE_URL}/api/agents-md/${id}`, { data });
+  async updateInstruction(id: string, data: Record<string, unknown>) {
+    const res = await this.request.put(`${BASE_URL}/api/instructions/${id}`, { data });
     return { status: res.status(), body: await res.json() };
   }
 
-  async deleteAgentsMd(id: string) {
-    const res = await this.request.delete(`${BASE_URL}/api/agents-md/${id}`);
+  async deleteInstruction(id: string) {
+    const res = await this.request.delete(`${BASE_URL}/api/instructions/${id}`);
     return { status: res.status(), body: await res.json() };
   }
 

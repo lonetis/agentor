@@ -54,8 +54,8 @@ export interface ContainerInfo {
   setupScript?: string;
   envVars?: string;
   exposeApis?: ExposeApis;
-  skillNames?: string[];
-  agentsMdNames?: string[];
+  capabilityNames?: string[];
+  instructionNames?: string[];
 }
 
 export interface CreateContainerRequest {
@@ -132,7 +132,7 @@ export interface ExposeApis {
   usage: boolean;
 }
 
-export interface SkillInfo {
+export interface CapabilityInfo {
   id: string;
   name: string;
   content: string;
@@ -141,7 +141,7 @@ export interface SkillInfo {
   updatedAt: string;
 }
 
-export interface AgentsMdEntryInfo {
+export interface InstructionInfo {
   id: string;
   name: string;
   content: string;

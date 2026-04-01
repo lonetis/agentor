@@ -1,5 +1,5 @@
-import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useStorageManager, useSkillStore, useAgentsMdStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
-import { loadBuiltInSkills, loadBuiltInAgentsMd, loadBuiltInInitScripts, loadBuiltInEnvironments } from '../utils/built-in-content';
+import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useStorageManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
+import { loadBuiltInCapabilities, loadBuiltInInstructions, loadBuiltInInitScripts, loadBuiltInEnvironments } from '../utils/built-in-content';
 
 export default defineNitroPlugin(async () => {
   // Initialize logging infrastructure first
@@ -29,16 +29,16 @@ export default defineNitroPlugin(async () => {
   await environmentStore.seedBuiltIns(await loadBuiltInEnvironments());
   containerManager.setEnvironmentStore(environmentStore);
 
-  // Initialize skill and AGENTS.md stores (load from disk, seed built-ins)
-  const skillStore = useSkillStore();
-  await skillStore.init();
-  await skillStore.seedBuiltIns(await loadBuiltInSkills());
-  containerManager.setSkillStore(skillStore);
+  // Initialize capability and instruction stores (load from disk, seed built-ins)
+  const capabilityStore = useCapabilityStore();
+  await capabilityStore.init();
+  await capabilityStore.seedBuiltIns(await loadBuiltInCapabilities());
+  containerManager.setCapabilityStore(capabilityStore);
 
-  const agentsMdStore = useAgentsMdStore();
-  await agentsMdStore.init();
-  await agentsMdStore.seedBuiltIns(await loadBuiltInAgentsMd());
-  containerManager.setAgentsMdStore(agentsMdStore);
+  const instructionStore = useInstructionStore();
+  await instructionStore.init();
+  await instructionStore.seedBuiltIns(await loadBuiltInInstructions());
+  containerManager.setInstructionStore(instructionStore);
 
   // Initialize init script store (load from disk, seed built-ins)
   const initScriptStore = useInitScriptStore();
@@ -88,7 +88,7 @@ export default defineNitroPlugin(async () => {
   const usageChecker = useUsageChecker();
   await usageChecker.init();
 
-  logger.info(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${skillStore.list().length} skills, ${agentsMdStore.list().length} agents-md entries, ${initScriptStore.list().length} init scripts, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
+  logger.info(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${capabilityStore.list().length} capabilities, ${instructionStore.list().length} instructions, ${initScriptStore.list().length} init scripts, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
 
   // Mark logger as ready (flushes buffered entries) and start log collector
   logger.setReady();

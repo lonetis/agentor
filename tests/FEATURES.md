@@ -21,8 +21,8 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ### 1.3 Sidebar Action Buttons
 - "+ New Worker" button opens create worker modal
 - "Environments" button opens environments modal
-- "Skills" button opens skills modal
-- "AGENTS.md" button opens AGENTS.md modal
+- "Capabilities" button opens capabilities modal
+- "Instructions" button opens instructions modal
 - "Init Scripts" button opens init scripts modal
 
 ### 1.4 Sidebar Sections (all collapsible with chevron toggle)
@@ -171,8 +171,8 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
   - Agent API domains collapsible viewer (shown in restricted modes except block-all)
   - Package manager domains collapsible viewer with count
 - **Expose APIs** — 3 checkboxes: Port Mappings, Domain Mappings, Usage Monitoring
-- **Skills** — "Select All" toggle + per-skill checkbox with name and "Built-in" badge
-- **AGENTS.md** — "Select All" toggle + per-entry checkbox with name and "Built-in" badge
+- **Capabilities** — "Select All" toggle + per-capability checkbox with name and "Built-in" badge
+- **Instructions** — "Select All" toggle + per-entry checkbox with name and "Built-in" badge
 - **Environment Variables** — system vars (read-only with lock icon) + custom textarea (KEY=VALUE format)
 - **Setup Script** — textarea (4 rows, monospace)
 - **Actions** — "Create"/"Update" + "Cancel"/"Close"
@@ -183,12 +183,12 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ---
 
-## 8. Skills Modal
+## 8. Capabilities Modal
 
 ### 8.1 List View
-- "Skills" title + "New" button + "Close" button
-- Per-skill row: name + "Built-in" badge + "View" (built-in) / "Edit" + "Delete" (custom)
-- Empty state: "No skills yet. Create one to get started."
+- "Capabilities" title + "New" button + "Close" button
+- Per-capability row: name + "Built-in" badge + "View" (built-in) / "Edit" + "Delete" (custom)
+- Empty state: "No capabilities yet. Create one to get started."
 
 ### 8.2 Editor View
 - Name input (disabled in view mode)
@@ -198,15 +198,15 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ---
 
-## 9. AGENTS.md Modal
+## 9. Instructions Modal
 
 ### 9.1 List View
-- "AGENTS.md" title + "New" button + "Close" button
-- Same pattern as Skills: name + built-in badge + view/edit/delete buttons
+- "Instructions" title + "New" button + "Close" button
+- Same pattern as Capabilities: name + built-in badge + view/edit/delete buttons
 
 ### 9.2 Editor View
 - Name input + content textarea (12 rows, Markdown)
-- Same save/cancel pattern as Skills
+- Same save/cancel pattern as Capabilities
 
 ---
 
@@ -214,7 +214,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ### 10.1 List View
 - "Init Scripts" title + "New" button + "Close" button
-- Same pattern as Skills: name + built-in badge + view/edit/delete
+- Same pattern as Capabilities: name + built-in badge + view/edit/delete
 
 ### 10.2 Editor View
 - Name input + content textarea (8 rows, Bash)
@@ -584,20 +584,20 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `DELETE /api/environments/:id` — delete
 - Built-in "default" environment: cannot edit/delete
 
-### 24.8 Skills
-- `GET /api/skills` — list all
-- `POST /api/skills` — create custom
-- `GET /api/skills/:id` — get single
-- `PUT /api/skills/:id` — update custom
-- `DELETE /api/skills/:id` — delete custom
-- Built-in skills: port-mapping, domain-mapping, usage, tmux
+### 24.8 Capabilities
+- `GET /api/capabilities` — list all
+- `POST /api/capabilities` — create custom
+- `GET /api/capabilities/:id` — get single
+- `PUT /api/capabilities/:id` — update custom
+- `DELETE /api/capabilities/:id` — delete custom
+- Built-in capabilities: port-mapping, domain-mapping, usage, tmux
 
-### 24.9 AGENTS.md
-- `GET /api/agents-md` — list all
-- `POST /api/agents-md` — create custom
-- `GET /api/agents-md/:id` — get single
-- `PUT /api/agents-md/:id` — update custom
-- `DELETE /api/agents-md/:id` — delete custom
+### 24.9 Instructions
+- `GET /api/instructions` — list all
+- `POST /api/instructions` — create custom
+- `GET /api/instructions/:id` — get single
+- `PUT /api/instructions/:id` — update custom
+- `DELETE /api/instructions/:id` — delete custom
 - Built-in entry: platform-guide
 
 ### 24.10 Init Scripts

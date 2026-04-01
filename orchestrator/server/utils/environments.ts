@@ -16,8 +16,8 @@ export interface Environment {
   envVars: string;
   setupScript: string;
   exposeApis: ExposeApis;
-  enabledSkillIds: string[] | null;
-  enabledAgentsMdIds: string[] | null;
+  enabledCapabilityIds: string[] | null;
+  enabledInstructionIds: string[] | null;
   builtIn: boolean;
   createdAt: string;
   updatedAt: string;
@@ -249,8 +249,8 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
           envVars: item.envVars,
           setupScript: item.setupScript,
           exposeApis: item.exposeApis,
-          enabledSkillIds: item.enabledSkillIds,
-          enabledAgentsMdIds: item.enabledAgentsMdIds,
+          enabledCapabilityIds: item.enabledCapabilityIds,
+          enabledInstructionIds: item.enabledInstructionIds,
           builtIn: true,
           createdAt: now,
           updatedAt: now,
@@ -270,8 +270,8 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
           envVars: item.envVars,
           setupScript: item.setupScript,
           exposeApis: item.exposeApis,
-          enabledSkillIds: item.enabledSkillIds,
-          enabledAgentsMdIds: item.enabledAgentsMdIds,
+          enabledCapabilityIds: item.enabledCapabilityIds,
+          enabledInstructionIds: item.enabledInstructionIds,
           updatedAt: now,
         });
         changed = true;
@@ -291,7 +291,7 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
       || existing.setupScript !== incoming.setupScript
       || JSON.stringify(existing.allowedDomains) !== JSON.stringify(incoming.allowedDomains)
       || JSON.stringify(existing.exposeApis) !== JSON.stringify(incoming.exposeApis)
-      || JSON.stringify(existing.enabledSkillIds) !== JSON.stringify(incoming.enabledSkillIds)
-      || JSON.stringify(existing.enabledAgentsMdIds) !== JSON.stringify(incoming.enabledAgentsMdIds);
+      || JSON.stringify(existing.enabledCapabilityIds) !== JSON.stringify(incoming.enabledCapabilityIds)
+      || JSON.stringify(existing.enabledInstructionIds) !== JSON.stringify(incoming.enabledInstructionIds);
   }
 }

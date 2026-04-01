@@ -264,12 +264,12 @@ const exposeApisLabels = computed(() => {
             </template>
           </section>
 
-          <!-- Skills -->
+          <!-- Capabilities -->
           <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Skills</h3>
-            <template v-if="container.skillNames?.length">
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Capabilities</h3>
+            <template v-if="container.capabilityNames?.length">
               <div class="flex flex-wrap gap-1.5">
-                <UBadge v-for="name in container.skillNames" :key="name" color="neutral" variant="subtle" size="xs">
+                <UBadge v-for="name in container.capabilityNames" :key="name" color="neutral" variant="subtle" size="xs">
                   {{ name }}
                 </UBadge>
               </div>
@@ -279,12 +279,12 @@ const exposeApisLabels = computed(() => {
             </template>
           </section>
 
-          <!-- AGENTS.md -->
+          <!-- Instructions -->
           <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">AGENTS.md</h3>
-            <template v-if="container.agentsMdNames?.length">
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Instructions</h3>
+            <template v-if="container.instructionNames?.length">
               <div class="flex flex-wrap gap-1.5">
-                <UBadge v-for="name in container.agentsMdNames" :key="name" color="neutral" variant="subtle" size="xs">
+                <UBadge v-for="name in container.instructionNames" :key="name" color="neutral" variant="subtle" size="xs">
                   {{ name }}
                 </UBadge>
               </div>

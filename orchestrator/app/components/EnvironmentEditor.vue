@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, SkillInfo, AgentsMdEntryInfo, CredentialInfo } from '~/types';
+import type { EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, CapabilityInfo, InstructionInfo, CredentialInfo } from '~/types';
 
 const props = defineProps<{
   environment?: EnvironmentInfo;
@@ -22,58 +22,58 @@ const form = reactive({
   envVars: '',
   setupScript: '',
   exposeApis: { portMappings: true, domainMappings: true, usage: true } as ExposeApis,
-  enabledSkillIds: null as string[] | null,
-  enabledAgentsMdIds: null as string[] | null,
+  enabledCapabilityIds: null as string[] | null,
+  enabledInstructionIds: null as string[] | null,
 });
 
 const systemEnvVars = ref<OrchestratorEnvVar[]>([]);
 const { data: credentials } = useFetch<CredentialInfo[]>('/api/credentials', { default: () => [] });
 
-const { data: allSkills } = useFetch<SkillInfo[]>('/api/skills', { default: () => [] });
-const { data: allAgentsMdEntries } = useFetch<AgentsMdEntryInfo[]>('/api/agents-md', { default: () => [] });
+const { data: allCapabilities } = useFetch<CapabilityInfo[]>('/api/capabilities', { default: () => [] });
+const { data: allInstructions } = useFetch<InstructionInfo[]>('/api/instructions', { default: () => [] });
 
 // Track "all selected" toggle state
-const allSkillsSelected = computed({
-  get: () => form.enabledSkillIds === null,
+const allCapabilitiesSelected = computed({
+  get: () => form.enabledCapabilityIds === null,
   set: (v: boolean) => {
-    form.enabledSkillIds = v ? null : allSkills.value.map((s) => s.id);
+    form.enabledCapabilityIds = v ? null : allCapabilities.value.map((s) => s.id);
   },
 });
 const allEntriesSelected = computed({
-  get: () => form.enabledAgentsMdIds === null,
+  get: () => form.enabledInstructionIds === null,
   set: (v: boolean) => {
-    form.enabledAgentsMdIds = v ? null : allAgentsMdEntries.value.map((i) => i.id);
+    form.enabledInstructionIds = v ? null : allInstructions.value.map((i) => i.id);
   },
 });
 
-function isSkillEnabled(id: string): boolean {
-  return form.enabledSkillIds === null || form.enabledSkillIds.includes(id);
+function isCapabilityEnabled(id: string): boolean {
+  return form.enabledCapabilityIds === null || form.enabledCapabilityIds.includes(id);
 }
-function toggleSkill(id: string) {
-  if (form.enabledSkillIds === null) {
-    form.enabledSkillIds = allSkills.value.map((s) => s.id).filter((sid) => sid !== id);
-  } else if (form.enabledSkillIds.includes(id)) {
-    form.enabledSkillIds = form.enabledSkillIds.filter((sid) => sid !== id);
+function toggleCapability(id: string) {
+  if (form.enabledCapabilityIds === null) {
+    form.enabledCapabilityIds = allCapabilities.value.map((s) => s.id).filter((sid) => sid !== id);
+  } else if (form.enabledCapabilityIds.includes(id)) {
+    form.enabledCapabilityIds = form.enabledCapabilityIds.filter((sid) => sid !== id);
   } else {
-    form.enabledSkillIds = [...form.enabledSkillIds, id];
-    if (form.enabledSkillIds.length === allSkills.value.length) {
-      form.enabledSkillIds = null;
+    form.enabledCapabilityIds = [...form.enabledCapabilityIds, id];
+    if (form.enabledCapabilityIds.length === allCapabilities.value.length) {
+      form.enabledCapabilityIds = null;
     }
   }
 }
 
 function isEntryEnabled(id: string): boolean {
-  return form.enabledAgentsMdIds === null || form.enabledAgentsMdIds.includes(id);
+  return form.enabledInstructionIds === null || form.enabledInstructionIds.includes(id);
 }
 function toggleEntry(id: string) {
-  if (form.enabledAgentsMdIds === null) {
-    form.enabledAgentsMdIds = allAgentsMdEntries.value.map((i) => i.id).filter((iid) => iid !== id);
-  } else if (form.enabledAgentsMdIds.includes(id)) {
-    form.enabledAgentsMdIds = form.enabledAgentsMdIds.filter((iid) => iid !== id);
+  if (form.enabledInstructionIds === null) {
+    form.enabledInstructionIds = allInstructions.value.map((i) => i.id).filter((iid) => iid !== id);
+  } else if (form.enabledInstructionIds.includes(id)) {
+    form.enabledInstructionIds = form.enabledInstructionIds.filter((iid) => iid !== id);
   } else {
-    form.enabledAgentsMdIds = [...form.enabledAgentsMdIds, id];
-    if (form.enabledAgentsMdIds.length === allAgentsMdEntries.value.length) {
-      form.enabledAgentsMdIds = null;
+    form.enabledInstructionIds = [...form.enabledInstructionIds, id];
+    if (form.enabledInstructionIds.length === allInstructions.value.length) {
+      form.enabledInstructionIds = null;
     }
   }
 }
@@ -112,8 +112,8 @@ function initForm() {
     form.envVars = props.environment.envVars;
     form.setupScript = props.environment.setupScript;
     form.exposeApis = props.environment.exposeApis ?? { portMappings: true, domainMappings: true, usage: true };
-    form.enabledSkillIds = props.environment.enabledSkillIds ?? null;
-    form.enabledAgentsMdIds = props.environment.enabledAgentsMdIds ?? null;
+    form.enabledCapabilityIds = props.environment.enabledCapabilityIds ?? null;
+    form.enabledInstructionIds = props.environment.enabledInstructionIds ?? null;
   }
   fetchSystemEnvVars();
 }
@@ -139,8 +139,8 @@ function handleSave() {
     envVars: form.envVars,
     setupScript: form.setupScript,
     exposeApis: form.exposeApis,
-    enabledSkillIds: form.enabledSkillIds,
-    enabledAgentsMdIds: form.enabledAgentsMdIds,
+    enabledCapabilityIds: form.enabledCapabilityIds,
+    enabledInstructionIds: form.enabledInstructionIds,
   });
 }
 </script>
@@ -302,7 +302,7 @@ function handleSave() {
     <fieldset>
       <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Expose APIs</legend>
       <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
-        Allow workers to call orchestrator APIs. Skills for disabled APIs are automatically excluded.
+        Allow workers to call orchestrator APIs. Capabilities for disabled APIs are automatically excluded.
       </p>
       <div class="space-y-1.5">
         <label class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
@@ -320,29 +320,29 @@ function handleSave() {
       </div>
     </fieldset>
 
-    <!-- Skills -->
-    <fieldset v-if="allSkills.length > 0">
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Skills</legend>
+    <!-- Capabilities -->
+    <fieldset v-if="allCapabilities.length > 0">
+      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Capabilities</legend>
       <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
-        Select which skills are available to agents in this environment.
+        Select which capabilities are available to agents in this environment.
       </p>
       <div class="mb-2">
         <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
-          <UCheckbox :model-value="allSkillsSelected" @update:model-value="allSkillsSelected = !!$event" :disabled="readOnly" />
+          <UCheckbox :model-value="allCapabilitiesSelected" @update:model-value="allCapabilitiesSelected = !!$event" :disabled="readOnly" />
           Select All
         </label>
       </div>
       <div class="space-y-1.5 pl-1">
         <label
-          v-for="skill in allSkills"
-          :key="skill.id"
+          v-for="capability in allCapabilities"
+          :key="capability.id"
           class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
           :class="readOnly ? 'cursor-default' : 'cursor-pointer'"
         >
-          <UCheckbox :model-value="isSkillEnabled(skill.id)" @update:model-value="toggleSkill(skill.id)" :disabled="readOnly" />
-          {{ skill.name }}
+          <UCheckbox :model-value="isCapabilityEnabled(capability.id)" @update:model-value="toggleCapability(capability.id)" :disabled="readOnly" />
+          {{ capability.name }}
           <span
-            v-if="skill.builtIn"
+            v-if="capability.builtIn"
             class="px-1 py-0.5 rounded text-[9px] font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
           >
             Built-in
@@ -351,11 +351,11 @@ function handleSave() {
       </div>
     </fieldset>
 
-    <!-- AGENTS.md -->
-    <fieldset v-if="allAgentsMdEntries.length > 0">
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">AGENTS.md</legend>
+    <!-- Instructions -->
+    <fieldset v-if="allInstructions.length > 0">
+      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Instructions</legend>
       <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
-        Select which AGENTS.md entries are injected into agents in this environment.
+        Select which instructions are injected into agents in this environment.
       </p>
       <div class="mb-2">
         <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
@@ -365,7 +365,7 @@ function handleSave() {
       </div>
       <div class="space-y-1.5 pl-1">
         <label
-          v-for="entry in allAgentsMdEntries"
+          v-for="entry in allInstructions"
           :key="entry.id"
           class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
           :class="readOnly ? 'cursor-default' : 'cursor-pointer'"
