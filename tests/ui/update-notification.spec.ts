@@ -161,6 +161,10 @@ test.describe('Update Notification / Images Section', () => {
     const status = await page.evaluate(() => fetch('/api/updates').then(r => r.json()));
     test.skip(!status.isProductionMode, 'Not in production mode');
 
+    // When updates are available, "Re-check" (UButton with :loading) is shown;
+    // when up to date, "Check for updates" (plain button with "Checking..." text) is shown.
+    const hasUpdates = Object.values(status).some((v: any) => v?.updateAvailable);
+
     const checkBtn = aside.getByText('Check for updates');
     const recheckBtn = aside.getByText('Re-check');
     const btn = checkBtn.or(recheckBtn);
@@ -174,8 +178,13 @@ test.describe('Update Notification / Images Section', () => {
 
     await btn.click();
 
-    // Button should show "Checking..." text while in progress
-    await expect(aside.getByText('Checking...')).toBeVisible({ timeout: 3_000 });
+    if (hasUpdates) {
+      // "Re-check" UButton uses :loading prop — button becomes disabled while checking
+      await expect(recheckBtn).toBeDisabled({ timeout: 3_000 });
+    } else {
+      // Plain button shows "Checking..." text while in progress
+      await expect(aside.getByText('Checking...')).toBeVisible({ timeout: 3_000 });
+    }
 
     // Wait for check to complete
     await expect(btn).toBeVisible({ timeout: 15_000 });
@@ -257,6 +266,7 @@ test.describe('Update Notification / Images Section', () => {
     // Check if production mode (checkmark only shown in production mode)
     const status = await page.evaluate(() => fetch('/api/updates').then(r => r.json()));
     test.skip(!status.isProductionMode, 'Green checkmark only shows in production mode');
+    test.skip(status.traefik?.updateAvailable === true, 'Traefik has an update available — checkmark not shown');
 
     // In production mode with no update available, a green checkmark should display
     // Use adjacent sibling selector: the digest div follows the name span in the grid

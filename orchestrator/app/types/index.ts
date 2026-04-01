@@ -68,6 +68,7 @@ export interface DomainMapping {
   id: string;
   subdomain: string;
   baseDomain: string;
+  path: string;
   protocol: 'http' | 'https' | 'tcp';
   workerId: string;
   workerName: string;

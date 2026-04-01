@@ -26,6 +26,7 @@ defineRouteMeta({
               id: { type: 'string' },
               subdomain: { type: 'string' },
               baseDomain: { type: 'string' },
+              path: { type: 'string', description: 'URL path prefix (empty string = all paths)' },
               protocol: { type: 'string', enum: ['http', 'https', 'tcp'] },
               workerId: { type: 'string' },
               workerName: { type: 'string' },

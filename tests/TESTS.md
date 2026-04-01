@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1031 tests** across 73 test files (~538 API + ~493 UI)
+- **~1049 tests** across 73 test files (~552 API + ~497 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -93,9 +93,9 @@ tests/
 | `environments.spec.ts` | 38 | Full CRUD, all 5 network modes, field validation, partial update, timestamps, dockerEnabled, includePackageManagerDomains, list field completeness, networkMode change (full→custom), non-existent environmentId, name type validation (number/null/boolean), update with same name, delete+re-fetch, list sorting, cpuLimit zero, all fields populated, empty name rejection, negative cpuLimit |
 | `environments-advanced.spec.ts` | 7 | Advanced environment operations |
 | `port-mappings.spec.ts` | 29 | CRUD, response fields, validation (external + internal ports: 0, 65536, NaN, float, string, negative -1), duplicate detection, mapper status invariant, stopped worker rejection, mapper status counts after operations |
-| `domain-mappings.spec.ts` | 43 | Status, list, CRUD (HTTPS/HTTP/TCP), validation (protocol, subdomain, port, baseDomain, worker), response fields, basicAuth CRUD, basicAuth validation (username-only, password-only), subdomain edge cases (leading/trailing hyphens, underscores, consecutive dots, single-char, numeric, multi-level, 64-char), port edge cases (0, 65536, negative, float, min/max valid, string coercion), protocol conflict detection (duplicate, HTTP+HTTPS allowed, HTTPS+TCP conflict, HTTP+TCP allowed), stopped worker rejection, mapper status fields (totalMappings, baseDomains, dashboardUrl) |
+| `domain-mappings.spec.ts` | 52 | Status, list, CRUD (HTTPS/HTTP/TCP), validation (protocol, subdomain, port, baseDomain, worker), response fields, basicAuth CRUD, basicAuth validation (username-only, password-only), subdomain edge cases (leading/trailing hyphens, underscores, consecutive dots, single-char, numeric, multi-level, 64-char), port edge cases (0, 65536, negative, float, min/max valid, string coercion), protocol conflict detection (duplicate, HTTP+HTTPS allowed, HTTPS+TCP conflict, HTTP+TCP allowed), stopped worker rejection, path validation (leading slash, invalid chars, TCP rejection, root normalization, trailing slash strip, valid path, different paths on same domain, duplicate path+protocol, default empty), mapper status fields (totalMappings, baseDomains, dashboardUrl) |
 | `domain-mappings-advanced.spec.ts` | 9 | Advanced domain mapping operations |
-| `domain-mappings-batch.spec.ts` | 20 | Batch domain mapping creation |
+| `domain-mappings-batch.spec.ts` | 23 | Batch domain mapping creation, batch path support (create with path, TCP path rejection, default empty path) |
 | `traefik-integration.spec.ts` | 23 | HTTPS routing (traffic via subdomain, TLS certificate), HTTP routing, BasicAuth (401 without credentials, 200 with credentials), Traefik lifecycle (container existence, mapping count updates, list verification), multi-domain support (baseDomains list, same subdomain on different domains), dashboard subdomain URL |
 | `archived-workers.spec.ts` | 13 | Archive/unarchive/delete flow, error handling, response fields (name/createdAt/archivedAt/displayName), unarchive returns new id, unarchive preserves displayName, unarchive and verify running, double archive error, image/environmentId fields |
 | `workspace.spec.ts` | 9 | Upload (single/multi/subdirectory/empty), path traversal (basic + encoded), non-existent container, download |
@@ -146,8 +146,8 @@ tests/
 | `settings-modal.spec.ts` | 10 | Settings modal content, sections, expand/collapse |
 | `port-mappings-panel.spec.ts` | 13 | Section, button, empty state, API-created mappings, type labels (local + ext), delete button, form open/close, form fields (type selector, worker dropdown, port inputs), delete interaction |
 | `port-mappings-create.spec.ts` | 3 | Port mapping creation form |
-| `domain-mappings-panel.spec.ts` | 25 | Status API, section visibility, form open/close, protocol selector, basic auth checkbox, TCP protocol hides auth, auth checkbox shows username/password inputs, base domain display, API-created mapping display, protocol badge, empty state message |
-| `domain-mappings-panel-advanced.spec.ts` | 26 | Advanced domain mapping panel interactions |
+| `domain-mappings-panel.spec.ts` | 28 | Status API, section visibility, form open/close, protocol selector, basic auth checkbox, TCP protocol hides auth, auth checkbox shows username/password inputs, base domain display, API-created mapping display, protocol badge, empty state message, path input visibility, TCP hides path, path display in mapping list |
+| `domain-mappings-panel-advanced.spec.ts` | 27 | Advanced domain mapping panel interactions, TCP-to-HTTP restores path input |
 | `selfsigned-ca-cert.spec.ts` | 8 | Self-signed CA certificate download UI |
 | `service-panes.spec.ts` | 12 | Desktop and editor service panes |
 | `apps-pane.spec.ts` | 8 | Apps pane for container |

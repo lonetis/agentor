@@ -280,18 +280,19 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Subdomain text input (optional — empty maps bare domain)
 - Base domain toggle (multi-select when multiple; toggles individual domains on/off)
 - When multiple protocols and/or multiple base domains selected, creates cartesian product via batch API
+- Path input (optional, hidden for TCP — e.g. /api; prefix stripped before forwarding)
 - Internal port input
 - Basic auth checkbox (hidden for TCP)
   - When enabled: username + password inputs
 - "Cancel" and "Add" buttons
 
 ### 13.4 Mapping List
-- Per-mapping row: protocol badge (blue=http, green=https, purple=tcp) + challenge type badge + full domain + lock icon (if basic auth) + arrow + worker name:port + remove button
+- Per-mapping row: protocol badge (blue=http, green=https, purple=tcp) + challenge type badge + full domain with path (if set) + lock icon (if basic auth) + arrow + worker name:port + remove button
 - Challenge type badges: none (gray), http (emerald), dns (cyan), selfsigned/self (amber)
 
 ### 13.5 Protocol Interactions
-- Switching to TCP hides Basic auth
-- Switching back from TCP restores Basic auth
+- Switching to TCP hides Basic auth and path input
+- Switching back from TCP restores Basic auth and path input
 - Checking Basic auth reveals username/password fields
 
 ### 13.6 Self-Signed CA Certificate
@@ -569,12 +570,12 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ### 24.6 Domain Mappings
 - `GET /api/domain-mappings` — list all
-- `POST /api/domain-mappings` — create (subdomain, baseDomain, protocol, workerId/workerName, internalPort, basicAuth)
+- `POST /api/domain-mappings` — create (subdomain, baseDomain, path, protocol, workerId/workerName, internalPort, basicAuth)
 - `POST /api/domain-mappings/batch` — batch create (single Traefik reconcile)
 - `DELETE /api/domain-mappings/:id` — remove (idempotent)
 - `GET /api/domain-mapper/status` — enabled flag, baseDomains list, hasSelfSignedCa flag, dashboard URL
 - `GET /api/domain-mapper/ca-cert` — download self-signed CA certificate PEM (404 when no selfsigned domains)
-- Validations: protocol http/https/tcp, HTTPS/TCP require TLS, subdomain format, port range, duplicate 409, protocol conflict 409
+- Validations: protocol http/https/tcp, HTTPS/TCP require TLS, subdomain format, path format (must start with /), path not allowed for TCP, port range, duplicate 409 (subdomain+baseDomain+path+protocol), protocol conflict 409
 
 ### 24.7 Environments
 - `GET /api/environments` — list all
