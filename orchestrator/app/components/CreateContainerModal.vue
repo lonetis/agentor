@@ -192,9 +192,10 @@ function reset() {
 
         <UFormField label="Name">
           <UInput
-            v-model="form.displayName"
+            :model-value="form.displayName"
             :placeholder="shortName(generatedName)"
             class="w-full"
+            @update:model-value="form.displayName = sanitizeContainerName($event)"
           />
         </UFormField>
 

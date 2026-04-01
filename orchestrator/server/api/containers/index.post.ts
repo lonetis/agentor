@@ -31,10 +31,19 @@ defineRouteMeta({
   },
 });
 
-import { useContainerManager } from '../../utils/services';
+import { useContainerManager, useConfig } from '../../utils/services';
+import { CONTAINER_NAME_RE } from '../../utils/validation';
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
+
+  if (body.name) {
+    const prefix = useConfig().containerPrefix + '-';
+    const suffix = body.name.startsWith(prefix) ? body.name.slice(prefix.length) : body.name;
+    if (!CONTAINER_NAME_RE.test(suffix)) {
+      throw createError({ statusCode: 400, statusMessage: 'Container name must contain only lowercase letters (a-z), digits (0-9), and hyphens' });
+    }
+  }
 
   let parsedMounts;
   if (body.mounts) {

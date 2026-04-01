@@ -146,6 +146,7 @@ export class DockerService {
     const container = await this.docker.createContainer({
       Image: image,
       name: opts.name,
+      Hostname: opts.name,
       Env: env,
       Tty: true,
       OpenStdin: true,
