@@ -6,6 +6,8 @@ import { getPeerId, getPeerUrl, toBuffer } from './ws-utils';
 interface TerminalContext {
   dockerStream?: Duplex;
   execId?: string;
+  containerId?: string;
+  tmuxSession?: string;
   closed: boolean;
 }
 
@@ -34,6 +36,16 @@ function parseWsParams(url: string | undefined): { containerId: string; windowIn
   return { containerId: match[1], windowIndex: Number.isNaN(windowIndex) ? 0 : windowIndex };
 }
 
+function cleanupTerminal(ctx: TerminalContext, peer: Peer): void {
+  if (ctx.closed) return;
+  ctx.closed = true;
+  ctx.dockerStream?.end();
+  if (ctx.containerId && ctx.tmuxSession) {
+    useDockerService().killTmuxSession(ctx.containerId, ctx.tmuxSession);
+  }
+  cleanupPeerContext(peer);
+}
+
 function handleTerminalOpen(peer: Peer): void {
   const ctx = getTerminalContext(peer);
   const dockerService = useDockerService();
@@ -47,31 +59,36 @@ function handleTerminalOpen(peer: Peer): void {
 
   dockerService
     .execAttachTmuxWindow(params.containerId, params.windowIndex)
-    .then(({ exec, stream }) => {
+    .then(({ exec, stream, tmuxSession }) => {
       if (ctx.closed) {
         stream.end();
+        dockerService.killTmuxSession(params.containerId, tmuxSession);
         return;
       }
 
       ctx.dockerStream = stream;
       ctx.execId = exec.id;
+      ctx.containerId = params.containerId;
+      ctx.tmuxSession = tmuxSession;
 
       stream.on('data', (chunk: Buffer) => {
-        if (!ctx.closed) {
-          try { peer.send(chunk); } catch {}
+        if (ctx.closed) return;
+        try {
+          peer.send(chunk);
+        } catch {
+          // peer.send() failure means the WebSocket is disconnected — clean up
+          cleanupTerminal(ctx, peer);
         }
       });
 
       stream.on('end', () => {
-        ctx.closed = true;
-        cleanupPeerContext(peer);
+        cleanupTerminal(ctx, peer);
         try { peer.close(); } catch {}
       });
 
       stream.on('error', (err) => {
         useLogger().error(`[terminal-ws] Docker stream error: ${err.message}`);
-        ctx.closed = true;
-        cleanupPeerContext(peer);
+        cleanupTerminal(ctx, peer);
         try { peer.close(); } catch {}
       });
     })
@@ -121,10 +138,7 @@ function handleTerminalMessage(peer: Peer, message: unknown): void {
 
 function handleTerminalClose(peer: Peer): void {
   const ctx = getTerminalContext(peer);
-  if (ctx.closed) return;
-  ctx.closed = true;
-  ctx.dockerStream?.end();
-  cleanupPeerContext(peer);
+  cleanupTerminal(ctx, peer);
 }
 
 export const terminalWsHandler = {

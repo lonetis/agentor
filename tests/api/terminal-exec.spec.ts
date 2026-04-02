@@ -268,6 +268,103 @@ test.describe.serial('Terminal Command Execution', () => {
     }
   });
 
+  test('WebSocket disconnect cleans up ws-* tmux session', async () => {
+    // Take a baseline snapshot of tmux sessions
+    const wsCheck = new TerminalWsClient(containerId);
+    await wsCheck.connect();
+    await wsCheck.waitForOutput(/[\$#>]\s*$/, 15_000);
+    wsCheck.clearBuffer();
+    wsCheck.sendLine('tmux ls 2>&1; echo __BEFORE__');
+    await wsCheck.waitForOutput(/__BEFORE__/, 10_000);
+    const beforeSessions = new Set((wsCheck.getBuffer().match(/^(ws-[^\s:]+)/gm) || []));
+
+    // Open a new terminal connection — creates a new ws-* session
+    const ws = new TerminalWsClient(containerId);
+    await ws.connect();
+    await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
+
+    // Find the new session
+    wsCheck.clearBuffer();
+    wsCheck.sendLine('tmux ls 2>&1; echo __DURING__');
+    await wsCheck.waitForOutput(/__DURING__/, 10_000);
+    const duringSessions = new Set((wsCheck.getBuffer().match(/^(ws-[^\s:]+)/gm) || []));
+    const newSessions = [...duringSessions].filter(s => !beforeSessions.has(s));
+    expect(newSessions.length).toBe(1);
+    const newSession = newSessions[0];
+
+    // Close the connection
+    ws.close();
+
+    // Wait for cleanup, then verify the specific session is gone
+    const start = Date.now();
+    let cleaned = false;
+    while (Date.now() - start < 5000) {
+      await new Promise(r => setTimeout(r, 500));
+      wsCheck.clearBuffer();
+      wsCheck.sendLine(`tmux has-session -t "${newSession}" 2>&1; echo "RC=$?"; echo __CHECK__`);
+      await wsCheck.waitForOutput(/__CHECK__/, 5000);
+      if (wsCheck.getBuffer().includes('RC=1')) {
+        cleaned = true;
+        break;
+      }
+    }
+    expect(cleaned).toBe(true);
+
+    wsCheck.close();
+  });
+
+  test('multiple WebSocket connections do not leave stale tmux sessions', async () => {
+    // Baseline
+    const wsCheck = new TerminalWsClient(containerId);
+    await wsCheck.connect();
+    await wsCheck.waitForOutput(/[\$#>]\s*$/, 15_000);
+    wsCheck.clearBuffer();
+    wsCheck.sendLine('tmux ls 2>&1; echo __BASELINE__');
+    await wsCheck.waitForOutput(/__BASELINE__/, 10_000);
+    const baselineSessions = new Set((wsCheck.getBuffer().match(/^(ws-[^\s:]+)/gm) || []));
+
+    // Open 3 connections
+    const clients: TerminalWsClient[] = [];
+    for (let i = 0; i < 3; i++) {
+      const c = new TerminalWsClient(containerId);
+      await c.connect();
+      await c.waitForOutput(/[\$#>]\s*$/, 15_000);
+      clients.push(c);
+    }
+
+    // Find the 3 new sessions
+    wsCheck.clearBuffer();
+    wsCheck.sendLine('tmux ls 2>&1; echo __DURING__');
+    await wsCheck.waitForOutput(/__DURING__/, 10_000);
+    const duringSessions = new Set((wsCheck.getBuffer().match(/^(ws-[^\s:]+)/gm) || []));
+    const newSessions = [...duringSessions].filter(s => !baselineSessions.has(s));
+    expect(newSessions.length).toBe(3);
+
+    // Close all 3
+    for (const c of clients) {
+      c.close();
+    }
+
+    // Verify all 3 specific sessions are gone
+    const start = Date.now();
+    let allCleaned = false;
+    while (Date.now() - start < 5000) {
+      await new Promise(r => setTimeout(r, 500));
+      wsCheck.clearBuffer();
+      wsCheck.sendLine('tmux ls 2>&1; echo __AFTER__');
+      await wsCheck.waitForOutput(/__AFTER__/, 10_000);
+      const afterSessions = new Set((wsCheck.getBuffer().match(/^(ws-[^\s:]+)/gm) || []));
+      const remaining = newSessions.filter(s => afterSessions.has(s));
+      if (remaining.length === 0) {
+        allCleaned = true;
+        break;
+      }
+    }
+    expect(allCleaned).toBe(true);
+
+    wsCheck.close();
+  });
+
   test('WebSocket to non-existent container fails gracefully', async () => {
     const ws = new TerminalWsClient('non-existent-container-id');
     try {

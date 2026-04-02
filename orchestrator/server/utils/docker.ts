@@ -181,15 +181,16 @@ export class DockerService {
   async execAttachTmuxWindow(
     containerId: string,
     windowIndex: number
-  ): Promise<{ exec: Docker.Exec; stream: Duplex }> {
+  ): Promise<{ exec: Docker.Exec; stream: Duplex; tmuxSession: string }> {
     const container = this.docker.getContainer(containerId);
+    const tmuxSession = `ws-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
     // Each WebSocket gets a linked session (shares windows with 'main' but has
-    // its own current-window pointer). destroy-unattached auto-cleans on disconnect.
+    // its own current-window pointer). Cleaned up explicitly on disconnect.
     const attachExec = await container.exec({
       Cmd: [
         'sh', '-c',
-        `SID=ws-$$; tmux new-session -d -t main -s "$SID" && { tmux select-window -t "$SID:${windowIndex}" 2>/dev/null || true; } && exec tmux attach-session -t "$SID" ';' set-option destroy-unattached on`,
+        `tmux new-session -d -t main -s "${tmuxSession}" && { tmux select-window -t "${tmuxSession}:${windowIndex}" 2>/dev/null || true; } && exec tmux attach-session -t "${tmuxSession}"`,
       ],
       AttachStdin: true,
       AttachStdout: true,
@@ -204,7 +205,13 @@ export class DockerService {
       stdin: true,
     })) as Duplex;
 
-    return { exec: attachExec, stream };
+    return { exec: attachExec, stream, tmuxSession };
+  }
+
+  async killTmuxSession(containerId: string, sessionName: string): Promise<void> {
+    try {
+      await this.execTmux(containerId, ['kill-session', '-t', sessionName]);
+    } catch {}
   }
 
   async execTmux(containerId: string, args: string[]): Promise<void> {

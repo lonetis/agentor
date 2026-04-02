@@ -96,6 +96,7 @@ See @docs/testing.md for full details (writing tests, conventions, helpers, debu
 ## Gotchas
 
 - **crossws `peer.ctx` is undefined** in Nitro's bundled crossws — store per-connection state in a `Map<string, Context>` keyed by `peer.id`, not on `peer.ctx`
+- **crossws `close` event does not fire reliably** in Nitro's dev mode — detect disconnected peers via `peer.send()` failure in the data handler instead of relying on the `close` callback
 - **Iframes and xterm steal mouse events** during split pane / tab drag — apply `pointer-events: none` via a body class (`body.tab-dragging iframe, body.tab-dragging .xterm`)
 - **`<ClientOnly>` is unnecessary** in SPA mode (`ssr: false`) and can cause layout issues — all code already runs client-only
 - **Claude Code CLI exits immediately** (code 0) under QEMU emulation (amd64 on ARM host) — always build the worker image for native arch, never use `--platform=linux/amd64`
