@@ -73,69 +73,84 @@ const isRunning = computed(() => props.container.status === 'running');
     <!-- All buttons in one row -->
     <div class="flex items-center flex-wrap gap-1.5">
       <template v-if="isRunning">
-        <UTooltip text="Terminal">
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="subtle"
-            icon="i-lucide-terminal"
-            @click="emit('openTerminal', container.id)"
-          />
-        </UTooltip>
-        <UTooltip text="Desktop">
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="subtle"
-            icon="i-lucide-monitor"
-            @click="emit('openDesktop', container.id)"
-          />
-        </UTooltip>
-        <UTooltip text="Editor">
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="subtle"
-            icon="i-lucide-code"
-            @click="emit('openEditor', container.id)"
-          />
-        </UTooltip>
-        <UTooltip text="VS Code Tunnel">
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="subtle"
-            icon="i-lucide-radio-tower"
-            @click="emit('openVsCode', container.id)"
-          />
-        </UTooltip>
-        <UTooltip text="Apps">
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="subtle"
-            icon="i-lucide-layout-grid"
-            @click="emit('openApps', container.id)"
-          />
-        </UTooltip>
-        <UTooltip text="Upload to Workspace">
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="subtle"
-            icon="i-lucide-upload"
-            @click="showUpload = true"
-          />
-        </UTooltip>
-        <UTooltip text="Download Workspace">
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="subtle"
-            icon="i-lucide-download"
-            @click="emit('downloadWorkspace', container.id)"
-          />
-        </UTooltip>
+        <!-- Views: terminal, desktop, apps -->
+        <div class="flex items-center gap-0.5">
+          <UTooltip text="Terminal">
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-terminal"
+              @click="emit('openTerminal', container.id)"
+            />
+          </UTooltip>
+          <UTooltip text="Desktop">
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-monitor"
+              @click="emit('openDesktop', container.id)"
+            />
+          </UTooltip>
+          <UTooltip text="Apps">
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-layout-grid"
+              @click="emit('openApps', container.id)"
+            />
+          </UTooltip>
+        </div>
+
+        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
+
+        <!-- Editors -->
+        <div class="flex items-center gap-0.5">
+          <UTooltip text="Editor">
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-code"
+              @click="emit('openEditor', container.id)"
+            />
+          </UTooltip>
+          <UTooltip text="VS Code Tunnel">
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-radio-tower"
+              @click="emit('openVsCode', container.id)"
+            />
+          </UTooltip>
+        </div>
+
+        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
+
+        <!-- Workspace -->
+        <div class="flex items-center gap-0.5">
+          <UTooltip text="Upload to Workspace">
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-upload"
+              @click="showUpload = true"
+            />
+          </UTooltip>
+          <UTooltip text="Download Workspace">
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-download"
+              @click="emit('downloadWorkspace', container.id)"
+            />
+          </UTooltip>
+        </div>
       </template>
 
       <div class="flex-1" />
