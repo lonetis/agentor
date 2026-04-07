@@ -20,6 +20,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 
 - **Live terminal** — xterm.js WebSocket terminal with tmux session management
 - **VS Code editor** — code-server (VS Code in the browser) per worker, accessible in a split pane
+- **VS Code tunnel** — connect your local VS Code client to workers via Microsoft's relay (GitHub device code auth per worker, persists across restarts)
 - **Virtual desktop** — Xvfb + fluxbox + noVNC, accessible in-browser
 - **Multi-repo cloning** — clone one or more git repos into each worker at startup
 - **App system** — launch Chromium (with CDP) or SOCKS5 proxy instances inside workers

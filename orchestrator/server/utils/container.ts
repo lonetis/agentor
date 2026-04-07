@@ -14,7 +14,7 @@ import type { CredentialMountManager } from './credential-mounts';
 import type { CapabilityStore } from './capability-store';
 import type { InstructionStore } from './instruction-store';
 import type { StorageManager } from './storage';
-import type { NetworkMode, ExposeApis, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest } from '../../shared/types';
+import type { NetworkMode, ExposeApis, ServiceStatus, VsCodeTunnelStatus, ContainerInfo, ContainerStatus, CreateContainerRequest } from '../../shared/types';
 
 
 interface ResolvedEnvConfig {
@@ -717,6 +717,64 @@ export class ContainerManager {
       running: info?.status === 'running',
       containerId: workerId,
     };
+  }
+
+  // --- VS Code tunnel methods ---
+
+  async getVsCodeTunnelStatus(workerId: string): Promise<VsCodeTunnelStatus> {
+    const info = this.containers.get(workerId);
+    if (!info || info.status !== 'running') {
+      return { status: 'stopped' };
+    }
+
+    try {
+      const output = await this.dockerService.execVsCodeTunnel(workerId, ['status']);
+      return this.parseVsCodeTunnelOutput(output);
+    } catch {
+      return { status: 'stopped' };
+    }
+  }
+
+  async startVsCodeTunnel(workerId: string): Promise<void> {
+    this.assertRunning(workerId);
+    const info = this.containers.get(workerId)!;
+    const name = info.name.replace(/^agentor-worker-/, '');
+    const output = await this.dockerService.execVsCodeTunnel(workerId, ['start', name]);
+    const trimmed = output.trim();
+    if (trimmed.startsWith('ERR:')) {
+      throw new Error(trimmed.substring(4));
+    }
+  }
+
+  async stopVsCodeTunnel(workerId: string): Promise<void> {
+    this.assertRunning(workerId);
+    await this.dockerService.execVsCodeTunnel(workerId, ['stop']);
+  }
+
+  private parseVsCodeTunnelOutput(output: string): VsCodeTunnelStatus {
+    const lines = output.trim().split(/\r?\n/).filter(Boolean);
+    const result: VsCodeTunnelStatus = { status: 'stopped' };
+
+    for (const line of lines) {
+      const [key, ...rest] = line.split(':');
+      const value = rest.join(':');
+      switch (key) {
+        case 'STATUS':
+          result.status = value as VsCodeTunnelStatus['status'];
+          break;
+        case 'MACHINE':
+          result.machineName = value;
+          break;
+        case 'AUTH_URL':
+          result.authUrl = value;
+          break;
+        case 'AUTH_CODE':
+          result.authCode = value;
+          break;
+      }
+    }
+
+    return result;
   }
 
   // --- Generic app instance methods ---

@@ -30,6 +30,13 @@ export interface ServiceStatus {
   containerId?: string;
 }
 
+export interface VsCodeTunnelStatus {
+  status: 'stopped' | 'auth_required' | 'running';
+  machineName?: string;
+  authUrl?: string;
+  authCode?: string;
+}
+
 export type ContainerStatus = 'creating' | 'running' | 'stopped' | 'removing' | 'error';
 
 export interface ContainerInfo {

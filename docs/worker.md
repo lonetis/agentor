@@ -23,10 +23,11 @@ The unified worker image (`worker/`) provides:
 - Editors: neovim, vim, nano
 - Utilities: htop, btop, tree, less, openssh-client, rsync, strace, dnsutils, net-tools, iputils-ping, file, man-db
 - Network firewall: dnsmasq, ipset, iptables (for environment network policies)
-- App management scripts in `/home/agent/apps/` (chromium/manage.sh, socks5/manage.sh)
+- VS Code CLI (tunnel mode — native VS Code client connections via Microsoft relay)
+- App management scripts in `/home/agent/apps/` (chromium/manage.sh, socks5/manage.sh, vscode-tunnel/manage.sh)
 - Shared `agent` user (uid 1000) with passwordless sudo
 - Helper scripts: `memfd-exec.py` (memfd script executor), `setup.sh` (setup script runner), `init.sh` (init script runner)
-- Common entrypoint: tmux session, env var export, agent setups (+ platform files), docker daemon, display stack, code-server, git auth, repo clone, network firewall, setup script (memfd), init script (memfd), launch
+- Common entrypoint: tmux session, env var export, agent setups (+ platform files), docker daemon, display stack, code-server, VS Code tunnel, git auth, repo clone, network firewall, setup script (memfd), init script (memfd), launch
 
 ### Pre-installed Agents
 
@@ -115,6 +116,7 @@ Fully synchronous — every phase runs foreground and completes before the next 
 2. **Docker daemon** — if `ENVIRONMENT.dockerEnabled`: start dockerd, wait for socket (up to 30s); otherwise skipped
 3. **Display stack** — Xvfb + fluxbox + x11vnc + websockify/noVNC, wait for each service
 3b. **Code editor** — code-server on port 8443 (`--auth none --bind-addr 0.0.0.0:8443`), wait for port ready
+3c. **VS Code tunnel** — `code tunnel --accept-server-license-terms --name <worker-name>` in background. First run requires GitHub device code auth (shown in the VS Code Tunnel pane). Auth persists per worker in the agent-data volume (`~/.vscode` symlinked to `.agent-data/.vscode`); subsequent runs of the same worker auto-connect.
 4. **Git authentication** — if `GITHUB_TOKEN`: `gh auth login` + `gh auth setup-git`; otherwise skipped
 5. **Repository clone** — if `WORKER.repos`: parallel clone per repo, wait for all; otherwise skipped
 6. **Network firewall** — reads `ENVIRONMENT.networkMode` + `.allowedDomains` via jq; dnsmasq + ipset + iptables; skipped for `full` mode

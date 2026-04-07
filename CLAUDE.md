@@ -1,6 +1,6 @@
 # Agent Orchestrator (Agentor)
 
-Docker orchestrator that spawns isolated AI coding agent workers, each in its own container with terminal access via a web dashboard. All agent CLIs (Claude, Codex, Gemini) are pre-installed in a single unified worker image. Includes a modular app system (Chromium, SOCKS5 proxy), a dynamic port mapper, domain mapping via Traefik, a VS Code editor (code-server), and an automatic update mechanism for production deployments.
+Docker orchestrator that spawns isolated AI coding agent workers, each in its own container with terminal access via a web dashboard. All agent CLIs (Claude, Codex, Gemini) are pre-installed in a single unified worker image. Includes a modular app system (Chromium, SOCKS5 proxy), a dynamic port mapper, domain mapping via Traefik, a VS Code editor (code-server), VS Code tunnel (native VS Code client connections), and an automatic update mechanism for production deployments.
 
 ## Architecture
 
@@ -9,7 +9,8 @@ Browser (Vue 3/Nuxt UI) <--HTTP/JSON--> Orchestrator (Nuxt 3/Nitro) <--dockerode
 Browser (xterm.js)       <--WebSocket--> Nitro (crossws)             <--docker stream--> Worker (tmux)
 Browser (noVNC iframe)   <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (websockify <--> x11vnc <--> Xvfb)
 Browser (code-server)    <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (code-server on port 8443)
-Orchestrator             <--docker exec-> apps/*/manage.sh (start/stop/list app instances in worker)
+Local VS Code            <--tunnel-----> Microsoft Relay              <--tunnel--------> Worker (code tunnel)
+Orchestrator             <--docker exec-> apps/*/manage.sh (start/stop/list/status app instances in worker)
 Orchestrator (MapperManager)  <--dockerode--> Mapper container (TCP proxies to worker internal ports)
 Orchestrator (TraefikManager) <--dockerode--> Traefik container (domain-based reverse proxy, TLS)
 ```
@@ -18,7 +19,7 @@ Four managed containers:
 - **Orchestrator**: Nuxt 3 app (SPA mode) with Nitro server, serving dashboard + managing workers, mapper, and Traefik containers via Docker socket
 - **Mapper**: Lightweight Node.js container running TCP reverse proxies. Managed by the orchestrator via dockerode — created/recreated when port mappings change, removed when empty.
 - **Traefik**: Reverse proxy for domain-based routing with Let's Encrypt TLS. Managed by the orchestrator — created when domain mappings or dashboard subdomain are configured, removed when empty. Optional (requires `BASE_DOMAINS` env var).
-- **Workers**: Single unified Docker image (`agentor-worker`, Ubuntu 24.04) with all agent CLIs pre-installed, running in tmux, plus an integrated display stack (Xvfb + fluxbox + x11vnc + noVNC on port 6080), code-server (VS Code on port 8443), and Chromium. Each worker is a single container with all agents available. Three persistent volumes per worker: workspace (`/workspace`), agent config data (`/home/agent/.agent-data` — symlinked to `~/.claude`, `~/.gemini`, `~/.codex`, `~/.agents`, `~/.claude.json`), and optionally DinD (`/var/lib/docker`).
+- **Workers**: Single unified Docker image (`agentor-worker`, Ubuntu 24.04) with all agent CLIs pre-installed, running in tmux, plus an integrated display stack (Xvfb + fluxbox + x11vnc + noVNC on port 6080), code-server (VS Code on port 8443), VS Code tunnel (native VS Code client via Microsoft relay), and Chromium. Each worker is a single container with all agents available. Three persistent volumes per worker: workspace (`/workspace`), agent config data (`/home/agent/.agent-data` — symlinked to `~/.claude`, `~/.gemini`, `~/.codex`, `~/.agents`, `~/.claude.json`), and optionally DinD (`/var/lib/docker`).
 
 ## Detailed Documentation
 
@@ -44,7 +45,7 @@ Four managed containers:
 - UI: Nuxt UI v3, Tailwind CSS v4
 - Terminal: xterm.js 5 (@xterm/xterm + @xterm/addon-fit)
 - Backend: dockerode 4, nanoid 5, crossws (WebSocket, bundled with Nitro), ws (WebSocket client for noVNC proxy), tar-stream (archive packing)
-- Workers: Ubuntu 24.04, agent CLI (varies), tmux, git, Docker CE (opt-in DinD), Xvfb, fluxbox, x11vnc, noVNC (port 6080), code-server (port 8443), Chromium, microsocks, dnsmasq, ipset, iptables
+- Workers: Ubuntu 24.04, agent CLI (varies), tmux, git, Docker CE (opt-in DinD), Xvfb, fluxbox, x11vnc, noVNC (port 6080), code-server (port 8443), VS Code CLI (tunnel), Chromium, microsocks, dnsmasq, ipset, iptables
 
 ## Dev Commands
 

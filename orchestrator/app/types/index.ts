@@ -24,6 +24,7 @@ export type {
   InstructionInfo,
   CredentialInfo,
   InitScriptInfo,
+  VsCodeTunnelStatus,
   LogLevel,
   LogSource,
   LogEntry,
@@ -145,7 +146,7 @@ export interface ArchivedWorker {
   image: string;
 }
 
-export type TabType = 'terminal' | 'desktop' | 'apps' | 'editor' | 'logs';
+export type TabType = 'terminal' | 'desktop' | 'apps' | 'editor' | 'vscode' | 'logs';
 
 export interface Tab {
   id: string;

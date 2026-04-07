@@ -92,6 +92,16 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `useTmuxTabs` uses `getTmuxActiveWindow()`/`setTmuxActiveWindow()` instead of a module-level Map
 - `_resetUiState()` export for testing (clears singleton + timers)
 
+## VS Code Tunnel Pane
+
+Custom pane (not iframe-based) for managing VS Code tunnel connections to workers. Opens via the "VS Code Tunnel" button on container cards (tab type `vscode`).
+
+**Architecture** (`VsCodeTunnelPane.vue` + `useVsCodeTunnel` composable):
+- `useVsCodeTunnel(containerId)` polls `GET /api/containers/:id/vscode-tunnel/status` every 3s
+- Status, start, and stop endpoints exec `/home/agent/apps/vscode-tunnel/manage.sh` in the worker container
+- Three states: stopped (start button), auth_required (GitHub device code URL + code), running (connection instructions)
+- Auth persists per worker in the agent-data volume (`~/.vscode` symlinked to `.agent-data/.vscode`) — survives restarts, rebuilds, and archive/unarchive
+
 ## Log Pane
 
 Centralized log viewer opened via the "Logs" button in the System tab's Quick Links. Opens as a singleton pane tab (ID `__logs__`, type `logs`).

@@ -86,6 +86,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Terminal button (tooltip "Terminal") — opens terminal pane
 - Desktop button (tooltip "Desktop") — opens desktop pane
 - Editor button (tooltip "Editor") — opens editor pane
+- VS Code Tunnel button (tooltip "VS Code Tunnel") — opens VS Code tunnel pane
 - Apps button (tooltip "Apps") — opens apps pane
 - Upload button (tooltip) — opens upload modal
 - Download button (tooltip) — downloads workspace as .tar.gz
@@ -344,6 +345,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Terminal (xterm.js)
 - Desktop (noVNC iframe)
 - Editor (code-server iframe)
+- VS Code Tunnel (custom status/control pane)
 - Apps (app instance management)
 - Logs (centralized log viewer)
 
@@ -420,6 +422,16 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - "Editor is starting..." → "Editor running" + iframe
 - "Open in tab" opens in new browser tab
 - Clipboard permissions enabled on iframe
+
+### 18.3 VS Code Tunnel
+- Custom pane (not iframe-based, tab type `vscode`)
+- Opens via "VS Code Tunnel" button on container card (radio-tower icon)
+- Stopped state: radio-tower icon + "VS Code Tunnel is not running" + "Start Tunnel" button
+- Auth required state: key icon + "GitHub Authentication Required" + clickable auth URL + large monospace device code (copyable) + "Waiting for authentication..." spinner
+- Running state: green pulsing dot + "Tunnel connected" + machine name (monospace) + connection instructions (4 numbered steps) + "Stop Tunnel" button
+- Status polled every 3 seconds via `GET /api/containers/:id/vscode-tunnel/status`
+- Start/stop via POST endpoints
+- Auth persists per worker in agent-data volume (`~/.vscode`) — survives restarts, rebuilds, archive/unarchive
 
 ---
 
@@ -547,6 +559,9 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `POST /api/containers/:id/workspace` — upload files (multipart, path traversal protection)
 - `GET /api/containers/:id/desktop/status` — desktop service status
 - `GET /api/containers/:id/editor/status` — editor service status
+- `GET /api/containers/:id/vscode-tunnel/status` — VS Code tunnel status (stopped, auth_required, running, machineName, authUrl, authCode)
+- `POST /api/containers/:id/vscode-tunnel/start` — start VS Code tunnel
+- `POST /api/containers/:id/vscode-tunnel/stop` — stop VS Code tunnel
 
 ### 24.3 Tmux Panes
 - `GET /api/containers/:id/panes` — list tmux windows

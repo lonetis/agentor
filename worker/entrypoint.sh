@@ -74,7 +74,7 @@ wait_for_port() {
 # ==========================================================================
 WINDOW_NAME="main"
 _boot
-_total 9
+_total 10
 tmux new-session -d -s main -n "$WINDOW_NAME" -c /workspace \
     "bash /home/agent/loading-screen.sh"
 tmux set -g mouse on
@@ -97,10 +97,10 @@ if [ -d "$AGENT_DATA" ]; then
     sudo chown -R agent:agent "$AGENT_DATA"
 
     # Ensure subdirectories exist in the volume (named same as home dir targets)
-    mkdir -p "$AGENT_DATA"/{.claude,.gemini,.codex,.agents}
+    mkdir -p "$AGENT_DATA"/{.claude,.gemini,.codex,.agents,.vscode}
 
     # Symlink agent config dirs to persistent volume
-    for dir in .claude .gemini .codex .agents; do
+    for dir in .claude .gemini .codex .agents .vscode; do
         target="/home/agent/$dir"
         if [ -e "$target" ] && [ ! -L "$target" ]; then
             rm -rf "$target"
@@ -245,6 +245,23 @@ code-server --auth none --bind-addr 0.0.0.0:8443 --disable-telemetry /workspace 
 wait_for_port 8443
 _done editor "Code editor"
 _log "Code-server: ready"
+
+# ==========================================================================
+# Phase 3c: VS Code tunnel (native VS Code client via Microsoft relay)
+# Auto-starts in background. First run requires GitHub device code auth
+# (visible via the VS Code Tunnel pane). Auth persists in agent-data volume
+# (~/.vscode symlinked to .agent-data/.vscode) across restarts/rebuilds.
+# ==========================================================================
+WORKER_NAME=$(echo "$WORKER" | jq -r '.name // ""')
+WORKER_NAME=${WORKER_NAME#agentor-worker-}
+if [ -n "$WORKER_NAME" ]; then
+    _step vscode "VS Code tunnel"
+    /home/agent/apps/vscode-tunnel/manage.sh start "$WORKER_NAME"
+    _done vscode "VS Code tunnel"
+    _log "VS Code tunnel: started (name=$WORKER_NAME)"
+else
+    _skip vscode "VS Code tunnel"
+fi
 
 # ==========================================================================
 # Phase 4: Git auth

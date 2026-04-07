@@ -108,6 +108,14 @@ RUN curl -fsSL https://get.docker.com | sh && \
 # code-server (VS Code in browser)
 RUN curl -fsSL https://code-server.dev/install.sh | sh
 
+# VS Code CLI (tunnel mode — native VS Code client connects via Microsoft relay)
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then VS_ARCH="x64"; else VS_ARCH="arm64"; fi && \
+    curl -fsSL "https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-${VS_ARCH}" \
+      -o /tmp/vscode-cli.tar.gz && \
+    tar -xzf /tmp/vscode-cli.tar.gz -C /usr/local/bin && \
+    rm /tmp/vscode-cli.tar.gz
+
 # Prefer IPv4 for localhost in getaddrinfo (fixes SOCKS5 proxy resolving
 # localhost to ::1 when services only listen on IPv4)
 RUN echo "precedence ::ffff:0:0/96 100" > /etc/gai.conf

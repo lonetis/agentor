@@ -11,6 +11,7 @@ const emit = defineEmits<{
   openDesktop: [containerId: string];
   openApps: [containerId: string];
   openEditor: [containerId: string];
+  openVsCode: [containerId: string];
   stop: [id: string];
   restart: [id: string];
   rebuild: [id: string];
@@ -97,6 +98,15 @@ const isRunning = computed(() => props.container.status === 'running');
             variant="subtle"
             icon="i-lucide-code"
             @click="emit('openEditor', container.id)"
+          />
+        </UTooltip>
+        <UTooltip text="VS Code Tunnel">
+          <UButton
+            size="xs"
+            color="neutral"
+            variant="subtle"
+            icon="i-lucide-radio-tower"
+            @click="emit('openVsCode', container.id)"
           />
         </UTooltip>
         <UTooltip text="Apps">

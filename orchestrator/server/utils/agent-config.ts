@@ -51,6 +51,20 @@ const AGENT_CONFIGS: AgentConfig[] = [
     ],
     envVars: { GEMINI_API_KEY: 'geminiApiKey' },
   },
+  {
+    id: 'vscode-tunnel',
+    displayName: 'VS Code Tunnel',
+    apiDomains: [
+      '*.tunnels.api.visualstudio.com',
+      '*.devtunnels.ms',
+      'global.rel.tunnels.api.visualstudio.com',
+      'login.microsoftonline.com',
+      '*.vscode-cdn.net',
+      'update.code.visualstudio.com',
+      'vscode.download.prss.microsoft.com',
+    ],
+    envVars: {},
+  },
 ];
 
 export function listAgentConfigs(): AgentConfig[] {

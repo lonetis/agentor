@@ -103,6 +103,7 @@
 - `orchestrator/app/components/ThemeToggle.vue` - Three-way color mode toggle (Default/White/Dark)
 - `orchestrator/app/components/TmuxTabBar.vue` - Inner tmux window tab bar
 - `orchestrator/app/components/UpdateNotification.vue` - Sidebar update notification (image digests, one-click update)
+- `orchestrator/app/components/VsCodeTunnelPane.vue` - VS Code tunnel status/control pane (auth flow, connection info, start/stop)
 - `orchestrator/app/components/UsagePanel.vue` - Agent usage monitoring panel (progress bars, auth badges, reset times)
 - `orchestrator/app/components/UploadModal.vue` - Modal for workspace file uploads
 - `orchestrator/app/composables/useApps.ts` - App CRUD + polling
@@ -127,6 +128,7 @@
 - `orchestrator/app/composables/useTmuxTabs.ts` - Tmux window management (fetch, poll, create, close, activate, rename)
 - `orchestrator/app/composables/useLogs.ts` - Log entry state, WebSocket connection, history fetch, client-side filtering
 - `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only)
+- `orchestrator/app/composables/useVsCodeTunnel.ts` - VS Code tunnel status polling (3s) + start/stop
 - `orchestrator/app/composables/useUsage.ts` - Agent usage status polling (60s)
 - `orchestrator/app/utils/container-name.ts` - Utility for container name display (shortName helper)
 - `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, LogLevel, LogSource, LogEntry) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone, ChallengeType, BaseDomainConfig
@@ -141,6 +143,7 @@
 - `worker/git-wrapper.sh` - Process-tree-aware git identity wrapper (installed at /usr/local/bin/git)
 - `worker/apps/chromium/manage.sh` - Chromium app manager (start/stop/list via docker exec)
 - `worker/apps/socks5/manage.sh` - SOCKS5 proxy app manager
+- `worker/apps/vscode-tunnel/manage.sh` - VS Code tunnel manager (start/stop/status via docker exec)
 - `worker/agents/claude/setup.sh` - Claude auth + config + capabilities/instructions writing (reads CAPABILITIES/INSTRUCTIONS JSON env vars)
 - `worker/agents/codex/setup.sh` - Codex auth + config + capabilities/instructions writing
 - `worker/agents/gemini/setup.sh` - Gemini auth + config + capabilities/instructions writing

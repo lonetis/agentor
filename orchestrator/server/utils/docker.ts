@@ -146,7 +146,7 @@ export class DockerService {
     const container = await this.docker.createContainer({
       Image: image,
       name: opts.name,
-      Hostname: opts.name,
+      Hostname: opts.name.replace(/^agentor-worker-/, ''),
       Env: env,
       Tty: true,
       OpenStdin: true,
@@ -358,6 +358,19 @@ export class DockerService {
     if (trimmed.startsWith('ERR:')) {
       throw new Error(trimmed.substring(4));
     }
+  }
+
+  // --- VS Code tunnel management ---
+
+  async execVsCodeTunnel(containerId: string, args: string[]): Promise<string> {
+    const container = this.docker.getContainer(containerId);
+    const exec = await container.exec({
+      Cmd: ['/home/agent/apps/vscode-tunnel/manage.sh', ...args],
+      AttachStdout: true,
+      AttachStderr: true,
+    });
+    const stream = await exec.start({ Detach: false, Tty: true });
+    return this.streamToString(stream);
   }
 
   // --- Workspace archive methods ---
