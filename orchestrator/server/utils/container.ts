@@ -413,18 +413,12 @@ export class ContainerManager {
     const info = this.containers.get(id);
     if (!info) throw new Error('Container not found');
 
-    // Stop and remove the old container
+    // Stop and remove the old container — workspace, agents, and DinD volumes
+    // are preserved (rebuild behaves identically to archive + unarchive).
     if (info.status === 'running') {
       await this.dockerService.stopContainer(id);
     }
     await this.dockerService.removeContainer(id);
-
-    // Remove DinD volume (ephemeral — workspace is preserved)
-    if (this.storageManager) {
-      await this.storageManager.removeWorkerDocker(info.name);
-    } else {
-      await this.dockerService.removeVolume(`${info.name}-docker`);
-    }
 
     this.containers.delete(id);
 
