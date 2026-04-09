@@ -14,10 +14,20 @@ defineRouteMeta({
 });
 
 import { useCapabilityStore } from '../../utils/services';
+import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const ctx = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
   const store = useCapabilityStore();
+
+  const existing = store.get(id);
+  if (!existing) {
+    throw createError({ statusCode: 404, statusMessage: 'Capability not found' });
+  }
+  if (!canAccessResource(ctx, existing, { allowGlobal: false })) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
+  }
 
   try {
     await store.delete(id);

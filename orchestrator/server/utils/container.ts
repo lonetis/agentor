@@ -215,6 +215,7 @@ export class ContainerManager {
         exposeApis: worker?.exposeApis,
         capabilityNames: worker?.capabilityNames,
         instructionNames: worker?.instructionNames,
+        userId: worker?.userId ?? '',
       });
     }
 
@@ -306,6 +307,7 @@ export class ContainerManager {
       exposeApis,
       capabilityNames,
       instructionNames,
+      userId: request.userId ?? '',
     };
 
     this.containers.set(container.id, containerInfo);
@@ -494,6 +496,7 @@ export class ContainerManager {
       exposeApis: info.exposeApis,
       capabilityNames: info.capabilityNames,
       instructionNames: info.instructionNames,
+      userId: info.userId,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -594,6 +597,7 @@ export class ContainerManager {
       exposeApis: worker.exposeApis,
       capabilityNames: worker.capabilityNames,
       instructionNames: worker.instructionNames,
+      userId: worker.userId,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -680,6 +684,7 @@ export class ContainerManager {
       image: info.image,
       imageId: info.imageId,
       status: 'active',
+      userId: info.userId,
     };
   }
 

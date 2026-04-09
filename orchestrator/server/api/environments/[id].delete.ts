@@ -13,8 +13,10 @@ defineRouteMeta({
 });
 
 import { useEnvironmentStore } from '../../utils/services';
+import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const ctx = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
   const store = useEnvironmentStore();
 
@@ -24,6 +26,9 @@ export default defineEventHandler(async (event) => {
   }
   if (existing.builtIn) {
     throw createError({ statusCode: 400, statusMessage: 'Cannot delete built-in environments' });
+  }
+  if (!canAccessResource(ctx, existing, { allowGlobal: false })) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
   }
 
   try {

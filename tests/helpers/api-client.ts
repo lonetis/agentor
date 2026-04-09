@@ -10,6 +10,38 @@ export class ApiClient {
   readonly baseUrl = BASE_URL;
   constructor(public readonly request: APIRequestContext) {}
 
+  // ─── Auth ─────────────────────────────────────────────────────
+  async signInEmail(email: string, password: string) {
+    const res = await this.request.post(`${BASE_URL}/api/auth/sign-in/email`, {
+      data: { email, password },
+    });
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  async signOut() {
+    const res = await this.request.post(`${BASE_URL}/api/auth/sign-out`, {
+      headers: { 'Content-Type': 'application/json' },
+      data: {},
+    });
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  async getAuthSession() {
+    const res = await this.request.get(`${BASE_URL}/api/auth/get-session`);
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  // ─── Setup ────────────────────────────────────────────────────
+  async getSetupStatus() {
+    const res = await this.request.get(`${BASE_URL}/api/setup/status`);
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  async createAdmin(data: { email: string; password: string; name: string }) {
+    const res = await this.request.post(`${BASE_URL}/api/setup/create-admin`, { data });
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
   // ─── Health ───────────────────────────────────────────────────
   async health() {
     const res = await this.request.get(`${BASE_URL}/api/health`);

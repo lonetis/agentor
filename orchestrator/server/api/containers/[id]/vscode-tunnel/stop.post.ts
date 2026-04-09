@@ -13,10 +13,12 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../../../utils/services';
+import { requireContainerAccess } from '../../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
   const containerManager = useContainerManager();
+  requireContainerAccess(event, containerManager.get(id));
   await containerManager.stopVsCodeTunnel(id);
   return { ok: true };
 });

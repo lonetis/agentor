@@ -9,7 +9,7 @@ const modes = [
 </script>
 
 <template>
-  <div class="flex items-center rounded-md bg-gray-200 dark:bg-gray-800 p-0.5">
+  <div data-theme-toggle class="flex items-center rounded-md bg-gray-200 dark:bg-gray-800 p-0.5">
     <UTooltip v-for="mode in modes" :key="mode.value" :text="mode.label">
       <button
         class="p-1 rounded transition-colors"

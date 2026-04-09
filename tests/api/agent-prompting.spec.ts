@@ -1,14 +1,14 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, APIRequestContext } from '@playwright/test';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 import { TerminalWsClient, checkAgentCredentials, AgentCredentials } from '../helpers/terminal-ws';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 /**
- * Fetch init scripts from the API (plain fetch, no Playwright request context needed).
+ * Fetch init scripts from the API using the authenticated request context.
  */
-async function getInitScripts(): Promise<{ id: string; name: string; content: string }[]> {
-  const res = await fetch(`${BASE_URL}/api/init-scripts`);
+async function getInitScripts(request: APIRequestContext): Promise<{ id: string; name: string; content: string }[]> {
+  const res = await request.get(`${BASE_URL}/api/init-scripts`);
   return res.json();
 }
 
@@ -84,7 +84,7 @@ let initScripts: { id: string; name: string; content: string }[];
 
 test.beforeAll(async ({ request }) => {
   credentials = await checkAgentCredentials(request);
-  initScripts = await getInitScripts();
+  initScripts = await getInitScripts(request);
 });
 
 for (const agent of AGENT_CONFIGS) {

@@ -13,12 +13,14 @@ defineRouteMeta({
 });
 
 import { createGzip } from 'node:zlib';
+import { requireContainerAccess } from '../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
   const containerManager = useContainerManager();
 
   const info = containerManager.get(id);
+  requireContainerAccess(event, info);
   if (!info) {
     throw createError({ statusCode: 404, statusMessage: 'Container not found' });
   }

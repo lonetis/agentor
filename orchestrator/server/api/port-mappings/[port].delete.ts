@@ -13,8 +13,10 @@ defineRouteMeta({
 });
 
 import { usePortMappingStore, useMapperManager } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const { user } = requireAuth(event);
   const port = parseInt(getRouterParam(event, 'port')!, 10);
 
   if (isNaN(port)) {
@@ -25,6 +27,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const store = usePortMappingStore();
+  const existing = store.get(port);
+  if (!existing) {
+    return { ok: true };
+  }
+  if (user.role !== 'admin' && existing.userId !== user.id) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
+  }
+
   const removed = await store.remove(port);
   if (removed) {
     await useMapperManager().reconcile();

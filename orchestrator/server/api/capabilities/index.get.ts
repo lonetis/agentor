@@ -38,7 +38,11 @@ defineRouteMeta({
 });
 
 import { useCapabilityStore } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
-export default defineEventHandler(() => {
-  return useCapabilityStore().list();
+export default defineEventHandler((event) => {
+  const { user } = requireAuth(event);
+  const all = useCapabilityStore().list();
+  if (user.role === 'admin') return all;
+  return all.filter((c) => c.userId === null || c.userId === user.id);
 });

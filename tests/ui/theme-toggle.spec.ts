@@ -19,10 +19,10 @@ async function freshStart(page: Page): Promise<void> {
 
 /**
  * Locate the theme toggle container — the flex div wrapping the three icon buttons.
- * Structure: aside > header > flex-row > ThemeToggle (div.flex.items-center.rounded-md) + collapse button
+ * Structure: aside > header > flex-row > ThemeToggle ([data-theme-toggle]) + collapse button
  */
 function themeToggleGroup(page: Page): ReturnType<Page['locator']> {
-  return page.locator('aside .flex.items-center.rounded-md');
+  return page.locator('aside [data-theme-toggle]');
 }
 
 /** The three theme buttons in order: Default (monitor), White (sun), Dark (moon) */

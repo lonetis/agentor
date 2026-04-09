@@ -1,6 +1,8 @@
 FROM node:22-alpine AS builder
 
 WORKDIR /app
+# Build tools required by better-sqlite3 native module on Alpine (musl)
+RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .

@@ -36,6 +36,7 @@ Four managed containers:
 | API | @docs/api.md | API documentation (OpenAPI), adding docs to routes |
 | Key Files | @docs/key-files.md | Complete file listing (server, client, worker, tests) |
 | Testing | @docs/testing.md | Running tests, writing tests, conventions, maintaining FEATURES.md and TESTS.md |
+| Authentication | @docs/authentication.md | better-auth integration, users, roles, resource ownership |
 | Feature Inventory | @tests/FEATURES.md | Canonical list of all user-facing features, drives test coverage |
 | Test Suite Index | @tests/TESTS.md | Test counts, structure, and design decisions |
 
@@ -44,6 +45,7 @@ Four managed containers:
 - Framework: Nuxt 3 (SPA mode), Nitro server, Vue 3
 - UI: Nuxt UI v3, Tailwind CSS v4
 - Terminal: xterm.js 5 (@xterm/xterm + @xterm/addon-fit)
+- Auth: better-auth 1.6 + admin plugin (user management, RBAC), better-sqlite3 (SQLite database for users/sessions)
 - Backend: dockerode 4, nanoid 5, crossws (WebSocket, bundled with Nitro), ws (WebSocket client for noVNC proxy), tar-stream (archive packing)
 - Workers: Ubuntu 24.04, agent CLI (varies), tmux, git, Docker CE (opt-in DinD), Xvfb, fluxbox, x11vnc, noVNC (port 6080), code-server (port 8443), VS Code CLI (tunnel), Chromium, microsocks, dnsmasq, ipset, iptables
 

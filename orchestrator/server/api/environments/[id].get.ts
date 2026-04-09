@@ -13,13 +13,18 @@ defineRouteMeta({
 });
 
 import { useEnvironmentStore } from '../../utils/services';
+import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
 
 export default defineEventHandler((event) => {
+  const ctx = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
   const env = useEnvironmentStore().get(id);
 
   if (!env) {
     throw createError({ statusCode: 404, statusMessage: 'Environment not found' });
+  }
+  if (!canAccessResource(ctx, env)) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
   }
 
   return env;

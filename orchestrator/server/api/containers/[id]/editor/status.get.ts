@@ -13,9 +13,11 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../../../utils/services';
+import { requireContainerAccess } from '../../../../utils/auth-helpers';
 
 export default defineEventHandler((event) => {
   const id = getRouterParam(event, 'id')!;
   const containerManager = useContainerManager();
+  requireContainerAccess(event, containerManager.get(id));
   return containerManager.getServiceStatus(id);
 });

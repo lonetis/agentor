@@ -33,8 +33,10 @@ defineRouteMeta({
 
 import { useContainerManager, useConfig } from '../../utils/services';
 import { CONTAINER_NAME_RE } from '../../utils/validation';
+import { requireAuth } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const { user } = requireAuth(event);
   const body = await readBody(event);
 
   if (body.name) {
@@ -86,6 +88,7 @@ export default defineEventHandler(async (event) => {
     mounts: parsedMounts,
     environmentId: body.environmentId || undefined,
     initScript: body.initScript || undefined,
+    userId: user.id,
   });
 
   setResponseStatus(event, 201);

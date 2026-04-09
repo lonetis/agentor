@@ -15,13 +15,19 @@
 - `orchestrator/app.config.ts` - App-level configuration
 
 ## Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UpdatableImage, LogLevel, LogSource, LogEntry)
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UpdatableImage, LogLevel, LogSource, LogEntry). All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
 
 ## Orchestrator — Server
-- `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build
+- `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build (includes python3/make/g++ for better-sqlite3 native build)
 - `orchestrator/nuxt.config.ts` - Nuxt configuration (modules, SPA mode, Nitro WebSocket)
-- `orchestrator/server/plugins/services.ts` - Nitro startup: init Logger + LogStore + LogBroadcaster + LogCollector + Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + CapabilityStore + InstructionStore + InitScriptStore + WorkerStore + UpdateChecker + UsageChecker
-- `orchestrator/server/utils/config.ts` - Environment variable parsing
+- `orchestrator/server/plugins/services.ts` - Nitro startup: init Auth (better-auth + migrations) + Logger + LogStore + LogBroadcaster + LogCollector + Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + CapabilityStore + InstructionStore + InitScriptStore + WorkerStore + UpdateChecker + UsageChecker
+- `orchestrator/server/utils/config.ts` - Environment variable parsing (includes `betterAuthSecret`)
+- `orchestrator/server/utils/auth.ts` - better-auth singleton + admin plugin; exports `useAuth()`, `migrateAuth()`, `hasAnyUsers()`, `setUserRoleDirect()`
+- `orchestrator/server/utils/auth-helpers.ts` - `requireAuth`, `requireAdmin`, `requireContainerAccess`, `canAccessResource`, `authenticateWsPeer`
+- `orchestrator/server/middleware/auth.ts` - Global Nitro middleware enforcing auth on `/api/*` (skips auth/setup/health/docs)
+- `orchestrator/server/api/auth/[...all].ts` - Catch-all handler delegating to `auth.handler()`
+- `orchestrator/server/api/setup/status.get.ts` - First-run detection (returns `{ needsSetup: boolean }`, public)
+- `orchestrator/server/api/setup/create-admin.post.ts` - Creates first admin (public, only when no users exist)
 - `orchestrator/server/utils/init-script-store.ts` - InitScriptStore class (extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/agent-config.ts` - Static agent configuration registry (API domains, env var mappings per agent)
 - `orchestrator/server/utils/git-providers.ts` - Git provider registry (GIT_PROVIDER_REGISTRY)
@@ -71,8 +77,13 @@
 - `orchestrator/app/assets/css/main.css` - CSS custom properties for theming (--pane-tab-*, --terminal-*, --scrollbar-*) + dark/light mode overrides
 - `orchestrator/app/app.vue` - Nuxt app root component
 - `orchestrator/app/pages/index.vue` - Dashboard page (sidebar + split pane layout + modals)
+- `orchestrator/app/pages/login.vue` - Sign-in form (email/password, redirects to `/` on success)
+- `orchestrator/app/pages/setup.vue` - First-run admin creation form (redirects to `/login` when setup is complete)
+- `orchestrator/app/middleware/auth.global.ts` - Global client route guard (redirects to `/setup` or `/login` as needed)
+- `orchestrator/app/composables/useAuth.ts` - better-auth Vue client wrapper (session, user, isAdmin, signIn, signOut, admin plugin)
 - `orchestrator/app/plugins/xterm.client.ts` - Provides `$Terminal` and `$FitAddon` globally (avoids SSR import issues)
-- `orchestrator/app/components/AppSidebar.vue` - Left sidebar (container list, archived workers, port mappings, domain mappings, usage panel, update notification)
+- `orchestrator/app/components/AppSidebar.vue` - Left sidebar (container list, archived workers, port mappings, domain mappings, usage panel, update notification, **signed-in user card + sign out + Users modal trigger for admins**)
+- `orchestrator/app/components/UsersModal.vue` - Admin-only user management (list, create, change role, delete)
 - `orchestrator/app/components/AppInstanceRow.vue` - Single app row in AppsPane
 - `orchestrator/app/components/AppsPane.vue` - App instances for a container
 - `orchestrator/app/components/ArchivedWorkerCard.vue` - Archived worker card in sidebar

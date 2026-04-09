@@ -38,7 +38,11 @@ defineRouteMeta({
 });
 
 import { useInstructionStore } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
-export default defineEventHandler(() => {
-  return useInstructionStore().list();
+export default defineEventHandler((event) => {
+  const { user } = requireAuth(event);
+  const all = useInstructionStore().list();
+  if (user.role === 'admin') return all;
+  return all.filter((i) => i.userId === null || i.userId === user.id);
 });

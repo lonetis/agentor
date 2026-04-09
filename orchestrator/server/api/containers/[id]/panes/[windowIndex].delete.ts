@@ -16,6 +16,7 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../../../utils/services';
+import { requireContainerAccess } from '../../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
@@ -25,6 +26,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const containerManager = useContainerManager();
+  requireContainerAccess(event, containerManager.get(id));
   try {
     await containerManager.killTmuxWindow(id, windowIndex);
   } catch (err: unknown) {

@@ -1,8 +1,29 @@
 import { APIRequestContext } from '@playwright/test';
 import { ApiClient } from './api-client';
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import WSImpl from 'ws';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const WS_URL = BASE_URL.replace(/^http/, 'ws');
+const AUTH_STATE_PATH = resolve(__dirname, '..', '.auth/admin-api.json');
+
+/**
+ * Build a Cookie header from the admin storage state file written by the
+ * Playwright global setup. The terminal WebSocket requires a valid session.
+ */
+function buildAdminCookieHeader(): string {
+  if (!existsSync(AUTH_STATE_PATH)) return '';
+  try {
+    const state = JSON.parse(readFileSync(AUTH_STATE_PATH, 'utf-8'));
+    const cookies = (state?.cookies ?? []) as Array<{ name: string; value: string }>;
+    return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+  } catch {
+    return '';
+  }
+}
 
 /**
  * Strip ANSI escape codes from terminal output for clean pattern matching.
@@ -48,10 +69,10 @@ export async function checkAgentCredentials(request: APIRequestContext): Promise
 
 /**
  * WebSocket client for connecting to a worker's terminal.
- * Uses Node.js native WebSocket (available in Node 22+).
+ * Uses the `ws` package so we can pass a Cookie header for authenticated sessions.
  */
 export class TerminalWsClient {
-  private ws: WebSocket | null = null;
+  private ws: WSImpl | null = null;
   private buffer = '';
   private rawBuffer = '';
   private connectPromise: Promise<void> | null = null;
@@ -71,34 +92,32 @@ export class TerminalWsClient {
       ? `${WS_URL}/ws/terminal/${this.containerId}`
       : `${WS_URL}/ws/terminal/${this.containerId}/${this.windowName}`;
 
-    this.connectPromise = new Promise<void>((resolve, reject) => {
+    const cookieHeader = buildAdminCookieHeader();
+
+    this.connectPromise = new Promise<void>((resolvePromise, reject) => {
       const timer = setTimeout(() => reject(new Error(`WebSocket connect timeout after ${timeoutMs}ms`)), timeoutMs);
 
-      this.ws = new WebSocket(url);
-      this.ws.binaryType = 'arraybuffer';
-
-      this.ws.addEventListener('open', () => {
-        clearTimeout(timer);
-        resolve();
+      this.ws = new WSImpl(url, {
+        headers: cookieHeader ? { Cookie: cookieHeader } : undefined,
       });
 
-      this.ws.addEventListener('message', (event) => {
-        let text: string;
-        if (event.data instanceof ArrayBuffer) {
-          text = new TextDecoder().decode(event.data);
-        } else {
-          text = String(event.data);
-        }
+      this.ws.on('open', () => {
+        clearTimeout(timer);
+        resolvePromise();
+      });
+
+      this.ws.on('message', (data: Buffer) => {
+        const text = data.toString('utf-8');
         this.rawBuffer += text;
         this.buffer += stripAnsi(text);
       });
 
-      this.ws.addEventListener('error', (err) => {
+      this.ws.on('error', (err) => {
         clearTimeout(timer);
-        reject(new Error(`WebSocket error: ${err}`));
+        reject(new Error(`WebSocket error: ${err.message}`));
       });
 
-      this.ws.addEventListener('close', () => {
+      this.ws.on('close', () => {
         clearTimeout(timer);
       });
     });
@@ -110,7 +129,7 @@ export class TerminalWsClient {
    * Send a line of text (appends \n). Works for shell commands.
    */
   sendLine(text: string): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws || this.ws.readyState !== WSImpl.OPEN) {
       throw new Error('WebSocket not connected');
     }
     this.ws.send(text + '\n');
@@ -121,7 +140,7 @@ export class TerminalWsClient {
    * that read raw terminal input where Enter = \r.
    */
   sendEnter(text: string): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws || this.ws.readyState !== WSImpl.OPEN) {
       throw new Error('WebSocket not connected');
     }
     this.ws.send(text + '\r');
@@ -131,7 +150,7 @@ export class TerminalWsClient {
    * Send raw text without appending newline.
    */
   sendRaw(text: string): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws || this.ws.readyState !== WSImpl.OPEN) {
       throw new Error('WebSocket not connected');
     }
     this.ws.send(text);
@@ -141,7 +160,7 @@ export class TerminalWsClient {
    * Send a resize message.
    */
   sendResize(cols: number, rows: number): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws || this.ws.readyState !== WSImpl.OPEN) {
       throw new Error('WebSocket not connected');
     }
     this.ws.send(JSON.stringify({ type: 'resize', cols, rows }));

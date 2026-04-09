@@ -42,6 +42,7 @@ export interface Config {
   logLevel: import('../../shared/types').LogLevel;
   logMaxSize: number;
   logMaxFiles: number;
+  betterAuthSecret: string;
 }
 
 function parseLogSize(raw: string): number {
@@ -141,5 +142,6 @@ export function loadConfig(): Config {
     logLevel: (process.env.LOG_LEVEL || 'info') as import('../../shared/types').LogLevel,
     logMaxSize: parseLogSize(process.env.LOG_MAX_SIZE || '50m'),
     logMaxFiles: parseInt(process.env.LOG_MAX_FILES || '5', 10) || 5,
+    betterAuthSecret: process.env.BETTER_AUTH_SECRET || '',
   };
 }

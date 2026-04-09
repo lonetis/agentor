@@ -63,6 +63,7 @@ export interface ContainerInfo {
   exposeApis?: ExposeApis;
   capabilityNames?: string[];
   instructionNames?: string[];
+  userId: string;
 }
 
 export interface CreateContainerRequest {
@@ -74,6 +75,8 @@ export interface CreateContainerRequest {
   mounts?: MountConfig[];
   environmentId?: string;
   initScript?: string;
+  /** Populated server-side from the authenticated session — never sent by clients. */
+  userId?: string;
 }
 
 export interface ImageUpdateInfo {

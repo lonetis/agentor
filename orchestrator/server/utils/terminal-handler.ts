@@ -1,7 +1,8 @@
 import type { Duplex } from 'node:stream';
 import type { Peer } from 'crossws';
-import { useDockerService } from './services';
+import { useDockerService, useContainerManager } from './services';
 import { getPeerId, getPeerUrl, toBuffer } from './ws-utils';
+import { authenticateWsPeer } from './auth-helpers';
 
 interface TerminalContext {
   dockerStream?: Duplex;
@@ -57,7 +58,27 @@ function handleTerminalOpen(peer: Peer): void {
     return;
   }
 
-  dockerService
+  // Authenticate & authorize before opening the Docker exec
+  (async () => {
+    const auth = await authenticateWsPeer(peer);
+    if (!auth) {
+      try { peer.send('\r\nUnauthorized\r\n'); } catch {}
+      try { peer.close(); } catch {}
+      return;
+    }
+    const info = useContainerManager().get(params.containerId);
+    if (!info) {
+      try { peer.send('\r\nContainer not found\r\n'); } catch {}
+      try { peer.close(); } catch {}
+      return;
+    }
+    if (auth.user.role !== 'admin' && info.userId !== auth.user.id) {
+      try { peer.send('\r\nForbidden\r\n'); } catch {}
+      try { peer.close(); } catch {}
+      return;
+    }
+
+    dockerService
     .execAttachTmuxWindow(params.containerId, params.windowIndex)
     .then(({ exec, stream, tmuxSession }) => {
       if (ctx.closed) {
@@ -99,6 +120,7 @@ function handleTerminalOpen(peer: Peer): void {
       cleanupPeerContext(peer);
       try { peer.close(); } catch {}
     });
+  })();
 }
 
 function handleTerminalMessage(peer: Peer, message: unknown): void {

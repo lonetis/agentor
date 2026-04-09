@@ -39,7 +39,11 @@ defineRouteMeta({
 
 import { useInitScriptStore } from '../../utils/services';
 import type { InitScriptInfo } from '../../../shared/types';
+import { requireAuth } from '../../utils/auth-helpers';
 
-export default defineEventHandler((): InitScriptInfo[] => {
-  return useInitScriptStore().list();
+export default defineEventHandler((event): InitScriptInfo[] => {
+  const { user } = requireAuth(event);
+  const all = useInitScriptStore().list();
+  if (user.role === 'admin') return all;
+  return all.filter((s) => s.userId === null || s.userId === user.id);
 });

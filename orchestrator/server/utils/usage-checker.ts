@@ -174,7 +174,7 @@ export class UsageChecker {
     ];
 
     for (let i = 0; i < agentIds.length; i++) {
-      const existing = this.agentStates.get(agentIds[i]);
+      const existing = this.agentStates.get(agentIds[i]!);
       if (!existing || now - existing.lastFetchTime >= POLL_INTERVAL_MS) {
         fetchers.push(fetchFns[i]!);
       }

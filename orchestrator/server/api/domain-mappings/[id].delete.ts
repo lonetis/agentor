@@ -13,11 +13,21 @@ defineRouteMeta({
 });
 
 import { useDomainMappingStore, useTraefikManager } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const { user } = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
 
   const store = useDomainMappingStore();
+  const existing = store.get(id);
+  if (!existing) {
+    return { ok: true };
+  }
+  if (user.role !== 'admin' && existing.userId !== user.id) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
+  }
+
   const removed = await store.remove(id);
   if (removed) {
     await useTraefikManager().reconcile();

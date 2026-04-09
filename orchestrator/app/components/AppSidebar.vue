@@ -29,8 +29,12 @@ const emit = defineEmits<{
   deleteArchivedWorker: [name: string];
   openSettings: [];
   openLogs: [];
+  openUsers: [];
+  openAccount: [];
   toggleCollapse: [];
 }>();
+
+const { user: currentUser, isAdmin, signOut } = useAuth();
 
 const { state: uiState, setActiveTab } = useUiState();
 const { refreshing: usageRefreshing, refresh: usageRefresh } = useUsage();
@@ -57,10 +61,12 @@ const visibleTabs = computed<SidebarTabDef[]>(() => {
   if (domainMapperStatus.value.enabled) {
     items.push({ id: 'domains', label: 'Domains', icon: 'i-lucide-globe', badge: domainMappings.value.length || undefined });
   }
-  items.push(
-    { id: 'usage', label: 'Usage', icon: 'i-lucide-activity' },
-    { id: 'system', label: 'System', icon: 'i-lucide-settings' },
-  );
+  items.push({ id: 'usage', label: 'Usage', icon: 'i-lucide-activity' });
+  // System tab (Images + Logs + System Settings + Users) is admin-only —
+  // every action inside it calls an admin-only endpoint.
+  if (isAdmin.value) {
+    items.push({ id: 'system', label: 'System', icon: 'i-lucide-settings' });
+  }
   return items;
 });
 
@@ -352,6 +358,14 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
               <UIcon name="i-lucide-sliders-horizontal" class="size-3.5 flex-shrink-0" />
               System Settings
             </button>
+            <button
+              v-if="isAdmin"
+              class="system-card-link"
+              @click="emit('openUsers')"
+            >
+              <UIcon name="i-lucide-users" class="size-3.5 flex-shrink-0" />
+              Users
+            </button>
             <a
               href="/api/docs"
               target="_blank"
@@ -363,6 +377,44 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             </a>
           </div>
         </div>
+
+      </div>
+    </div>
+
+    <!-- Signed-in user card — pinned to the bottom of the sidebar -->
+    <div class="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 p-3">
+      <div class="flex items-center gap-2 min-w-0">
+        <button
+          type="button"
+          class="flex items-center gap-2 min-w-0 flex-1 text-left rounded-md px-1 py-1 -mx-1 -my-1 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          title="Account settings"
+          @click="emit('openAccount')"
+        >
+          <div class="flex items-center justify-center size-8 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300 flex-shrink-0">
+            <UIcon name="i-lucide-user" class="size-4" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                {{ (currentUser as any)?.name || 'User' }}
+              </span>
+              <UBadge v-if="isAdmin" size="xs" color="warning">admin</UBadge>
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
+              {{ (currentUser as any)?.email }}
+            </div>
+          </div>
+        </button>
+        <UButton
+          size="xs"
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-log-out"
+          aria-label="Sign out"
+          title="Sign out"
+          class="flex-shrink-0"
+          @click="signOut"
+        />
       </div>
     </div>
   </aside>

@@ -16,8 +16,10 @@ defineRouteMeta({
 });
 
 import { useInstructionStore } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const { user } = requireAuth(event);
   const body = await readBody(event);
 
   if (!body.name || typeof body.name !== 'string') {
@@ -28,7 +30,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const store = useInstructionStore();
-  const entry = await store.create({ name: body.name, content: body.content });
+  const entry = await store.create({ name: body.name, content: body.content, userId: user.id });
 
   setResponseStatus(event, 201);
   return entry;

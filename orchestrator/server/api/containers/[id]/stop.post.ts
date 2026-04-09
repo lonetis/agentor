@@ -13,11 +13,14 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../../utils/services';
+import { requireContainerAccess } from '../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
+  const cm = useContainerManager();
+  requireContainerAccess(event, cm.get(id));
   try {
-    await useContainerManager().stop(id);
+    await cm.stop(id);
     return { ok: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Operation failed';

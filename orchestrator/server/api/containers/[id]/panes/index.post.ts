@@ -25,6 +25,7 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../../../utils/services';
+import { requireContainerAccess } from '../../../../utils/auth-helpers';
 import { WINDOW_NAME_RE } from '../../../../utils/validation';
 
 export default defineEventHandler(async (event) => {
@@ -37,6 +38,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const containerManager = useContainerManager();
+  requireContainerAccess(event, containerManager.get(id));
   const window = await containerManager.createTmuxWindow(id, name || undefined);
   setResponseStatus(event, 201);
   return window;

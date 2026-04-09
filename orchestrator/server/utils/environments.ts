@@ -19,6 +19,7 @@ export interface Environment {
   enabledCapabilityIds: string[] | null;
   enabledInstructionIds: string[] | null;
   builtIn: boolean;
+  userId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -176,7 +177,7 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
     const env: Environment = { ...data, id: nanoid(12), builtIn: false, createdAt: now, updatedAt: now };
     this.items.set(env.id, env);
     await this.persist();
-    useLogger().info(`[environments] created "${env.name}" (${env.id})`);
+    useLogger().info(`[environments] created "${env.name}" (${env.id}) for user ${env.userId ?? 'global'}`);
     return env;
   }
 
@@ -252,6 +253,7 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
           enabledCapabilityIds: item.enabledCapabilityIds,
           enabledInstructionIds: item.enabledInstructionIds,
           builtIn: true,
+          userId: null,
           createdAt: now,
           updatedAt: now,
         });
@@ -272,6 +274,7 @@ export class EnvironmentStore extends JsonStore<string, Environment> {
           exposeApis: item.exposeApis,
           enabledCapabilityIds: item.enabledCapabilityIds,
           enabledInstructionIds: item.enabledInstructionIds,
+          userId: null,
           updatedAt: now,
         });
         changed = true;

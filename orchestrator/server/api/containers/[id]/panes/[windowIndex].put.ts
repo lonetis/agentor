@@ -30,6 +30,7 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../../../utils/services';
+import { requireContainerAccess } from '../../../../utils/auth-helpers';
 import { WINDOW_NAME_RE } from '../../../../utils/validation';
 
 export default defineEventHandler(async (event) => {
@@ -49,6 +50,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const containerManager = useContainerManager();
+  requireContainerAccess(event, containerManager.get(id));
   await containerManager.renameTmuxWindow(id, windowIndex, newName);
   return { windowName: newName };
 });

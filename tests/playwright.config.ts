@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 export default defineConfig({
@@ -9,6 +12,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 2,
   workers: process.env.CI ? 1 : 8,
+  globalSetup: './global-setup.ts',
   reporter: [
     ['html', { open: 'never' }],
     ['list'],
@@ -19,6 +23,11 @@ export default defineConfig({
   },
   use: {
     baseURL: BASE_URL,
+    // better-auth enforces an Origin header on mutating requests. Set it
+    // globally so every fixture-provided `request` context passes it.
+    extraHTTPHeaders: {
+      Origin: BASE_URL,
+    },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -28,7 +37,7 @@ export default defineConfig({
       name: 'api',
       testMatch: 'api/**/*.spec.ts',
       use: {
-        // API tests don't need a browser
+        storageState: resolve(__dirname, '.auth/admin-api.json'),
       },
     },
     {
@@ -37,6 +46,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1920, height: 1080 },
+        storageState: resolve(__dirname, '.auth/admin-ui.json'),
       },
     },
   ],

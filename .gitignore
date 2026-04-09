@@ -17,6 +17,7 @@ data/
 # Playwright
 tests/playwright-report/
 tests/test-results/
+tests/.auth/
 
 # Vitest coverage
 orchestrator/coverage/

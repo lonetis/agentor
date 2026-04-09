@@ -31,18 +31,16 @@ test.describe.serial('Service Panes — API Status', () => {
     expect(typeof body.running).toBe('boolean');
   });
 
-  test('desktop status for non-existent container returns valid response', async ({ request }) => {
+  test('desktop status for non-existent container returns 404', async ({ request }) => {
     const api = new ApiClient(request);
-    const { status, body } = await api.getDesktopStatus('non-existent-id');
-    expect(status).toBe(200);
-    expect(body.running).toBe(false);
+    const { status } = await api.getDesktopStatus('non-existent-id');
+    expect(status).toBe(404);
   });
 
-  test('editor status for non-existent container returns valid response', async ({ request }) => {
+  test('editor status for non-existent container returns 404', async ({ request }) => {
     const api = new ApiClient(request);
-    const { status, body } = await api.getEditorStatus('non-existent-id');
-    expect(status).toBe(200);
-    expect(body.running).toBe(false);
+    const { status } = await api.getEditorStatus('non-existent-id');
+    expect(status).toBe(404);
   });
 
   test('desktop becomes available after worker starts', async ({ request }) => {

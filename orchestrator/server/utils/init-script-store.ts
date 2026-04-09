@@ -7,6 +7,7 @@ export interface InitScript {
   name: string;
   content: string;
   builtIn: boolean;
+  userId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -24,7 +25,7 @@ export class InitScriptStore extends JsonStore<string, InitScript> {
     });
   }
 
-  async create(data: { name: string; content: string }): Promise<InitScript> {
+  async create(data: { name: string; content: string; userId: string }): Promise<InitScript> {
     if (!data.name?.trim()) throw new Error('name is required');
     const now = new Date().toISOString();
     const script: InitScript = {
@@ -32,12 +33,13 @@ export class InitScriptStore extends JsonStore<string, InitScript> {
       name: data.name,
       content: data.content,
       builtIn: false,
+      userId: data.userId,
       createdAt: now,
       updatedAt: now,
     };
     this.items.set(script.id, script);
     await this.persist();
-    useLogger().info(`[init-scripts] created '${script.name}' (${script.id})`);
+    useLogger().info(`[init-scripts] created '${script.name}' (${script.id}) for user ${data.userId}`);
     return script;
   }
 
@@ -96,6 +98,7 @@ export class InitScriptStore extends JsonStore<string, InitScript> {
           name: item.name,
           content: item.content,
           builtIn: true,
+          userId: null,
           createdAt: now,
           updatedAt: now,
         });
@@ -106,6 +109,7 @@ export class InitScriptStore extends JsonStore<string, InitScript> {
           ...existing,
           name: item.name,
           content: item.content,
+          userId: null,
           updatedAt: now,
         });
         changed = true;

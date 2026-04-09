@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import type { Peer } from 'crossws';
 import { useContainerManager } from './services';
+import { authenticateWsPeer } from './auth-helpers';
 
 export function getPeerId(peer: Peer): string {
   return peer.id ?? String(peer);
@@ -61,28 +62,49 @@ export function createWsRelayHandlers(
         return;
       }
 
-      const ws = new WebSocket(getTargetWsUrl(info.name, containerId, peer));
-      ctx.containerWs = ws;
-
-      ws.on('open', () => {
-        for (const msg of ctx.bufferedMessages) ws.send(msg);
-        ctx.bufferedMessages = [];
-      });
-
-      ws.on('message', (data: Buffer) => {
+      // Authenticate and verify ownership before opening the relay
+      authenticateWsPeer(peer).then((auth) => {
         if (ctx.closed) return;
-        try { peer.send(data); } catch {}
-      });
+        if (!auth) {
+          ctx.closed = true;
+          relayContexts.delete(id);
+          try { peer.close(); } catch {}
+          return;
+        }
+        if (auth.user.role !== 'admin' && info.userId !== auth.user.id) {
+          ctx.closed = true;
+          relayContexts.delete(id);
+          try { peer.close(); } catch {}
+          return;
+        }
 
-      ws.on('close', () => {
-        if (ctx.closed) return;
-        ctx.closed = true;
-        relayContexts.delete(id);
-        try { peer.close(); } catch {}
-      });
+        const ws = new WebSocket(getTargetWsUrl(info.name, containerId, peer));
+        ctx.containerWs = ws;
 
-      ws.on('error', () => {
-        if (ctx.closed) return;
+        ws.on('open', () => {
+          for (const msg of ctx.bufferedMessages) ws.send(msg);
+          ctx.bufferedMessages = [];
+        });
+
+        ws.on('message', (data: Buffer) => {
+          if (ctx.closed) return;
+          try { peer.send(data); } catch {}
+        });
+
+        ws.on('close', () => {
+          if (ctx.closed) return;
+          ctx.closed = true;
+          relayContexts.delete(id);
+          try { peer.close(); } catch {}
+        });
+
+        ws.on('error', () => {
+          if (ctx.closed) return;
+          ctx.closed = true;
+          relayContexts.delete(id);
+          try { peer.close(); } catch {}
+        });
+      }).catch(() => {
         ctx.closed = true;
         relayContexts.delete(id);
         try { peer.close(); } catch {}

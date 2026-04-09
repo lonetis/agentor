@@ -17,6 +17,7 @@ defineRouteMeta({
 
 import { useContainerManager } from '../../../utils/services';
 import { createWsRelayHandlers, getPeerUrl } from '../../../utils/ws-utils';
+import { useAuth } from '../../../utils/auth';
 
 const wsHandlers = createWsRelayHandlers(
   /\/editor\/([a-f0-9]+)/,
@@ -39,6 +40,15 @@ export default defineEventHandler({
 
     if (!info || info.status !== 'running') {
       throw createError({ statusCode: 404, statusMessage: 'Container not found or not running' });
+    }
+
+    const session: any = await (useAuth() as any).api.getSession({ headers: event.headers }).catch(() => null);
+    if (!session || !session.user) {
+      throw createError({ statusCode: 401, statusMessage: 'Unauthorized' });
+    }
+    const role = session.user.role;
+    if (role !== 'admin' && info.userId !== session.user.id) {
+      throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
     }
 
     const url = getRequestURL(event);

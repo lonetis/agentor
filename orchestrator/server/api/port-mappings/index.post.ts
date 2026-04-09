@@ -32,6 +32,7 @@ defineRouteMeta({
 });
 
 import { usePortMappingStore, useMapperManager, useContainerManager } from '../../utils/services';
+import { requireContainerAccess } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
@@ -77,6 +78,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  requireContainerAccess(event, containerInfo);
+
   const mapping = {
     externalPort: extPort,
     type: body.type as 'localhost' | 'external',
@@ -85,6 +88,7 @@ export default defineEventHandler(async (event) => {
     internalPort: intPort,
     appType: body.appType as string | undefined,
     instanceId: body.instanceId as string | undefined,
+    userId: containerInfo.userId,
   };
 
   await store.add(mapping);

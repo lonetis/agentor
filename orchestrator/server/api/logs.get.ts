@@ -20,7 +20,10 @@ defineRouteMeta({
   },
 });
 
+import { requireAdmin } from '../utils/auth-helpers';
+
 export default defineEventHandler(async (event) => {
+  requireAdmin(event);
   const query = getQuery(event);
 
   const sources = query.sources ? String(query.sources).split(',').filter(Boolean) as LogSource[] : undefined;

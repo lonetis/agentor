@@ -9,7 +9,10 @@ defineRouteMeta({
   },
 });
 
-export default defineEventHandler(async () => {
+import { requireAdmin } from '../utils/auth-helpers';
+
+export default defineEventHandler(async (event) => {
+  requireAdmin(event);
   const logStore = useLogStore();
   await logStore.clear();
   return { ok: true };

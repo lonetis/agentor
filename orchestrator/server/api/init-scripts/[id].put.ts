@@ -18,8 +18,10 @@ defineRouteMeta({
 });
 
 import { useInitScriptStore } from '../../utils/services';
+import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const ctx = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
   const body = await readBody(event);
 
@@ -28,6 +30,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const store = useInitScriptStore();
+
+  const existing = store.get(id);
+  if (!existing) {
+    throw createError({ statusCode: 404, statusMessage: 'Init script not found' });
+  }
+  if (!canAccessResource(ctx, existing, { allowGlobal: false })) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
+  }
 
   try {
     const updated = await store.update(id, {

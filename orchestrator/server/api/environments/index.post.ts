@@ -17,8 +17,10 @@ defineRouteMeta({
 
 import { useEnvironmentStore } from '../../utils/services';
 import type { NetworkMode } from '../../../shared/types';
+import { requireAuth } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const { user } = requireAuth(event);
   const body = await readBody(event);
 
   if (!body.name || typeof body.name !== 'string') {
@@ -44,6 +46,7 @@ export default defineEventHandler(async (event) => {
     exposeApis: body.exposeApis ?? { portMappings: true, domainMappings: true, usage: true },
     enabledCapabilityIds: body.enabledCapabilityIds ?? null,
     enabledInstructionIds: body.enabledInstructionIds ?? null,
+    userId: user.id,
   });
 
   setResponseStatus(event, 201);

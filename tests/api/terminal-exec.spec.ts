@@ -115,16 +115,14 @@ test.describe.serial('Terminal Command Execution', () => {
     }
   });
 
-  test('named tmux window connects separately', async () => {
+  test('named tmux window connects separately', async ({ request }) => {
     const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
     const windowName = `test-${Date.now() % 10000}`;
 
-    const createRes = await fetch(`${BASE_URL}/api/containers/${containerId}/panes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: windowName }),
+    const createRes = await request.post(`${BASE_URL}/api/containers/${containerId}/panes`, {
+      data: { name: windowName },
     });
-    expect(createRes.status).toBe(201);
+    expect(createRes.status()).toBe(201);
     const created = await createRes.json();
     const windowIndex = created.index;
 
@@ -144,9 +142,7 @@ test.describe.serial('Terminal Command Execution', () => {
       }
     } finally {
       // Cleanup the window using the numeric index
-      await fetch(`${BASE_URL}/api/containers/${containerId}/panes/${windowIndex}`, {
-        method: 'DELETE',
-      });
+      await request.delete(`${BASE_URL}/api/containers/${containerId}/panes/${windowIndex}`);
     }
   });
 
@@ -172,16 +168,14 @@ test.describe.serial('Terminal Command Execution', () => {
     }
   });
 
-  test('concurrent window connections are isolated', async () => {
+  test('concurrent window connections are isolated', async ({ request }) => {
     const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
     const windowName = `iso-${Date.now() % 10000}`;
 
-    const createRes = await fetch(`${BASE_URL}/api/containers/${containerId}/panes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: windowName }),
+    const createRes = await request.post(`${BASE_URL}/api/containers/${containerId}/panes`, {
+      data: { name: windowName },
     });
-    expect(createRes.status).toBe(201);
+    expect(createRes.status()).toBe(201);
     const created = await createRes.json();
     const windowIndex = created.index;
 
@@ -229,9 +223,7 @@ test.describe.serial('Terminal Command Execution', () => {
         wsNamed.close();
       }
     } finally {
-      await fetch(`${BASE_URL}/api/containers/${containerId}/panes/${windowIndex}`, {
-        method: 'DELETE',
-      });
+      await request.delete(`${BASE_URL}/api/containers/${containerId}/panes/${windowIndex}`);
     }
   });
 

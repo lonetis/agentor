@@ -7,6 +7,7 @@ export interface Instruction {
   name: string;
   content: string;
   builtIn: boolean;
+  userId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -23,19 +24,20 @@ export class InstructionStore extends JsonStore<string, Instruction> {
     });
   }
 
-  async create(data: { name: string; content: string }): Promise<Instruction> {
+  async create(data: { name: string; content: string; userId: string }): Promise<Instruction> {
     const now = new Date().toISOString();
     const entry: Instruction = {
       id: nanoid(12),
       name: data.name,
       content: data.content,
       builtIn: false,
+      userId: data.userId,
       createdAt: now,
       updatedAt: now,
     };
     this.items.set(entry.id, entry);
     await this.persist();
-    useLogger().info(`[instructions] created entry '${entry.name}' (${entry.id})`);
+    useLogger().info(`[instructions] created entry '${entry.name}' (${entry.id}) for user ${data.userId}`);
     return entry;
   }
 
@@ -98,6 +100,7 @@ export class InstructionStore extends JsonStore<string, Instruction> {
           name: item.name,
           content: item.content,
           builtIn: true,
+          userId: null,
           createdAt: now,
           updatedAt: now,
         });
@@ -108,6 +111,7 @@ export class InstructionStore extends JsonStore<string, Instruction> {
           ...existing,
           name: item.name,
           content: item.content,
+          userId: null,
           updatedAt: now,
         });
         log.debug(`[instructions] updated built-in '${item.name}' (${item.id})`);

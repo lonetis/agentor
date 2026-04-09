@@ -39,7 +39,11 @@ defineRouteMeta({
 });
 
 import { usePortMappingStore } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
-export default defineEventHandler(() => {
-  return usePortMappingStore().list();
+export default defineEventHandler((event) => {
+  const { user } = requireAuth(event);
+  const all = usePortMappingStore().list();
+  if (user.role === 'admin') return all;
+  return all.filter((m) => m.userId === user.id);
 });

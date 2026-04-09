@@ -42,7 +42,11 @@ defineRouteMeta({
 });
 
 import { useEnvironmentStore } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
-export default defineEventHandler(() => {
-  return useEnvironmentStore().list();
+export default defineEventHandler((event) => {
+  const { user } = requireAuth(event);
+  const all = useEnvironmentStore().list();
+  if (user.role === 'admin') return all;
+  return all.filter((e) => e.userId === null || e.userId === user.id);
 });

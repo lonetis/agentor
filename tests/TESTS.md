@@ -4,12 +4,13 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1054 tests** across 73 test files (~557 API + ~497 UI)
+- **~1080 tests** across 77 test files (~580 API + ~501 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
-- Parallel execution with 4 workers (configurable)
+- Parallel execution with up to 8 workers (configurable)
 - All tests independent and self-cleaning
+- **All tests run pre-authenticated as an admin user** via Playwright's `globalSetup` (see `tests/global-setup.ts`). The session cookies are saved to `tests/.auth/admin-api.json` and `tests/.auth/admin-ui.json`, referenced by the API and UI project `storageState` respectively.
 
 ## Prerequisites
 
@@ -80,10 +81,14 @@ tests/
 
 ## Test Categories
 
-### API Tests (~538 tests, 35 files)
+### API Tests (~580 tests, 38 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
+| `auth.spec.ts` | 7 | Session retrieval with admin project cookies, unauthenticated 401 on protected API, public endpoints (/api/health, /api/setup/status), sign-in with wrong/correct credentials, sign-out clears session |
+| `setup.spec.ts` | 4 | Setup status after admin exists, public access, 409 when users already exist, email validation |
+| `authorization.spec.ts` | 5 | Admin lists all containers, regular user sees only own workers, regular user 403 on admin's container mutation, unauth mutation 401, admin-only endpoints reject non-admin |
+| `account.spec.ts` | 5 | User changes own password (old fails, new works), change-password rejects wrong current password, user changes own email, user updates own name, admin resets another user's password via `/api/auth/admin/set-user-password` |
 | `health.spec.ts` | 4 | Health check endpoint, container count validation, exact status 'ok', no sensitive info exposure |
 | `containers.spec.ts` | 47 | CRUD, validation, field completeness, name format, stop/restart/archive/delete on non-existent, logs (running/stopped/non-empty/non-numeric tail graceful default), memoryLimit, initScript, environmentId, dockerEnabled, displayName persistence, state transitions (double-stop, restart running, archive stopped), list exclusion, response fields, snapshotted environment data fields, no labels |
 | `containers-edge-cases.spec.ts` | 11 | Edge case container operations, port mappings survive stop + restart |
@@ -120,10 +125,11 @@ tests/
 | `agent-data-persistence.spec.ts` | 22 | Agent config symlinks, config file contents, MCP servers (playwright + chrome-devtools) for Claude/Codex/Gemini, persistence across restart/rebuild/archive, no-overwrite on restart/rebuild |
 | `mcp-servers-loaded.spec.ts` | 6 | MCP server verification: Claude config keys + commands via jq, Codex `mcp list` output + enabled status, Gemini config keys + commands via jq |
 
-### UI Tests (~493 tests, 38 files)
+### UI Tests (~497 tests, 39 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
+| `login.spec.ts` | 4 | Login page renders with email/password fields, wrong credentials show error, correct credentials redirect to dashboard, unauthenticated `/` redirects to `/login` (uses fresh storageState) |
 | `dashboard.spec.ts` | 11 | Page load, title, buttons, sections, images, sidebar labels |
 | `sidebar.spec.ts` | 19 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design |
 | `create-worker-modal.spec.ts` | 29 | Open/close, form fields, name input, add repo/mount, environment dropdown, init preset dropdown, Create action |

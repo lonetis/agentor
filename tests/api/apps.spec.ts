@@ -99,18 +99,16 @@ test.describe('Apps API', () => {
       expect(status).toBeGreaterThanOrEqual(400);
     });
 
-    test('listing all apps on non-existent container returns empty', async ({ request }) => {
+    test('listing all apps on non-existent container returns 404', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status, body } = await api.listApps('non-existent-id');
-      expect(status).toBe(200);
-      expect(body).toEqual([]);
+      const { status } = await api.listApps('non-existent-id');
+      expect(status).toBe(404);
     });
 
-    test('listing apps by type on non-existent container returns empty', async ({ request }) => {
+    test('listing apps by type on non-existent container returns 404', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status, body } = await api.listAppsByType('non-existent-id', 'socks5');
-      expect(status).toBe(200);
-      expect(body).toEqual([]);
+      const { status } = await api.listAppsByType('non-existent-id', 'socks5');
+      expect(status).toBe(404);
     });
   });
 

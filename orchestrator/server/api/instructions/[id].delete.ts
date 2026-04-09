@@ -14,10 +14,20 @@ defineRouteMeta({
 });
 
 import { useInstructionStore } from '../../utils/services';
+import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const ctx = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
   const store = useInstructionStore();
+
+  const existing = store.get(id);
+  if (!existing) {
+    throw createError({ statusCode: 404, statusMessage: 'Instruction not found' });
+  }
+  if (!canAccessResource(ctx, existing, { allowGlobal: false })) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
+  }
 
   try {
     await store.delete(id);

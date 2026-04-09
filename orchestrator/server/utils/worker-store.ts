@@ -26,6 +26,7 @@ export interface WorkerRecord {
   imageId: string;
   status: 'active' | 'archived';
   archivedAt?: string;
+  userId: string;
 }
 
 export class WorkerStore extends JsonStore<string, WorkerRecord> {

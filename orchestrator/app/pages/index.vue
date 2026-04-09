@@ -27,6 +27,8 @@ const showCapabilitiesModal = ref(false);
 const showInstructionsModal = ref(false);
 const showInitScriptsModal = ref(false);
 const showSettingsModal = ref(false);
+const showUsersModal = ref(false);
+const showAccountModal = ref(false);
 
 const { sidebarWidth, isDragging, isCollapsed, isMobile, startDrag, toggleCollapse } = useSidebarResize();
 
@@ -146,6 +148,8 @@ function openInitScriptsFromModal() {
       @delete-archived-worker="handleDeleteArchived"
       @open-settings="showSettingsModal = true"
       @open-logs="handleOpenLogs"
+      @open-users="showUsersModal = true"
+      @open-account="showAccountModal = true"
       @toggle-collapse="toggleCollapse"
     />
 
@@ -197,5 +201,7 @@ function openInitScriptsFromModal() {
     <InstructionsModal v-model:open="showInstructionsModal" />
     <InitScriptsModal v-model:open="showInitScriptsModal" />
     <SettingsModal v-model:open="showSettingsModal" />
+    <UsersModal v-model:open="showUsersModal" />
+    <AccountModal v-model:open="showAccountModal" />
   </div>
 </template>

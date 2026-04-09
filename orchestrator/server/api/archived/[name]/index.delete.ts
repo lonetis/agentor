@@ -12,10 +12,19 @@ defineRouteMeta({
   },
 });
 
-import { useContainerManager } from '../../../utils/services';
+import { useContainerManager, useWorkerStore } from '../../../utils/services';
+import { requireAuth } from '../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const { user } = requireAuth(event);
   const name = getRouterParam(event, 'name')!;
+  const worker = useWorkerStore().get(name);
+  if (!worker) {
+    throw createError({ statusCode: 404, statusMessage: 'Archived worker not found' });
+  }
+  if (user.role !== 'admin' && worker.userId !== user.id) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
+  }
   await useContainerManager().deleteArchived(name);
   return { ok: true };
 });

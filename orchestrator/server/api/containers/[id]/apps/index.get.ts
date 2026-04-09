@@ -30,12 +30,14 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../../../utils/services';
+import { requireContainerAccess } from '../../../../utils/auth-helpers';
 import { listAppTypes } from '../../../../utils/apps';
 import type { AppInstanceInfo } from '../../../../../shared/types';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
   const containerManager = useContainerManager();
+  requireContainerAccess(event, containerManager.get(id));
 
   const allInstances: AppInstanceInfo[] = [];
 

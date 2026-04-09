@@ -10,9 +10,19 @@ defineRouteMeta({
   },
 });
 
+import { authenticateWsPeer } from '../../utils/auth-helpers';
+
 export default defineWebSocketHandler({
   open(peer) {
-    useLogBroadcaster().addPeer(peer);
+    authenticateWsPeer(peer).then((auth) => {
+      if (!auth || auth.user.role !== 'admin') {
+        try { peer.close(); } catch {}
+        return;
+      }
+      useLogBroadcaster().addPeer(peer);
+    }).catch(() => {
+      try { peer.close(); } catch {}
+    });
   },
   close(peer) {
     useLogBroadcaster().removePeer(peer);

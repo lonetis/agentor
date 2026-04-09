@@ -40,7 +40,11 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
-export default defineEventHandler(() => {
-  return useContainerManager().listArchived();
+export default defineEventHandler((event) => {
+  const { user } = requireAuth(event);
+  const all = useContainerManager().listArchived();
+  if (user.role === 'admin') return all;
+  return all.filter((w) => w.userId === user.id);
 });

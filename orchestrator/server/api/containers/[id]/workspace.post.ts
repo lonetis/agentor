@@ -17,9 +17,12 @@ defineRouteMeta({
 });
 
 import * as tar from 'tar-stream';
+import { requireContainerAccess } from '../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
+  const containerManager = useContainerManager();
+  requireContainerAccess(event, containerManager.get(id));
   const formData = await readMultipartFormData(event);
 
   if (!formData || formData.length === 0) {
@@ -50,7 +53,6 @@ export default defineEventHandler(async (event) => {
   }
   const tarBuffer = Buffer.concat(chunks);
 
-  const containerManager = useContainerManager();
   await containerManager.uploadToWorkspace(id, tarBuffer);
 
   return { uploaded: fileCount };

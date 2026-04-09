@@ -41,8 +41,10 @@ defineRouteMeta({
 
 import type { UpdatableImage } from '../../../shared/types';
 import { useUpdateChecker, useMapperManager, useTraefikManager } from '../../utils/services';
+import { requireAdmin } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  requireAdmin(event);
   const checker = useUpdateChecker();
   const status = checker.getStatus();
 

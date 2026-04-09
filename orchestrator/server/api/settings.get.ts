@@ -19,6 +19,7 @@ import { listAppTypes } from '../utils/apps';
 import { AGENT_CREDENTIAL_MAPPINGS } from '../utils/credential-mounts';
 import { listAgentConfigs } from '../utils/agent-config';
 import type { Config } from '../utils/config';
+import { requireAdmin } from '../utils/auth-helpers';
 
 interface SettingItem {
   key: string;
@@ -44,7 +45,8 @@ function statusValue(configured: boolean): string {
   return configured ? 'configured' : 'not configured';
 }
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
+  requireAdmin(event);
   const config = useConfig();
   const credentialMountManager = useCredentialMountManager();
   const sections: SettingSection[] = [];

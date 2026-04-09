@@ -8,6 +8,7 @@ export interface PortMapping {
   internalPort: number;
   appType?: string;
   instanceId?: string;
+  userId: string;
 }
 
 export class PortMappingStore extends JsonStore<number, PortMapping> {

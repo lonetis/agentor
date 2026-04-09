@@ -13,13 +13,18 @@ defineRouteMeta({
 });
 
 import { useInstructionStore } from '../../utils/services';
+import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
 
 export default defineEventHandler((event) => {
+  const ctx = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
   const entry = useInstructionStore().get(id);
 
   if (!entry) {
     throw createError({ statusCode: 404, statusMessage: 'Instruction not found' });
+  }
+  if (!canAccessResource(ctx, entry)) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
   }
 
   return entry;

@@ -77,9 +77,13 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
+  const { user } = requireAuth(event);
   const containerManager = useContainerManager();
   await containerManager.sync();
-  return containerManager.list();
+  const all = containerManager.list();
+  if (user.role === 'admin') return all;
+  return all.filter((c) => c.userId === user.id);
 });

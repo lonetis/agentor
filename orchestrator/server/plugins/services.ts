@@ -1,11 +1,17 @@
 import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useStorageManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
 import { loadBuiltInCapabilities, loadBuiltInInstructions, loadBuiltInInitScripts, loadBuiltInEnvironments } from '../utils/built-in-content';
+import { useAuth, migrateAuth } from '../utils/auth';
 
 export default defineNitroPlugin(async () => {
   // Initialize logging infrastructure first
   const logStore = useLogStore();
   await logStore.init();
   const logger = useLogger();
+
+  // Initialize auth (creates SQLite database and tables on first run)
+  useAuth();
+  await migrateAuth();
+  logger.info('[agentor] auth initialized');
 
   const dockerService = useDockerService();
   await dockerService.ensureNetwork();

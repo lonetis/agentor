@@ -11,7 +11,9 @@ defineRouteMeta({
 });
 
 import { useUpdateChecker } from '../../utils/services';
+import { requireAdmin } from '../../utils/auth-helpers';
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
+  requireAdmin(event);
   return useUpdateChecker().check();
 });

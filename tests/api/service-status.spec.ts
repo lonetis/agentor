@@ -35,18 +35,16 @@ test.describe('Service Status API', () => {
   });
 
   test.describe('Non-existent container', () => {
-    test('desktop status returns not running for non-existent container', async ({ request }) => {
+    test('desktop status returns 404 for non-existent container', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status, body } = await api.getDesktopStatus('non-existent-id');
-      expect(status).toBe(200);
-      expect(body.running).toBe(false);
+      const { status } = await api.getDesktopStatus('non-existent-id');
+      expect(status).toBe(404);
     });
 
-    test('editor status returns not running for non-existent container', async ({ request }) => {
+    test('editor status returns 404 for non-existent container', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status, body } = await api.getEditorStatus('non-existent-id');
-      expect(status).toBe(200);
-      expect(body.running).toBe(false);
+      const { status } = await api.getEditorStatus('non-existent-id');
+      expect(status).toBe(404);
     });
   });
 

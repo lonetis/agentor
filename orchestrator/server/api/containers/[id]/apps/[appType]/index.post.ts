@@ -16,16 +16,19 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../../../../utils/services';
+import { requireContainerAccess } from '../../../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
   const appType = getRouterParam(event, 'appType')!;
   try {
     const containerManager = useContainerManager();
+    requireContainerAccess(event, containerManager.get(id));
     const result = await containerManager.createAppInstance(id, appType);
     setResponseStatus(event, 201);
     return result;
   } catch (err: unknown) {
+    if ((err as any)?.statusCode) throw err;
     const message = err instanceof Error ? err.message : 'Operation failed';
     throw createError({ statusCode: 500, statusMessage: message });
   }

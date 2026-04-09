@@ -13,6 +13,7 @@ export interface DomainMapping {
     username: string;
     password: string;
   };
+  userId: string;
 }
 
 export class DomainMappingStore extends JsonStore<string, DomainMapping> {

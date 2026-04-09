@@ -4,6 +4,81 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ---
 
+## 0. Authentication & Authorization
+
+### 0.1 First-run Setup
+- `/api/setup/status` is public and returns `{ needsSetup: boolean }`
+- When no users exist, navigating to any dashboard URL redirects to `/setup`
+- Setup page asks for name, email, password, confirm password
+- Password must be at least 8 characters; passwords must match
+- `/api/setup/create-admin` creates the first user with role = `admin`, auto-signs them in, and redirects to `/`
+- Once any user exists, `/api/setup/create-admin` returns 409
+- Setup page redirects to `/login` when setup is already complete
+
+### 0.2 Login
+- Navigating to any protected URL while unauthenticated redirects to `/login`
+- Login page renders email + password fields and a Sign in button
+- `/login` is public (bypasses the auth middleware)
+- Incorrect credentials show an error message, no redirect
+- Correct credentials redirect to `/` (dashboard) via full page reload
+- Authenticated users navigating to `/login` are redirected to `/`
+
+### 0.3 Sign Out
+- Sign out button appears in the sidebar Account card (System tab)
+- Clicking it calls `POST /api/auth/sign-out` and redirects to `/login`
+- Sessions are invalidated server-side; subsequent `get-session` returns no user
+
+### 0.4 Roles
+- Two roles: `admin` and `user`
+- Admin role sees every user's resources; user role sees only their own + built-in/global resources
+- `/api/auth/admin/*` endpoints (create, list, setRole, remove, ban/unban) are restricted to admins
+
+### 0.5 Resource Ownership
+- Workers, port mappings, domain mappings, environments, capabilities, instructions, init scripts all carry a `userId`
+- Built-in capabilities/instructions/init-scripts/environments have `userId: null` and are visible to all users
+- Regular users cannot see or modify another user's resources (403 on mutations, filtered out of list responses)
+- Admins can see and modify everything
+- Port/domain mappings inherit the `userId` of the target worker
+
+### 0.6 Admin-only Endpoints
+- `GET /api/settings` — 403 for non-admin
+- `GET /api/logs`, `DELETE /api/logs`, `WS /ws/logs` — admin-only
+- `POST /api/updates/apply`, `/check`, `/prune` — admin-only
+
+### 0.7 System Tab (Admin Only)
+- The sidebar System tab (Images card, Logs button, System Settings button, Users button, API Docs link) is only shown to admin users — every action inside it hits an admin-only endpoint. Regular users do not see the System tab at all.
+
+### 0.8 Users Modal (Admin Only)
+- "Users" button appears in the sidebar System tab Quick Links for admins only
+- Modal lists all users with role badge and current-user indicator
+- Create user form (name, email, password, role)
+- Change role action (promote to admin / demote to user)
+- Delete user action (with confirmation)
+
+### 0.9 Account Card
+- Sidebar footer (pinned to bottom, always visible across tabs) shows the current user's avatar, name, email, admin badge, and a Sign out icon button
+- Clicking the user info (avatar/name/email area) opens the Account modal
+
+### 0.9b Account Modal (self-service)
+- Accessible from the sidebar footer by clicking the user info area
+- **Profile section**: edit name and email, Save button. Email changes apply immediately (no verification email sent — Agentor does not send email).
+- **Change password section**: current password + new password (min 8 chars) + confirm new password. Server rejects the wrong current password.
+- Success and error messages displayed per section
+- Backed by `/api/auth/update-user`, `/api/auth/change-email`, and `/api/auth/change-password` (built-in better-auth endpoints)
+
+### 0.9c Admin Password Reset
+- In the Users modal each row has a "Reset password" button that prompts for a new password and calls `/api/auth/admin/set-user-password`
+- No current password required — only admins can invoke this endpoint
+
+### 0.10 WebSocket Authentication
+- All `/ws/terminal/:id[/:windowIndex]` connections require a valid session cookie and container ownership
+- `/ws/desktop/:id`, editor proxy, and log stream WebSocket endpoints reject unauthenticated peers
+
+### 0.11 Layered Auth
+- Traefik dashboard basic auth (`DASHBOARD_AUTH_USER`/`PASSWORD`) still works as an additional layer in front of the orchestrator; user auth is independent
+
+---
+
 ## 1. Dashboard Layout
 
 ### 1.1 Page Structure

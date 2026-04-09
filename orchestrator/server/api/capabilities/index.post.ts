@@ -16,8 +16,10 @@ defineRouteMeta({
 });
 
 import { useCapabilityStore } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
+  const { user } = requireAuth(event);
   const body = await readBody(event);
 
   if (!body.name || typeof body.name !== 'string') {
@@ -28,7 +30,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const store = useCapabilityStore();
-  const capability = await store.create({ name: body.name, content: body.content });
+  const capability = await store.create({ name: body.name, content: body.content, userId: user.id });
   setResponseStatus(event, 201);
   return capability;
 });

@@ -34,6 +34,7 @@ defineRouteMeta({
 
 import { nanoid } from 'nanoid';
 import { useDomainMappingStore, useTraefikManager, useContainerManager, useConfig } from '../../utils/services';
+import { requireContainerAccess } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
@@ -133,6 +134,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  requireContainerAccess(event, containerInfo);
+
   const hasUser = !!body.basicAuth?.username;
   const hasPass = !!body.basicAuth?.password;
   if (hasUser !== hasPass) {
@@ -151,6 +154,7 @@ export default defineEventHandler(async (event) => {
     workerId: containerInfo.id,
     workerName: containerInfo.name,
     internalPort: intPort,
+    userId: containerInfo.userId,
     ...(hasUser && hasPass
       ? { basicAuth: { username: body.basicAuth.username, password: body.basicAuth.password } }
       : {}),

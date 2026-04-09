@@ -7,6 +7,7 @@ export interface Capability {
   name: string;
   content: string;
   builtIn: boolean;
+  userId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -23,19 +24,20 @@ export class CapabilityStore extends JsonStore<string, Capability> {
     });
   }
 
-  async create(data: { name: string; content: string }): Promise<Capability> {
+  async create(data: { name: string; content: string; userId: string }): Promise<Capability> {
     const now = new Date().toISOString();
     const capability: Capability = {
       id: nanoid(12),
       name: data.name,
       content: data.content,
       builtIn: false,
+      userId: data.userId,
       createdAt: now,
       updatedAt: now,
     };
     this.items.set(capability.id, capability);
     await this.persist();
-    useLogger().info(`[capabilities] created capability '${capability.name}' (${capability.id})`);
+    useLogger().info(`[capabilities] created capability '${capability.name}' (${capability.id}) for user ${data.userId}`);
     return capability;
   }
 
@@ -97,6 +99,7 @@ export class CapabilityStore extends JsonStore<string, Capability> {
           name: item.name,
           content: item.content,
           builtIn: true,
+          userId: null,
           createdAt: now,
           updatedAt: now,
         });
@@ -107,6 +110,7 @@ export class CapabilityStore extends JsonStore<string, Capability> {
           ...existing,
           name: item.name,
           content: item.content,
+          userId: null,
           updatedAt: now,
         });
         useLogger().debug(`[capabilities] updated built-in '${item.name}' (${item.id})`);
