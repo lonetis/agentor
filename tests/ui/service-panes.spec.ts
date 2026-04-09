@@ -120,9 +120,9 @@ test.describe.serial('Service Panes — UI', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    // Editor is the third icon button
+    // Editor is the 4th icon button (Terminal, Desktop, Apps, Editor, ...)
     const iconButtons = card.locator('button');
-    await iconButtons.nth(2).click();
+    await iconButtons.nth(3).click();
     await expect(page.locator('main').getByText(/Editor (is starting|running)/)).toBeVisible({ timeout: 15_000 });
   });
 
@@ -131,7 +131,7 @@ test.describe.serial('Service Panes — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
     const iconButtons = card.locator('button');
-    await iconButtons.nth(2).click();
+    await iconButtons.nth(3).click();
     await expect(page.locator('main').getByText(/Editor (is starting|running)/)).toBeVisible({ timeout: 15_000 });
     const startingMsg = page.locator('main').locator('text=is starting...');
     const runningMsg = page.locator('main').locator('text=Editor running');

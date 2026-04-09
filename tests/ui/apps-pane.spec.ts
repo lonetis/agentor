@@ -23,9 +23,9 @@ test.describe.serial('Apps Pane — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
-    // Apps is the 4th icon button (Terminal, Desktop, Editor, Apps)
+    // Apps is the 3rd icon button (Terminal, Desktop, Apps, Editor, VS Code, Upload, Download)
     const iconButtons = card.locator('button');
-    await expect(iconButtons.nth(3)).toBeVisible();
+    await expect(iconButtons.nth(2)).toBeVisible();
   });
 
   test('clicking Apps button opens an Apps pane tab', async ({ page }) => {
@@ -34,7 +34,7 @@ test.describe.serial('Apps Pane — UI', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
     const iconButtons = card.locator('button');
-    await iconButtons.nth(3).click();
+    await iconButtons.nth(2).click();
 
     // The pane tab bar should show "Apps" label in the main area
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
@@ -46,7 +46,7 @@ test.describe.serial('Apps Pane — UI', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
     const iconButtons = card.locator('button');
-    await iconButtons.nth(3).click();
+    await iconButtons.nth(2).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 
     // Chromium app type card should be visible
@@ -59,7 +59,7 @@ test.describe.serial('Apps Pane — UI', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
     const iconButtons = card.locator('button');
-    await iconButtons.nth(3).click();
+    await iconButtons.nth(2).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 
     // SOCKS5 Proxy app type card should be visible
@@ -72,7 +72,7 @@ test.describe.serial('Apps Pane — UI', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
     const iconButtons = card.locator('button');
-    await iconButtons.nth(3).click();
+    await iconButtons.nth(2).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 
     // There should be two "+ New Instance" buttons (one per app type)
@@ -86,7 +86,7 @@ test.describe.serial('Apps Pane — UI', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
     const iconButtons = card.locator('button');
-    await iconButtons.nth(3).click();
+    await iconButtons.nth(2).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 
     // Chromium description
@@ -106,7 +106,7 @@ test.describe.serial('Apps Pane — UI', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
     const iconButtons = card.locator('button');
-    await iconButtons.nth(3).click();
+    await iconButtons.nth(2).click();
 
     // Tab label format is "{containerName} - Apps"
     const tabLabel = page.locator('main').getByText(`${displayName} - Apps`);
@@ -119,7 +119,7 @@ test.describe.serial('Apps Pane — UI', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
 
     const iconButtons = card.locator('button');
-    await iconButtons.nth(3).click();
+    await iconButtons.nth(2).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 
     // Both app types should show "No running instances" since no instances are started
