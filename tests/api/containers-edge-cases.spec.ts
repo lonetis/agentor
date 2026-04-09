@@ -86,6 +86,41 @@ test.describe('Containers API — Edge Cases', () => {
       const { status } = await api.restartContainer(container.id);
       expect(status).toBe(200);
     });
+
+    test('port mappings survive stop and restart', async ({ request }) => {
+      const container = await createWorker(request);
+      createdContainerIds.push(container.id);
+      const api = new ApiClient(request);
+      const port = 19900 + Math.floor(Math.random() * 1000);
+
+      await api.createPortMapping({
+        externalPort: port,
+        internalPort: 8080,
+        type: 'localhost',
+        workerId: container.id,
+      });
+
+      try {
+        await api.stopContainer(container.id);
+        await new Promise(r => setTimeout(r, 1500));
+
+        // Mapping should still exist while the worker is stopped
+        const { body: stoppedMappings } = await api.listPortMappings();
+        const stoppedFound = stoppedMappings.find((m: { externalPort: number }) => m.externalPort === port);
+        expect(stoppedFound).toBeTruthy();
+        expect(stoppedFound.workerName).toBe(container.name);
+
+        await api.restartContainer(container.id);
+        await new Promise(r => setTimeout(r, 1500));
+
+        // Mapping still present after restart
+        const { body: restartedMappings } = await api.listPortMappings();
+        const restartedFound = restartedMappings.find((m: { externalPort: number }) => m.externalPort === port);
+        expect(restartedFound).toBeTruthy();
+      } finally {
+        await api.deletePortMapping(port);
+      }
+    });
   });
 
   test.describe('Non-existent container operations', () => {

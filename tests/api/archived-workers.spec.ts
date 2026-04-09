@@ -206,4 +206,61 @@ test.describe('Archived Workers API', () => {
       await api.deleteArchivedWorker(container.name);
     });
   });
+
+  test.describe('Mapping persistence across archive/unarchive', () => {
+    test('port mappings survive archive and are reassigned on unarchive', async ({ request }) => {
+      const container = await createWorker(request);
+      const api = new ApiClient(request);
+      const port = 19880 + Math.floor(Math.random() * 1000);
+
+      await api.createPortMapping({
+        externalPort: port,
+        internalPort: 8080,
+        type: 'localhost',
+        workerId: container.id,
+      });
+
+      try {
+        // Archive — mapping must remain, but container ID is gone
+        await api.archiveContainer(container.id);
+
+        const { body: afterArchive } = await api.listPortMappings();
+        const archivedMapping = afterArchive.find((m: { externalPort: number }) => m.externalPort === port);
+        expect(archivedMapping).toBeTruthy();
+        expect(archivedMapping.workerName).toBe(container.name);
+
+        // Unarchive — mapping workerId should now point at the new container
+        const { body: unarchived } = await api.unarchiveWorker(container.name);
+        const { body: afterUnarchive } = await api.listPortMappings();
+        const restoredMapping = afterUnarchive.find((m: { externalPort: number }) => m.externalPort === port);
+        expect(restoredMapping).toBeTruthy();
+        expect(restoredMapping.workerName).toBe(container.name);
+        expect(restoredMapping.workerId).toBe(unarchived.id);
+
+        await cleanupWorker(request, unarchived.id);
+      } finally {
+        await api.deletePortMapping(port);
+      }
+    });
+
+    test('port mappings are removed when an archived worker is permanently deleted', async ({ request }) => {
+      const container = await createWorker(request);
+      const api = new ApiClient(request);
+      const port = 19890 + Math.floor(Math.random() * 1000);
+
+      await api.createPortMapping({
+        externalPort: port,
+        internalPort: 8080,
+        type: 'localhost',
+        workerId: container.id,
+      });
+
+      await api.archiveContainer(container.id);
+      await api.deleteArchivedWorker(container.name);
+
+      const { body: mappings } = await api.listPortMappings();
+      const found = mappings.find((m: { externalPort: number }) => m.externalPort === port);
+      expect(found).toBeUndefined();
+    });
+  });
 });

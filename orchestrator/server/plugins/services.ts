@@ -53,12 +53,17 @@ export default defineNitroPlugin(async () => {
   // Reconcile worker store with Docker state (register new containers, archive missing ones)
   await containerManager.reconcileWorkers();
 
-  // Initialize port mapping store (load from disk) and cleanup stale workers
+  // Initialize port mapping store (load from disk) and cleanup stale workers.
+  // Mappings survive stop/archive/unarchive/rebuild, so the cleanup set
+  // includes BOTH active containers and archived workers (matched by name).
   const portMappingStore = usePortMappingStore();
   await portMappingStore.init();
 
-  const activeWorkerIds = new Set(containerManager.list().map((c) => c.id));
-  const staleCount = await portMappingStore.cleanupStaleWorkers(activeWorkerIds);
+  const knownWorkerNames = new Set<string>();
+  for (const c of containerManager.list()) knownWorkerNames.add(c.name);
+  for (const w of workerStore.list()) knownWorkerNames.add(w.name);
+
+  const staleCount = await portMappingStore.cleanupStaleWorkers(knownWorkerNames);
   if (staleCount > 0) {
     logger.info(`[agentor] cleaned up ${staleCount} stale port mapping(s)`);
   }
@@ -71,7 +76,7 @@ export default defineNitroPlugin(async () => {
   const domainMappingStore = useDomainMappingStore();
   await domainMappingStore.init();
 
-  const staleDomainCount = await domainMappingStore.cleanupStaleWorkers(activeWorkerIds);
+  const staleDomainCount = await domainMappingStore.cleanupStaleWorkers(knownWorkerNames);
   if (staleDomainCount > 0) {
     logger.info(`[agentor] cleaned up ${staleDomainCount} stale domain mapping(s)`);
   }

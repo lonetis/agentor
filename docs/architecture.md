@@ -76,12 +76,14 @@ DinD data always uses Docker named volumes (`<name>-docker`) regardless of stora
 
 Workers exist in four states:
 
-| State | Container | Workspace + Agents + DinD | WorkerStore |
-|-------|-----------|---------------------------|-------------|
-| **running** | Running | Mounted | `active` |
-| **stopped** | Stopped | Mounted | `active` |
-| **archived** | Removed | Kept on disk | `archived` |
-| **deleted** | Removed | Removed | Removed |
+| State | Container | Workspace + Agents + DinD | Port/Domain Mappings | WorkerStore |
+|-------|-----------|---------------------------|----------------------|-------------|
+| **running** | Running | Mounted | Active | `active` |
+| **stopped** | Stopped | Mounted | Preserved (idle) | `active` |
+| **archived** | Removed | Kept on disk | Preserved (idle) | `archived` |
+| **deleted** | Removed | Removed | Removed | Removed |
+
+Port and domain mappings are keyed by the stable worker name (not the Docker container ID), so they survive stop/restart, archive/unarchive, and rebuild. On rebuild and unarchive, the mapping's `workerId` field is automatically reassigned to the new container ID (`reassignWorkerMappings` in `services.ts`). The mapper and Traefik both route to the worker by name via Docker DNS — fresh lookups pick up the new container automatically, so no forced recreation is needed. Mappings are only removed on permanent delete (via `cleanupWorkerMappings` inside `ContainerManager.remove()` and `ContainerManager.deleteArchived()`).
 
 ### Workspace, Agents & DinD Storage
 

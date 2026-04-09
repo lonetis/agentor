@@ -60,14 +60,29 @@ export class DomainMappingStore extends JsonStore<string, DomainMapping> {
     return existed;
   }
 
-  async removeForWorker(workerId: string): Promise<number> {
-    const count = await this.removeWhere((m) => m.workerId === workerId);
-    if (count > 0) useLogger().info(`[domain-mappings] removed ${count} mapping(s) for worker ${workerId}`);
+  async removeForWorkerName(workerName: string): Promise<number> {
+    const count = await this.removeWhere((m) => m.workerName === workerName);
+    if (count > 0) useLogger().info(`[domain-mappings] removed ${count} mapping(s) for worker ${workerName}`);
     return count;
   }
 
-  async cleanupStaleWorkers(activeWorkerIds: Set<string>): Promise<number> {
-    const count = await this.removeWhere((m) => !activeWorkerIds.has(m.workerId));
+  async reassignWorkerContainer(workerName: string, newWorkerId: string): Promise<number> {
+    let changed = 0;
+    for (const mapping of this.items.values()) {
+      if (mapping.workerName === workerName && mapping.workerId !== newWorkerId) {
+        mapping.workerId = newWorkerId;
+        changed++;
+      }
+    }
+    if (changed > 0) {
+      await this.persist();
+      useLogger().info(`[domain-mappings] reassigned ${changed} mapping(s) for worker ${workerName} to new container`);
+    }
+    return changed;
+  }
+
+  async cleanupStaleWorkers(knownWorkerNames: Set<string>): Promise<number> {
+    const count = await this.removeWhere((m) => !knownWorkerNames.has(m.workerName));
     if (count > 0) useLogger().warn(`[domain-mappings] cleaned up ${count} stale mapping(s)`);
     return count;
   }

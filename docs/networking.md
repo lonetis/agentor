@@ -2,7 +2,7 @@
 
 ## Port Mapper
 
-The port mapper runs as a separate Docker container (`agentor-mapper`), managed by the orchestrator via dockerode. Mappings are persisted to `<DATA_DIR>/port-mappings.json` and survive restarts.
+The port mapper runs as a separate Docker container (`agentor-mapper`), managed by the orchestrator via dockerode. Mappings are persisted to `<DATA_DIR>/port-mappings.json` and survive orchestrator restarts. They also survive worker lifecycle events — stop/restart, archive/unarchive, and rebuild all preserve the mapping. Mappings are only removed when the worker is permanently deleted. Records are keyed by the stable worker name (not the Docker container ID), so the mapper continues routing to the worker after it comes back under a new container ID. The `workerId` field is updated automatically on rebuild and unarchive via `reassignWorkerMappings`.
 
 **Architecture:**
 - `PortMappingStore` (`port-mapping-store.ts`): Persists mappings to disk, extends `JsonStore<number, PortMapping>`
@@ -23,6 +23,8 @@ The port mapper runs as a separate Docker container (`agentor-mapper`), managed 
 ## Domain Mapping (Traefik)
 
 Domain-based routing via a Traefik reverse proxy container. Optional — requires `BASE_DOMAINS` env var. Supports multiple base domains with per-domain TLS challenge configuration. Each domain mapping specifies which base domain it uses. Supports HTTP, HTTPS, and TCP protocols with optional HTTP basic auth per mapping. Subdomain is optional — when omitted (empty string), the bare base domain itself is mapped directly (e.g., `example.com` instead of `sub.example.com`). Each base domain can independently be mapped bare or with subdomains. Path-based routing is supported for HTTP/HTTPS — different paths on the same domain can route to different workers (e.g., `/api` to backend, `/app` to frontend). The path prefix is automatically stripped before forwarding (StripPrefix middleware).
+
+Like port mappings, domain mappings are keyed by the worker name and persist across worker stop/restart, archive/unarchive, and rebuild — only permanent deletion removes them. Traefik routes to the worker by name via Docker DNS, so a rebuilt/unarchived worker is picked up automatically after its new container joins the network.
 
 ### TLS Challenge Types
 

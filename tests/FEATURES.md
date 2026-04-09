@@ -94,7 +94,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ### 4.3 Action Buttons
 - "Stop" — visible when running, stops the container
 - "Restart" — visible when stopped, restarts the container
-- "Rebuild" — always visible, destroys and recreates container with latest image (confirm dialog, preserves workspace, agents, and DinD volumes — equivalent to archive + unarchive)
+- "Rebuild" — always visible, destroys and recreates container with latest image (confirm dialog, preserves workspace, agents, and DinD volumes + port/domain mappings — equivalent to archive + unarchive)
 - "Archive" — always visible, archives with confirm dialog
 - "Remove" — always visible, removes with confirm dialog
 
@@ -551,9 +551,11 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `GET /api/containers/generate-name` — random name generation
 - `POST /api/containers/:id/stop` — stop worker
 - `POST /api/containers/:id/restart` — restart worker
-- `DELETE /api/containers/:id` — remove worker (cleans up mappings, volumes, store)
+- `DELETE /api/containers/:id` — remove worker (cleans up port/domain mappings, volumes, store)
 - `POST /api/containers/:id/rebuild` — rebuild worker (destroys and recreates with latest image, preserves workspace, agents, and DinD volumes plus metadata — equivalent to archive + unarchive)
-- `POST /api/containers/:id/archive` — archive (cleans up mappings)
+- `POST /api/containers/:id/archive` — archive (port/domain mappings are preserved and reattach to the new container on unarchive)
+- `POST /api/containers/:id/rebuild` — rebuild worker (port/domain mappings are preserved; their `workerId` field is reassigned to the new container automatically)
+- Port and domain mappings survive stop/restart, archive/unarchive, and rebuild. Mappings are only removed on permanent delete (`DELETE /api/containers/:id` or `DELETE /api/archived/:name`).
 - `GET /api/containers/:id/logs` — logs with optional ?tail=N (default 200, max 10000)
 - `GET /api/containers/:id/workspace` — download workspace .tar.gz
 - `POST /api/containers/:id/workspace` — upload files (multipart, path traversal protection)

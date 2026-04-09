@@ -58,12 +58,28 @@ export const useLogger = singleton(() => new Logger(useConfig(), useLogStore(), 
 export const useLogCollector = singleton(() => new LogCollector(useConfig(), useLogStore(), useLogBroadcaster()));
 
 /**
- * Removes all port and domain mappings for a worker and reconciles the
- * mapper/traefik containers if any mappings were removed.
+ * Removes all port and domain mappings for a worker (by name) and reconciles
+ * the mapper/traefik containers if any mappings were removed. Called when a
+ * worker is permanently deleted — mappings are preserved across stop, archive,
+ * unarchive, and rebuild.
  */
-export async function cleanupWorkerMappings(workerId: string): Promise<void> {
-  const portRemoved = await usePortMappingStore().removeForWorker(workerId);
-  const domainRemoved = await useDomainMappingStore().removeForWorker(workerId);
+export async function cleanupWorkerMappings(workerName: string): Promise<void> {
+  const portRemoved = await usePortMappingStore().removeForWorkerName(workerName);
+  const domainRemoved = await useDomainMappingStore().removeForWorkerName(workerName);
   if (portRemoved > 0) await useMapperManager().reconcile();
   if (domainRemoved > 0) await useTraefikManager().reconcile();
+}
+
+/**
+ * Updates the workerId field of all mappings for a worker to the new container
+ * ID (used after rebuild/unarchive since the Docker container ID changes). The
+ * mapper and Traefik both route by workerName via Docker DNS, so fresh lookups
+ * pick up the new container automatically — we only need to reconcile() so the
+ * mapper container is ensured running (idempotent when bindings match).
+ */
+export async function reassignWorkerMappings(workerName: string, newContainerId: string): Promise<void> {
+  const portChanged = await usePortMappingStore().reassignWorkerContainer(workerName, newContainerId);
+  const domainChanged = await useDomainMappingStore().reassignWorkerContainer(workerName, newContainerId);
+  if (portChanged > 0) await useMapperManager().reconcile();
+  if (domainChanged > 0) await useTraefikManager().reconcile();
 }

@@ -140,7 +140,7 @@ test.describe('POST /api/containers/:id/rebuild', () => {
     expect(status).toBeGreaterThanOrEqual(400);
   });
 
-  test('cleans up port mappings on rebuild', async ({ request }) => {
+  test('preserves port mappings across rebuild and reassigns workerId', async ({ request }) => {
     const container = await createWorker(request);
     const api = new ApiClient(request);
 
@@ -152,13 +152,20 @@ test.describe('POST /api/containers/:id/rebuild', () => {
       workerId: container.id,
     });
 
-    const { body } = await api.rebuildContainer(container.id);
-    createdContainerIds.push(body.id);
+    try {
+      const { body } = await api.rebuildContainer(container.id);
+      createdContainerIds.push(body.id);
 
-    // Port mapping should be cleaned up
-    const { body: mappings } = await api.listPortMappings();
-    const found = mappings.find((m: { externalPort: number }) => m.externalPort === 19876);
-    expect(found).toBeUndefined();
+      // Mapping should still exist, but now point at the new container ID
+      const { body: mappings } = await api.listPortMappings();
+      const found = mappings.find((m: { externalPort: number }) => m.externalPort === 19876);
+      expect(found).toBeTruthy();
+      expect(found.workerName).toBe(container.name);
+      expect(found.workerId).toBe(body.id);
+      expect(found.internalPort).toBe(8080);
+    } finally {
+      await api.deletePortMapping(19876);
+    }
   });
 
   test('response includes all expected ContainerInfo fields', async ({ request }) => {

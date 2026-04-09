@@ -12,12 +12,11 @@ defineRouteMeta({
   },
 });
 
-import { useContainerManager, cleanupWorkerMappings } from '../../../utils/services';
+import { useContainerManager } from '../../../utils/services';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
   try {
-    await cleanupWorkerMappings(id);
     await useContainerManager().stop(id);
     return { ok: true };
   } catch (err: unknown) {

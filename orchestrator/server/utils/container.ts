@@ -367,6 +367,7 @@ export class ContainerManager {
     const info = this.containers.get(id);
     await this.dockerService.removeContainer(id);
     if (info?.name) {
+      await cleanupWorkerMappings(info.name);
       if (this.storageManager) {
         await this.storageManager.removeWorkerDocker(info.name);
         await this.storageManager.removeWorkerWorkspace(info.name);
@@ -501,6 +502,9 @@ export class ContainerManager {
       await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
     }
 
+    // Reassign persisted port/domain mappings to the new container ID
+    await reassignWorkerMappings(info.name, container.id);
+
     // Attach log collector to the rebuilt container
     useLogCollector().attach(info.name, container.id, 'worker', info.displayName).catch(() => {});
 
@@ -594,6 +598,9 @@ export class ContainerManager {
 
     this.containers.set(container.id, containerInfo);
 
+    // Reassign persisted port/domain mappings to the new container ID
+    await reassignWorkerMappings(worker.name, container.id);
+
     // Attach log collector to the unarchived container
     useLogCollector().attach(worker.name, container.id, 'worker', worker.displayName).catch(() => {});
 
@@ -609,6 +616,8 @@ export class ContainerManager {
     if (!worker || worker.status !== 'archived') {
       throw new Error('Archived worker not found');
     }
+
+    await cleanupWorkerMappings(name);
 
     if (this.storageManager) {
       await this.storageManager.removeWorkerWorkspace(name);
