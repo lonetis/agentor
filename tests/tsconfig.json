@@ -8,11 +8,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "outDir": "dist",
-    "baseUrl": ".",
-    "paths": {
-      "@helpers/*": ["helpers/*"]
-    }
+    "outDir": "dist"
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist"]
