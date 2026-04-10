@@ -11,6 +11,18 @@ export default defineNuxtConfig({
     compatibilityVersion: 4,
   },
 
+  experimental: {
+    // Reload the page IMMEDIATELY when a dynamic chunk fails to load,
+    // not on the next route change. The default `'automatic'` waits for
+    // the next navigation, which manifests as: first visit to `/` fails
+    // to fetch `/_nuxt/pages/index.vue`, the global auth middleware
+    // then redirects to `/login` (the next navigation), and only then
+    // does the chunk-reload plugin trigger — by that point the user has
+    // already seen the broken state. `'automatic-immediate'` recovers
+    // transparently on first failure.
+    emitRouteChunkError: 'automatic-immediate',
+  },
+
   css: ['@/assets/css/main.css'],
 
   nitro: {
