@@ -86,13 +86,28 @@ test.describe('UI State Persistence', () => {
       expect((state!.sidebar as Record<string, unknown>).width).toBe(200);
     });
 
-    test('width is clamped to max 700 when loading', async ({ page }) => {
+    test('width is clamped to max 3000 when loading', async ({ page }) => {
       await freshStart(page, {
-        [STORAGE_KEY]: buildSeededState({ sidebar: { width: 1200, collapsed: false, activeTab: 'workers', panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false, settings: false } } }),
+        [STORAGE_KEY]: buildSeededState({ sidebar: { width: 5000, collapsed: false, activeTab: 'workers', panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false, settings: false } } }),
       });
 
       const state = await getUiState(page);
-      expect((state!.sidebar as Record<string, unknown>).width).toBe(700);
+      expect((state!.sidebar as Record<string, unknown>).width).toBe(3000);
+    });
+
+    test('width is clamped to 90% of viewport when viewport is smaller than stored width', async ({ page }) => {
+      await freshStart(page, {
+        [STORAGE_KEY]: buildSeededState({ sidebar: { width: 2500, collapsed: false, activeTab: 'workers', panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false, settings: false } } }),
+      });
+      // useSidebarResize's onMounted → checkMobile re-clamps on load and
+      // calls setSidebarWidth, which writes through the 500ms debouncer.
+      await waitForWrite(page);
+
+      // Default UI test viewport is 1920x1080 → max is 1728
+      const state = await getUiState(page);
+      const width = (state!.sidebar as Record<string, unknown>).width as number;
+      expect(width).toBeLessThanOrEqual(1728);
+      expect(width).toBeGreaterThan(0);
     });
 
     test('partial state fills missing fields with defaults', async ({ page }) => {
@@ -171,7 +186,30 @@ test.describe('UI State Persistence', () => {
       const width = (state!.sidebar as Record<string, unknown>).width as number;
       // Width should be larger than default (320), approximately 420
       expect(width).toBeGreaterThan(350);
-      expect(width).toBeLessThanOrEqual(700);
+      // Viewport is 1920 so max is 1728 (90% of viewport)
+      expect(width).toBeLessThanOrEqual(1728);
+    });
+
+    test('drag below collapse threshold collapses the sidebar', async ({ page }) => {
+      await freshStart(page);
+
+      const sidebar = page.locator('aside');
+      const box = await sidebar.boundingBox();
+      expect(box).not.toBeNull();
+
+      const handleX = box!.x + box!.width;
+      const handleY = box!.y + box!.height / 2;
+
+      // Drag the handle hard to the left (below 120px threshold)
+      await page.mouse.move(handleX, handleY);
+      await page.mouse.down();
+      await page.mouse.move(50, handleY, { steps: 8 });
+      await page.mouse.up();
+
+      await waitForWrite(page);
+
+      const state = await getUiState(page);
+      expect((state!.sidebar as Record<string, unknown>).collapsed).toBe(true);
     });
   });
 

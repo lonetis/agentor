@@ -122,7 +122,11 @@ function openInitScriptsFromModal() {
       :style="{ width: isCollapsed ? '0px' : sidebarWidth + 'px' }"
       :class="[
         'sidebar-panel',
-        { 'sidebar-collapsed': isCollapsed, 'sidebar-mobile': isMobile },
+        {
+          'sidebar-collapsed': isCollapsed,
+          'sidebar-mobile': isMobile,
+          'sidebar-dragging': isDragging,
+        },
       ]"
       :containers="containers"
       :tabs="tabs"

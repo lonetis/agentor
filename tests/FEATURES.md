@@ -99,6 +99,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - "Capabilities" button opens capabilities modal
 - "Instructions" button opens instructions modal
 - "Init Scripts" button opens init scripts modal
+- The Capabilities / Instructions / Init Scripts trio sits on one row while the sidebar is wide; once the sidebar is narrower than ~280px the row stacks the three buttons vertically so their labels never get truncated
 
 ### 1.4 Sidebar Sections (all collapsible with chevron toggle)
 - **Workers** — list of active container cards
@@ -109,14 +110,24 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - **Images** — always visible
 - **Settings** — always visible, contains "Logs" button, "System Settings" button, and "API Docs" link
 
+### 1.5 Sidebar Tab Bar Overflow
+- All tab buttons (Workers / Archived / Ports / Domains / Usage / System) are rendered in a horizontally scrollable row
+- The scrollbar itself is hidden for a clean look; scrolling still works via mouse wheel (vertical wheel is converted to horizontal scroll), trackpad, and keyboard
+- When one or more tabs have less than 20% of their width visible inside the scroll viewport, a "More" chevron button pins to the right edge with a gradient fade and opens a dropdown listing those (mostly) hidden tabs
+- A tab with at least 20% of its width visible stays out of the dropdown — this gives a small hysteresis zone so tabs don't pop in and out while scrolling past them
+- Scrolling the tab bar updates the dropdown live — tabs that become visible drop out, tabs that scroll off join
+- Once the sidebar is wide enough that every tab is fully visible (or at least 20% visible after scrolling), the "More" button disappears entirely
+
 ---
 
 ## 2. Sidebar Resize & Collapse
 
 ### 2.1 Resize
 - Drag handle at right edge of sidebar
-- Width range: 200–700px, clamped
-- Width persisted to localStorage
+- Width range: 200px minimum to 90% of the current viewport width maximum
+- Dragging below the 120px collapse threshold snaps the sidebar closed on release (VS Code-style) while preserving the last valid width for re-expand
+- Width persisted to localStorage (persistence clamp 200–3000; runtime re-clamped to 90% of viewport on window resize)
+- No width transition while actively dragging — the sidebar tracks the cursor instantly
 
 ### 2.2 Collapse/Expand
 - Collapse button (double-chevron) hides sidebar
@@ -751,7 +762,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - 500ms debounced writes + `beforeunload` flush
 
 ### 25.2 Persisted State
-- Sidebar width (clamped 200-700)
+- Sidebar width (persistence clamp 200–3000, runtime-clamped to 90% of viewport)
 - Sidebar collapsed state
 - Panel collapse states (archived, portMappings, domainMappings, usage, images, settings)
 - Split pane tree (rootNode + focusedNodeId)
@@ -760,7 +771,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ### 25.3 Graceful Degradation
 - Corrupt localStorage: falls back to defaults
 - Partial state: fills missing fields with defaults
-- Width clamping: below 200 → 200, above 700 → 700
+- Width clamping: below 200 → 200, above 3000 → 3000 (persistence); above 90% of viewport → clamped on load/resize
 
 ---
 

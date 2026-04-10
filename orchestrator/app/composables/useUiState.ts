@@ -62,7 +62,8 @@ function defaultState(): UiState {
 }
 
 function clampWidth(w: number): number {
-  return Math.min(700, Math.max(200, w));
+  // Persistence bounds only; runtime viewport clamp lives in useSidebarResize
+  return Math.min(3000, Math.max(200, w));
 }
 
 function loadState(): UiState {

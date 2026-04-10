@@ -99,15 +99,6 @@
 }
 
 /* Sidebar tab bar */
-.sidebar-tab-measure {
-  position: absolute;
-  top: -9999px;
-  left: 0;
-  pointer-events: none;
-  display: flex;
-  white-space: nowrap;
-}
-
 .sidebar-tab-bar-wrap {
   position: relative;
   flex-shrink: 0;
@@ -117,7 +108,22 @@
   display: flex;
   align-items: stretch;
   border-bottom: 1px solid #e5e7eb;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  /* Hide the horizontal scrollbar cross-browser */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebar-tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* When overflowing, reserve space on the right so the last tab is not
+   permanently hidden behind the absolutely-positioned More button. */
+.sidebar-tab-bar-wrap.has-overflow .sidebar-tab-bar {
+  padding-right: 34px;
 }
 
 .sidebar-tab {
@@ -171,10 +177,34 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* More overflow button + dropdown */
+/* More overflow button — absolutely pinned to the right edge of the wrap so
+   it stays put while the nav beneath it scrolls horizontally. The gradient
+   fades the scrolled content out under the button. */
 .sidebar-tab-more-btn {
-  margin-left: auto;
-  padding: 7px 10px;
+  position: absolute;
+  top: 0;
+  bottom: 1px;
+  right: 0;
+  width: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  background: linear-gradient(to right, rgba(249, 250, 251, 0) 0%, #f9fafb 45%);
+  cursor: pointer;
+  border: none;
+  border-bottom: 2px solid transparent;
+  z-index: 2;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.sidebar-tab-more-btn:hover {
+  color: #374151;
+}
+
+.sidebar-tab-more-btn.sidebar-tab-active {
+  color: #111827;
+  border-bottom-color: #3b82f6;
 }
 
 .sidebar-tab-dropdown {
@@ -287,6 +317,52 @@
   background: rgba(88, 166, 255, 0.15);
 }
 
+.dark .sidebar-tab-more-btn {
+  color: #7d8590;
+  background: linear-gradient(to right, rgba(17, 24, 39, 0) 0%, #111827 45%);
+}
+
+.dark .sidebar-tab-more-btn:hover {
+  color: #c9d1d9;
+}
+
+.dark .sidebar-tab-more-btn.sidebar-tab-active {
+  color: #e6edf3;
+  border-bottom-color: #58a6ff;
+}
+
+/* Three-button row in the sidebar header. Uses a container query so the
+   buttons can stack vertically when the sidebar is narrow, instead of
+   having their labels truncated.
+
+   The container-type lives on a dedicated wrapper because @container rules
+   can only style descendants of the container — the container element
+   itself cannot be targeted by its own container query. */
+.sidebar-btn-row-3-container {
+  container-type: inline-size;
+}
+
+.sidebar-btn-row-3 {
+  display: flex;
+  gap: 8px;
+}
+
+.sidebar-btn-row-3 > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+@container (max-width: 279px) {
+  .sidebar-btn-row-3 {
+    flex-direction: column;
+  }
+
+  .sidebar-btn-row-3 > * {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+}
+
 .dark .sidebar-tab-dropdown-badge {
   background: #30363d;
   color: #c9d1d9;
@@ -356,6 +432,13 @@
 .sidebar-panel {
   transition: width 0.2s ease;
   overflow: hidden;
+  will-change: width;
+}
+
+/* While actively dragging the resize handle, kill the transition so
+   every pointermove tick lands immediately without a trailing lag. */
+.sidebar-panel.sidebar-dragging {
+  transition: none;
 }
 
 .sidebar-panel.sidebar-collapsed {

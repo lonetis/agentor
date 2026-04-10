@@ -83,41 +83,93 @@ function selectTab(id: string) {
 }
 
 // --- Overflow handling ---
+// The tab bar is horizontally scrollable. Tabs that are not fully within the
+// current scroll viewport also get listed in a dropdown accessible from a
+// "More" button pinned to the right edge. When the sidebar is wide enough
+// that every tab fits (no overflow), the dropdown disappears entirely.
 const tabBarRef = ref<HTMLElement>();
-const measureRef = ref<HTMLElement>();
 const moreContainerRef = ref<HTMLElement>();
 const moreOpen = ref(false);
-const visibleCount = ref(100);
+const hasOverflow = ref(false);
+const overflowingIds = ref<Set<string>>(new Set());
 
-const inlineTabs = computed(() => visibleTabs.value.slice(0, visibleCount.value));
-const overflowTabsList = computed(() => visibleTabs.value.slice(visibleCount.value));
-const activeInOverflow = computed(() => overflowTabsList.value.some((t) => t.id === activeTab.value));
+const overflowingTabs = computed(() =>
+  visibleTabs.value.filter((t) => overflowingIds.value.has(t.id)),
+);
+const activeInOverflow = computed(() => overflowingIds.value.has(activeTab.value));
+
+function setsEqual(a: Set<string>, b: Set<string>) {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
+}
 
 function recalcOverflow() {
   const bar = tabBarRef.value;
-  const measure = measureRef.value;
-  if (!bar || !measure) return;
+  if (!bar) return;
 
-  const available = bar.clientWidth;
-  const tabEls = Array.from(measure.children) as HTMLElement[];
-  const moreWidth = 38;
-
-  let totalWidth = 0;
-  for (const el of tabEls) totalWidth += el.offsetWidth;
-
-  if (totalWidth <= available) {
-    visibleCount.value = tabEls.length;
+  // Allow 1px tolerance to avoid flapping on sub-pixel rounding. When the
+  // bar content fits entirely we skip the per-tab check altogether — every
+  // tab is 100% visible so nothing can overflow.
+  const hasScrollOverflow = bar.scrollWidth - bar.clientWidth > 1;
+  if (!hasScrollOverflow) {
+    hasOverflow.value = false;
+    if (overflowingIds.value.size > 0) overflowingIds.value = new Set();
+    if (moreOpen.value) moreOpen.value = false;
     return;
   }
 
-  let used = 0;
-  let count = 0;
-  for (const el of tabEls) {
-    if (used + el.offsetWidth > available - moreWidth) break;
-    used += el.offsetWidth;
-    count++;
+  const viewLeft = bar.scrollLeft;
+  const viewRight = viewLeft + bar.clientWidth;
+  const next = new Set<string>();
+  const children = Array.from(bar.querySelectorAll<HTMLElement>('[data-tab-id]'));
+  // A tab is listed in the overflow dropdown only if LESS THAN 20% of its
+  // width is currently visible inside the scroll viewport. A tab with 20% or
+  // more visible stays out of the dropdown — this gives a small hysteresis
+  // zone so tabs don't pop in/out while scrolling past them.
+  const VISIBLE_THRESHOLD = 0.2;
+  for (const el of children) {
+    const id = el.dataset.tabId;
+    if (!id) continue;
+    const left = el.offsetLeft;
+    const width = el.offsetWidth;
+    if (width <= 0) continue;
+    const right = left + width;
+    const visibleLeft = Math.max(left, viewLeft);
+    const visibleRight = Math.min(right, viewRight);
+    const visibleWidth = Math.max(0, visibleRight - visibleLeft);
+    if (visibleWidth / width < VISIBLE_THRESHOLD) {
+      next.add(id);
+    }
   }
-  visibleCount.value = Math.max(1, count);
+  if (!setsEqual(next, overflowingIds.value)) {
+    overflowingIds.value = next;
+  }
+  // The More button + padding only show when there's actually something to
+  // drop down. If the user scrolls such that every tab is at least 20%
+  // visible, the button (and its gradient overlay) disappear.
+  hasOverflow.value = next.size > 0;
+  if (next.size === 0 && moreOpen.value) moreOpen.value = false;
+}
+
+let scrollRaf = 0;
+function onScroll() {
+  if (scrollRaf) return;
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = 0;
+    recalcOverflow();
+  });
+}
+
+// Convert vertical mouse-wheel into horizontal scroll on the tab bar so
+// mouse users (not just trackpad users) can reach overflowed tabs without
+// having to open the More dropdown every time.
+function onTabBarWheel(e: WheelEvent) {
+  const bar = tabBarRef.value;
+  if (!bar) return;
+  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+  bar.scrollLeft += e.deltaY;
+  e.preventDefault();
 }
 
 function onClickOutside(e: MouseEvent) {
@@ -146,6 +198,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   resizeObs?.disconnect();
+  if (scrollRaf) cancelAnimationFrame(scrollRaf);
   document.removeEventListener('mousedown', onClickOutside);
 });
 
@@ -182,34 +235,33 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
       <UButton class="w-full mt-2" color="neutral" variant="outline" size="sm" @click="emit('manageEnvironments')">
         Environments
       </UButton>
-      <div class="flex gap-2 mt-2">
-        <UButton class="flex-1" color="neutral" variant="outline" size="sm" @click="emit('manageCapabilities')">
-          Capabilities
-        </UButton>
-        <UButton class="flex-1" color="neutral" variant="outline" size="sm" @click="emit('manageInstructions')">
-          Instructions
-        </UButton>
-        <UButton class="flex-1" color="neutral" variant="outline" size="sm" @click="emit('manageInitScripts')">
-          Init Scripts
-        </UButton>
-      </div>
-    </div>
-
-    <!-- Hidden measurement row (off-screen, for overflow calculation) -->
-    <div ref="measureRef" class="sidebar-tab-measure">
-      <div v-for="tab in visibleTabs" :key="'m-' + tab.id" class="sidebar-tab">
-        <UIcon :name="tab.icon" class="size-3.5 flex-shrink-0" />
-        <span class="sidebar-tab-label">{{ tab.label }}</span>
-        <span v-if="tab.badge" class="sidebar-tab-badge">{{ tab.badge }}</span>
+      <div class="sidebar-btn-row-3-container mt-2">
+        <div class="sidebar-btn-row-3">
+          <UButton color="neutral" variant="outline" size="sm" @click="emit('manageCapabilities')">
+            Capabilities
+          </UButton>
+          <UButton color="neutral" variant="outline" size="sm" @click="emit('manageInstructions')">
+            Instructions
+          </UButton>
+          <UButton color="neutral" variant="outline" size="sm" @click="emit('manageInitScripts')">
+            Init Scripts
+          </UButton>
+        </div>
       </div>
     </div>
 
     <!-- Tab bar area -->
-    <div ref="moreContainerRef" class="sidebar-tab-bar-wrap">
-      <nav ref="tabBarRef" class="sidebar-tab-bar">
+    <div ref="moreContainerRef" class="sidebar-tab-bar-wrap" :class="{ 'has-overflow': hasOverflow }">
+      <nav
+        ref="tabBarRef"
+        class="sidebar-tab-bar"
+        @scroll.passive="onScroll"
+        @wheel="onTabBarWheel"
+      >
         <button
-          v-for="tab in inlineTabs"
+          v-for="tab in visibleTabs"
           :key="tab.id"
+          :data-tab-id="tab.id"
           class="sidebar-tab"
           :class="{ 'sidebar-tab-active': activeTab === tab.id }"
           :title="tab.label"
@@ -219,23 +271,23 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
           <span class="sidebar-tab-label">{{ tab.label }}</span>
           <span v-if="tab.badge" class="sidebar-tab-badge">{{ tab.badge }}</span>
         </button>
-
-        <!-- More button (inside nav to participate in flex layout) -->
-        <button
-          v-if="overflowTabsList.length > 0"
-          class="sidebar-tab sidebar-tab-more-btn"
-          :class="{ 'sidebar-tab-active': activeInOverflow }"
-          title="More tabs"
-          @click="moreOpen = !moreOpen"
-        >
-          <UIcon name="i-lucide-chevrons-right" class="size-3.5" />
-        </button>
       </nav>
 
-      <!-- Dropdown rendered OUTSIDE the nav to escape overflow:hidden -->
-      <div v-if="moreOpen && overflowTabsList.length > 0" class="sidebar-tab-dropdown">
+      <!-- More button — only rendered when tabs actually overflow the bar. -->
+      <button
+        v-if="hasOverflow"
+        class="sidebar-tab-more-btn"
+        :class="{ 'sidebar-tab-active': activeInOverflow }"
+        title="More tabs"
+        @click="moreOpen = !moreOpen"
+      >
+        <UIcon name="i-lucide-chevrons-right" class="size-3.5" />
+      </button>
+
+      <!-- Dropdown lists only tabs not currently visible in the scroll viewport. -->
+      <div v-if="moreOpen && hasOverflow && overflowingTabs.length > 0" class="sidebar-tab-dropdown">
         <button
-          v-for="tab in overflowTabsList"
+          v-for="tab in overflowingTabs"
           :key="tab.id"
           class="sidebar-tab-dropdown-item"
           :class="{ 'sidebar-tab-dropdown-item-active': activeTab === tab.id }"

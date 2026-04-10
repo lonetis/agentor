@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1080 tests** across 77 test files (~580 API + ~501 UI)
+- **~1090 tests** across 77 test files (~580 API + ~511 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -148,13 +148,13 @@ tests/
 | `agent-data-persistence.spec.ts` | 22 | Agent config symlinks, config file contents, MCP servers (playwright + chrome-devtools) for Claude/Codex/Gemini, persistence across restart/rebuild/archive, no-overwrite on restart/rebuild |
 | `mcp-servers-loaded.spec.ts` | 6 | MCP server verification: Claude config keys + commands via jq, Codex `mcp list` output + enabled status, Gemini config keys + commands via jq |
 
-### UI Tests (~497 tests, 39 files)
+### UI Tests (~507 tests, 39 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `login.spec.ts` | 4 | Login page renders with email/password fields, wrong credentials show error, correct credentials redirect to dashboard, unauthenticated `/` redirects to `/login` (uses fresh storageState) |
 | `dashboard.spec.ts` | 11 | Page load, title, buttons, sections, images, sidebar labels |
-| `sidebar.spec.ts` | 19 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design |
+| `sidebar.spec.ts` | 27 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design, Capabilities/Instructions/Init Scripts row stacks vertically on narrow sidebar, tab bar horizontal scroll + overflow dropdown (20% visibility threshold, live updates on scroll, hidden when all tabs fit) |
 | `create-worker-modal.spec.ts` | 29 | Open/close, form fields, name input, add repo/mount, environment dropdown, init preset dropdown, Create action |
 | `create-worker-modal-advanced.spec.ts` | 8 | Advanced modal interactions |
 | `cross-modal-navigation.spec.ts` | 6 | Manage button navigation between modals |
@@ -185,7 +185,7 @@ tests/
 | `tmux-tabs.spec.ts` | 9 | Tmux tab bar interactions |
 | `split-pane.spec.ts` | 3 | Placeholder, terminal pane, tab bar |
 | `theme-toggle.spec.ts` | 29 | Dark default, light switch, persistence, all modes |
-| `ui-state-persistence.spec.ts` | 23 | UI state persistence across reloads |
+| `ui-state-persistence.spec.ts` | 25 | UI state persistence across reloads, viewport clamp, drag-to-collapse |
 | `usage-panel.spec.ts` | 24 | Usage panel display, progress bars, auth badges |
 | `update-notification.spec.ts` | 24 | Images section, image names, toggle, update status |
 | `archived-workers.spec.ts` | 6 | Archived section, collapsible, UI archive, worker card (name, Unarchive, Delete buttons) |
