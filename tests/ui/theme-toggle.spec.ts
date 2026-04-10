@@ -45,11 +45,18 @@ async function isDarkMode(page: Page): Promise<boolean> {
   return (await getHtmlClass(page)).includes('dark');
 }
 
-/** Get the value of a CSS custom property on the document root */
+/** Get the value of a CSS custom property on the document root.
+ * Production builds run the CSS through a minifier that shortens
+ * 6-char hex colors to 3-char form (e.g. `#ffffff` → `#fff`). The dev
+ * server doesn't, so to keep the test invariant across both, we expand
+ * any 3-char hex value back to 6 chars before returning. */
 async function getCssVar(page: Page, varName: string): Promise<string> {
-  return page.evaluate((name) => {
+  const raw = await page.evaluate((name) => {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }, varName);
+  // Expand `#abc` → `#aabbcc`
+  const m = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(raw);
+  return m ? `#${m[1]}${m[1]}${m[2]}${m[2]}${m[3]}${m[3]}` : raw;
 }
 
 /** Read the nuxt-color-mode preference from localStorage */

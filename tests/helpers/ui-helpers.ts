@@ -1,12 +1,82 @@
-import { Page, expect } from '@playwright/test';
+import { Page, Locator, expect } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 /**
+ * Find an icon-only button inside a card by hovering each button and matching
+ * the Reka UI tooltip text that appears on hover. Returns the button Locator.
+ *
+ * Uses page.mouse.move (more reliable than locator.hover with Reka UI tooltips
+ * per the project's gotcha note). Iterates from the last button backwards
+ * because action buttons (Stop/Restart/Archive/Remove) are at the end.
+ *
+ * The dockerized test runner is slower than the host — bumped tooltip timeout
+ * to 5s, and explicitly waits for the previous tooltip to disappear before
+ * hovering the next button so we never read stale tooltip text.
+ */
+export async function findButtonByTooltip(
+  card: Locator,
+  page: Page,
+  tooltipText: string,
+): Promise<Locator> {
+  const buttons = card.locator('button');
+  const count = await buttons.count();
+  for (let i = count - 1; i >= 0; i--) {
+    const btn = buttons.nth(i);
+    await btn.scrollIntoViewIfNeeded();
+    const box = await btn.boundingBox();
+    if (!box) continue;
+    await page.mouse.move(0, 0);
+    await page.locator('[role="tooltip"]').first().waitFor({ state: 'hidden', timeout: 2000 }).catch(() => {});
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    try {
+      const tooltip = page.locator('[role="tooltip"]');
+      await tooltip.first().waitFor({ state: 'visible', timeout: 5000 });
+      const text = await tooltip.first().textContent();
+      if (text?.trim() === tooltipText) return btn;
+    } catch {
+      // tooltip didn't appear in time, try next button
+    }
+  }
+  throw new Error(`No button with tooltip "${tooltipText}" found in card`);
+}
+
+/**
+ * Check whether a button with the given tooltip text exists in the card.
+ */
+export async function hasButtonWithTooltip(
+  card: Locator,
+  page: Page,
+  tooltipText: string,
+): Promise<boolean> {
+  try {
+    await findButtonByTooltip(card, page, tooltipText);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Navigate to the dashboard and wait for it to fully load.
+ *
+ * Retries on `NETWORK_CHANGED` — chromium can spuriously throw this on
+ * inner-DinD when a netlink event arrives mid-navigation. Real network
+ * problems still surface (after the retry budget is exhausted).
  */
 export async function goToDashboard(page: Page): Promise<void> {
-  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+      lastErr = undefined;
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (!String(e).includes('NETWORK_CHANGED')) throw e;
+    }
+  }
+  if (lastErr) throw lastErr;
   // Wait for the sidebar to render
   await page.waitForSelector('text=Agentor', { timeout: 15_000 });
 }

@@ -10,7 +10,11 @@
     "test:headed": "npx playwright test --project=ui --headed",
     "test:debug": "npx playwright test --project=ui --headed --slowmo 200 --workers=1",
     "test:trace": "npx playwright test --trace on",
-    "test:report": "npx playwright show-report"
+    "test:report": "npx playwright show-report",
+    "test:docker": "docker compose -f ../docker-compose.tests.yml run --rm test-runner",
+    "test:docker:api": "docker compose -f ../docker-compose.tests.yml run --rm test-runner --project=api",
+    "test:docker:ui": "docker compose -f ../docker-compose.tests.yml run --rm test-runner --project=ui",
+    "test:docker:clean": "docker compose -f ../docker-compose.tests.yml down -v --remove-orphans && docker volume rm agentor-test-runner-docker 2>/dev/null || true"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

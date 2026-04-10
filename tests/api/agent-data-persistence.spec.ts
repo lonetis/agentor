@@ -5,6 +5,12 @@ import { TerminalWsClient } from '../helpers/terminal-ws';
 
 /**
  * Helper: connect to terminal, wait for prompt, run a command, return output.
+ *
+ * The marker is anchored with newlines on both sides so it only matches
+ * the OUTPUT of `echo`, never the shell's echo-back of the typed command
+ * line (which has the marker preceded by a space). Without this anchor,
+ * `waitForOutput` returns immediately when the command is typed, before
+ * it has actually run.
  */
 async function execInWorker(containerId: string, command: string, timeoutMs = 15_000): Promise<string> {
   const ws = new TerminalWsClient(containerId);
@@ -13,9 +19,9 @@ async function execInWorker(containerId: string, command: string, timeoutMs = 15
     await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
     ws.clearBuffer();
 
-    const marker = `__END_${Date.now()}__`;
+    const marker = `END_${Date.now()}_MK`;
     ws.sendLine(`${command}; echo ${marker}`);
-    await ws.waitForOutput(new RegExp(marker), timeoutMs);
+    await ws.waitForOutput(new RegExp(`\\n${marker}\\n`), timeoutMs);
 
     return ws.getBuffer();
   } finally {

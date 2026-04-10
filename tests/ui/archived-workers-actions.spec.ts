@@ -1,34 +1,7 @@
-import { test, expect, Locator, Page } from '@playwright/test';
-import { goToDashboard, acceptNextConfirm, selectSidebarTab } from '../helpers/ui-helpers';
+import { test, expect } from '@playwright/test';
+import { goToDashboard, acceptNextConfirm, selectSidebarTab, findButtonByTooltip } from '../helpers/ui-helpers';
 import { createWorker } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
-
-/**
- * Find an icon-only button inside a card by hovering each button and
- * matching the tooltip text that appears.
- */
-async function findButtonByTooltip(card: Locator, page: Page, tooltipText: string): Promise<Locator> {
-  const buttons = card.locator('button');
-  const count = await buttons.count();
-  for (let i = count - 1; i >= 0; i--) {
-    const btn = buttons.nth(i);
-    await btn.scrollIntoViewIfNeeded();
-    const box = await btn.boundingBox();
-    if (!box) continue;
-    await page.mouse.move(0, 0);
-    await page.waitForTimeout(100);
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    try {
-      const tooltip = page.locator('[role="tooltip"]');
-      await tooltip.waitFor({ state: 'visible', timeout: 2000 });
-      const text = await tooltip.textContent();
-      if (text?.trim() === tooltipText) return btn;
-    } catch {
-      // tooltip didn't appear, try next button
-    }
-  }
-  throw new Error(`No button with tooltip "${tooltipText}" found in card`);
-}
 
 test.describe('Archived Workers Actions', () => {
   test.describe.serial('Unarchive flow', () => {

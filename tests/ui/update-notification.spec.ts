@@ -147,8 +147,12 @@ test.describe('Update Notification / Images Section', () => {
     // Click the button
     await btn.click();
 
-    // Wait for the check to complete (button returns)
-    await expect(btn).toBeVisible({ timeout: 15_000 });
+    // Wait for the check to complete. `/api/updates/check` does sequential
+    // HTTPS handshakes against ghcr.io and registry-1.docker.io for each
+    // of the 4 tracked images. From inside nested DinD a single cold TLS
+    // handshake to those registries can take 15-20s, so 45s gives
+    // realistic headroom.
+    await expect(btn).toBeVisible({ timeout: 45_000 });
   });
 
   test('check button shows "Checking..." while in progress', async ({ page }) => {
@@ -186,8 +190,12 @@ test.describe('Update Notification / Images Section', () => {
       await expect(aside.getByText('Checking...')).toBeVisible({ timeout: 3_000 });
     }
 
-    // Wait for check to complete
-    await expect(btn).toBeVisible({ timeout: 15_000 });
+    // Wait for check to complete. The orchestrator's `/api/updates/check`
+    // does sequential HTTPS handshakes against ghcr.io and registry-1.docker.io
+    // for each of the 4 tracked images, plus this test injects a 1s route
+    // delay above. From inside nested DinD a single cold TLS handshake to
+    // these registries can take 15-20s, so 45s gives realistic headroom.
+    await expect(btn).toBeVisible({ timeout: 45_000 });
   });
 
   test('"Prune dangling images" is disabled while pruning', async ({ page }) => {

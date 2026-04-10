@@ -279,7 +279,10 @@ test.describe('Usage Panel', () => {
     await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
 
-    const notConfigured = aside.locator('span').filter({ hasText: 'Not configured' });
+    // Exact match — there's also an auth badge that says "not configured"
+    // (lowercase, no italic), and Playwright's `hasText` is a case-insensitive
+    // substring match by default which would match both.
+    const notConfigured = aside.locator('span').filter({ hasText: /^Not configured$/ });
     const noApiKeyData = aside.locator('span').filter({ hasText: 'No usage data for API key auth' });
 
     const notConfiguredCount = await notConfigured.count();

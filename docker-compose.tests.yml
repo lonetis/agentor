@@ -1,0 +1,44 @@
+name: agentor-tests
+
+services:
+  test-runner:
+    build: ./tests/docker
+    image: agentor-test-runner:latest
+    privileged: true
+    container_name: agentor-test-runner
+    # Default 64m /dev/shm crashes Chromium tabs under load — bump it.
+    shm_size: '2gb'
+    # No `ports:` — the test-runner is fully isolated. Traefik publishes
+    # 80/443 inside the test-runner's own network namespace, reachable as
+    # https://dash.docker.localhost from playwright running in the same
+    # container. This avoids any conflict with the developer's local
+    # agentor on the host's localhost:3000.
+    volumes:
+      # Inner dockerd storage. overlay2 needs a real fs, not the container
+      # rootfs overlay — same trick as the worker DinD feature.
+      - test-runner-docker:/var/lib/docker
+      # Source for building the agentor images inside the inner dockerd.
+      - ./orchestrator:/src/orchestrator:ro
+      - ./worker:/src/worker:ro
+      - ./mapper:/src/mapper:ro
+      # Test source. Read-write so playwright can write reports / .auth
+      # back to the host for inspection.
+      - ./tests:/work/tests
+    environment:
+      # Use HTTP loopback to the orchestrator (port published from the
+      # inner stack) so general tests bypass Traefik entirely — no TLS
+      # handshakes, no double-NAT, no Traefik-reload races. Traefik-
+      # specific tests still construct their own `https://*.docker.localhost`
+      # request contexts and exercise the full TLS path.
+      - BASE_URL=http://localhost:3000
+      # Self-signed CA cert isn't installed in the runner's trust store —
+      # rejecting it would break the Traefik-specific tests' fetch().
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      # 8 workers by default. Override with `TEST_WORKERS=N` for ad-hoc
+      # tuning (e.g. `TEST_WORKERS=1` to debug serially).
+      - TEST_WORKERS=${TEST_WORKERS:-8}
+      - CI=${CI:-}
+
+volumes:
+  test-runner-docker:
+    name: agentor-test-runner-docker

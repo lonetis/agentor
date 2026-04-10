@@ -1,0 +1,50 @@
+services:
+  agentor-orchestrator:
+    image: agentor-orchestrator:latest
+    restart: unless-stopped
+    container_name: agentor-orchestrator
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Publish the orchestrator's port directly on the test-runner's loopback
+    # so general API/UI tests can bypass Traefik (no TLS handshake, no
+    # double-NAT, no per-request reload contention). Traefik still handles
+    # `dash.docker.localhost` and the random `*.docker.localhost` subdomains
+    # for the handful of tests that explicitly exercise the Traefik path.
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - agentor-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agentor-data:/data
+      # Stub credential files baked into the test-runner image. Empty {}
+      # is enough — CredentialMountManager only checks for file existence.
+      - /opt/test-stack/cred:/cred:ro
+    environment:
+      # BASE_URL for tests is http://localhost:3000 (loopback to the
+      # orchestrator), so better-auth's primary URL must match for cookie
+      # domain. dash.docker.localhost is added explicitly as a trusted
+      # origin so the dashboard subdomain still works behind Traefik.
+      - BETTER_AUTH_URL=http://localhost:3000
+      - BETTER_AUTH_TRUSTED_ORIGINS=https://dash.docker.localhost,http://dash.docker.localhost
+      - DASHBOARD_SUBDOMAIN=dash
+      - DASHBOARD_BASE_DOMAIN=docker.localhost
+      - BASE_DOMAINS=docker.localhost:selfsigned,docker2.localhost:selfsigned
+      - WORKER_IMAGE=agentor-worker:latest
+      - MAPPER_IMAGE=agentor-mapper:latest
+      - ORCHESTRATOR_IMAGE=agentor-orchestrator:latest
+      - DOCKER_NETWORK=agentor-net
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+
+volumes:
+  agentor-data:
+
+networks:
+  agentor-net:
+    name: agentor-net
+    driver: bridge

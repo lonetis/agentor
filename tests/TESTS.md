@@ -56,6 +56,29 @@ npm run test:report
 
 Failed tests automatically capture traces, video, and screenshots (saved in `test-results/`, viewable in the HTML report). All tests get 1 retry locally, 2 in CI. See [docs/testing.md](../docs/testing.md) for full debugging options.
 
+### Dockerized runs (isolated, no host pollution)
+
+The host runs above need an orchestrator on `localhost:3000`, which conflicts with the developer's local manual-review instance. The dockerized runner spawns a fresh isolated agentor stack inside its own `dockerd` (DinD), runs the suite against it, and tears it down — no host ports, no shared docker state.
+
+```bash
+# All tests in the dockerized runner
+npm run test:docker
+
+# API or UI subset
+npm run test:docker:api
+npm run test:docker:ui
+
+# Single file or any playwright args (note the `--` to forward args)
+npm run test:docker -- api/health.spec.ts
+npm run test:docker -- ui/dashboard.spec.ts --project=ui
+npm run test:docker -- -g "should create worker"
+
+# Wipe the cached dockerd volume (force a cold rebuild of agentor images)
+npm run test:docker:clean
+```
+
+The runner uses `docker.localhost` and `docker2.localhost` as base domains with self-signed wildcard certs, dashboard at `https://dash.docker.localhost`. Traefik publishes 80/443 inside the runner's own network namespace, and `*.localhost` resolves to `127.0.0.1` so playwright reaches it without any `/etc/hosts` setup. The runner's `agentor-test-runner-docker` volume persists between runs so the inner image builds are cached — first run is slow, subsequent runs start fast. Reports and `.auth` cookies are written back to `tests/` on the host because the project source is bind-mounted into the runner. Works under triple-nested DinD (host → user's worker → test-runner → inner orchestrator → inner workers) since every level uses overlay2 on a volume.
+
 ## Configuration
 
 | Variable | Default | Description |

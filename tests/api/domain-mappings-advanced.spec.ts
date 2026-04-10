@@ -41,13 +41,17 @@ test.describe('Domain Mappings API — Advanced', () => {
         return;
       }
 
+      // Use a unique subdomain per attempt — under contention the cleanup
+      // can fail silently and a stale mapping from a previous attempt
+      // would make the FIRST create return 409 instead of 201.
+      const dupSub = `t-dup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const baseDomain = statusBody.baseDomains[0];
       const container = await createWorker(request);
       createdContainerIds.push(container.id);
 
       // Create first mapping
       const { status: firstStatus } = await api.createDomainMapping({
-        subdomain: 'test-dup',
+        subdomain: dupSub,
         baseDomain,
         protocol: 'https',
         workerId: container.id,
@@ -58,7 +62,7 @@ test.describe('Domain Mappings API — Advanced', () => {
 
       // Same subdomain+baseDomain+protocol should fail
       const { status: dupStatus } = await api.createDomainMapping({
-        subdomain: 'test-dup',
+        subdomain: dupSub,
         baseDomain,
         protocol: 'https',
         workerId: container.id,
@@ -77,12 +81,13 @@ test.describe('Domain Mappings API — Advanced', () => {
         return;
       }
 
+      const confSub = `t-conf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const baseDomain = statusBody.baseDomains[0];
       const container = await createWorker(request);
       createdContainerIds.push(container.id);
 
       const { status: httpsStatus } = await api.createDomainMapping({
-        subdomain: 'test-conflict',
+        subdomain: confSub,
         baseDomain,
         protocol: 'https',
         workerId: container.id,
@@ -92,7 +97,7 @@ test.describe('Domain Mappings API — Advanced', () => {
       expect(httpsStatus).toBe(201);
 
       const { status: tcpStatus } = await api.createDomainMapping({
-        subdomain: 'test-conflict',
+        subdomain: confSub,
         baseDomain,
         protocol: 'tcp',
         workerId: container.id,
@@ -111,11 +116,12 @@ test.describe('Domain Mappings API — Advanced', () => {
         return;
       }
 
+      const multiSub = `t-multi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const container = await createWorker(request);
       createdContainerIds.push(container.id);
 
       const { status: first } = await api.createDomainMapping({
-        subdomain: 'test-multi',
+        subdomain: multiSub,
         baseDomain: statusBody.baseDomains[0],
         protocol: 'https',
         workerId: container.id,
@@ -125,7 +131,7 @@ test.describe('Domain Mappings API — Advanced', () => {
       expect(first).toBe(201);
 
       const { status: second } = await api.createDomainMapping({
-        subdomain: 'test-multi',
+        subdomain: multiSub,
         baseDomain: statusBody.baseDomains[1],
         protocol: 'https',
         workerId: container.id,
@@ -146,11 +152,12 @@ test.describe('Domain Mappings API — Advanced', () => {
         return;
       }
 
+      const authSub = `t-auth-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const container = await createWorker(request);
       createdContainerIds.push(container.id);
 
       const { status, body } = await api.createDomainMapping({
-        subdomain: 'test-auth',
+        subdomain: authSub,
         baseDomain: statusBody.baseDomains[0],
         protocol: 'https',
         workerId: container.id,

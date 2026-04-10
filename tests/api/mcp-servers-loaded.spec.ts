@@ -18,9 +18,17 @@ async function execInWorker(containerId: string, command: string, timeoutMs = 30
     await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
     ws.clearBuffer();
 
-    const marker = `__END_${Date.now()}__`;
+    // The marker must only match when it's the OUTPUT of `echo`, not the
+    // shell's echo-back of the typed command line. The output line is
+    // `<marker>\n` (the marker on its own line), while the typed-command
+    // echo is `... echo <marker>\n` (marker preceded by a space, not a
+    // newline). Anchoring with `\n` on both sides catches the former but
+    // not the latter. Without this, `waitForOutput` returns immediately
+    // when the typed command is echoed back, before the actual command
+    // has even run.
+    const marker = `END_${Date.now()}_MK`;
     ws.sendLine(`${command}; echo ${marker}`);
-    await ws.waitForOutput(new RegExp(marker), timeoutMs);
+    await ws.waitForOutput(new RegExp(`\\n${marker}\\n`), timeoutMs);
 
     return ws.getBuffer();
   } finally {

@@ -86,6 +86,19 @@ cd tests && npm test 2>&1 | tee /tmp/test-results.txt  # Full run, save output
 cd tests && npx playwright test ui/container-card.spec.ts  # Re-run single file
 ```
 
+**Dockerized tests** (recommended — runs against a fresh isolated agentor stack so the developer's local instance on `localhost:3000` is never touched):
+
+```bash
+cd tests && npm run test:docker                              # All tests
+cd tests && npm run test:docker:api                          # API only
+cd tests && npm run test:docker:ui                           # UI only
+cd tests && npm run test:docker -- api/health.spec.ts        # Single file (note the `--`)
+cd tests && npm run test:docker -- --project=api -g "health" # Pass-through any playwright flags
+cd tests && npm run test:docker:clean                        # Wipe cached dockerd volume
+```
+
+The runner is a single privileged container (`docker-compose.tests.yml`) that starts its own `dockerd` (DinD), builds the agentor images, boots a fresh stack on `https://dash.docker.localhost` (Traefik with self-signed certs on `docker.localhost` + `docker2.localhost`), runs playwright, and tears the stack down on exit. No host ports are exposed, so it coexists with a local agentor on `localhost:3000`. The persistent `agentor-test-runner-docker` volume caches the inner dockerd between runs (subsequent runs skip image builds); `test:docker:clean` wipes it for a fully cold rebuild. Triple-nested DinD (host → worker → test-runner → inner orchestrator → inner workers) works because every level uses `overlay2` on a volume.
+
 **Approach**: Do not repeatedly run the entire test suite. Run it once, save the output, then re-run only the individual failing test files to iterate on fixes.
 
 **Requirements**:

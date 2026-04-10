@@ -89,15 +89,16 @@ test.describe.serial('Apps Pane — UI', () => {
     await iconButtons.nth(2).click();
     await expect(page.locator('main').getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({ timeout: 15_000 });
 
-    // Chromium description
+    // Chromium description (bumped timeout — the /api/app-types call can
+    // take longer under heavy concurrency in the dockerized runner)
     await expect(
       page.locator('main').getByText('Chromium browser with remote debugging (CDP)'),
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible({ timeout: 30_000 });
 
     // SOCKS5 description
     await expect(
       page.locator('main').getByText('Lightweight SOCKS5 proxy via microsocks'),
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible({ timeout: 30_000 });
   });
 
   test('pane tab label includes container name and "Apps"', async ({ page }) => {

@@ -75,7 +75,6 @@ export class TerminalWsClient {
   private ws: WSImpl | null = null;
   private buffer = '';
   private rawBuffer = '';
-  private connectPromise: Promise<void> | null = null;
 
   constructor(
     public readonly containerId: string,
@@ -84,6 +83,11 @@ export class TerminalWsClient {
 
   /**
    * Connect to the terminal WebSocket and wait for the connection to open.
+   *
+   * Retries on transient errors (e.g. 404 from a brief route-table race
+   * after the container starts) — under heavy concurrency in the
+   * dockerized runner the orchestrator can momentarily fail to find the
+   * container, even though the container is running.
    */
   async connect(timeoutMs = 10_000): Promise<void> {
     if (this.ws) throw new Error('Already connected');
@@ -93,36 +97,45 @@ export class TerminalWsClient {
       : `${WS_URL}/ws/terminal/${this.containerId}/${this.windowName}`;
 
     const cookieHeader = buildAdminCookieHeader();
+    const headers = cookieHeader ? { Cookie: cookieHeader } : undefined;
 
-    this.connectPromise = new Promise<void>((resolvePromise, reject) => {
-      const timer = setTimeout(() => reject(new Error(`WebSocket connect timeout after ${timeoutMs}ms`)), timeoutMs);
+    let lastErr: Error | null = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        await new Promise<void>((resolvePromise, reject) => {
+          const timer = setTimeout(() => reject(new Error(`WebSocket connect timeout after ${timeoutMs}ms`)), timeoutMs);
+          this.ws = new WSImpl(url, { headers });
 
-      this.ws = new WSImpl(url, {
-        headers: cookieHeader ? { Cookie: cookieHeader } : undefined,
-      });
+          this.ws.on('open', () => {
+            clearTimeout(timer);
+            resolvePromise();
+          });
 
-      this.ws.on('open', () => {
-        clearTimeout(timer);
-        resolvePromise();
-      });
+          this.ws.on('message', (data: Buffer) => {
+            const text = data.toString('utf-8');
+            this.rawBuffer += text;
+            this.buffer += stripAnsi(text);
+          });
 
-      this.ws.on('message', (data: Buffer) => {
-        const text = data.toString('utf-8');
-        this.rawBuffer += text;
-        this.buffer += stripAnsi(text);
-      });
+          this.ws.on('error', (err) => {
+            clearTimeout(timer);
+            reject(new Error(`WebSocket error: ${err.message}`));
+          });
 
-      this.ws.on('error', (err) => {
-        clearTimeout(timer);
-        reject(new Error(`WebSocket error: ${err.message}`));
-      });
-
-      this.ws.on('close', () => {
-        clearTimeout(timer);
-      });
-    });
-
-    return this.connectPromise;
+          this.ws.on('close', () => {
+            clearTimeout(timer);
+          });
+        });
+        return;
+      } catch (e) {
+        lastErr = e as Error;
+        const ws = this.ws as WSImpl | null;
+        if (ws) { try { ws.close(); } catch { /* ignore */ } }
+        this.ws = null;
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+      }
+    }
+    throw lastErr;
   }
 
   /**

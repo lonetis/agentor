@@ -23,6 +23,7 @@ export default async function globalSetup(config: FullConfig) {
   // Use a shared request context so cookies persist across calls
   const req = await playwrightRequest.newContext({
     baseURL,
+    ignoreHTTPSErrors: true,
     extraHTTPHeaders: { Origin: baseURL },
   });
 
@@ -74,11 +75,25 @@ export default async function globalSetup(config: FullConfig) {
 
   // For the UI project, we need a browser storage state (origin + localStorage)
   const browser = await chromium.launch();
-  const context = await browser.newContext({ baseURL });
+  const context = await browser.newContext({ baseURL, ignoreHTTPSErrors: true });
   const page = await context.newPage();
 
-  // Go to login page and sign in via the UI so the cookie domain matches
-  await page.goto('/login');
+  // Go to login page and sign in via the UI so the cookie domain matches.
+  // Retry the first navigation a few times — the dockerized runner can hit
+  // chromium's NETWORK_CHANGED on the very first request (likely a netlink
+  // event from inner-DinD bridge setup racing chromium's init).
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await page.goto('/login', { waitUntil: 'domcontentloaded', timeout: 15_000 });
+      lastErr = undefined;
+      break;
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  if (lastErr) throw lastErr;
   // Wait until either login form is ready or we're redirected
   try {
     await page.waitForSelector('input[type="email"]', { timeout: 10_000 });

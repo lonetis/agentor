@@ -325,7 +325,16 @@ test.describe('Containers API', () => {
       createdContainerIds.push(container.id);
 
       const api = new ApiClient(request);
-      const { body } = await api.getContainerLogs(container.id);
+      // Worker output trickles into the docker log buffer asynchronously
+      // (the loading screen prints frames, then the entrypoint writes its
+      // own logs). On slower I/O — particularly nested DinD — the buffer
+      // can still be empty the very first time we ask, so poll briefly.
+      let body: { logs: string } = { logs: '' };
+      for (let i = 0; i < 20; i++) {
+        ({ body } = await api.getContainerLogs(container.id));
+        if (body.logs.length > 0) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
       expect(body.logs.length).toBeGreaterThan(0);
     });
   });

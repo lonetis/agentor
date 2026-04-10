@@ -28,6 +28,11 @@ export async function createWorker(
 
 /**
  * Waits for a container to reach 'running' status.
+ *
+ * Tolerates transient API errors (e.g. 502 Bad Gateway HTML from Traefik
+ * during a reconcile, JSON parse errors from a partially-buffered response)
+ * — under heavy concurrency in the dockerized runner the orchestrator can
+ * occasionally return a malformed body. We just retry the next poll.
  */
 export async function waitForWorkerRunning(
   request: APIRequestContext,
@@ -37,11 +42,16 @@ export async function waitForWorkerRunning(
   const api = new ApiClient(request);
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const { body: containers } = await api.listContainers();
-    const container = containers.find((c: { id: string }) => c.id === containerId);
-    if (container && container.status === 'running') return;
-    if (container && container.status === 'error') {
-      throw new Error(`Container ${containerId} entered error state`);
+    try {
+      const { body: containers } = await api.listContainers();
+      const container = containers.find((c: { id: string }) => c.id === containerId);
+      if (container && container.status === 'running') return;
+      if (container && container.status === 'error') {
+        throw new Error(`Container ${containerId} entered error state`);
+      }
+    } catch (e) {
+      // Re-throw real container errors; swallow transient list-API errors
+      if (e instanceof Error && e.message.includes('error state')) throw e;
     }
     await new Promise(r => setTimeout(r, 2000));
   }
@@ -50,6 +60,12 @@ export async function waitForWorkerRunning(
 
 /**
  * Stops and removes a worker container. Safe to call if already removed.
+ *
+ * The remove call retries on transient errors — under contention in the
+ * dockerized test runner, the orchestrator can drop a connection mid-call
+ * (`socket hang up`). A silent cleanup failure leaves the worker AND its
+ * domain mappings around, which then breaks subsequent tests that expect
+ * a clean slate.
  */
 export async function cleanupWorker(
   request: APIRequestContext,
@@ -57,17 +73,22 @@ export async function cleanupWorker(
 ): Promise<void> {
   const api = new ApiClient(request);
   try {
-    // Try to stop first
     await api.stopContainer(containerId);
-    // Wait a bit for stop to complete
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 500));
   } catch {
-    // Ignore errors — might already be stopped
+    // Already stopped
   }
-  try {
-    await api.removeContainer(containerId);
-  } catch {
-    // Ignore — might already be removed
+  // Retry remove a few times — under heavy concurrency the first attempt
+  // can fail with `socket hang up` even though the server processed it.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { status } = await api.removeContainer(containerId);
+      if (status >= 200 && status < 300) return;
+      if (status === 404) return; // already gone
+    } catch {
+      // network error — retry
+    }
+    await new Promise(r => setTimeout(r, 500));
   }
 }
 
