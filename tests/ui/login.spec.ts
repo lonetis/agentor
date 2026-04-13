@@ -11,7 +11,10 @@ test.describe('Login page', () => {
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
     await expect(page.locator('input[type="email"]')).toBeVisible();
     await expect(page.locator('input[type="password"]')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    // Use exact match — there are two buttons containing "Sign in"
+    // (the password submit and "Sign in with passkey").
+    await expect(page.getByRole('button', { name: /^Sign in$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sign in with passkey' })).toBeVisible();
   });
 
   test('wrong credentials show error message', async ({ page }) => {

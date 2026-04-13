@@ -22,12 +22,18 @@
 - `orchestrator/nuxt.config.ts` - Nuxt configuration (modules, SPA mode, Nitro WebSocket)
 - `orchestrator/server/plugins/services.ts` - Nitro startup: init Auth (better-auth + migrations) + Logger + LogStore + LogBroadcaster + LogCollector + Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + CapabilityStore + InstructionStore + InitScriptStore + WorkerStore + UpdateChecker + UsageChecker
 - `orchestrator/server/utils/config.ts` - Environment variable parsing (includes `betterAuthSecret`)
-- `orchestrator/server/utils/auth.ts` - better-auth singleton + admin plugin; exports `useAuth()`, `migrateAuth()`, `hasAnyUsers()`, `setUserRoleDirect()`
+- `orchestrator/server/utils/auth.ts` - better-auth singleton + admin plugin + @better-auth/passkey plugin; exports `useAuth()`, `migrateAuth()`, `hasAnyUsers()`, `setUserRoleDirect()`, `getCredentialSummary()`, `removeUserPassword()`. Implements `resolveUser()` for passkey-first registration via the setup-token store.
+- `orchestrator/server/utils/setup-token-store.ts` - In-memory 5-minute one-shot tokens used as opaque `context` for passkey-first registration when no session exists. Consumed by `/api/setup/create-admin-passkey-token` and the `resolveUser` callback.
 - `orchestrator/server/utils/auth-helpers.ts` - `requireAuth`, `requireAdmin`, `requireContainerAccess`, `canAccessResource`, `authenticateWsPeer`
 - `orchestrator/server/middleware/auth.ts` - Global Nitro middleware enforcing auth on `/api/*` (skips auth/setup/health/docs)
-- `orchestrator/server/api/auth/[...all].ts` - Catch-all handler delegating to `auth.handler()`
+- `orchestrator/server/middleware/passkey-guard.ts` - Intercepts `POST /api/auth/passkey/delete-passkey` and refuses with 409 if it would leave the user with zero credentials.
+- `orchestrator/server/api/auth/[...all].ts` - Catch-all handler delegating to `auth.handler()` (handles all built-in better-auth + admin plugin + passkey plugin endpoints)
 - `orchestrator/server/api/setup/status.get.ts` - First-run detection (returns `{ needsSetup: boolean }`, public)
-- `orchestrator/server/api/setup/create-admin.post.ts` - Creates first admin (public, only when no users exist)
+- `orchestrator/server/api/setup/create-admin.post.ts` - Creates first admin via password (public, only when no users exist)
+- `orchestrator/server/api/setup/create-admin-passkey-token.post.ts` - Issues a one-shot token for first-run passkey-only admin creation
+- `orchestrator/server/api/account/credentials.get.ts` - Returns `{ hasPassword, passkeyCount }` for the current user
+- `orchestrator/server/api/account/set-password.post.ts` - Sets a new password without requiring a current one (wraps better-auth's server-only `setPassword`)
+- `orchestrator/server/api/account/remove-password.post.ts` - Removes the password credential. Refuses if no passkey is registered.
 - `orchestrator/server/utils/init-script-store.ts` - InitScriptStore class (extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/agent-config.ts` - Static agent configuration registry (API domains, env var mappings per agent)
 - `orchestrator/server/utils/git-providers.ts` - Git provider registry (GIT_PROVIDER_REGISTRY)
@@ -83,7 +89,8 @@
 - `orchestrator/app/composables/useAuth.ts` - better-auth Vue client wrapper (session, user, isAdmin, signIn, signOut, admin plugin)
 - `orchestrator/app/plugins/xterm.client.ts` - Provides `$Terminal` and `$FitAddon` globally (avoids SSR import issues)
 - `orchestrator/app/components/AppSidebar.vue` - Left sidebar (container list, archived workers, port mappings, domain mappings, usage panel, update notification, **signed-in user card + sign out + Users modal trigger for admins**)
-- `orchestrator/app/components/UsersModal.vue` - Admin-only user management (list, create, change role, delete)
+- `orchestrator/app/components/UsersModal.vue` - Admin-only user management (list, create, change role, reset password, delete)
+- `orchestrator/app/components/AccountModal.vue` - Self-service account modal: profile (name + email), password (change/set/remove with two-step confirm), passkeys (list/add/remove with two-step confirm). Backed by `client.passkey.*`, `client.changePassword`, `client.changeEmail`, `client.updateUser` and Agentor's custom `/api/account/*` endpoints.
 - `orchestrator/app/components/AppInstanceRow.vue` - Single app row in AppsPane
 - `orchestrator/app/components/AppsPane.vue` - App instances for a container
 - `orchestrator/app/components/ArchivedWorkerCard.vue` - Archived worker card in sidebar
@@ -166,6 +173,8 @@
 - `tests/helpers/worker-lifecycle.ts` - Container create/cleanup helpers with timeouts
 - `tests/helpers/terminal-ws.ts` - WebSocket terminal client with ANSI stripping
 - `tests/helpers/ui-helpers.ts` - Page navigation and interaction helpers
+- `tests/helpers/test-users.ts` - Create/sign-in/delete test users via the admin API (used by passkey + authorization tests)
+- `tests/helpers/webauthn.ts` - Install/dispose Chrome DevTools virtual WebAuthn authenticator for end-to-end passkey tests (`installVirtualAuthenticator(page)`)
 - `tests/api/*.spec.ts` - API integration tests (32 files)
 - `tests/ui/*.spec.ts` - UI integration tests (37 files)
 - `tests/FEATURES.md` - Feature inventory driving test coverage

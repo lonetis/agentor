@@ -119,6 +119,86 @@ The `TerminalWsClient` helper reads cookies from `tests/.auth/admin-api.json` an
 | `BETTER_AUTH_SECRET` | auto-generated | Session signing secret. If empty, a random 32-byte hex is generated and written to `<DATA_DIR>/.auth-secret` on first run. |
 | `BETTER_AUTH_URL` | `http://localhost:3000` | Base URL used by better-auth for cookie domain and default trusted origin. Override for production deployments. |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | — | Extra comma-separated origins to accept on auth mutations' `Origin` header. `localhost:3000`, `127.0.0.1:3000`, `BETTER_AUTH_URL`, and the dashboard subdomain (`DASHBOARD_SUBDOMAIN.DASHBOARD_BASE_DOMAIN`, both http and https) are always trusted automatically. |
+| `BETTER_AUTH_RP_ID` | `${DASHBOARD_SUBDOMAIN}.${DASHBOARD_BASE_DOMAIN}` | WebAuthn Relying Party ID for passkeys. Only relevant when passkeys are enabled (i.e., when the dashboard is served over Traefik). Override to use a parent domain so one passkey works across multiple subdomains. |
+
+## Passkeys
+
+Agentor supports passkey (WebAuthn) authentication via the [better-auth passkey plugin](https://www.better-auth.com/docs/plugins/passkey). Users can sign up with a passkey only, sign in with a passkey only, or use both alongside a password. The two credential types are fully orthogonal, with one invariant enforced server-side: **every user must always have at least one credential** — you cannot remove the last passkey if no password is set, and you cannot remove the password if no passkey is registered.
+
+### When passkeys are enabled
+
+WebAuthn requires a stable HTTPS origin and binds credentials to an `rpID`. Agentor only registers the passkey plugin when **both** `DASHBOARD_SUBDOMAIN` and `DASHBOARD_BASE_DOMAIN` are set — i.e., the dashboard is reachable at `https://<subdomain>.<base>` via Traefik. When either is missing, the passkey plugin is not registered at all and all passkey UI is hidden via the `passkeysEnabled` flag on `/api/setup/status`.
+
+The auto-derived passkey config, when enabled:
+
+| Field | Value |
+|-------|-------|
+| `rpID` | `${DASHBOARD_SUBDOMAIN}.${DASHBOARD_BASE_DOMAIN}` (override with `BETTER_AUTH_RP_ID`) |
+| `origin` | `https://${DASHBOARD_SUBDOMAIN}.${DASHBOARD_BASE_DOMAIN}` |
+| `rpName` | `Agentor` |
+
+This means users **must** access the dashboard via the Traefik URL (not via `localhost:3000` or a raw IP) for passkey flows to work — the browser will reject any WebAuthn ceremony whose `rpID` doesn't match its current origin.
+
+The `/api/setup/status` endpoint returns a `passkeysEnabled: boolean` flag that the client uses to conditionally render passkey UI. When disabled:
+- Setup page hides the Password/Passkey toggle and forces password mode.
+- Login page hides the "Sign in with passkey" button and skips conditional UI auto-fill.
+- Account modal hides the entire Passkeys section and disables the "Remove password" button.
+
+### Where it shows up in the UI
+
+| Surface | Behavior |
+|---------|----------|
+| **Setup page** | Toggle between **Password** and **Passkey** mode. The passkey path requests a one-shot setup token from `/api/setup/create-admin-passkey-token`, then calls `client.passkey.addPasskey({ context: token })` — this creates the admin user and binds the credential in a single browser ceremony. |
+| **Login page** | "Sign in with passkey" button below the password form. Conditional UI auto-fill is also enabled (browsers that support it offer the passkey when the user focuses an input), but is disabled under `navigator.webdriver` to avoid races in tests. |
+| **Account modal — Passkeys section** | Lists registered passkeys with name, creation date, and a Remove button (with two-step confirmation). "Add passkey" button calls `client.passkey.addPasskey({ name })`. |
+| **Account modal — Password section** | Heading switches between "Change password" and "Set a password" depending on `credentials.hasPassword`. "Remove password" button (two-step confirm) is shown only when the user also has at least one passkey. |
+| **Users modal (admin)** | Existing user management — admins can still create users with or without a password and reset passwords. Passkeys are managed by the user themselves (admins cannot remotely register a passkey for someone else). |
+
+### Passkey-first registration (the `resolveUser` callback)
+
+The passkey plugin's `registration.requireSession` is `false`, which means the registration endpoint accepts an opaque `context` token instead of an existing session. The `resolveUser` callback in `auth.ts` consumes that token via `setup-token-store.ts`:
+
+1. Client calls `POST /api/setup/create-admin-passkey-token` with `{ email, name }`. Server validates that no users exist yet, generates a 32-byte hex token, stores it with a 5-minute TTL.
+2. Client calls `client.passkey.addPasskey({ name, context: token })` — better-auth runs the WebAuthn ceremony in the browser, then calls back to the server's verify endpoint with the same `context`.
+3. The server's `resolveUser` callback consumes the token, creates the user (no password) directly via the better-auth adapter, and returns `{ id, name }` so the plugin can bind the new credential.
+4. The client signs in with the passkey to establish the session.
+
+### Credential balance enforcement
+
+Two layers of protection prevent users from locking themselves out:
+
+1. **`POST /api/account/remove-password`** — Agentor's wrapper endpoint that refuses to remove the password unless the user has at least one passkey (returns 409).
+2. **`server/middleware/passkey-guard.ts`** — Nitro middleware that intercepts `POST /api/auth/passkey/delete-passkey`. If deleting the targeted passkey would leave the user with zero credentials (no password AND only one passkey), the request is rejected with 409.
+
+The client also enforces this defensively in the Account modal: the Remove button on the only passkey is disabled when the user has no password, and the "Remove password" button only appears when at least one passkey is registered.
+
+### Custom server endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/account/credentials` | Returns `{ hasPassword, passkeyCount }` for the current user. Used by the Account modal to drive UI state. |
+| `POST /api/account/remove-password` | Removes the user's password credential. Refuses if no passkey is registered. |
+| `POST /api/account/set-password` | Sets a new password without requiring a current one. Wraps better-auth's server-only `setPassword` endpoint. |
+| `POST /api/setup/create-admin-passkey-token` | Issues a one-shot 5-minute token for first-run admin registration via passkey. Refused after the first user is created. |
+
+### Testing passkeys with virtual WebAuthn
+
+The passkey UI tests use Chrome DevTools Protocol's virtual WebAuthn authenticator, installed via `tests/helpers/webauthn.ts`:
+
+```ts
+import { installVirtualAuthenticator } from '../helpers/webauthn';
+
+const auth = await installVirtualAuthenticator(page);
+try {
+  // ... drive the passkey UI flow ...
+  // The virtual authenticator returns canned biometric results so the
+  // browser's WebAuthn ceremony completes without any real prompt.
+} finally {
+  await auth.dispose();
+}
+```
+
+Tests live in `tests/ui/passkey-management.spec.ts` and `tests/api/passkey.spec.ts`. They cover: registering a passkey from the account modal, signing in with a registered passkey, removing a password after adding a passkey, the "cannot remove last passkey" guard, and setting a password after going passwordless.
 
 ## Trusted Origins & CSRF
 

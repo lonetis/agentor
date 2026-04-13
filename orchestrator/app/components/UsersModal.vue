@@ -174,6 +174,7 @@ async function handleResetPassword(u: UserRow) {
           <div
             v-for="u in users"
             :key="u.id"
+            :data-user-row="u.email"
             class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-800"
           >
             <div class="flex-1 min-w-0">

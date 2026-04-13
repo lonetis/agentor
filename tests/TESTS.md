@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1090 tests** across 77 test files (~580 API + ~511 UI)
+- **~1115 tests** across 89 test files (~640 API + ~540 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -112,6 +112,14 @@ tests/
 | `setup.spec.ts` | 4 | Setup status after admin exists, public access, 409 when users already exist, email validation |
 | `authorization.spec.ts` | 5 | Admin lists all containers, regular user sees only own workers, regular user 403 on admin's container mutation, unauth mutation 401, admin-only endpoints reject non-admin |
 | `account.spec.ts` | 5 | User changes own password (old fails, new works), change-password rejects wrong current password, user changes own email, user updates own name, admin resets another user's password via `/api/auth/admin/set-user-password` |
+| `account-extended.spec.ts` | 7 | set-password rejects short/missing passwords, set-password requires auth, set-password returns 400 when password already exists, change-password rejects wrong current, remove-password idempotent 409, credentials endpoint shape |
+| `passkey.spec.ts` | 7 | Credential summary endpoint requires auth, admin/user credential summary shape, remove-password rejected when no passkey, remove-password requires auth, passkey-token endpoint 409 when users exist, validation gating |
+| `csrf.spec.ts` | 4 | Sign-in without Origin header rejected (403), sign-in with trusted Origin accepted, change-password without Origin rejected (even with valid session), sign-up Origin enforcement |
+| `sessions.spec.ts` | 6 | Sign-in returns user metadata with role, get-session without cookie returns null, multiple sessions for same user coexist, sign-out scoped to single context, admin session reports admin role, sign-in with nonexistent email fails |
+| `admin-users.spec.ts` | 10 | Admin lists users via admin plugin, regular user cannot list users, admin creates user (with / without password), admin promotes + demotes user, admin removes user, admin sets user password, regular user cannot create users or reset passwords, duplicate email rejected |
+| `admin-endpoints.spec.ts` | 6 | /api/settings, /api/logs (GET+DELETE), /api/updates/apply, /api/updates/check, /api/updates/prune — each verified as admin-only (401 unauth, 403 user, 200 admin) |
+| `ownership.spec.ts` | 10 | Per-user ownership filtering for environments, capabilities, instructions, init-scripts, port mappings, domain mappings, archived workers — built-in resources shared, built-in cannot be modified by non-admin, admin sees all users' resources |
+| `ws-auth.spec.ts` | 4 | Terminal WS rejects unauth, logs WS rejects unauth, logs WS accepts admin, logs WS rejects regular user (admin-only stream) |
 | `health.spec.ts` | 4 | Health check endpoint, container count validation, exact status 'ok', no sensitive info exposure |
 | `containers.spec.ts` | 47 | CRUD, validation, field completeness, name format, stop/restart/archive/delete on non-existent, logs (running/stopped/non-empty/non-numeric tail graceful default), memoryLimit, initScript, environmentId, dockerEnabled, displayName persistence, state transitions (double-stop, restart running, archive stopped), list exclusion, response fields, snapshotted environment data fields, no labels |
 | `containers-edge-cases.spec.ts` | 11 | Edge case container operations, port mappings survive stop + restart |
@@ -152,7 +160,11 @@ tests/
 
 | File | Tests | Coverage |
 |------|-------|----------|
-| `login.spec.ts` | 4 | Login page renders with email/password fields, wrong credentials show error, correct credentials redirect to dashboard, unauthenticated `/` redirects to `/login` (uses fresh storageState) |
+| `login.spec.ts` | 4 | Login page renders with email/password fields + passkey button, wrong credentials show error, correct credentials redirect to dashboard, unauthenticated `/` redirects to `/login` (uses fresh storageState) |
+| `passkey-management.spec.ts` | 5 | Register passkey via account modal, sign in with registered passkey, remove password after passkey, cannot remove last passkey, set new password after going passwordless. Uses CDP virtual WebAuthn authenticator (`tests/helpers/webauthn.ts`). |
+| `route-guard.spec.ts` | 6 | Unauth user on `/` → `/login`, unauth user on `/login` stays, unauth user on `/setup` (when complete) → `/login`, `/api/setup/status` public, signed-in user visiting `/login` redirected to `/`, signed-in user on `/` loads dashboard |
+| `users-modal.spec.ts` | 6 | Admin opens Users modal from System tab, create user via modal, promote + demote user, delete user, reset password, regular user does not see System tab |
+| `account-modal.spec.ts` | 5 | Opens from sidebar footer, updates name (persists after reload), updates email (new email can sign in), changes password (new password can sign in), Close button dismisses modal |
 | `dashboard.spec.ts` | 11 | Page load, title, buttons, sections, images, sidebar labels |
 | `sidebar.spec.ts` | 27 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design, Capabilities/Instructions/Init Scripts row stacks vertically on narrow sidebar, tab bar horizontal scroll + overflow dropdown (20% visibility threshold, live updates on scroll, hidden when all tabs fit) |
 | `create-worker-modal.spec.ts` | 29 | Open/close, form fields, name input, add repo/mount, environment dropdown, init preset dropdown, Create action |

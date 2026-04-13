@@ -1,11 +1,13 @@
 import { betterAuth } from 'better-auth';
 import { admin } from 'better-auth/plugins';
+import { passkey } from '@better-auth/passkey';
 import { getMigrations } from 'better-auth/db/migration';
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { loadConfig } from './config';
+import { consumeSetupToken } from './setup-token-store';
 
 // The return type of `betterAuth()` varies with plugins; we cast to any
 // downstream to avoid double-type-definition issues from nested Zod/better-call.
@@ -75,6 +77,43 @@ function buildTrustedOrigins(config: ReturnType<typeof loadConfig>): string[] {
   return Array.from(origins);
 }
 
+export interface PasskeyConfig {
+  enabled: boolean;
+  /** The full dashboard host (e.g. `dash.docker.localhost`). Used as rpID. */
+  rpID?: string;
+  /** The public https URL the dashboard is served from. Used as origin. */
+  origin?: string;
+}
+
+/**
+ * Decides whether passkey authentication should be available, and what rpID
+ * and origin to pass to the passkey plugin.
+ *
+ * WebAuthn requires:
+ *   1. An `origin` that's either `https://...` or `http://localhost` (strict!)
+ *   2. An `rpID` that's a registrable suffix of the browser's current origin
+ *
+ * If the dashboard is served over Traefik (DASHBOARD_SUBDOMAIN and
+ * DASHBOARD_BASE_DOMAIN are set), we use that domain as both the origin and
+ * the rpID. Otherwise passkeys are disabled entirely — they can't be made to
+ * work reliably when the dashboard is reached by raw IP / localhost because
+ * the rpID would have to match whatever the browser happens to be on.
+ *
+ * Override the auto-detected rpID via `BETTER_AUTH_RP_ID` for advanced setups.
+ */
+function resolvePasskeyConfig(config: ReturnType<typeof loadConfig>): PasskeyConfig {
+  const sub = config.dashboardSubdomain;
+  const base = config.dashboardBaseDomain;
+  if (!sub || !base) {
+    return { enabled: false };
+  }
+
+  const host = `${sub}.${base}`;
+  const origin = `https://${host}`;
+  const rpID = process.env.BETTER_AUTH_RP_ID?.trim() || host;
+  return { enabled: true, rpID, origin };
+}
+
 function buildAuth(): any {
   const config = loadConfig();
   const dbPath = join(config.dataDir, 'auth.db');
@@ -82,10 +121,13 @@ function buildAuth(): any {
   db.pragma('journal_mode = WAL');
   _db = db;
 
+  const baseURL = process.env.BETTER_AUTH_URL || 'http://localhost:3000';
+  const passkeyCfg = resolvePasskeyConfig(config);
+
   return betterAuth({
     database: db,
     basePath: '/api/auth',
-    baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
+    baseURL,
     secret: resolveAuthSecret(config.dataDir),
     trustedOrigins: buildTrustedOrigins(config),
     emailAndPassword: {
@@ -108,8 +150,66 @@ function buildAuth(): any {
     advanced: {
       cookiePrefix: 'agentor',
     },
-    plugins: [admin()],
+    plugins: [
+      admin(),
+      ...(passkeyCfg.enabled
+        ? [
+            passkey({
+              rpName: 'Agentor',
+              rpID: passkeyCfg.rpID!,
+              origin: passkeyCfg.origin!,
+              registration: {
+                // Allow passkey registration without an existing session —
+                // required for the first-run admin setup and for any
+                // "passkey-only" account creation flow. The `resolveUser`
+                // callback (below) consumes a one-shot token to look up or
+                // create the user.
+                requireSession: false,
+                resolveUser: async ({ context }) => {
+                  const meta = consumeSetupToken(context);
+                  if (!meta) {
+                    throw new Error('Invalid or expired setup token');
+                  }
+                  // First-admin tokens may only be redeemed when no users exist.
+                  if (meta.initialAdmin && hasAnyUsers()) {
+                    throw new Error('Setup is already complete');
+                  }
+
+                  const db = getAuthDb();
+                  // Has the user been pre-created (e.g. admin used the
+                  // regular create-user flow without password)? If so, just
+                  // bind the new passkey to that user.
+                  const existing = db
+                    .prepare('SELECT id, name FROM user WHERE email = ?')
+                    .get(meta.email) as { id: string; name: string } | undefined;
+                  if (existing) {
+                    return { id: existing.id, name: existing.name };
+                  }
+
+                  // Otherwise create a fresh user (no password). The schema
+                  // insert goes through the kysely adapter by way of direct
+                  // SQL (faster than the plugin's full insert pipeline, and
+                  // the passkey row is written by the plugin right after
+                  // this callback returns).
+                  const now = new Date();
+                  const id = randomBytes(12).toString('base64url');
+                  db.prepare(
+                    `INSERT INTO user (id, email, name, emailVerified, role, createdAt, updatedAt)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                  ).run(id, meta.email, meta.name, 0, meta.role, now.toISOString(), now.toISOString());
+                  return { id, name: meta.name };
+                },
+              },
+            }),
+          ]
+        : []),
+    ],
   });
+}
+
+/** Returns whether passkey authentication is enabled (dashboard is on Traefik). */
+export function isPasskeyEnabled(): boolean {
+  return resolvePasskeyConfig(loadConfig()).enabled;
 }
 
 export function useAuth(): any {
@@ -148,4 +248,56 @@ export function hasAnyUsers(): boolean {
 export function setUserRoleDirect(userId: string, role: string): void {
   const db = getAuthDb();
   db.prepare('UPDATE user SET role = ? WHERE id = ?').run(role, userId);
+}
+
+export interface CredentialSummary {
+  hasPassword: boolean;
+  passkeyCount: number;
+}
+
+/**
+ * Counts a user's available credentials. Used to enforce the "at least one
+ * credential" invariant when removing a password or deleting the last passkey.
+ *
+ * - `hasPassword` is true when a row exists in the `account` table with
+ *   `providerId = 'credential'` (better-auth's name for the email/password
+ *   provider).
+ * - `passkeyCount` is the number of rows in the `passkey` table for the user.
+ */
+export function getCredentialSummary(userId: string): CredentialSummary {
+  const db = getAuthDb();
+  let hasPassword = false;
+  try {
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) as c FROM account WHERE userId = ? AND providerId = 'credential' AND password IS NOT NULL`,
+      )
+      .get(userId) as { c: number } | undefined;
+    hasPassword = (row?.c ?? 0) > 0;
+  } catch {
+    hasPassword = false;
+  }
+
+  let passkeyCount = 0;
+  try {
+    const row = db
+      .prepare('SELECT COUNT(*) as c FROM passkey WHERE userId = ?')
+      .get(userId) as { c: number } | undefined;
+    passkeyCount = row?.c ?? 0;
+  } catch {
+    passkeyCount = 0;
+  }
+
+  return { hasPassword, passkeyCount };
+}
+
+/**
+ * Removes a user's password credential. Used by the `remove-password`
+ * endpoint after the caller has verified at least one passkey is registered.
+ */
+export function removeUserPassword(userId: string): void {
+  const db = getAuthDb();
+  db.prepare(
+    `DELETE FROM account WHERE userId = ? AND providerId = 'credential'`,
+  ).run(userId);
 }

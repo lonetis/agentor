@@ -77,6 +77,22 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ### 0.11 Layered Auth
 - Traefik dashboard basic auth (`DASHBOARD_AUTH_USER`/`PASSWORD`) still works as an additional layer in front of the orchestrator; user auth is independent
 
+### 0.12 Passkey (WebAuthn) Authentication
+- **Conditional enablement**: Passkeys are only available when the dashboard is served over Traefik with both `DASHBOARD_SUBDOMAIN` and `DASHBOARD_BASE_DOMAIN` set. When disabled, the passkey plugin is not registered at all and every passkey UI element is hidden via the `passkeysEnabled` flag on `GET /api/setup/status`. WebAuthn config (when enabled): `rpID = <subdomain>.<base>` (override with `BETTER_AUTH_RP_ID`), `origin = https://<subdomain>.<base>`, `rpName = 'Agentor'`. Users must access the dashboard via the Traefik URL for passkey flows to work.
+- **Setup page** has a Password / Passkey toggle (only shown when passkeys are enabled). The Passkey path creates the initial admin via `POST /api/setup/create-admin-passkey-token` and `client.passkey.addPasskey({ context: token })` — no password required.
+- **Login page** shows a "Sign in with passkey" button under the password form (only when passkeys are enabled). Conditional UI auto-fill is enabled but disabled when `navigator.webdriver` is set (avoids races in automation).
+- **Account modal — Passkeys section**: lists registered passkeys (name, "Added <date>", Remove button), Add passkey form (with optional name), two-step confirmation for removal.
+- **Account modal — Password section**: heading switches between "Change password" and "Set a password" depending on whether the user has one. "Remove password" button (two-step confirm) shown only when the user also has a passkey. "Set password" path uses `POST /api/account/set-password` and does not require a current password.
+- **Credential balance invariant**: a user must always have at least one credential. Server enforces:
+  - `POST /api/account/remove-password` returns 409 when no passkey is registered.
+  - `server/middleware/passkey-guard.ts` intercepts `POST /api/auth/passkey/delete-passkey` and returns 409 when deleting the last passkey would leave the user with no credentials.
+- **Custom endpoints**:
+  - `GET /api/account/credentials` returns `{ hasPassword, passkeyCount }` for the current user.
+  - `POST /api/account/set-password` sets a new password without requiring the current one (used by passwordless users).
+  - `POST /api/account/remove-password` removes the password credential.
+  - `POST /api/setup/create-admin-passkey-token` issues a one-shot 5-minute token for first-run passkey-only admin creation.
+- **Better-auth passkey endpoints** (mounted under `/api/auth/passkey/*` when enabled): `generate-register-options`, `verify-registration`, `list-user-passkeys`, `delete-passkey`, `update-passkey`, plus `/api/auth/sign-in/passkey`.
+
 ---
 
 ## 1. Dashboard Layout

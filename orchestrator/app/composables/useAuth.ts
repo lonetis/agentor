@@ -1,9 +1,10 @@
 import { createAuthClient } from 'better-auth/vue';
 import { adminClient } from 'better-auth/client/plugins';
+import { passkeyClient } from '@better-auth/passkey/client';
 
 const client = createAuthClient({
   baseURL: typeof window !== 'undefined' ? window.location.origin : '',
-  plugins: [adminClient()],
+  plugins: [adminClient(), passkeyClient()],
 });
 
 export function useAuth() {

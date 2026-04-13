@@ -18,7 +18,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 
 ## Features
 
-- **User authentication & RBAC** — email/password login powered by [better-auth](https://www.better-auth.com/) with admin and user roles; admins create and manage other users, each user sees only their own workers/mappings/environments/etc. First-run setup creates the initial admin.
+- **User authentication & RBAC** — email/password/passkey login powered by [better-auth](https://www.better-auth.com/) with admin and user roles; admins create and manage other users, each user sees only their own workers/mappings/environments/etc. First-run setup creates the initial admin.
 - **Live terminal** — xterm.js WebSocket terminal with tmux session management
 - **VS Code editor** — code-server (VS Code in the browser) per worker, accessible in a split pane
 - **VS Code tunnel** — connect your local VS Code client to workers via Microsoft's relay (GitHub device code auth per worker, persists across restarts)

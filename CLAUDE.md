@@ -45,7 +45,7 @@ Four managed containers:
 - Framework: Nuxt 3 (SPA mode), Nitro server, Vue 3
 - UI: Nuxt UI v3, Tailwind CSS v4
 - Terminal: xterm.js 5 (@xterm/xterm + @xterm/addon-fit)
-- Auth: better-auth 1.6 + admin plugin (user management, RBAC), better-sqlite3 (SQLite database for users/sessions)
+- Auth: better-auth 1.6 + admin plugin (user management, RBAC) + @better-auth/passkey (WebAuthn passwordless), better-sqlite3 (SQLite database for users/sessions/passkeys)
 - Backend: dockerode 4, nanoid 5, crossws (WebSocket, bundled with Nitro), ws (WebSocket client for noVNC proxy), tar-stream (archive packing)
 - Workers: Ubuntu 24.04, agent CLI (varies), tmux, git, Docker CE (opt-in DinD), Xvfb, fluxbox, x11vnc, noVNC (port 6080), code-server (port 8443), VS Code CLI (tunnel), Chromium, microsocks, dnsmasq, ipset, iptables
 

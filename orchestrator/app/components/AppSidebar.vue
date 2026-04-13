@@ -439,6 +439,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         <button
           type="button"
           class="flex items-center gap-2 min-w-0 flex-1 text-left rounded-md px-1 py-1 -mx-1 -my-1 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          aria-label="Account settings"
           title="Account settings"
           @click="emit('openAccount')"
         >
