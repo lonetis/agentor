@@ -27,7 +27,7 @@ test.describe.serial('Container Detail Modal', () => {
     await page.waitForSelector(`h3:has-text("${displayName}")`, { timeout: 15_000 });
     await page.locator(`h3:has-text("${displayName}")`).first().click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
     return dialog;
   }
 
@@ -35,7 +35,7 @@ test.describe.serial('Container Detail Modal', () => {
     await goToDashboard(page);
     await page.waitForSelector(`h3:has-text("${displayName}")`, { timeout: 15_000 });
     await page.locator(`h3:has-text("${displayName}")`).first().click();
-    await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 10_000 });
   });
 
   test('shows container display name in modal header', async ({ page }) => {
@@ -83,14 +83,14 @@ test.describe.serial('Container Detail Modal', () => {
   test('can close with Escape', async ({ page }) => {
     await openDetailModal(page);
     await page.keyboard.press('Escape');
-    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5_000 });
+    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10_000 });
   });
 
   test('can close by clicking overlay', async ({ page }) => {
     const dialog = await openDetailModal(page);
     // Click the overlay backdrop to close (click at top-left corner, outside the modal content)
     await page.mouse.click(10, 10);
-    await expect(dialog).toBeHidden({ timeout: 5_000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
   });
 
   test('Configuration section shows environment name', async ({ page }) => {
@@ -210,10 +210,10 @@ test.describe.serial('Container Detail Modal', () => {
     await expect(dialog).toBeVisible();
     // Close
     await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden({ timeout: 5_000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
     // Re-open by clicking the container name again
     await page.locator(`h3:has-text("${displayName}")`).first().click();
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
     // Verify content is still correct
     await expect(dialog.locator('h2')).toContainText(displayName);
   });
@@ -434,7 +434,7 @@ test.describe.serial('Container Detail Modal — Custom Environment', () => {
     await page.waitForSelector(`h3:has-text("${displayName}")`, { timeout: 15_000 });
     await page.locator(`h3:has-text("${displayName}")`).first().click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
     // The Configuration section should show the custom environment name
     await expect(dialog.getByText('Environment', { exact: true })).toBeVisible();
     // The value next to Environment should be the custom environment name

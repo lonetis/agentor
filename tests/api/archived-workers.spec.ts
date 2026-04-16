@@ -211,7 +211,7 @@ test.describe('Archived Workers API', () => {
     test('port mappings survive archive and are reassigned on unarchive', async ({ request }) => {
       const container = await createWorker(request);
       const api = new ApiClient(request);
-      const port = 19880 + Math.floor(Math.random() * 1000);
+      const port = 10000 + Math.floor(Math.random() * 50000);
 
       await api.createPortMapping({
         externalPort: port,
@@ -246,7 +246,7 @@ test.describe('Archived Workers API', () => {
     test('port mappings are removed when an archived worker is permanently deleted', async ({ request }) => {
       const container = await createWorker(request);
       const api = new ApiClient(request);
-      const port = 19890 + Math.floor(Math.random() * 1000);
+      const port = 10000 + Math.floor(Math.random() * 50000);
 
       await api.createPortMapping({
         externalPort: port,

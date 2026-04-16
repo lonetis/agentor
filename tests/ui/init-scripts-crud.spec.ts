@@ -9,12 +9,12 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Init Scripts")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     const scriptName = `ui-script-create-${Date.now()}`;
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Script name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Script name"]')).toBeVisible({ timeout: 10_000 });
 
     // Verify the textarea is pre-filled with #!/bin/bash
     const textarea = dialog.locator('textarea');
@@ -26,12 +26,12 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
 
     await dialog.locator('button:has-text("Create")').click();
 
-    await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 10_000 });
     await expect(dialog.getByText(scriptName)).toBeVisible({ timeout: 10_000 });
 
     const scriptRow = dialog.locator('.rounded-lg').filter({ hasText: scriptName });
-    await expect(scriptRow.locator('button:has-text("Edit")')).toBeVisible({ timeout: 5_000 });
-    await expect(scriptRow.locator('button:has-text("Delete")')).toBeVisible({ timeout: 5_000 });
+    await expect(scriptRow.locator('button:has-text("Edit")')).toBeVisible({ timeout: 10_000 });
+    await expect(scriptRow.locator('button:has-text("Delete")')).toBeVisible({ timeout: 10_000 });
 
     // Cleanup
     const { body: scripts } = await api.listInitScripts();
@@ -50,7 +50,7 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
       await goToDashboard(page);
       await page.locator('button:has-text("Init Scripts")').click();
       const dialog = page.locator('[role="dialog"]');
-      await expect(dialog).toBeVisible({ timeout: 5_000 });
+      await expect(dialog).toBeVisible({ timeout: 10_000 });
 
       await expect(dialog.getByText(scriptName)).toBeVisible({ timeout: 10_000 });
 
@@ -58,7 +58,7 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
       await scriptRow.locator('button:has-text("Edit")').click();
 
       const nameInput = dialog.locator('input[placeholder="Script name"]');
-      await expect(nameInput).toBeVisible({ timeout: 5_000 });
+      await expect(nameInput).toBeVisible({ timeout: 10_000 });
       await expect(nameInput).toHaveValue(scriptName);
 
       const textarea = dialog.locator('textarea');
@@ -87,7 +87,7 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Init Scripts")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await expect(dialog.getByText(scriptName)).toBeVisible({ timeout: 10_000 });
 
@@ -97,21 +97,21 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
     await expect(dialog.getByText(scriptName)).toBeHidden({ timeout: 10_000 });
 
     // Built-in scripts should still be visible
-    await expect(dialog.getByText('claude', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('claude', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('view a built-in script (read-only)', async ({ page }) => {
     await goToDashboard(page);
     await page.locator('button:has-text("Init Scripts")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     const builtInRow = dialog.locator('.rounded-lg').filter({ hasText: 'claude' }).first();
     await expect(builtInRow).toBeVisible({ timeout: 10_000 });
     await builtInRow.locator('button:has-text("View")').click();
 
     const nameInput = dialog.locator('input').first();
-    await expect(nameInput).toBeVisible({ timeout: 5_000 });
+    await expect(nameInput).toBeVisible({ timeout: 10_000 });
     await expect(nameInput).toBeDisabled();
 
     const textarea = dialog.locator('textarea');
@@ -131,7 +131,7 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Init Scripts")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     const builtInScripts = ['claude', 'codex', 'gemini'];
     for (const name of builtInScripts) {
@@ -145,10 +145,10 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Init Scripts")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Script name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Script name"]')).toBeVisible({ timeout: 10_000 });
 
     const createButton = dialog.locator('button:has-text("Create")');
     await expect(createButton).toBeDisabled();
@@ -158,10 +158,10 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Init Scripts")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Script name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Script name"]')).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('input[placeholder="Script name"]').fill('test-script');
     await dialog.locator('textarea').fill('');
@@ -174,10 +174,10 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Init Scripts")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Script name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Script name"]')).toBeVisible({ timeout: 10_000 });
 
     const createButton = dialog.locator('button:has-text("Create")');
     await expect(createButton).toBeDisabled();

@@ -29,7 +29,7 @@ test.describe('Log Pane', () => {
   test('Logs button visible in System tab', async ({ page }) => {
     await selectSidebarTab(page, 'System');
     const logsBtn = page.locator('.system-card-link').filter({ hasText: 'Logs' });
-    await expect(logsBtn).toBeVisible({ timeout: 5_000 });
+    await expect(logsBtn).toBeVisible({ timeout: 10_000 });
   });
 
   test('clicking Logs opens a log pane', async ({ page }) => {
@@ -147,7 +147,7 @@ test.describe('Log Pane', () => {
       if (!raw) return false;
       const state = JSON.parse(raw);
       return state?.panes?.rootNode?.tabs?.some?.((t: { type: string }) => t.type === 'logs');
-    }, undefined, { timeout: 5_000 });
+    }, undefined, { timeout: 10_000 });
   });
 
   test('log tab can be closed', async ({ page }) => {
@@ -158,6 +158,6 @@ test.describe('Log Pane', () => {
     await closeBtn.click();
 
     // Log pane should disappear
-    await expect(page.locator('.log-pane')).toBeHidden({ timeout: 5_000 });
+    await expect(page.locator('.log-pane')).toBeHidden({ timeout: 10_000 });
   });
 });

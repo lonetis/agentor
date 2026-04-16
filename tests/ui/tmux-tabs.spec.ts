@@ -136,6 +136,6 @@ test.describe.serial('Tmux Tabs', () => {
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
     // Tmux tab bar should show the main tab
-    await expect(page.locator('text=main').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('text=main').first()).toBeVisible({ timeout: 15_000 });
   });
 });

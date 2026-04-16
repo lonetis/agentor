@@ -159,29 +159,33 @@ test.describe('Logs API', () => {
     }
   });
 
-  test('DELETE /api/logs clears logs', async ({ request }) => {
-    const api = new ApiClient(request);
-    const { status, body } = await api.clearLogs();
-    expect(status).toBe(200);
-    expect(body.ok).toBe(true);
-  });
+  // Log clear tests are serialized because clearLogs() wipes the global log
+  // buffer, which breaks parallel tests that read log entries.
+  test.describe.serial('Log clear operations', () => {
+    test('DELETE /api/logs clears logs', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status, body } = await api.clearLogs();
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+    });
 
-  test('query after clear returns fewer entries', async ({ request }) => {
-    const api = new ApiClient(request);
-    // Clear first
-    await api.clearLogs();
-    // Query immediately — should be empty or near-empty (new logs may arrive fast)
-    const { body } = await api.queryLogs({ limit: 10 });
-    // After clear, very few entries should exist (only post-clear orchestrator activity)
-    expect(body.entries.length).toBeLessThanOrEqual(10);
-  });
+    test('query after clear returns fewer entries', async ({ request }) => {
+      const api = new ApiClient(request);
+      // Clear first
+      await api.clearLogs();
+      // Query immediately — should be empty or near-empty (new logs may arrive fast)
+      const { body } = await api.queryLogs({ limit: 10 });
+      // After clear, very few entries should exist (only post-clear orchestrator activity)
+      expect(body.entries.length).toBeLessThanOrEqual(10);
+    });
 
-  test('clear is idempotent', async ({ request }) => {
-    const api = new ApiClient(request);
-    const r1 = await api.clearLogs();
-    expect(r1.status).toBe(200);
-    const r2 = await api.clearLogs();
-    expect(r2.status).toBe(200);
-    expect(r2.body.ok).toBe(true);
+    test('clear is idempotent', async ({ request }) => {
+      const api = new ApiClient(request);
+      const r1 = await api.clearLogs();
+      expect(r1.status).toBe(200);
+      const r2 = await api.clearLogs();
+      expect(r2.status).toBe(200);
+      expect(r2.body.ok).toBe(true);
+    });
   });
 });

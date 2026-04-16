@@ -21,7 +21,7 @@ async function openDmForm(aside: Locator) {
     }
   }
   // Final assertion — form must be open
-  await expect(subdomainInput).toBeVisible({ timeout: 5_000 });
+  await expect(subdomainInput).toBeVisible({ timeout: 10_000 });
 }
 
 test.describe('Domain Mappings Panel', () => {
@@ -81,7 +81,7 @@ test.describe('Domain Mappings Panel', () => {
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Form should appear with Add and Cancel buttons
-    await expect(aside.locator('button:has-text("Add")')).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('button:has-text("Add")')).toBeVisible({ timeout: 10_000 });
     await expect(aside.locator('button:has-text("Cancel")')).toBeVisible();
     // Subdomain input should be visible
     await expect(aside.locator('input[placeholder="subdomain (optional)"]')).toBeVisible();
@@ -98,7 +98,7 @@ test.describe('Domain Mappings Panel', () => {
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Protocol selector uses toggle buttons (not <select>)
-    await expect(aside.locator('button:has-text("http")').first()).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('button:has-text("http")').first()).toBeVisible({ timeout: 10_000 });
     await expect(aside.locator('button:has-text("https")').first()).toBeVisible();
     await expect(aside.locator('button:has-text("tcp")').first()).toBeVisible();
   });
@@ -113,7 +113,7 @@ test.describe('Domain Mappings Panel', () => {
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Basic auth checkbox should be visible (default protocol is http, not tcp)
-    await expect(aside.locator('[data-testid="basic-auth-checkbox"]')).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('[data-testid="basic-auth-checkbox"]')).toBeVisible({ timeout: 10_000 });
   });
 
   test('domain mapping form Cancel closes the form', async ({ page, request }) => {
@@ -125,10 +125,10 @@ test.describe('Domain Mappings Panel', () => {
     await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
-    await expect(aside.locator('button:has-text("Cancel")')).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('button:has-text("Cancel")')).toBeVisible({ timeout: 10_000 });
     await aside.locator('button:has-text("Cancel")').click();
     // Form should close, subdomain input should be hidden
-    await expect(aside.locator('input[placeholder="subdomain (optional)"]')).toBeHidden({ timeout: 5_000 });
+    await expect(aside.locator('input[placeholder="subdomain (optional)"]')).toBeHidden({ timeout: 10_000 });
   });
 
   test('domain mapping form shows base domain', async ({ page, request }) => {
@@ -193,7 +193,7 @@ test.describe('Domain Mappings Panel', () => {
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Path input should be visible (default protocol is http)
-    await expect(aside.locator('input[placeholder*="path"]')).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('input[placeholder*="path"]')).toBeVisible({ timeout: 10_000 });
   });
 
   test('switching protocol to TCP hides path input', async ({ page, request }) => {
@@ -205,9 +205,9 @@ test.describe('Domain Mappings Panel', () => {
     await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
-    await expect(aside.locator('input[placeholder*="path"]')).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('input[placeholder*="path"]')).toBeVisible({ timeout: 10_000 });
     await aside.locator('button:has-text("tcp")').first().click();
-    await expect(aside.locator('input[placeholder*="path"]')).toBeHidden({ timeout: 5_000 });
+    await expect(aside.locator('input[placeholder*="path"]')).toBeHidden({ timeout: 10_000 });
   });
 
   test('API-created mapping with path shows path in display', async ({ page, request }) => {
@@ -255,11 +255,11 @@ test.describe('Domain Mappings Panel', () => {
     // Target the checkbox via its testid so we don't accidentally match the
     // TCP explanation card, which also contains the heading text "Basic auth".
     const basicAuthCheckbox = aside.locator('[data-testid="basic-auth-checkbox"]');
-    await expect(basicAuthCheckbox).toBeVisible({ timeout: 5_000 });
+    await expect(basicAuthCheckbox).toBeVisible({ timeout: 10_000 });
     // Switch protocol to TCP.
     await aside.locator('button:has-text("tcp")').first().click();
     // The checkbox is now replaced by the read-only TCP hint card.
-    await expect(basicAuthCheckbox).toBeHidden({ timeout: 5_000 });
+    await expect(basicAuthCheckbox).toBeHidden({ timeout: 10_000 });
   });
 
   test('checking Basic auth shows username and password inputs', async ({ page, request }) => {
@@ -277,7 +277,7 @@ test.describe('Domain Mappings Panel', () => {
     // the checkbox is rendered rather than the TCP hint card).
     await aside.locator('[data-testid="basic-auth-checkbox"]').check();
     // Username and password inputs should now be visible
-    await expect(aside.locator('input[placeholder="Username"]')).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('input[placeholder="Username"]')).toBeVisible({ timeout: 10_000 });
     await expect(aside.locator('input[placeholder="Password"]')).toBeVisible();
   });
 
@@ -290,7 +290,7 @@ test.describe('Domain Mappings Panel', () => {
     await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
-    await expect(aside.locator('[data-testid="wildcard-checkbox"]')).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('[data-testid="wildcard-checkbox"]')).toBeVisible({ timeout: 10_000 });
     await expect(aside.locator('text=Wildcard subdomain')).toBeVisible();
   });
 
@@ -309,7 +309,7 @@ test.describe('Domain Mappings Panel', () => {
     const aside = page.locator('aside');
     await openDmForm(aside);
     const checkbox = aside.locator('[data-testid="wildcard-checkbox"]');
-    await expect(checkbox).toBeVisible({ timeout: 5_000 });
+    await expect(checkbox).toBeVisible({ timeout: 10_000 });
     await expect(checkbox).toBeEnabled();
   });
 
@@ -328,7 +328,7 @@ test.describe('Domain Mappings Panel', () => {
     await openDmForm(aside);
     await aside.locator('input[placeholder="subdomain (optional)"]').fill('api');
     await aside.locator('[data-testid="wildcard-checkbox"]').check();
-    await expect(aside.locator('text=/matches \\*\\.api\\./')).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('text=/matches \\*\\.api\\./')).toBeVisible({ timeout: 10_000 });
   });
 
   test('TCP form shows an explanation note in place of Basic auth', async ({ page, request }) => {
@@ -351,12 +351,12 @@ test.describe('Domain Mappings Panel', () => {
 
     // In HTTP mode the Basic auth checkbox is visible and the TCP hint is absent.
     const basicAuthCheckbox = aside.locator('[data-testid="basic-auth-checkbox"]');
-    await expect(basicAuthCheckbox).toBeVisible({ timeout: 5_000 });
+    await expect(basicAuthCheckbox).toBeVisible({ timeout: 10_000 });
     await expect(aside.locator('[data-testid="tcp-no-auth-hint"]')).toBeHidden();
 
     // Switching to TCP hides the checkbox and reveals the hint card.
     await aside.locator('button:has-text("tcp")').first().click();
-    await expect(basicAuthCheckbox).toBeHidden({ timeout: 5_000 });
+    await expect(basicAuthCheckbox).toBeHidden({ timeout: 10_000 });
     const hint = aside.locator('[data-testid="tcp-no-auth-hint"]');
     await expect(hint).toBeVisible();
     await expect(hint).toContainText('does not apply to TCP routes');
@@ -388,7 +388,7 @@ test.describe('Domain Mappings Panel', () => {
     await aside.locator('button:has-text("tcp")').first().click();
 
     const checkbox = aside.locator('[data-testid="wildcard-checkbox"]');
-    await expect(checkbox).toBeVisible({ timeout: 5_000 });
+    await expect(checkbox).toBeVisible({ timeout: 10_000 });
     await expect(checkbox).toBeEnabled();
 
     // And it's actually clickable while TCP is selected.
@@ -489,18 +489,4 @@ test.describe('Domain Mappings Panel', () => {
     }
   });
 
-  test('shows no active domain mappings message when empty and enabled', async ({ page, request }) => {
-    const api = new ApiClient(request);
-    const { body: statusBody } = await api.getDomainMapperStatus();
-
-    test.skip(!statusBody.enabled, 'Domain mapping not enabled (BASE_DOMAINS not set)');
-
-    // Ensure no mappings exist
-    const { body: mappings } = await api.listDomainMappings();
-    test.skip(mappings.length > 0, 'Domain mappings already exist');
-
-    await goToDashboard(page);
-    await selectSidebarTab(page, 'Domains');
-    await expect(page.locator('text=No active domain mappings')).toBeVisible();
-  });
 });

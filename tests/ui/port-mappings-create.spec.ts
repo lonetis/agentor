@@ -34,7 +34,7 @@ test.describe.serial('Port Mappings — Create via UI', () => {
     await mapBtn.click();
 
     // The form should appear with an Add button
-    await expect(aside.locator('button:has-text("Add")').first()).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('button:has-text("Add")').first()).toBeVisible({ timeout: 10_000 });
 
     // The type select is the first <select> in the form area
     const selects = aside.locator('select');
@@ -58,7 +58,7 @@ test.describe.serial('Port Mappings — Create via UI', () => {
     await expect(aside.getByText(String(TEST_EXTERNAL_PORT))).toBeVisible({ timeout: 15_000 });
 
     // The + Map button should reappear (form closed)
-    await expect(aside.locator('button:has-text("+ Map")').first()).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('button:has-text("+ Map")').first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('created mapping shows correct type badge, ports, and worker name', async ({ page }) => {
@@ -93,7 +93,7 @@ test.describe.serial('Port Mappings — Create via UI', () => {
 
     // Retry if the mapping didn't disappear (click may not have registered)
     try {
-      await expect(portText).toBeHidden({ timeout: 5_000 });
+      await expect(portText).toBeHidden({ timeout: 10_000 });
     } catch {
       await deleteBtn.click({ force: true });
       await expect(portText).toBeHidden({ timeout: 10_000 });

@@ -144,9 +144,10 @@ test.describe('POST /api/containers/:id/rebuild', () => {
     const container = await createWorker(request);
     const api = new ApiClient(request);
 
-    // Create a port mapping
+    // Create a port mapping with a unique port to avoid parallel collisions
+    const port = 10000 + Math.floor(Math.random() * 50000);
     await api.createPortMapping({
-      externalPort: 19876,
+      externalPort: port,
       internalPort: 8080,
       type: 'localhost',
       workerId: container.id,
@@ -158,13 +159,13 @@ test.describe('POST /api/containers/:id/rebuild', () => {
 
       // Mapping should still exist, but now point at the new container ID
       const { body: mappings } = await api.listPortMappings();
-      const found = mappings.find((m: { externalPort: number }) => m.externalPort === 19876);
+      const found = mappings.find((m: { externalPort: number }) => m.externalPort === port);
       expect(found).toBeTruthy();
       expect(found.workerName).toBe(container.name);
       expect(found.workerId).toBe(body.id);
       expect(found.internalPort).toBe(8080);
     } finally {
-      await api.deletePortMapping(19876);
+      await api.deletePortMapping(port);
     }
   });
 

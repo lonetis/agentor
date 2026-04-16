@@ -11,8 +11,8 @@ test.describe('Environments Modal — Advanced', () => {
 
     // Should have name, CPU, memory, network mode, docker toggle
     await expect(dialog.locator('text=Name').first()).toBeVisible();
-    await expect(dialog.locator('text=CPU').first()).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.locator('text=Memory').first()).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('text=CPU').first()).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.locator('text=Memory').first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('can create environment via form', async ({ page, request }) => {
@@ -104,7 +104,7 @@ test.describe('Environments Modal — Advanced', () => {
       await envRow.locator('button:has-text("Edit")').click();
 
       // Should now show the edit form with the name input
-      await expect(dialog.locator('input[placeholder="My environment"]')).toBeVisible({ timeout: 5_000 });
+      await expect(dialog.locator('input[placeholder="My environment"]')).toBeVisible({ timeout: 10_000 });
     } finally {
       try { await api.deleteEnvironment(created.id); } catch { /* ignore */ }
     }

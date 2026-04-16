@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
-import { cleanupAllCustomInstructions } from '../helpers/worker-lifecycle';
 
 test.describe('Instructions API', () => {
   const createdIds: string[] = [];

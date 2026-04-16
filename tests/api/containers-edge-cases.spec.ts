@@ -91,7 +91,7 @@ test.describe('Containers API — Edge Cases', () => {
       const container = await createWorker(request);
       createdContainerIds.push(container.id);
       const api = new ApiClient(request);
-      const port = 19900 + Math.floor(Math.random() * 1000);
+      const port = 10000 + Math.floor(Math.random() * 50000);
 
       await api.createPortMapping({
         externalPort: port,

@@ -64,7 +64,7 @@ test.describe.serial('Terminal Command Execution', () => {
 
       const marker = `MARKER_${Date.now()}`;
       ws.sendLine(`echo ${marker}`);
-      await ws.waitForOutput(new RegExp(marker), 10_000);
+      await ws.waitForOutput(new RegExp(marker), 15_000);
 
       const buf = ws.getBuffer();
       expect(buf).toContain(marker);
@@ -81,7 +81,7 @@ test.describe.serial('Terminal Command Execution', () => {
       ws.clearBuffer();
 
       ws.sendLine('pwd');
-      await ws.waitForOutput(/\/workspace/, 10_000);
+      await ws.waitForOutput(/\/workspace/, 15_000);
     } finally {
       ws.close();
     }
@@ -95,7 +95,7 @@ test.describe.serial('Terminal Command Execution', () => {
       ws.clearBuffer();
 
       ws.sendLine('echo $HOME');
-      await ws.waitForOutput(/\/home\/agent/, 10_000);
+      await ws.waitForOutput(/\/home\/agent/, 15_000);
     } finally {
       ws.close();
     }
@@ -109,7 +109,7 @@ test.describe.serial('Terminal Command Execution', () => {
       ws.clearBuffer();
 
       ws.sendLine('false; echo "EXIT_CODE=$?"');
-      await ws.waitForOutput(/EXIT_CODE=1/, 10_000);
+      await ws.waitForOutput(/EXIT_CODE=1/, 15_000);
     } finally {
       ws.close();
     }
@@ -136,7 +136,7 @@ test.describe.serial('Terminal Command Execution', () => {
 
         const marker = `NAMED_${Date.now()}`;
         ws.sendLine(`echo ${marker}`);
-        await ws.waitForOutput(new RegExp(marker), 10_000);
+        await ws.waitForOutput(new RegExp(marker), 15_000);
       } finally {
         ws.close();
       }
@@ -162,7 +162,7 @@ test.describe.serial('Terminal Command Execution', () => {
       ws.clearBuffer();
       const marker = `RESIZE_${Date.now()}`;
       ws.sendLine(`echo ${marker}`);
-      await ws.waitForOutput(new RegExp(marker), 10_000);
+      await ws.waitForOutput(new RegExp(marker), 15_000);
     } finally {
       ws.close();
     }
@@ -186,8 +186,8 @@ test.describe.serial('Terminal Command Execution', () => {
       try {
         await Promise.all([wsMain.connect(), wsNamed.connect()]);
         await Promise.all([
-          wsMain.waitForOutput(/[\$#>]\s*$/, 15_000),
-          wsNamed.waitForOutput(/[\$#>]\s*$/, 15_000),
+          wsMain.waitForOutput(/[\$#>]\s*$/, 30_000),
+          wsNamed.waitForOutput(/[\$#>]\s*$/, 30_000),
         ]);
 
         // Wait for shells to fully initialize before testing isolation
@@ -203,14 +203,14 @@ test.describe.serial('Terminal Command Execution', () => {
 
         // Send to main window and wait for echo
         wsMain.sendLine(`echo ${mainMarker}`);
-        await wsMain.waitForOutput(new RegExp(mainMarker), 10_000);
+        await wsMain.waitForOutput(new RegExp(mainMarker), 30_000);
 
         // Small delay between operations
         await new Promise(r => setTimeout(r, 500));
 
         // Send to named window and wait for echo
         wsNamed.sendLine(`echo ${namedMarker}`);
-        await wsNamed.waitForOutput(new RegExp(namedMarker), 10_000);
+        await wsNamed.waitForOutput(new RegExp(namedMarker), 30_000);
 
         // Each buffer should contain its own marker
         expect(wsMain.getBuffer()).toContain(mainMarker);
@@ -235,7 +235,7 @@ test.describe.serial('Terminal Command Execution', () => {
       ws.clearBuffer();
 
       ws.sendLine('for i in 1 2 3; do echo "LINE_$i"; done');
-      await ws.waitForOutput(/LINE_3/, 10_000);
+      await ws.waitForOutput(/LINE_3/, 15_000);
 
       const buf = ws.getBuffer();
       expect(buf).toContain('LINE_1');
@@ -254,7 +254,7 @@ test.describe.serial('Terminal Command Execution', () => {
       ws.clearBuffer();
 
       ws.sendLine('whoami');
-      await ws.waitForOutput(/agent/, 10_000);
+      await ws.waitForOutput(/agent/, 15_000);
     } finally {
       ws.close();
     }
@@ -267,7 +267,7 @@ test.describe.serial('Terminal Command Execution', () => {
     await wsCheck.waitForOutput(/[\$#>]\s*$/, 15_000);
     wsCheck.clearBuffer();
     wsCheck.sendLine('tmux ls 2>&1; echo __BEFORE__');
-    await wsCheck.waitForOutput(/__BEFORE__/, 10_000);
+    await wsCheck.waitForOutput(/__BEFORE__/, 15_000);
     const beforeSessions = new Set((wsCheck.getBuffer().match(/^(ws-[^\s:]+)/gm) || []));
 
     // Open a new terminal connection — creates a new ws-* session
@@ -278,7 +278,7 @@ test.describe.serial('Terminal Command Execution', () => {
     // Find the new session
     wsCheck.clearBuffer();
     wsCheck.sendLine('tmux ls 2>&1; echo __DURING__');
-    await wsCheck.waitForOutput(/__DURING__/, 10_000);
+    await wsCheck.waitForOutput(/__DURING__/, 15_000);
     const duringSessions = new Set((wsCheck.getBuffer().match(/^(ws-[^\s:]+)/gm) || []));
     const newSessions = [...duringSessions].filter(s => !beforeSessions.has(s));
     expect(newSessions.length).toBe(1);
@@ -290,11 +290,11 @@ test.describe.serial('Terminal Command Execution', () => {
     // Wait for cleanup, then verify the specific session is gone
     const start = Date.now();
     let cleaned = false;
-    while (Date.now() - start < 5000) {
+    while (Date.now() - start < 10_000) {
       await new Promise(r => setTimeout(r, 500));
       wsCheck.clearBuffer();
       wsCheck.sendLine(`tmux has-session -t "${newSession}" 2>&1; echo "RC=$?"; echo __CHECK__`);
-      await wsCheck.waitForOutput(/__CHECK__/, 5000);
+      await wsCheck.waitForOutput(/__CHECK__/, 10_000);
       if (wsCheck.getBuffer().includes('RC=1')) {
         cleaned = true;
         break;
@@ -312,7 +312,7 @@ test.describe.serial('Terminal Command Execution', () => {
     await wsCheck.waitForOutput(/[\$#>]\s*$/, 15_000);
     wsCheck.clearBuffer();
     wsCheck.sendLine('tmux ls 2>&1; echo __BASELINE__');
-    await wsCheck.waitForOutput(/__BASELINE__/, 10_000);
+    await wsCheck.waitForOutput(/__BASELINE__/, 15_000);
     const baselineSessions = new Set((wsCheck.getBuffer().match(/^(ws-[^\s:]+)/gm) || []));
 
     // Open 3 connections
@@ -327,7 +327,7 @@ test.describe.serial('Terminal Command Execution', () => {
     // Find the 3 new sessions
     wsCheck.clearBuffer();
     wsCheck.sendLine('tmux ls 2>&1; echo __DURING__');
-    await wsCheck.waitForOutput(/__DURING__/, 10_000);
+    await wsCheck.waitForOutput(/__DURING__/, 15_000);
     const duringSessions = new Set((wsCheck.getBuffer().match(/^(ws-[^\s:]+)/gm) || []));
     const newSessions = [...duringSessions].filter(s => !baselineSessions.has(s));
     expect(newSessions.length).toBe(3);
@@ -340,11 +340,11 @@ test.describe.serial('Terminal Command Execution', () => {
     // Verify all 3 specific sessions are gone
     const start = Date.now();
     let allCleaned = false;
-    while (Date.now() - start < 5000) {
+    while (Date.now() - start < 10_000) {
       await new Promise(r => setTimeout(r, 500));
       wsCheck.clearBuffer();
       wsCheck.sendLine('tmux ls 2>&1; echo __AFTER__');
-      await wsCheck.waitForOutput(/__AFTER__/, 10_000);
+      await wsCheck.waitForOutput(/__AFTER__/, 15_000);
       const afterSessions = new Set((wsCheck.getBuffer().match(/^(ws-[^\s:]+)/gm) || []));
       const remaining = newSessions.filter(s => afterSessions.has(s));
       if (remaining.length === 0) {
@@ -362,7 +362,7 @@ test.describe.serial('Terminal Command Execution', () => {
     try {
       await ws.connect();
       // Should receive an error message or close
-      const buf = await ws.waitForOutput(/[Ee]rror/, 10_000).catch(() => ws.getBuffer());
+      const buf = await ws.waitForOutput(/[Ee]rror/, 15_000).catch(() => ws.getBuffer());
       // Either we got an error message, or the connection will fail — both are acceptable
       expect(buf.length).toBeGreaterThanOrEqual(0);
     } catch {

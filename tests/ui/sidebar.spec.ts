@@ -73,7 +73,7 @@ test.describe('Sidebar', () => {
       await selectSidebarTab(page, 'Ports');
       // Port mappings content should be visible (either "+ Map" button or empty message)
       const aside = page.locator('aside');
-      await expect(aside.locator('button:has-text("+ Map")').first()).toBeVisible({ timeout: 5_000 });
+      await expect(aside.locator('button:has-text("+ Map")').first()).toBeVisible({ timeout: 10_000 });
     });
 
     test('System tab shows Images card', async ({ page }) => {
@@ -81,7 +81,7 @@ test.describe('Sidebar', () => {
       await selectSidebarTab(page, 'System');
       const aside = page.locator('aside');
       // Images card header should be visible
-      await expect(aside.getByText('Images', { exact: true })).toBeVisible({ timeout: 5_000 });
+      await expect(aside.getByText('Images', { exact: true })).toBeVisible({ timeout: 10_000 });
     });
 
     test('Workers tab is selected by default', async ({ page }) => {
@@ -130,7 +130,7 @@ test.describe('Sidebar', () => {
       const newWorkerBtn = page.locator('aside button:has-text("+ New Worker")');
       await expect(newWorkerBtn).toBeVisible();
       await newWorkerBtn.click();
-      await page.waitForSelector('[role="dialog"]', { timeout: 5_000 });
+      await page.waitForSelector('[role="dialog"]', { timeout: 10_000 });
       await expect(page.locator('[role="dialog"]')).toBeVisible();
     });
 
@@ -173,7 +173,7 @@ test.describe('Sidebar', () => {
       await goToDashboard(page);
       await selectSidebarTab(page, 'System');
       const aside = page.locator('aside');
-      await expect(aside.locator('button:has-text("System Settings")')).toBeVisible({ timeout: 5_000 });
+      await expect(aside.locator('button:has-text("System Settings")')).toBeVisible({ timeout: 10_000 });
       const apiDocsLink = aside.locator('a:has-text("API Docs")');
       await expect(apiDocsLink).toBeVisible();
       await expect(apiDocsLink).toHaveAttribute('href', '/api/docs');

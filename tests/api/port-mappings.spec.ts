@@ -2,6 +2,12 @@ import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 
+let _portCounter = 0;
+function uniquePort(): number {
+  const base = 10000 + Math.floor(Math.random() * 40000);
+  return base + (_portCounter++ % 10000);
+}
+
 test.describe('Port Mappings API', () => {
   let containerId: string;
   let containerName: string;
@@ -36,40 +42,42 @@ test.describe('Port Mappings API', () => {
   test.describe('POST /api/port-mappings', () => {
     test('creates a localhost port mapping', async ({ request }) => {
       const api = new ApiClient(request);
+      const port = uniquePort();
       const { status, body } = await api.createPortMapping({
-        externalPort: 19000,
+        externalPort: port,
         type: 'localhost',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(201);
-      expect(body.externalPort).toBe(19000);
+      expect(body.externalPort).toBe(port);
       expect(body.type).toBe('localhost');
       expect(body.workerName).toBe(containerName);
     });
 
     test('response includes all expected fields', async ({ request }) => {
       const api = new ApiClient(request);
+      const intPort = uniquePort();
       const { body } = await api.createPortMapping({
-        externalPort: 19020,
+        externalPort: uniquePort(),
         type: 'localhost',
         workerId: containerId,
-        internalPort: 4000,
+        internalPort: intPort,
       });
       expect(typeof body.externalPort).toBe('number');
       expect(typeof body.internalPort).toBe('number');
       expect(typeof body.type).toBe('string');
       expect(typeof body.workerName).toBe('string');
-      expect(body.internalPort).toBe(4000);
+      expect(body.internalPort).toBe(intPort);
     });
 
     test('creates an external port mapping', async ({ request }) => {
       const api = new ApiClient(request);
       const { status, body } = await api.createPortMapping({
-        externalPort: 19001,
+        externalPort: uniquePort(),
         type: 'external',
         workerId: containerId,
-        internalPort: 8080,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(201);
       expect(body.type).toBe('external');
@@ -87,7 +95,7 @@ test.describe('Port Mappings API', () => {
         externalPort: 0,
         type: 'localhost',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(400);
     });
@@ -98,7 +106,7 @@ test.describe('Port Mappings API', () => {
         externalPort: 65536,
         type: 'localhost',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(400);
     });
@@ -109,7 +117,7 @@ test.describe('Port Mappings API', () => {
         externalPort: 3000.5,
         type: 'localhost',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(400);
     });
@@ -117,7 +125,7 @@ test.describe('Port Mappings API', () => {
     test('rejects invalid internalPort (0)', async ({ request }) => {
       const api = new ApiClient(request);
       const { status } = await api.createPortMapping({
-        externalPort: 19010,
+        externalPort: uniquePort(),
         type: 'localhost',
         workerId: containerId,
         internalPort: 0,
@@ -128,7 +136,7 @@ test.describe('Port Mappings API', () => {
     test('rejects invalid internalPort (65536)', async ({ request }) => {
       const api = new ApiClient(request);
       const { status } = await api.createPortMapping({
-        externalPort: 19011,
+        externalPort: uniquePort(),
         type: 'localhost',
         workerId: containerId,
         internalPort: 65536,
@@ -139,7 +147,7 @@ test.describe('Port Mappings API', () => {
     test('rejects non-integer internalPort', async ({ request }) => {
       const api = new ApiClient(request);
       const { status } = await api.createPortMapping({
-        externalPort: 19012,
+        externalPort: uniquePort(),
         type: 'localhost',
         workerId: containerId,
         internalPort: 3000.5,
@@ -150,10 +158,10 @@ test.describe('Port Mappings API', () => {
     test('rejects invalid type', async ({ request }) => {
       const api = new ApiClient(request);
       const { status } = await api.createPortMapping({
-        externalPort: 19002,
+        externalPort: uniquePort(),
         type: 'invalid',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(400);
     });
@@ -161,50 +169,49 @@ test.describe('Port Mappings API', () => {
     test('rejects non-running worker', async ({ request }) => {
       const api = new ApiClient(request);
       const { status } = await api.createPortMapping({
-        externalPort: 19003,
+        externalPort: uniquePort(),
         type: 'localhost',
         workerId: 'non-existent',
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(400);
     });
 
     test('rejects duplicate externalPort', async ({ request }) => {
       const api = new ApiClient(request);
-      // Use a high unique port to avoid conflicts with other tests
-      const uniquePort = 19500 + (Date.now() % 500);
+      const port = uniquePort();
 
       const { status: firstStatus } = await api.createPortMapping({
-        externalPort: uniquePort,
+        externalPort: port,
         type: 'localhost',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(firstStatus).toBe(201);
 
       try {
         // Second creation with same external port should fail
         const { status: secondStatus } = await api.createPortMapping({
-          externalPort: uniquePort,
+          externalPort: port,
           type: 'external',
           workerId: containerId,
-          internalPort: 8080,
+          internalPort: uniquePort(),
         });
         // Should fail due to duplicate port (500 because the store throws)
         expect(secondStatus).toBeGreaterThanOrEqual(400);
       } finally {
         // Self-cleanup to avoid relying on afterEach which may race
-        try { await api.deletePortMapping(uniquePort); } catch { /* ignore */ }
+        try { await api.deletePortMapping(port); } catch { /* ignore */ }
       }
     });
 
     test('accepts optional appType and instanceId', async ({ request }) => {
       const api = new ApiClient(request);
       const { status, body } = await api.createPortMapping({
-        externalPort: 19005,
+        externalPort: uniquePort(),
         type: 'localhost',
         workerId: containerId,
-        internalPort: 9222,
+        internalPort: uniquePort(),
         appType: 'chromium',
         instanceId: 'test-instance',
       });
@@ -217,20 +224,21 @@ test.describe('Port Mappings API', () => {
   test.describe('DELETE /api/port-mappings/:port', () => {
     test('removes a port mapping', async ({ request }) => {
       const api = new ApiClient(request);
+      const port = uniquePort();
       await api.createPortMapping({
-        externalPort: 19006,
+        externalPort: port,
         type: 'localhost',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
 
-      const { status, body } = await api.deletePortMapping(19006);
+      const { status, body } = await api.deletePortMapping(port);
       expect(status).toBe(200);
       expect(body.ok).toBe(true);
 
       // Verify it's gone
       const { body: mappings } = await api.listPortMappings();
-      expect(mappings.some((m: { externalPort: number }) => m.externalPort === 19006)).toBe(false);
+      expect(mappings.some((m: { externalPort: number }) => m.externalPort === port)).toBe(false);
     });
 
     test('handles deleting non-existent port', async ({ request }) => {
@@ -274,7 +282,7 @@ test.describe('Port Mappings API', () => {
         externalPort: -1,
         type: 'localhost',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(400);
     });
@@ -282,7 +290,7 @@ test.describe('Port Mappings API', () => {
     test('rejects negative internalPort', async ({ request }) => {
       const api = new ApiClient(request);
       const { status } = await api.createPortMapping({
-        externalPort: 19150,
+        externalPort: uniquePort(),
         type: 'localhost',
         workerId: containerId,
         internalPort: -1,
@@ -298,7 +306,7 @@ test.describe('Port Mappings API', () => {
         externalPort: NaN,
         type: 'localhost',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(400);
     });
@@ -309,7 +317,7 @@ test.describe('Port Mappings API', () => {
         externalPort: 'not-a-number',
         type: 'localhost',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(400);
     });
@@ -317,7 +325,7 @@ test.describe('Port Mappings API', () => {
     test('rejects internalPort: NaN', async ({ request }) => {
       const api = new ApiClient(request);
       const { status } = await api.createPortMapping({
-        externalPort: 19100,
+        externalPort: uniquePort(),
         type: 'localhost',
         workerId: containerId,
         internalPort: NaN,
@@ -328,7 +336,7 @@ test.describe('Port Mappings API', () => {
     test('rejects internalPort: "not-a-number"', async ({ request }) => {
       const api = new ApiClient(request);
       const { status } = await api.createPortMapping({
-        externalPort: 19101,
+        externalPort: uniquePort(),
         type: 'localhost',
         workerId: containerId,
         internalPort: 'not-a-number',
@@ -362,10 +370,10 @@ test.describe('Port Mappings API', () => {
 
         // Attempt to create a mapping for the stopped worker
         const { status } = await api.createPortMapping({
-          externalPort: 19200,
+          externalPort: uniquePort(),
           type: 'localhost',
           workerId: stoppedWorkerId,
-          internalPort: 3000,
+          internalPort: uniquePort(),
         });
         expect(status).toBe(400);
       } finally {
@@ -378,13 +386,13 @@ test.describe('Port Mappings API', () => {
   test.describe('Mapper status after operations', () => {
     test('localhostCount reflects created localhost mapping', async ({ request }) => {
       const api = new ApiClient(request);
-      const uniquePort = 19300 + (Date.now() % 100);
+      const port = uniquePort();
 
       const { status } = await api.createPortMapping({
-        externalPort: uniquePort,
+        externalPort: port,
         type: 'localhost',
         workerId: containerId,
-        internalPort: 3000,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(201);
 
@@ -400,19 +408,19 @@ test.describe('Port Mappings API', () => {
         }
         expect(localhostCount).toBeGreaterThan(0);
       } finally {
-        try { await api.deletePortMapping(uniquePort); } catch { /* ignore */ }
+        try { await api.deletePortMapping(port); } catch { /* ignore */ }
       }
     });
 
     test('externalCount reflects created external mapping', async ({ request }) => {
       const api = new ApiClient(request);
-      const uniquePort = 19400 + (Date.now() % 100);
+      const port = uniquePort();
 
       const { status } = await api.createPortMapping({
-        externalPort: uniquePort,
+        externalPort: port,
         type: 'external',
         workerId: containerId,
-        internalPort: 8080,
+        internalPort: uniquePort(),
       });
       expect(status).toBe(201);
 
@@ -428,7 +436,7 @@ test.describe('Port Mappings API', () => {
         }
         expect(externalCount).toBeGreaterThan(0);
       } finally {
-        try { await api.deletePortMapping(uniquePort); } catch { /* ignore */ }
+        try { await api.deletePortMapping(port); } catch { /* ignore */ }
       }
     });
   });

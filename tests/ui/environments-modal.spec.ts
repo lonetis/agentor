@@ -13,7 +13,7 @@ test.describe('Environments Modal', () => {
     await goToDashboard(page);
     await openEnvironmentsModal(page);
     await page.keyboard.press('Escape');
-    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5000 });
+    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10_000 });
   });
 
   test('shows pre-created environments', async ({ page, request }) => {
@@ -48,7 +48,7 @@ test.describe('Environments Modal', () => {
     const dialog = page.locator('[role="dialog"]');
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
     // The form should show a Name input
-    await expect(dialog.getByText('Name', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Name', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('environment form shows network access fieldset', async ({ page }) => {
@@ -57,7 +57,7 @@ test.describe('Environments Modal', () => {
     const dialog = page.locator('[role="dialog"]');
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
     // Network mode uses a fieldset with legend "Network Access"
-    await expect(dialog.getByText('Network Access')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Network Access')).toBeVisible({ timeout: 10_000 });
   });
 
   test('environment form shows Docker toggle', async ({ page }) => {
@@ -66,7 +66,7 @@ test.describe('Environments Modal', () => {
     const dialog = page.locator('[role="dialog"]');
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
     // Docker section uses checkbox with label "Enable Docker-in-Docker"
-    await expect(dialog.getByText('Docker-in-Docker')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Docker-in-Docker')).toBeVisible({ timeout: 10_000 });
   });
 
   test('environment form shows resource limit fields', async ({ page }) => {
@@ -75,8 +75,8 @@ test.describe('Environments Modal', () => {
     const dialog = page.locator('[role="dialog"]');
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
     // CPU and Memory labels
-    await expect(dialog.getByText('CPU', { exact: true })).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.getByText('Memory', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('CPU', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Memory', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('environment form shows Setup Script textarea', async ({ page }) => {
@@ -84,7 +84,7 @@ test.describe('Environments Modal', () => {
     await openEnvironmentsModal(page);
     const dialog = page.locator('[role="dialog"]');
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
-    await expect(dialog.getByText('Setup Script')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Setup Script')).toBeVisible({ timeout: 10_000 });
   });
 
   test('environment form has Create button', async ({ page }) => {
@@ -92,7 +92,7 @@ test.describe('Environments Modal', () => {
     await openEnvironmentsModal(page);
     const dialog = page.locator('[role="dialog"]');
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
-    await expect(dialog.locator('button:has-text("Create")')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('button:has-text("Create")')).toBeVisible({ timeout: 10_000 });
   });
 
   test('environment list shows Default built-in environment with Built-in badge', async ({ page }) => {
@@ -102,7 +102,7 @@ test.describe('Environments Modal', () => {
 
     // The default environment row should contain "Default" and a "Built-in" badge
     const defaultRow = dialog.locator('.rounded-lg').filter({ hasText: 'Default' });
-    await expect(defaultRow).toBeVisible({ timeout: 5_000 });
+    await expect(defaultRow).toBeVisible({ timeout: 10_000 });
     await expect(defaultRow.getByText('Built-in')).toBeVisible();
   });
 
@@ -113,7 +113,7 @@ test.describe('Environments Modal', () => {
 
     // Find the row for the Default (built-in) environment
     const defaultRow = dialog.locator('.rounded-lg').filter({ hasText: 'Default' }).filter({ hasText: 'Built-in' });
-    await expect(defaultRow).toBeVisible({ timeout: 5_000 });
+    await expect(defaultRow).toBeVisible({ timeout: 10_000 });
 
     // Built-in environments show "View", not "Edit" or "Delete"
     await expect(defaultRow.locator('button:has-text("View")')).toBeVisible();
@@ -129,7 +129,7 @@ test.describe('Environments Modal', () => {
 
     // Name input should be present and empty
     const nameInput = dialog.locator('input[placeholder="My environment"]');
-    await expect(nameInput).toBeVisible({ timeout: 5_000 });
+    await expect(nameInput).toBeVisible({ timeout: 10_000 });
     await expect(nameInput).toHaveValue('');
 
     // Create button should be visible (not Update)
@@ -144,7 +144,7 @@ test.describe('Environments Modal', () => {
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
 
     // The "Expose APIs" fieldset legend
-    await expect(dialog.getByText('Expose APIs')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Expose APIs')).toBeVisible({ timeout: 10_000 });
 
     // Three checkboxes: Port Mappings, Domain Mappings, Usage Monitoring
     await expect(dialog.getByText('Port Mappings')).toBeVisible();
@@ -159,7 +159,7 @@ test.describe('Environments Modal', () => {
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
 
     // Capabilities fieldset with Select All toggle
-    await expect(dialog.getByText('Capabilities').first()).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Capabilities').first()).toBeVisible({ timeout: 10_000 });
     await expect(dialog.getByText('Select All').first()).toBeVisible();
   });
 
@@ -170,7 +170,7 @@ test.describe('Environments Modal', () => {
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
 
     // Instructions fieldset
-    await expect(dialog.getByText('Instructions').first()).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Instructions').first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('editor has Environment Variables section', async ({ page }) => {
@@ -180,7 +180,7 @@ test.describe('Environments Modal', () => {
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
 
     // Environment Variables fieldset legend
-    await expect(dialog.getByText('Environment Variables')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Environment Variables')).toBeVisible({ timeout: 10_000 });
 
     // Custom env vars textarea should be present with KEY=VALUE placeholder
     const envTextarea = dialog.locator('textarea[placeholder*="MY_VAR"]');
@@ -194,7 +194,7 @@ test.describe('Environments Modal', () => {
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
 
     // Setup Script label
-    await expect(dialog.getByText('Setup Script')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Setup Script')).toBeVisible({ timeout: 10_000 });
 
     // Textarea with bash placeholder
     const scriptTextarea = dialog.locator('textarea[placeholder*="#!/bin/bash"]');
@@ -208,13 +208,13 @@ test.describe('Environments Modal', () => {
 
     // Open editor
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
-    await expect(dialog.getByText('Expose APIs')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Expose APIs')).toBeVisible({ timeout: 10_000 });
 
     // Click Cancel
     await dialog.locator('button:has-text("Cancel")').click();
 
     // Should return to list view: "New" button visible again, editor sections gone
-    await expect(dialog.locator('button:has-text("New")').first()).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('button:has-text("New")').first()).toBeVisible({ timeout: 10_000 });
     await expect(dialog.getByText('Expose APIs')).toBeHidden();
   });
 
@@ -225,12 +225,12 @@ test.describe('Environments Modal', () => {
 
     // Click "View" on the Default built-in environment
     const defaultRow = dialog.locator('.rounded-lg').filter({ hasText: 'Default' }).filter({ hasText: 'Built-in' });
-    await expect(defaultRow).toBeVisible({ timeout: 5_000 });
+    await expect(defaultRow).toBeVisible({ timeout: 10_000 });
     await defaultRow.locator('button:has-text("View")').click();
 
     // Editor should be visible with the environment name
     const nameInput = dialog.locator('input[placeholder="My environment"]');
-    await expect(nameInput).toBeVisible({ timeout: 5_000 });
+    await expect(nameInput).toBeVisible({ timeout: 10_000 });
 
     // Name input should be disabled (read-only mode)
     await expect(nameInput).toBeDisabled();

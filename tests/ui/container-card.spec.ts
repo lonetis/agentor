@@ -149,7 +149,7 @@ test.describe.serial('Container Card', () => {
     await page.waitForSelector(`h3:has-text("${displayName}")`, { timeout: 15_000 });
     // Click the name heading to open the detail modal
     await page.locator(`h3:has-text("${displayName}")`).first().click();
-    await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 10_000 });
   });
 
   test('detail modal shows container info', async ({ page }) => {
@@ -157,7 +157,7 @@ test.describe.serial('Container Card', () => {
     await page.waitForSelector(`h3:has-text("${displayName}")`, { timeout: 15_000 });
     await page.locator(`h3:has-text("${displayName}")`).first().click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     // Header shows display name and status badge
     await expect(dialog.locator('h2')).toContainText(displayName);
@@ -173,6 +173,6 @@ test.describe.serial('Container Card', () => {
 
     // Close via Escape
     await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden({ timeout: 5_000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
   });
 });

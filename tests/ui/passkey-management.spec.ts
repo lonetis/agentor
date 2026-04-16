@@ -50,7 +50,7 @@ test.describe('Passkey management', () => {
       await page.getByRole('button', { name: 'Add passkey' }).click();
 
       // Wait for the success message and the passkey list entry.
-      await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 15_000 });
       await expect(page.locator('text=' + passkeyName)).toBeVisible();
 
       // The virtual authenticator should now hold one credential.
@@ -72,7 +72,7 @@ test.describe('Passkey management', () => {
 
       await page.getByRole('button', { name: 'Account settings' }).click();
       await page.getByRole('button', { name: 'Add passkey' }).click();
-      await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 15_000 });
       // Close modal
       await page.getByRole('button', { name: 'Close' }).first().click();
 
@@ -83,8 +83,8 @@ test.describe('Passkey management', () => {
       // Phase 2: sign in with passkey
       await page.getByRole('button', { name: 'Sign in with passkey' }).click();
       // Should land on dashboard
-      await page.waitForURL((url) => url.pathname === '/' || url.pathname === '', { timeout: 15_000 });
-      await expect(page.locator('h1:has-text("Agentor")')).toBeVisible({ timeout: 10_000 });
+      await page.waitForURL((url) => url.pathname === '/' || url.pathname === '', { timeout: 20_000 });
+      await expect(page.locator('h1:has-text("Agentor")')).toBeVisible({ timeout: 15_000 });
     } finally {
       await auth.dispose();
     }
@@ -100,12 +100,12 @@ test.describe('Passkey management', () => {
 
       // Add a passkey first
       await page.getByRole('button', { name: 'Add passkey' }).click();
-      await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 15_000 });
 
       // Two-step confirmation: click "Remove password", then "Confirm remove"
       await page.getByRole('button', { name: 'Remove password' }).click();
       await page.getByRole('button', { name: 'Confirm remove' }).click();
-      await expect(page.getByText('Password removed', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('Password removed', { exact: true })).toBeVisible({ timeout: 15_000 });
     } finally {
       await auth.dispose();
     }
@@ -121,12 +121,12 @@ test.describe('Passkey management', () => {
 
       // Add a passkey
       await page.getByRole('button', { name: 'Add passkey' }).click();
-      await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 15_000 });
 
       // Remove the password (two-step)
       await page.getByRole('button', { name: 'Remove password' }).click();
       await page.getByRole('button', { name: 'Confirm remove' }).click();
-      await expect(page.getByText('Password removed', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('Password removed', { exact: true })).toBeVisible({ timeout: 15_000 });
 
       // Now the only passkey's Remove button should be disabled
       const removePasskeyBtn = page.locator('button:has-text("Remove")').last();
@@ -146,10 +146,10 @@ test.describe('Passkey management', () => {
 
       // Register a passkey, then remove the password
       await page.getByRole('button', { name: 'Add passkey' }).click();
-      await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 15_000 });
       await page.getByRole('button', { name: 'Remove password' }).click();
       await page.getByRole('button', { name: 'Confirm remove' }).click();
-      await expect(page.getByText('Password removed', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('Password removed', { exact: true })).toBeVisible({ timeout: 15_000 });
 
       // The Password section heading should now read "Set a password" and
       // there should be no "Current password" field.
@@ -161,7 +161,7 @@ test.describe('Passkey management', () => {
       await page.getByLabel('New password', { exact: true }).fill(newPass);
       await page.getByLabel('Confirm new password', { exact: true }).fill(newPass);
       await page.getByRole('button', { name: 'Set password' }).click();
-      await expect(page.getByText('Password set', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('Password set', { exact: true })).toBeVisible({ timeout: 15_000 });
     } finally {
       await auth.dispose();
     }

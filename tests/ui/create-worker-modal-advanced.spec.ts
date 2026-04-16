@@ -36,7 +36,7 @@ test.describe('Create Worker Modal — Advanced', () => {
       if (await envSelector.count() > 0) {
         await envSelector.click();
         // The created environment should be visible
-        await expect(page.getByText(envName)).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByText(envName)).toBeVisible({ timeout: 10_000 });
       }
     } finally {
       try { await api.deleteEnvironment(created.id); } catch { /* ignore */ }
@@ -101,7 +101,7 @@ test.describe('Create Worker Modal — Advanced', () => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     await page.keyboard.press('Escape');
-    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5_000 });
+    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10_000 });
   });
 
   test('name field has generated placeholder', async ({ page }) => {

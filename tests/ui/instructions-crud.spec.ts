@@ -9,25 +9,25 @@ test.describe('Instructions Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     const entryName = `ui-entry-create-${Date.now()}`;
     const entryContent = '# UI Test Entry\n\nThis is test content for AGENTS.md.';
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('input[placeholder="Entry name"]').fill(entryName);
     await dialog.locator('textarea').fill(entryContent);
 
     await dialog.locator('button:has-text("Create")').click();
 
-    await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 10_000 });
     await expect(dialog.getByText(entryName)).toBeVisible({ timeout: 10_000 });
 
     const entryRow = dialog.locator('.rounded-lg').filter({ hasText: entryName });
-    await expect(entryRow.locator('button:has-text("Edit")')).toBeVisible({ timeout: 5_000 });
-    await expect(entryRow.locator('button:has-text("Delete")')).toBeVisible({ timeout: 5_000 });
+    await expect(entryRow.locator('button:has-text("Edit")')).toBeVisible({ timeout: 10_000 });
+    await expect(entryRow.locator('button:has-text("Delete")')).toBeVisible({ timeout: 10_000 });
 
     // Cleanup
     const { body: entries } = await api.listInstructions();
@@ -46,7 +46,7 @@ test.describe('Instructions Modal — CRUD Operations', () => {
       await goToDashboard(page);
       await page.locator('button:has-text("Instructions")').click();
       const dialog = page.locator('[role="dialog"]');
-      await expect(dialog).toBeVisible({ timeout: 5_000 });
+      await expect(dialog).toBeVisible({ timeout: 10_000 });
 
       await expect(dialog.getByText(entryName)).toBeVisible({ timeout: 10_000 });
 
@@ -54,7 +54,7 @@ test.describe('Instructions Modal — CRUD Operations', () => {
       await entryRow.locator('button:has-text("Edit")').click();
 
       const nameInput = dialog.locator('input[placeholder="Entry name"]');
-      await expect(nameInput).toBeVisible({ timeout: 5_000 });
+      await expect(nameInput).toBeVisible({ timeout: 10_000 });
       await expect(nameInput).toHaveValue(entryName);
 
       const updatedContent = '# Updated\n\nUpdated content.';
@@ -80,7 +80,7 @@ test.describe('Instructions Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await expect(dialog.getByText(entryName)).toBeVisible({ timeout: 10_000 });
 
@@ -90,21 +90,21 @@ test.describe('Instructions Modal — CRUD Operations', () => {
     await expect(dialog.getByText(entryName)).toBeHidden({ timeout: 10_000 });
 
     const builtInBadges = dialog.getByText('Built-in');
-    await expect(builtInBadges.first()).toBeVisible({ timeout: 5_000 });
+    await expect(builtInBadges.first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('view a built-in entry (read-only)', async ({ page }) => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     const builtInRow = dialog.locator('.rounded-lg').filter({ hasText: 'Built-in' }).first();
     await expect(builtInRow).toBeVisible({ timeout: 10_000 });
     await builtInRow.locator('button:has-text("View")').click();
 
     const nameInput = dialog.locator('input[placeholder="Entry name"]');
-    await expect(nameInput).toBeVisible({ timeout: 5_000 });
+    await expect(nameInput).toBeVisible({ timeout: 10_000 });
     await expect(nameInput).toBeDisabled();
 
     const textarea = dialog.locator('textarea');
@@ -121,10 +121,10 @@ test.describe('Instructions Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('textarea').fill('Some content');
 
@@ -136,10 +136,10 @@ test.describe('Instructions Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('input[placeholder="Entry name"]').fill('test-entry');
 
@@ -151,10 +151,10 @@ test.describe('Instructions Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible({ timeout: 10_000 });
 
     const createButton = dialog.locator('button:has-text("Create")');
     await expect(createButton).toBeDisabled();

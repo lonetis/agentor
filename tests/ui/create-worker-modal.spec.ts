@@ -32,14 +32,14 @@ test.describe('Create Worker Modal', () => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     await page.click('[role="dialog"] button:has-text("Cancel")');
-    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5000 });
+    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10_000 });
   });
 
   test('can close the modal with Escape', async ({ page }) => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     await page.keyboard.press('Escape');
-    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5000 });
+    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10_000 });
   });
 
   test('shows form sections: Name, Environment, Repositories, Volume Mounts, Init Script', async ({ page }) => {
@@ -111,7 +111,7 @@ test.describe('Create Worker Modal', () => {
     const dialog = page.locator('[role="dialog"]');
     await dialog.locator('button:has-text("Add repository")').click();
     // A new repo input row should appear
-    await expect(dialog.locator('input').nth(1)).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input').nth(1)).toBeVisible({ timeout: 10_000 });
   });
 
   test('+ Add mount button adds a mount row', async ({ page }) => {
@@ -337,7 +337,7 @@ test.describe('Create Worker Modal', () => {
 
     // Close via Cancel
     await dialog.locator('button:has-text("Cancel")').click();
-    await expect(dialog).toBeHidden({ timeout: 5000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
 
     // Re-open the modal — form should be reset (no repo or mount rows)
     await openCreateWorkerModal(page);
@@ -353,6 +353,6 @@ test.describe('Create Worker Modal', () => {
     await expect(dialog).toBeVisible();
 
     await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden({ timeout: 5000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
   });
 });

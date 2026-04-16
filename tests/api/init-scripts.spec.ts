@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
-import { cleanupAllCustomInitScripts } from '../helpers/worker-lifecycle';
 
 test.describe('Init Scripts API', () => {
   const createdIds: string[] = [];

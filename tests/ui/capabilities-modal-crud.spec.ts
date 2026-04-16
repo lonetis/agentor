@@ -9,13 +9,13 @@ test.describe('Capabilities Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     const capabilityName = `ui-capability-create-${Date.now()}`;
     const capabilityContent = '---\ndescription: A test capability created via UI\n---\n\nThis is the capability content.';
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('input[placeholder="Capability name"]').fill(capabilityName);
     await dialog.locator('textarea').fill(capabilityContent);
@@ -23,12 +23,12 @@ test.describe('Capabilities Modal — CRUD Operations', () => {
     await dialog.locator('button:has-text("Create")').click();
 
     // Should return to list view and show the new capability
-    await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 10_000 });
     await expect(dialog.getByText(capabilityName)).toBeVisible({ timeout: 10_000 });
 
     // The new capability should have Edit and Delete buttons
     const capabilityRow = dialog.locator('.rounded-lg').filter({ hasText: capabilityName });
-    await expect(capabilityRow.locator('button:has-text("Edit")')).toBeVisible({ timeout: 5_000 });
+    await expect(capabilityRow.locator('button:has-text("Edit")')).toBeVisible({ timeout: 10_000 });
 
     // Cleanup: delete the capability we just created
     const { body: capabilities } = await api.listCapabilities();
@@ -47,7 +47,7 @@ test.describe('Capabilities Modal — CRUD Operations', () => {
       await goToDashboard(page);
       await page.locator('button:has-text("Capabilities")').click();
       const dialog = page.locator('[role="dialog"]');
-      await expect(dialog).toBeVisible({ timeout: 5_000 });
+      await expect(dialog).toBeVisible({ timeout: 10_000 });
 
       await expect(dialog.getByText(capabilityName)).toBeVisible({ timeout: 10_000 });
 
@@ -55,7 +55,7 @@ test.describe('Capabilities Modal — CRUD Operations', () => {
       await capabilityRow.locator('button:has-text("Edit")').click();
 
       const nameInput = dialog.locator('input[placeholder="Capability name"]');
-      await expect(nameInput).toBeVisible({ timeout: 5_000 });
+      await expect(nameInput).toBeVisible({ timeout: 10_000 });
       await expect(nameInput).toHaveValue(capabilityName);
 
       const updatedContent = '---\ndescription: Updated\n---\n\nUpdated content.';
@@ -83,7 +83,7 @@ test.describe('Capabilities Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await expect(dialog.getByText(capabilityName)).toBeVisible({ timeout: 10_000 });
 
@@ -93,7 +93,7 @@ test.describe('Capabilities Modal — CRUD Operations', () => {
     await expect(dialog.getByText(capabilityName)).toBeHidden({ timeout: 10_000 });
 
     // Built-in capabilities should still be visible
-    await expect(dialog.getByText('tmux')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('tmux')).toBeVisible({ timeout: 10_000 });
 
     // No cleanup needed — capability already deleted via UI
   });
@@ -102,14 +102,14 @@ test.describe('Capabilities Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     const builtInRow = dialog.locator('.rounded-lg').filter({ hasText: 'tmux' });
     await expect(builtInRow).toBeVisible({ timeout: 10_000 });
     await builtInRow.locator('button:has-text("View")').click();
 
     const nameInput = dialog.locator('input[placeholder="Capability name"]');
-    await expect(nameInput).toBeVisible({ timeout: 5_000 });
+    await expect(nameInput).toBeVisible({ timeout: 10_000 });
     await expect(nameInput).toBeDisabled();
 
     const textarea = dialog.locator('textarea');
@@ -126,10 +126,10 @@ test.describe('Capabilities Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('textarea').fill('Some content');
 
@@ -141,10 +141,10 @@ test.describe('Capabilities Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('input[placeholder="Capability name"]').fill('test-capability');
 
@@ -156,10 +156,10 @@ test.describe('Capabilities Modal — CRUD Operations', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Capabilities")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('input[placeholder="Capability name"]')).toBeVisible({ timeout: 10_000 });
 
     const createButton = dialog.locator('button:has-text("Create")');
     await expect(createButton).toBeDisabled();

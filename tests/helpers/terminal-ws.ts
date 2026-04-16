@@ -191,7 +191,7 @@ export class TerminalWsClient {
       if (regex.test(this.buffer)) {
         return this.buffer;
       }
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 100));
     }
 
     throw new Error(

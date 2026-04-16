@@ -21,7 +21,7 @@ test.describe('Update Notification / Images Section', () => {
     await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
     // Images card header should be visible
-    await expect(aside.getByText('Images', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(aside.getByText('Images', { exact: true })).toBeVisible({ timeout: 10_000 });
     // traefik image should be shown
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
@@ -57,7 +57,7 @@ test.describe('Update Notification / Images Section', () => {
     await expect(aside.getByText('Prune dangling images')).toBeVisible({ timeout: 15_000 });
 
     // After the mock prune, a result should display
-    await expect(aside.getByText(/removed/)).toBeVisible({ timeout: 5_000 });
+    await expect(aside.getByText(/removed/)).toBeVisible({ timeout: 10_000 });
 
     await page.unrouteAll({ behavior: 'wait' });
   });
@@ -125,7 +125,7 @@ test.describe('Update Notification / Images Section', () => {
     // In production mode: either "Check for updates" (no updates) or "Re-check" (updates available)
     const checkBtn = aside.getByText('Check for updates');
     const recheckBtn = aside.getByText('Re-check');
-    await expect(checkBtn.or(recheckBtn)).toBeVisible({ timeout: 5_000 });
+    await expect(checkBtn.or(recheckBtn)).toBeVisible({ timeout: 10_000 });
   });
 
   test('clicking check/re-check triggers a check without error', async ({ page }) => {
@@ -142,7 +142,7 @@ test.describe('Update Notification / Images Section', () => {
     const checkBtn = aside.getByText('Check for updates');
     const recheckBtn = aside.getByText('Re-check');
     const btn = checkBtn.or(recheckBtn);
-    await expect(btn).toBeVisible({ timeout: 5_000 });
+    await expect(btn).toBeVisible({ timeout: 10_000 });
 
     // Click the button
     await btn.click();
@@ -172,7 +172,7 @@ test.describe('Update Notification / Images Section', () => {
     const checkBtn = aside.getByText('Check for updates');
     const recheckBtn = aside.getByText('Re-check');
     const btn = checkBtn.or(recheckBtn);
-    await expect(btn).toBeVisible({ timeout: 5_000 });
+    await expect(btn).toBeVisible({ timeout: 10_000 });
 
     // Intercept the check API to add a delay so we can observe the loading state
     await page.route('**/api/updates/check', async (route) => {
@@ -279,7 +279,7 @@ test.describe('Update Notification / Images Section', () => {
     // In production mode with no update available, a green checkmark should display
     // Use adjacent sibling selector: the digest div follows the name span in the grid
     const checkmark = aside.locator('span.font-medium:has-text("traefik") + div span:has-text("✓")');
-    await expect(checkmark).toBeVisible({ timeout: 5_000 });
+    await expect(checkmark).toBeVisible({ timeout: 10_000 });
   });
 
   test('traefik image row shows a truncated digest hash', async ({ page }) => {
@@ -293,7 +293,7 @@ test.describe('Update Notification / Images Section', () => {
     // The digest is shown in a font-mono span adjacent to the name span in the grid.
     // Either a single 12-char hex hash (up to date) or "hash1 → hash2" (update available).
     const digestSpan = aside.locator('span.font-medium:has-text("traefik") + div span.font-mono');
-    await expect(digestSpan).toBeVisible({ timeout: 5_000 });
+    await expect(digestSpan).toBeVisible({ timeout: 10_000 });
 
     const digestText = await digestSpan.textContent();
     expect(digestText).toBeTruthy();

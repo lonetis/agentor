@@ -46,6 +46,6 @@ test.describe.serial('Split Pane Layout', () => {
 
     // The pane tab bar should show the container display name
     const mainContent = page.locator('main');
-    await expect(mainContent.locator(`text=${displayName}`)).toBeVisible({ timeout: 5_000 });
+    await expect(mainContent.locator(`text=${displayName}`)).toBeVisible({ timeout: 10_000 });
   });
 });

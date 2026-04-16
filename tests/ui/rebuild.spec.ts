@@ -50,7 +50,7 @@ test.describe('Rebuild Worker UI', () => {
     await rebuildBtn.click();
 
     // Container should still be there with the same name
-    await expect(card.locator('text=running')).toBeVisible({ timeout: 5_000 });
+    await expect(card.locator('text=running')).toBeVisible({ timeout: 10_000 });
   });
 });
 

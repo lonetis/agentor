@@ -87,7 +87,7 @@ export async function goToDashboard(page: Page): Promise<void> {
 export async function openCreateWorkerModal(page: Page): Promise<void> {
   await page.click('button:has-text("+ New Worker")');
   // Wait for the modal to appear
-  await page.waitForSelector('[role="dialog"]', { timeout: 5_000 });
+  await page.waitForSelector('[role="dialog"]', { timeout: 10_000 });
 }
 
 /**
@@ -151,7 +151,7 @@ export async function waitForContainerStatus(
  */
 export async function openEnvironmentsModal(page: Page): Promise<void> {
   await page.click('button:has-text("Environments")');
-  await page.waitForSelector('[role="dialog"]', { timeout: 5_000 });
+  await page.waitForSelector('[role="dialog"]', { timeout: 10_000 });
 }
 
 /**

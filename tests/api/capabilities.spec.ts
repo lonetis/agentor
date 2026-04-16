@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
-import { cleanupAllCustomCapabilities } from '../helpers/worker-lifecycle';
 
 const BUILT_IN_CAPABILITY_IDS = ['port-mapping', 'domain-mapping', 'usage', 'tmux'];
 

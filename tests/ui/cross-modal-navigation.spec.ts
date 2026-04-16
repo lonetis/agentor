@@ -7,7 +7,7 @@ test.describe('Cross-Modal Navigation from Create Worker Modal', () => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 5_000 });
+    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 10_000 });
 
     // The first Manage button is for Environments
     const manageButtons = dialog.locator('button:has-text("Manage")');
@@ -22,7 +22,7 @@ test.describe('Cross-Modal Navigation from Create Worker Modal', () => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 5_000 });
+    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 10_000 });
 
     // The second Manage button is for Init Scripts
     const manageButtons = dialog.locator('button:has-text("Manage")');
@@ -36,7 +36,7 @@ test.describe('Cross-Modal Navigation from Create Worker Modal', () => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 5_000 });
+    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 10_000 });
 
     // Click the first Manage button (Environments)
     const manageButtons = dialog.locator('button:has-text("Manage")');
@@ -57,7 +57,7 @@ test.describe('Cross-Modal Navigation from Create Worker Modal', () => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 5_000 });
+    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 10_000 });
 
     // Click the second Manage button (Init Scripts)
     const manageButtons = dialog.locator('button:has-text("Manage")');
@@ -78,7 +78,7 @@ test.describe('Cross-Modal Navigation from Create Worker Modal', () => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 5_000 });
+    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 10_000 });
 
     // Click Manage (Environments) to navigate away
     const manageButtons = dialog.locator('button:has-text("Manage")');
@@ -93,14 +93,14 @@ test.describe('Cross-Modal Navigation from Create Worker Modal', () => {
 
     // Re-open the Create Worker Modal
     await openCreateWorkerModal(page);
-    await expect(page.locator('[role="dialog"]').locator('h2')).toHaveText('New Worker', { timeout: 5_000 });
+    await expect(page.locator('[role="dialog"]').locator('h2')).toHaveText('New Worker', { timeout: 10_000 });
   });
 
   test('after closing Init Scripts Modal, Create Worker Modal can be re-opened', async ({ page }) => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 5_000 });
+    await expect(dialog.locator('h2')).toHaveText('New Worker', { timeout: 10_000 });
 
     // Click Manage (Init Scripts) to navigate away
     const manageButtons = dialog.locator('button:has-text("Manage")');
@@ -115,6 +115,6 @@ test.describe('Cross-Modal Navigation from Create Worker Modal', () => {
 
     // Re-open the Create Worker Modal
     await openCreateWorkerModal(page);
-    await expect(page.locator('[role="dialog"]').locator('h2')).toHaveText('New Worker', { timeout: 5_000 });
+    await expect(page.locator('[role="dialog"]').locator('h2')).toHaveText('New Worker', { timeout: 10_000 });
   });
 });

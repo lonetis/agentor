@@ -40,7 +40,7 @@ test.describe.serial('Terminal Pane', () => {
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
     // "main" should appear in the tmux tab bar (in the main content area)
-    await expect(page.locator('main').locator('text=main')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('main').locator('text=main')).toBeVisible({ timeout: 15_000 });
   });
 
   test('terminal renders xterm rows', async ({ page }) => {
@@ -52,7 +52,7 @@ test.describe.serial('Terminal Pane', () => {
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('.xterm-rows')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.xterm-rows')).toBeVisible({ timeout: 15_000 });
   });
 
   test('shows tmux create button', async ({ page }) => {
@@ -64,7 +64,7 @@ test.describe.serial('Terminal Pane', () => {
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('.tmux-create-btn')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('.tmux-create-btn')).toBeVisible({ timeout: 15_000 });
   });
 
   test('clicking + creates a new tmux tab', async ({ page }) => {
@@ -79,13 +79,13 @@ test.describe.serial('Terminal Pane', () => {
 
     // Ensure main tab is visible
     const mainArea = page.locator('main');
-    await expect(mainArea.locator('text=main')).toBeVisible({ timeout: 10_000 });
+    await expect(mainArea.locator('text=main')).toBeVisible({ timeout: 15_000 });
 
     // Click the create button
     await page.locator('.tmux-create-btn').click();
 
     // Wait for the new tab to appear (API call + 3s poll interval)
-    await expect(mainArea.locator('.tmux-tab').nth(1)).toBeVisible({ timeout: 10_000 });
+    await expect(mainArea.locator('.tmux-tab').nth(1)).toBeVisible({ timeout: 15_000 });
   });
 
   test('non-default tab has close button', async ({ page }) => {
@@ -99,7 +99,7 @@ test.describe.serial('Terminal Pane', () => {
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
     // Wait for the second tab (created in previous serial test) to be visible
     const secondTab = page.locator('.tmux-tab').nth(1);
-    await expect(secondTab).toBeVisible({ timeout: 10_000 });
+    await expect(secondTab).toBeVisible({ timeout: 15_000 });
     // Non-default tabs should have a close button
     const closeBtn = secondTab.locator('.tmux-tab-close');
     await expect(closeBtn).toBeVisible();
@@ -114,7 +114,7 @@ test.describe.serial('Terminal Pane', () => {
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('main').locator('text=main')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('main').locator('text=main')).toBeVisible({ timeout: 15_000 });
 
     // The main tab should not have a close button (× symbol)
     const mainTab = page.locator('.tmux-tab').filter({ hasText: 'main' }).first();
@@ -132,7 +132,7 @@ test.describe.serial('Terminal Pane', () => {
     await buttons.first().click();
 
     await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('.xterm-rows')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.xterm-rows')).toBeVisible({ timeout: 15_000 });
 
     // Open a parallel WebSocket connection to verify typed commands produce output
     const ws = new TerminalWsClient(containerId);

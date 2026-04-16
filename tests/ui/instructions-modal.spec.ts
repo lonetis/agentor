@@ -1,26 +1,22 @@
 import { test, expect } from '@playwright/test';
 import { goToDashboard } from '../helpers/ui-helpers';
-import { cleanupAllCustomInstructions } from '../helpers/worker-lifecycle';
+import { ApiClient } from '../helpers/api-client';
 
 test.describe('Instructions Modal', () => {
-  test.afterEach(async ({ request }) => {
-    await cleanupAllCustomInstructions(request);
-  });
-
   test('Instructions button is visible and opens modal', async ({ page }) => {
     await goToDashboard(page);
     const btn = page.locator('button:has-text("Instructions")');
     await expect(btn).toBeVisible({ timeout: 10_000 });
     await btn.click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
   });
 
   test('modal has "Instructions" title', async ({ page }) => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
     await expect(dialog.locator('h2')).toHaveText('Instructions');
   });
 
@@ -28,7 +24,7 @@ test.describe('Instructions Modal', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     // The built-in entry name is parsed from the first heading in the markdown file
     // It should show the "Built-in" badge
@@ -40,32 +36,32 @@ test.describe('Instructions Modal', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("Close")').click();
-    await expect(dialog).toBeHidden({ timeout: 5_000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
   });
 
   test('Escape key closes the modal', async ({ page }) => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden({ timeout: 5_000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
   });
 
   test('"New" button shows editor form', async ({ page }) => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
 
-    await expect(dialog.getByText('Name', { exact: true })).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.getByText('Content')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Name', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Content')).toBeVisible({ timeout: 10_000 });
     await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible();
     await expect(dialog.locator('textarea')).toBeVisible();
   });
@@ -74,37 +70,45 @@ test.describe('Instructions Modal', () => {
     await goToDashboard(page);
     await page.locator('button:has-text("Instructions")').click();
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.getByText('Name', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Name', { exact: true })).toBeVisible({ timeout: 10_000 });
 
     await dialog.locator('button:has-text("Cancel")').click();
 
     // Should return to list — "New" button visible again
-    await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 10_000 });
     // Built-in entry should be visible
-    await expect(dialog.getByText('Built-in').first()).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Built-in').first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test('create custom entry flow', async ({ page }) => {
-    await goToDashboard(page);
-    await page.locator('button:has-text("Instructions")').click();
-    const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
-
+  test('create custom entry flow', async ({ page, request }) => {
+    const api = new ApiClient(request);
     const entryName = `test-entry-${Date.now()}`;
 
-    await dialog.locator('button:has-text("New")').click();
-    await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible({ timeout: 5_000 });
+    try {
+      await goToDashboard(page);
+      await page.locator('button:has-text("Instructions")').click();
+      const dialog = page.locator('[role="dialog"]');
+      await expect(dialog).toBeVisible({ timeout: 10_000 });
 
-    await dialog.locator('input[placeholder="Entry name"]').fill(entryName);
-    await dialog.locator('textarea').fill('# Test Entry\n\nSome test content for AGENTS.md');
+      await dialog.locator('button:has-text("New")').click();
+      await expect(dialog.locator('input[placeholder="Entry name"]')).toBeVisible({ timeout: 10_000 });
 
-    await dialog.locator('button:has-text("Create")').click();
+      await dialog.locator('input[placeholder="Entry name"]').fill(entryName);
+      await dialog.locator('textarea').fill('# Test Entry\n\nSome test content for AGENTS.md');
 
-    // Should return to list and show the new entry
-    await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.getByText(entryName)).toBeVisible({ timeout: 10_000 });
+      await dialog.locator('button:has-text("Create")').click();
+
+      // Should return to list and show the new entry
+      await expect(dialog.locator('button:has-text("New")')).toBeVisible({ timeout: 10_000 });
+      await expect(dialog.getByText(entryName)).toBeVisible({ timeout: 10_000 });
+    } finally {
+      // Cleanup: delete the instruction we just created
+      const { body: instructions } = await api.listInstructions();
+      const created = instructions.find((s: { name: string }) => s.name === entryName);
+      if (created) await api.deleteInstruction(created.id);
+    }
   });
 });

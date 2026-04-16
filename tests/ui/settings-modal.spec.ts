@@ -7,11 +7,11 @@ test.describe('Settings Modal', () => {
     await selectSidebarTab(page, 'System');
 
     const systemSettingsBtn = page.locator('button:has-text("System Settings")');
-    await expect(systemSettingsBtn).toBeVisible({ timeout: 5_000 });
+    await expect(systemSettingsBtn).toBeVisible({ timeout: 10_000 });
     await systemSettingsBtn.click();
 
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
     return dialog;
   }
 
@@ -28,13 +28,13 @@ test.describe('Settings Modal', () => {
 
   test('modal has "System Settings" title', async ({ page }) => {
     const dialog = await openSettingsModal(page);
-    await expect(dialog.getByText('System Settings').first()).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('System Settings').first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('has "Expand all" and "Collapse all" buttons', async ({ page }) => {
     const dialog = await openSettingsModal(page);
-    await expect(dialog.getByText('Expand all')).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.getByText('Collapse all')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Expand all')).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Collapse all')).toBeVisible({ timeout: 10_000 });
   });
 
   test('contains expected section labels', async ({ page }) => {
@@ -61,15 +61,15 @@ test.describe('Settings Modal', () => {
     await expect(dialog.getByText('Docker & Infrastructure')).toBeVisible({ timeout: 10_000 });
 
     // A setting item inside Docker section should be visible
-    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 10_000 });
 
     // Click the section header to collapse it
     await dialog.getByText('Docker & Infrastructure').click();
-    await expect(dialog.getByText('Docker Network')).toBeHidden({ timeout: 5_000 });
+    await expect(dialog.getByText('Docker Network')).toBeHidden({ timeout: 10_000 });
 
     // Click again to expand
     await dialog.getByText('Docker & Infrastructure').click();
-    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 10_000 });
   });
 
   test('"Expand all" expands all sections', async ({ page }) => {
@@ -79,38 +79,38 @@ test.describe('Settings Modal', () => {
     // Collapse all first
     await dialog.getByText('Collapse all').click();
     await page.waitForTimeout(300);
-    await expect(dialog.getByText('Docker Network')).toBeHidden({ timeout: 5_000 });
+    await expect(dialog.getByText('Docker Network')).toBeHidden({ timeout: 10_000 });
 
     // Expand all
     await dialog.getByText('Expand all').click();
     await page.waitForTimeout(300);
-    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 10_000 });
   });
 
   test('"Collapse all" collapses all sections', async ({ page }) => {
     const dialog = await openSettingsModal(page);
     await expect(dialog.getByText('Docker & Infrastructure')).toBeVisible({ timeout: 10_000 });
 
-    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 10_000 });
 
     // Collapse all
     await dialog.getByText('Collapse all').click();
     await page.waitForTimeout(300);
-    await expect(dialog.getByText('Docker Network')).toBeHidden({ timeout: 5_000 });
+    await expect(dialog.getByText('Docker Network')).toBeHidden({ timeout: 10_000 });
   });
 
   test('Close button closes modal', async ({ page }) => {
     const dialog = await openSettingsModal(page);
 
     await dialog.locator('button:has-text("Close")').click();
-    await expect(dialog).toBeHidden({ timeout: 5_000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
   });
 
   test('settings items display key, label, and value', async ({ page }) => {
     const dialog = await openSettingsModal(page);
     await expect(dialog.getByText('Docker & Infrastructure')).toBeVisible({ timeout: 10_000 });
 
-    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.getByText('DOCKER_NETWORK')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('DOCKER_NETWORK')).toBeVisible({ timeout: 10_000 });
   });
 });

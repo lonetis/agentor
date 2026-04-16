@@ -1,6 +1,17 @@
 import { APIRequestContext, expect } from '@playwright/test';
 import { ApiClient } from './api-client';
 
+let _portCounter = 0;
+/**
+ * Returns a unique port number in the 10000-59999 range.
+ * Combines a random base with a monotonic counter to avoid collisions
+ * even when multiple parallel workers call this simultaneously.
+ */
+export function uniquePort(): number {
+  const base = 10000 + Math.floor(Math.random() * 40000);
+  return base + (_portCounter++ % 10000);
+}
+
 /**
  * Creates a worker container and waits for it to reach 'running' status.
  * Returns the container info. Use `cleanupWorker` in afterEach/afterAll.
@@ -92,98 +103,37 @@ export async function cleanupWorker(
   }
 }
 
-/**
- * Removes all test containers. Useful for cleanup.
- */
+/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
 export async function cleanupAllWorkers(request: APIRequestContext): Promise<void> {
-  const api = new ApiClient(request);
-  const { body: containers } = await api.listContainers();
-  for (const c of containers) {
-    await cleanupWorker(request, c.id);
-  }
-  // Also clean up archived workers
-  const { body: archived } = await api.listArchived();
-  for (const w of archived) {
-    try {
-      await api.deleteArchivedWorker(w.name);
-    } catch { /* ignore */ }
-  }
+  throw new Error('cleanupAllWorkers is not safe for parallel test execution — clean up by specific ID instead');
 }
 
-/**
- * Cleans up all port mappings.
- */
+/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
 export async function cleanupAllPortMappings(request: APIRequestContext): Promise<void> {
-  const api = new ApiClient(request);
-  const { body: mappings } = await api.listPortMappings();
-  for (const m of mappings) {
-    try {
-      await api.deletePortMapping(m.externalPort);
-    } catch { /* ignore */ }
-  }
+  throw new Error('cleanupAllPortMappings is not safe for parallel test execution — clean up by specific ID instead');
 }
 
-/**
- * Cleans up all domain mappings.
- */
+/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
 export async function cleanupAllDomainMappings(request: APIRequestContext): Promise<void> {
-  const api = new ApiClient(request);
-  const { body: mappings } = await api.listDomainMappings();
-  for (const m of mappings) {
-    try {
-      await api.deleteDomainMapping(m.id);
-    } catch { /* ignore */ }
-  }
+  throw new Error('cleanupAllDomainMappings is not safe for parallel test execution — clean up by specific ID instead');
 }
 
-/**
- * Cleans up all environments.
- */
+/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
 export async function cleanupAllEnvironments(request: APIRequestContext): Promise<void> {
-  const api = new ApiClient(request);
-  const { body: environments } = await api.listEnvironments();
-  for (const e of environments) {
-    try {
-      await api.deleteEnvironment(e.id);
-    } catch { /* ignore */ }
-  }
+  throw new Error('cleanupAllEnvironments is not safe for parallel test execution — clean up by specific ID instead');
 }
 
-/**
- * Cleans up all custom capabilities (built-in capabilities cannot be deleted).
- */
+/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
 export async function cleanupAllCustomCapabilities(request: APIRequestContext): Promise<void> {
-  const api = new ApiClient(request);
-  const { body: capabilities } = await api.listCapabilities();
-  for (const s of capabilities) {
-    if (!s.builtIn) {
-      try { await api.deleteCapability(s.id); } catch { /* ignore */ }
-    }
-  }
+  throw new Error('cleanupAllCustomCapabilities is not safe for parallel test execution — clean up by specific ID instead');
 }
 
-/**
- * Cleans up all custom instructions (built-in instructions cannot be deleted).
- */
+/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
 export async function cleanupAllCustomInstructions(request: APIRequestContext): Promise<void> {
-  const api = new ApiClient(request);
-  const { body: entries } = await api.listInstructions();
-  for (const e of entries) {
-    if (!e.builtIn) {
-      try { await api.deleteInstruction(e.id); } catch { /* ignore */ }
-    }
-  }
+  throw new Error('cleanupAllCustomInstructions is not safe for parallel test execution — clean up by specific ID instead');
 }
 
-/**
- * Cleans up all custom init scripts (built-in scripts cannot be deleted).
- */
+/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
 export async function cleanupAllCustomInitScripts(request: APIRequestContext): Promise<void> {
-  const api = new ApiClient(request);
-  const { body: scripts } = await api.listInitScripts();
-  for (const s of scripts) {
-    if (!s.builtIn) {
-      try { await api.deleteInitScript(s.id); } catch { /* ignore */ }
-    }
-  }
+  throw new Error('cleanupAllCustomInitScripts is not safe for parallel test execution — clean up by specific ID instead');
 }

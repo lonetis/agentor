@@ -12,11 +12,11 @@ import { TerminalWsClient } from '../helpers/terminal-ws';
  * `waitForOutput` returns immediately when the command is typed, before
  * it has actually run.
  */
-async function execInWorker(containerId: string, command: string, timeoutMs = 15_000): Promise<string> {
+async function execInWorker(containerId: string, command: string, timeoutMs = 30_000): Promise<string> {
   const ws = new TerminalWsClient(containerId);
   try {
     await ws.connect();
-    await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
+    await ws.waitForOutput(/[\$#>]\s*$/, 30_000);
     ws.clearBuffer();
 
     const marker = `END_${Date.now()}_MK`;

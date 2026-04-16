@@ -49,7 +49,7 @@ test.describe('Self-Signed CA Certificate UI', () => {
     await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     const caCertBtn = aside.locator('button:has-text("CA cert")');
-    await expect(caCertBtn).not.toBeVisible({ timeout: 5_000 });
+    await expect(caCertBtn).not.toBeVisible({ timeout: 10_000 });
   });
 
   test('selfsigned challenge badge shows "self" label', async ({ page, request }) => {

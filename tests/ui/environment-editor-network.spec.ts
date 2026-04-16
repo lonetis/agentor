@@ -10,7 +10,7 @@ async function openNewEnvironmentEditor(page: import('@playwright/test').Page) {
   const dialog = page.locator('[role="dialog"]');
   await dialog.getByRole('button', { name: 'New', exact: true }).click();
   // Wait for the editor to render — Network Access fieldset is always present
-  await expect(dialog.locator('legend:has-text("Network Access")')).toBeVisible({ timeout: 5_000 });
+  await expect(dialog.locator('legend:has-text("Network Access")')).toBeVisible({ timeout: 10_000 });
   return dialog;
 }
 
@@ -65,7 +65,7 @@ test.describe('Environment Editor — Network Mode', () => {
     await selectNetworkMode(dialog, 'Custom');
 
     // Allowed domains label should be visible
-    await expect(dialog.getByText('Allowed domains')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Allowed domains')).toBeVisible({ timeout: 10_000 });
     // The textarea with wildcard placeholder should appear
     const textarea = dialog.locator('textarea').filter({ has: dialog.page().locator(':scope') });
     // Just check the Allowed domains label and a textarea is visible after switching
@@ -80,7 +80,7 @@ test.describe('Environment Editor — Network Mode', () => {
 
     await selectNetworkMode(dialog, 'Custom');
 
-    await expect(dialog.getByText('Also include package manager domains')).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.getByText('Also include package manager domains')).toBeVisible({ timeout: 10_000 });
   });
 
   test('switching to Block shows selected state', async ({ page }) => {
@@ -108,13 +108,13 @@ test.describe('Environment Editor — Network Mode', () => {
     await selectNetworkMode(dialog, 'Block');
     // The agent API domains viewer button should appear
     const agentDomainsBtn = dialog.locator('button').filter({ hasText: /agent API domains/ });
-    await expect(agentDomainsBtn).toBeVisible({ timeout: 5_000 });
+    await expect(agentDomainsBtn).toBeVisible({ timeout: 10_000 });
 
     // Now switch back to Full
     await selectNetworkMode(dialog, 'Full');
 
     // Agent API domains viewer should be hidden in Full mode
-    await expect(agentDomainsBtn).toBeHidden({ timeout: 5_000 });
+    await expect(agentDomainsBtn).toBeHidden({ timeout: 10_000 });
   });
 
   test('agent API domains viewer is shown in Block mode but not in Full or Block all', async ({ page }) => {
@@ -126,11 +126,11 @@ test.describe('Environment Editor — Network Mode', () => {
 
     // Block mode: agent API domains viewer should appear
     await selectNetworkMode(dialog, 'Block');
-    await expect(agentDomainsBtn).toBeVisible({ timeout: 5_000 });
+    await expect(agentDomainsBtn).toBeVisible({ timeout: 10_000 });
 
     // Block all mode: agent API domains viewer should be hidden
     await selectNetworkMode(dialog, 'Block all');
-    await expect(agentDomainsBtn).toBeHidden({ timeout: 5_000 });
+    await expect(agentDomainsBtn).toBeHidden({ timeout: 10_000 });
   });
 
   test('agent API domains viewer is shown in Package managers and Custom modes', async ({ page }) => {
@@ -139,11 +139,11 @@ test.describe('Environment Editor — Network Mode', () => {
 
     // Package managers mode
     await selectNetworkMode(dialog, 'Package managers');
-    await expect(agentDomainsBtn).toBeVisible({ timeout: 5_000 });
+    await expect(agentDomainsBtn).toBeVisible({ timeout: 10_000 });
 
     // Custom mode
     await selectNetworkMode(dialog, 'Custom');
-    await expect(agentDomainsBtn).toBeVisible({ timeout: 5_000 });
+    await expect(agentDomainsBtn).toBeVisible({ timeout: 10_000 });
   });
 
   test('package manager domains viewer is shown in Package managers mode', async ({ page }) => {
@@ -155,7 +155,7 @@ test.describe('Environment Editor — Network Mode', () => {
 
     // Switch to Package managers
     await selectNetworkMode(dialog, 'Package managers');
-    await expect(pmDomainsBtn).toBeVisible({ timeout: 5_000 });
+    await expect(pmDomainsBtn).toBeVisible({ timeout: 10_000 });
   });
 
   test('package manager domains viewer is shown in Custom mode when checkbox is checked', async ({ page }) => {
@@ -172,6 +172,6 @@ test.describe('Environment Editor — Network Mode', () => {
     await pmCheckbox.click();
 
     // Now the package manager domains viewer should appear
-    await expect(pmDomainsBtn).toBeVisible({ timeout: 5_000 });
+    await expect(pmDomainsBtn).toBeVisible({ timeout: 10_000 });
   });
 });

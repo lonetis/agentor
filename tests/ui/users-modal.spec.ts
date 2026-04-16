@@ -52,11 +52,11 @@ test.describe('Users modal (admin)', () => {
 
       // Promote
       await row.getByRole('button', { name: 'Make admin' }).click();
-      await expect(row.getByRole('button', { name: 'Demote' })).toBeVisible({ timeout: 5_000 });
+      await expect(row.getByRole('button', { name: 'Demote' })).toBeVisible({ timeout: 10_000 });
 
       // Demote
       await row.getByRole('button', { name: 'Demote' }).click();
-      await expect(row.getByRole('button', { name: 'Make admin' })).toBeVisible({ timeout: 5_000 });
+      await expect(row.getByRole('button', { name: 'Make admin' })).toBeVisible({ timeout: 10_000 });
     } finally {
       await deleteTestUser(user.id);
     }

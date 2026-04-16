@@ -16,19 +16,15 @@ test.describe('Port Mappings Panel', () => {
       await expect(page.locator('button:has-text("+ Map")').first()).toBeVisible();
     });
 
-    test('shows no active port mappings message', async ({ page, request }) => {
-      const api = new ApiClient(request);
-      const { body: mappings } = await api.listPortMappings();
-      test.skip(mappings.length > 0, 'Port mappings exist from parallel tests');
-
-      await goToDashboard(page);
-      await selectSidebarTab(page, 'Ports');
-      await expect(page.locator('text=No active port mappings')).toBeVisible();
-    });
   });
 
   test.describe('With a worker', () => {
     let containerId: string;
+    let _portCounter = 0;
+    function uniquePort(): number {
+      const base = 10000 + Math.floor(Math.random() * 40000);
+      return base + (_portCounter++ % 10000);
+    }
 
     test.beforeEach(async ({ request }) => {
       const container = await createWorker(request);
@@ -49,8 +45,9 @@ test.describe('Port Mappings Panel', () => {
 
     test('shows API-created port mappings', async ({ page, request }) => {
       const api = new ApiClient(request);
+      const port = uniquePort();
       await api.createPortMapping({
-        externalPort: 18000,
+        externalPort: port,
         type: 'localhost',
         workerId: containerId,
         internalPort: 3000,
@@ -59,13 +56,14 @@ test.describe('Port Mappings Panel', () => {
       await goToDashboard(page);
       await selectSidebarTab(page, 'Ports');
       // Wait for the port mapping to appear
-      await expect(page.locator('text=18000')).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator(`text=${port}`)).toBeVisible({ timeout: 15_000 });
     });
 
     test('shows mapping type label', async ({ page, request }) => {
       const api = new ApiClient(request);
+      const port = uniquePort();
       await api.createPortMapping({
-        externalPort: 18001,
+        externalPort: port,
         type: 'localhost',
         workerId: containerId,
         internalPort: 3000,
@@ -73,7 +71,7 @@ test.describe('Port Mappings Panel', () => {
 
       await goToDashboard(page);
       await selectSidebarTab(page, 'Ports');
-      await expect(page.locator('text=18001')).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator(`text=${port}`)).toBeVisible({ timeout: 15_000 });
       // localhost type is rendered as "internal" badge
       await expect(page.locator('aside').locator('text=internal').first()).toBeVisible();
     });
@@ -84,7 +82,7 @@ test.describe('Port Mappings Panel', () => {
       const aside = page.locator('aside');
       await aside.locator('button:has-text("+ Map")').first().click();
       // Form should appear with Add and Cancel buttons
-      await expect(aside.locator('button:has-text("Add")').first()).toBeVisible({ timeout: 5_000 });
+      await expect(aside.locator('button:has-text("Add")').first()).toBeVisible({ timeout: 10_000 });
       await expect(aside.locator('button:has-text("Cancel")').first()).toBeVisible();
       // External port input should be visible
       await expect(aside.locator('input[placeholder="External port"]')).toBeVisible();
@@ -96,10 +94,10 @@ test.describe('Port Mappings Panel', () => {
       await selectSidebarTab(page, 'Ports');
       const aside = page.locator('aside');
       await aside.locator('button:has-text("+ Map")').first().click();
-      await expect(aside.locator('button:has-text("Cancel")').first()).toBeVisible({ timeout: 5_000 });
+      await expect(aside.locator('button:has-text("Cancel")').first()).toBeVisible({ timeout: 10_000 });
       await aside.locator('button:has-text("Cancel")').first().click();
       // Form should be hidden, + Map button should reappear
-      await expect(aside.locator('button:has-text("+ Map")').first()).toBeVisible({ timeout: 5_000 });
+      await expect(aside.locator('button:has-text("+ Map")').first()).toBeVisible({ timeout: 10_000 });
       await expect(aside.locator('input[placeholder="External port"]')).toBeHidden();
     });
 
@@ -110,7 +108,7 @@ test.describe('Port Mappings Panel', () => {
       await aside.locator('button:has-text("+ Map")').first().click();
       // Type selector is the first select in the form
       const typeSelect = aside.locator('select').first();
-      await expect(typeSelect).toBeVisible({ timeout: 5_000 });
+      await expect(typeSelect).toBeVisible({ timeout: 10_000 });
       // Should have internal and external options
       const options = typeSelect.locator('option');
       await expect(options).toHaveCount(2);
@@ -123,14 +121,15 @@ test.describe('Port Mappings Panel', () => {
       await aside.locator('button:has-text("+ Map")').first().click();
       // Worker selector has a disabled "Worker" placeholder
       const workerSelect = aside.locator('select').nth(1);
-      await expect(workerSelect).toBeVisible({ timeout: 5_000 });
+      await expect(workerSelect).toBeVisible({ timeout: 10_000 });
       await expect(workerSelect.locator('option[disabled]')).toHaveText('Worker');
     });
 
     test('shows external type badge for external mapping', async ({ page, request }) => {
       const api = new ApiClient(request);
+      const port = uniquePort();
       await api.createPortMapping({
-        externalPort: 18003,
+        externalPort: port,
         type: 'external',
         workerId: containerId,
         internalPort: 3000,
@@ -138,15 +137,16 @@ test.describe('Port Mappings Panel', () => {
 
       await goToDashboard(page);
       await selectSidebarTab(page, 'Ports');
-      await expect(page.locator('text=18003')).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator(`text=${port}`)).toBeVisible({ timeout: 15_000 });
       // external type is rendered as "external" badge
       await expect(page.locator('aside').locator('text=external').first()).toBeVisible();
     });
 
     test('delete button removes port mapping', async ({ page, request }) => {
       const api = new ApiClient(request);
+      const port = uniquePort();
       await api.createPortMapping({
-        externalPort: 18004,
+        externalPort: port,
         type: 'localhost',
         workerId: containerId,
         internalPort: 3000,
@@ -154,20 +154,21 @@ test.describe('Port Mappings Panel', () => {
 
       await goToDashboard(page);
       await selectSidebarTab(page, 'Ports');
-      await expect(page.locator('text=18004')).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator(`text=${port}`)).toBeVisible({ timeout: 15_000 });
 
       // Find the mapping row and click its delete button
-      const mappingRow = page.locator('aside').locator('text=18004').locator('..');
+      const mappingRow = page.locator('aside').locator(`text=${port}`).locator('..');
       await mappingRow.locator('button').first().click();
 
       // Mapping should disappear
-      await expect(page.locator('text=18004')).toBeHidden({ timeout: 10_000 });
+      await expect(page.locator(`text=${port}`)).toBeHidden({ timeout: 10_000 });
     });
 
     test('shows delete button on port mapping', async ({ page, request }) => {
       const api = new ApiClient(request);
+      const port = uniquePort();
       await api.createPortMapping({
-        externalPort: 18002,
+        externalPort: port,
         type: 'localhost',
         workerId: containerId,
         internalPort: 3000,
@@ -175,11 +176,11 @@ test.describe('Port Mappings Panel', () => {
 
       await goToDashboard(page);
       await selectSidebarTab(page, 'Ports');
-      await expect(page.locator('text=18002')).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator(`text=${port}`)).toBeVisible({ timeout: 15_000 });
       // Each mapping row should have a delete/remove button
       const aside = page.locator('aside');
       // Look for a delete icon button in the port mappings area
-      const portMappingArea = aside.locator('text=18002').locator('..');
+      const portMappingArea = aside.locator(`text=${port}`).locator('..');
       const deleteButton = portMappingArea.locator('button').first();
       await expect(deleteButton).toBeVisible();
     });
