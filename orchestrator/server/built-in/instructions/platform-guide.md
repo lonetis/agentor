@@ -31,6 +31,7 @@ You can interact with the orchestrator's API from inside your worker to manage p
 - **Editors:** neovim, vim, nano
 - **VCS:** git, gh (GitHub CLI)
 - **Search:** ripgrep (rg), fd-find (fd)
+- **Terminal:** tmux (your session is named `main` — you're already inside it)
 - **Utilities:** jq, curl, wget, tree, less, htop, btop, rsync, strace, file, man-db
 - **Network:** openssh-client, dnsutils, net-tools, iputils-ping
 
@@ -51,4 +52,5 @@ Network access depends on your environment's configuration. Some environments al
 - `ORCHESTRATOR_URL` — Base URL of the orchestrator API (e.g. `http://agentor-orchestrator:3000`)
 - `WORKER_CONTAINER_NAME` — This worker container's name, used to identify yourself when calling orchestrator APIs
 - `DOCKER_ENABLED` — `true` if Docker-in-Docker is available
+- `GITHUB_TOKEN` — GitHub personal access token (if configured). The `gh` CLI is pre-authenticated when this is set
 - `DISPLAY` — X11 display (`:99`)

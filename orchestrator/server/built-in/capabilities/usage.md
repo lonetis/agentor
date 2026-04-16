@@ -30,6 +30,7 @@ Returns a JSON object with per-agent usage information:
       "displayName": "Claude",
       "authType": "oauth",
       "usageAvailable": true,
+      "lastFetchTime": "2025-01-15T11:30:00Z",
       "windows": [
         {
           "label": "Session",
@@ -46,13 +47,24 @@ Returns a JSON object with per-agent usage information:
 - `agentId` — Which agent (claude, codex, gemini)
 - `authType` — How the agent authenticates: `"oauth"` (subscription), `"api-key"`, or `"none"`
 - `usageAvailable` — Whether usage data could be retrieved. `false` for API key auth or when the token is expired
+- `lastFetchTime` — ISO 8601 timestamp of the last successful fetch for this agent
+- `error` — (optional) Error message if the usage check failed
 - `windows[]` — Usage windows, each with:
   - `label` — Window name (e.g. "Session", "Weekly")
   - `utilization` — Percentage used, 0-100. Over 80% means you're close to hitting limits
-  - `resetsAt` — ISO 8601 timestamp when the window resets
+  - `resetsAt` — ISO 8601 timestamp when the window resets (or `null` if unknown)
+
+### Trigger an immediate refresh
+
+```bash
+curl -X POST "$ORCHESTRATOR_URL/api/usage/refresh"
+```
+
+Bypasses the normal 5-minute poll interval and fetches fresh usage data from all agents immediately. Returns the same response shape as the GET endpoint.
 
 ## When to check
 
 - Before starting a large task that will consume significant quota
 - When you're getting rate-limited or experiencing slow responses
 - To decide whether to continue working or wait for a quota reset
+- After completing a large task, to see how much quota was consumed

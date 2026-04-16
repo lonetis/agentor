@@ -20,6 +20,14 @@ There are two mapping types:
 
 All requests go to the orchestrator at `$ORCHESTRATOR_URL`. Your container is identified by `$WORKER_CONTAINER_NAME`. Both are pre-set environment variables.
 
+### Check port mapper status
+
+```bash
+curl "$ORCHESTRATOR_URL/api/port-mapper/status"
+```
+
+Returns `totalMappings`, `localhostCount`, and `externalCount` — useful for checking how many mappings are currently active before creating new ones.
+
 ### Create a port mapping
 
 ```bash
@@ -47,7 +55,7 @@ This maps host port 9000 to port 3000 inside your container. The user can then o
 curl "$ORCHESTRATOR_URL/api/port-mappings"
 ```
 
-Returns a JSON array of all active port mappings across all workers.
+Returns a JSON array of all active port mappings across all workers. Each entry includes `externalPort`, `type`, `workerId`, `workerName`, and `internalPort`.
 
 ### Delete a port mapping
 
@@ -55,7 +63,7 @@ Returns a JSON array of all active port mappings across all workers.
 curl -X DELETE "$ORCHESTRATOR_URL/api/port-mappings/9000"
 ```
 
-Removes the mapping on host port 9000. Replace `9000` with the external port number.
+Removes the mapping on host port 9000. Replace `9000` with the external port number. Idempotent — returns success even if the mapping doesn't exist.
 
 ## Common use cases
 
