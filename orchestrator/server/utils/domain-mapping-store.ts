@@ -6,6 +6,13 @@ export interface DomainMapping {
   baseDomain: string;
   path: string;
   protocol: 'http' | 'https' | 'tcp';
+  /**
+   * When true, the router also matches any single-label prefix of the host
+   * (e.g. `*.sub.domain.com` alongside `sub.domain.com`). Only valid when the
+   * base domain's challenge type is `none`, `dns`, or `selfsigned` — HTTP-01
+   * ACME cannot issue wildcard certificates.
+   */
+  wildcard: boolean;
   workerId: string;
   workerName: string;
   internalPort: number;
@@ -19,6 +26,14 @@ export interface DomainMapping {
 export class DomainMappingStore extends JsonStore<string, DomainMapping> {
   constructor(dataDir: string) {
     super(dataDir, 'domain-mappings.json', (m) => m.id);
+  }
+
+  override async init(): Promise<void> {
+    await super.init();
+    // Backfill missing `wildcard` field on legacy records persisted before the feature existed.
+    for (const m of this.items.values()) {
+      if (typeof m.wildcard !== 'boolean') m.wildcard = false;
+    }
   }
 
   async add(mapping: DomainMapping): Promise<void> {

@@ -17,6 +17,7 @@ const formPath = ref('');
 const formAuthEnabled = ref(false);
 const formAuthUsername = ref('');
 const formAuthPassword = ref('');
+const formWildcard = ref(false);
 
 const multiDomain = computed(() => status.value.baseDomains.length > 1);
 
@@ -52,6 +53,17 @@ const availableProtocols = computed(() => {
     { value: 'https' as const, label: 'https', disabled: !hasTls },
     { value: 'tcp' as const, label: 'tcp', disabled: !hasTls },
   ];
+});
+
+/**
+ * Wildcard routing is allowed on base domains whose challenge type is `none`
+ * (plain HTTP), `dns` (wildcard cert via DNS-01), or `selfsigned` (locally
+ * generated wildcard cert). HTTP-01 ACME (`http`) cannot issue wildcard certs,
+ * so the checkbox is disabled when any selected base domain uses it.
+ */
+const wildcardAllowed = computed(() => {
+  if (formBaseDomains.value.size === 0) return false;
+  return [...formBaseDomains.value].every((d) => getChallengeType(d) !== 'http');
 });
 
 function toggleBaseDomain(domain: string) {
@@ -92,6 +104,12 @@ watch(selectedDomainsAllHaveTls, (hasTls) => {
   }
 });
 
+// Clear wildcard flag if the selected base domain stops supporting it (e.g.
+// user switches from :dns:provider to :http ACME by adjusting the selection).
+watch(wildcardAllowed, (allowed) => {
+  if (!allowed) formWildcard.value = false;
+});
+
 function resetForm() {
   formSubdomain.value = '';
   formPath.value = '';
@@ -102,6 +120,7 @@ function resetForm() {
   formAuthEnabled.value = false;
   formAuthUsername.value = '';
   formAuthPassword.value = '';
+  formWildcard.value = false;
   showForm.value = false;
 }
 
@@ -109,12 +128,14 @@ async function handleCreate() {
   if (!formWorkerId.value || !formInternalPort.value || formBaseDomains.value.size === 0 || formProtocols.value.size === 0) return;
   const protocols = [...formProtocols.value];
   const domains = [...formBaseDomains.value];
+  const useWildcard = formWildcard.value && wildcardAllowed.value;
   const items = domains.flatMap((baseDomain) =>
     protocols.map((protocol) => ({
       subdomain: formSubdomain.value,
       baseDomain,
       ...(protocol !== 'tcp' && formPath.value ? { path: formPath.value } : {}),
       protocol,
+      ...(useWildcard ? { wildcard: true } : {}),
       workerId: formWorkerId.value,
       internalPort: formInternalPort.value!,
       ...(protocol !== 'tcp' && formAuthEnabled.value && formAuthUsername.value && formAuthPassword.value
@@ -219,16 +240,52 @@ function downloadCaCert() {
           class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
         />
       </div>
-      <div v-if="!formProtocols.has('tcp')" class="flex flex-col gap-1.5">
-        <label class="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 cursor-pointer">
+      <label
+        class="flex items-start gap-2 text-gray-700 dark:text-gray-300 text-xs rounded border border-gray-300 dark:border-gray-600 bg-gray-200/50 dark:bg-gray-700/40 px-2 py-1.5"
+        :class="wildcardAllowed ? 'cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700/70' : 'opacity-60 cursor-not-allowed'"
+        :title="wildcardAllowed
+          ? 'Routes every single-label prefix of this host (e.g. foo.sub.domain.com) to the same worker. Works for http, https, and tcp. TLS variants use a wildcard certificate issued once per host.'
+          : 'Wildcard routing is unavailable when the selected base domain uses HTTP-01 ACME. Configure the base domain as :none (plain http), :dns:provider, or :selfsigned to enable wildcard routing.'"
+      >
+        <input
+          v-model="formWildcard"
+          type="checkbox"
+          :disabled="!wildcardAllowed"
+          class="rounded mt-0.5 shrink-0"
+          data-testid="wildcard-checkbox"
+        />
+        <span class="flex-1 min-w-0">
+          <span class="font-medium">Wildcard subdomain</span>
+          <span v-if="formWildcard && wildcardAllowed" class="font-mono text-primary-600 dark:text-primary-400 block text-[10px] mt-0.5 truncate">
+            matches *.{{ formSubdomain ? formSubdomain + '.' : '' }}{{ [...formBaseDomains][0] || status.baseDomains[0] }}
+          </span>
+          <span v-else class="text-gray-500 dark:text-gray-500 block text-[10px] mt-0.5">
+            Also route any single-label prefix (e.g. *.sub.domain)
+          </span>
+        </span>
+      </label>
+      <div
+        v-if="!formProtocols.has('tcp')"
+        class="rounded border border-gray-300 dark:border-gray-600 bg-gray-200/50 dark:bg-gray-700/40"
+      >
+        <label
+          class="flex items-start gap-2 text-gray-700 dark:text-gray-300 text-xs cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700/70 rounded px-2 py-1.5"
+          title="Protect this route with HTTP Basic authentication. Traefik returns 401 until the user provides a matching username and password."
+        >
           <input
             v-model="formAuthEnabled"
             type="checkbox"
-            class="rounded"
+            class="rounded mt-0.5 shrink-0"
+            data-testid="basic-auth-checkbox"
           />
-          Basic auth
+          <span class="flex-1 min-w-0">
+            <span class="font-medium">Basic auth</span>
+            <span v-if="!formAuthEnabled" class="text-gray-500 dark:text-gray-500 block text-[10px] mt-0.5">
+              Prompt for a username and password before routing (HTTP 401 challenge)
+            </span>
+          </span>
         </label>
-        <div v-if="formAuthEnabled" class="flex gap-1.5">
+        <div v-if="formAuthEnabled" class="flex gap-1.5 px-2 pb-2">
           <input
             v-model="formAuthUsername"
             type="text"
@@ -242,6 +299,21 @@ function downloadCaCert() {
             class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
           />
         </div>
+      </div>
+      <div
+        v-else
+        class="flex items-start gap-2 text-xs rounded border border-gray-300 dark:border-gray-600 bg-gray-200/50 dark:bg-gray-700/40 px-2 py-1.5 text-gray-700 dark:text-gray-300 opacity-80"
+        data-testid="tcp-no-auth-hint"
+      >
+        <UIcon name="i-lucide-info" class="size-3.5 mt-0.5 shrink-0 text-gray-500 dark:text-gray-400" />
+        <span class="flex-1 min-w-0">
+          <span class="font-medium">Basic auth</span>
+          <span class="text-gray-500 dark:text-gray-500 block text-[10px] mt-0.5 leading-tight">
+            HTTP-level authentication does not apply to TCP routes — Traefik
+            forwards raw bytes and cannot read HTTP headers. Use IP-level
+            restrictions or a protocol-aware reverse proxy inside the worker.
+          </span>
+        </span>
       </div>
       <div class="flex gap-1.5 justify-end">
         <UButton size="xs" color="neutral" variant="ghost" @click="showForm = false">
@@ -292,7 +364,14 @@ function downloadCaCert() {
       >
         {{ getChallengeType(m.baseDomain) === 'dns' ? getDnsProvider(m.baseDomain) : getChallengeType(m.baseDomain) === 'selfsigned' ? 'self' : getChallengeType(m.baseDomain) }}
       </span>
-      <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.subdomain ? `${m.subdomain}.${m.baseDomain}` : m.baseDomain }}{{ m.path || '' }}</span>
+      <span
+        v-if="m.wildcard"
+        class="px-1 rounded text-[10px] font-medium shrink-0 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300"
+        title="Also matches any single-label subdomain of this host"
+      >
+        wildcard
+      </span>
+      <span class="text-gray-700 dark:text-gray-300 font-mono truncate min-w-0">{{ m.wildcard ? '*.' : '' }}{{ m.subdomain ? `${m.subdomain}.${m.baseDomain}` : m.baseDomain }}{{ m.path || '' }}</span>
       <UIcon
         v-if="m.basicAuth"
         name="i-lucide-lock"

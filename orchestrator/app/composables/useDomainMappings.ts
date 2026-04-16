@@ -25,6 +25,7 @@ export function useDomainMappings() {
     baseDomain: string;
     path?: string;
     protocol: 'http' | 'https' | 'tcp';
+    wildcard?: boolean;
     workerId: string;
     internalPort: number;
     basicAuth?: { username: string; password: string };
@@ -42,6 +43,7 @@ export function useDomainMappings() {
     baseDomain: string;
     path?: string;
     protocol: 'http' | 'https' | 'tcp';
+    wildcard?: boolean;
     workerId: string;
     internalPort: number;
     basicAuth?: { username: string; password: string };

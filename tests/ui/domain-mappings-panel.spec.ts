@@ -113,7 +113,7 @@ test.describe('Domain Mappings Panel', () => {
     const aside = page.locator('aside');
     await openDmForm(aside);
     // Basic auth checkbox should be visible (default protocol is http, not tcp)
-    await expect(aside.locator('text=Basic auth')).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('[data-testid="basic-auth-checkbox"]')).toBeVisible({ timeout: 5_000 });
   });
 
   test('domain mapping form Cancel closes the form', async ({ page, request }) => {
@@ -251,12 +251,15 @@ test.describe('Domain Mappings Panel', () => {
     await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
-    // Basic auth should be visible initially (default protocol is http)
-    await expect(aside.locator('text=Basic auth')).toBeVisible({ timeout: 5_000 });
-    // Switch protocol to TCP by clicking the tcp toggle button
+    // The Basic auth checkbox should be visible initially (default protocol is http).
+    // Target the checkbox via its testid so we don't accidentally match the
+    // TCP explanation card, which also contains the heading text "Basic auth".
+    const basicAuthCheckbox = aside.locator('[data-testid="basic-auth-checkbox"]');
+    await expect(basicAuthCheckbox).toBeVisible({ timeout: 5_000 });
+    // Switch protocol to TCP.
     await aside.locator('button:has-text("tcp")').first().click();
-    // Basic auth should now be hidden
-    await expect(aside.locator('text=Basic auth')).toBeHidden({ timeout: 5_000 });
+    // The checkbox is now replaced by the read-only TCP hint card.
+    await expect(basicAuthCheckbox).toBeHidden({ timeout: 5_000 });
   });
 
   test('checking Basic auth shows username and password inputs', async ({ page, request }) => {
@@ -270,11 +273,220 @@ test.describe('Domain Mappings Panel', () => {
     await openDmForm(aside);
     // Username/password inputs should be hidden initially
     await expect(aside.locator('input[placeholder="Username"]')).toBeHidden();
-    // Check the Basic auth checkbox
-    await aside.locator('text=Basic auth').click();
+    // Check the Basic auth checkbox directly (default protocol is http, so
+    // the checkbox is rendered rather than the TCP hint card).
+    await aside.locator('[data-testid="basic-auth-checkbox"]').check();
     // Username and password inputs should now be visible
     await expect(aside.locator('input[placeholder="Username"]')).toBeVisible({ timeout: 5_000 });
     await expect(aside.locator('input[placeholder="Password"]')).toBeVisible();
+  });
+
+  test('wildcard checkbox is present in the form', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.getDomainMapperStatus();
+    test.skip(!body.enabled, 'Domain mapping not enabled');
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
+    const aside = page.locator('aside');
+    await openDmForm(aside);
+    await expect(aside.locator('[data-testid="wildcard-checkbox"]')).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('text=Wildcard subdomain')).toBeVisible();
+  });
+
+  test('wildcard checkbox is enabled for wildcard-capable base domains', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.getDomainMapperStatus();
+    test.skip(!body.enabled, 'Domain mapping not enabled');
+
+    const wildcardable = body.baseDomainConfigs.some(
+      (c: { challengeType: string }) => c.challengeType !== 'http',
+    );
+    test.skip(!wildcardable, 'No wildcard-capable base domain in config');
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
+    const aside = page.locator('aside');
+    await openDmForm(aside);
+    const checkbox = aside.locator('[data-testid="wildcard-checkbox"]');
+    await expect(checkbox).toBeVisible({ timeout: 5_000 });
+    await expect(checkbox).toBeEnabled();
+  });
+
+  test('checking wildcard shows the live match preview', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.getDomainMapperStatus();
+    test.skip(!body.enabled, 'Domain mapping not enabled');
+    const wildcardable = body.baseDomainConfigs.some(
+      (c: { challengeType: string }) => c.challengeType !== 'http',
+    );
+    test.skip(!wildcardable, 'No wildcard-capable base domain in config');
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
+    const aside = page.locator('aside');
+    await openDmForm(aside);
+    await aside.locator('input[placeholder="subdomain (optional)"]').fill('api');
+    await aside.locator('[data-testid="wildcard-checkbox"]').check();
+    await expect(aside.locator('text=/matches \\*\\.api\\./')).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('TCP form shows an explanation note in place of Basic auth', async ({ page, request }) => {
+    // Regression guard for the UX fix: when TCP is selected, Basic auth is
+    // hidden (Traefik cannot do HTTP auth on raw TCP routers), but the form
+    // should replace it with an informative hint rather than leaving a gap
+    // that looks like a bug.
+    const api = new ApiClient(request);
+    const { body } = await api.getDomainMapperStatus();
+    test.skip(!body.enabled, 'Domain mapping not enabled');
+    const wildcardable = body.baseDomainConfigs.some(
+      (c: { challengeType: string }) => c.challengeType !== 'http' && c.challengeType !== 'none',
+    );
+    test.skip(!wildcardable, 'No TLS-capable base domain');
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
+    const aside = page.locator('aside');
+    await openDmForm(aside);
+
+    // In HTTP mode the Basic auth checkbox is visible and the TCP hint is absent.
+    const basicAuthCheckbox = aside.locator('[data-testid="basic-auth-checkbox"]');
+    await expect(basicAuthCheckbox).toBeVisible({ timeout: 5_000 });
+    await expect(aside.locator('[data-testid="tcp-no-auth-hint"]')).toBeHidden();
+
+    // Switching to TCP hides the checkbox and reveals the hint card.
+    await aside.locator('button:has-text("tcp")').first().click();
+    await expect(basicAuthCheckbox).toBeHidden({ timeout: 5_000 });
+    const hint = aside.locator('[data-testid="tcp-no-auth-hint"]');
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText('does not apply to TCP routes');
+    // The hint card still shows "Basic auth" as its heading so the user
+    // understands what feature is unavailable for TCP routes.
+    await expect(hint).toContainText('Basic auth');
+  });
+
+  test('wildcard checkbox remains visible and enabled when TCP protocol is selected', async ({ page, request }) => {
+    // Regression guard: the form contains a `v-if="!formProtocols.has('tcp')"`
+    // block that hides Basic auth and Path when TCP is selected. The wildcard
+    // checkbox must NOT be inside that block — TCP supports wildcard via
+    // `HostSNI || HostSNIRegexp` just like HTTP supports it via `Host || HostRegexp`.
+    const api = new ApiClient(request);
+    const { body } = await api.getDomainMapperStatus();
+    test.skip(!body.enabled, 'Domain mapping not enabled');
+    const wildcardable = body.baseDomainConfigs.some(
+      (c: { challengeType: string }) => c.challengeType !== 'http' && c.challengeType !== 'none',
+    );
+    test.skip(!wildcardable, 'No TLS-wildcard-capable base domain (TCP needs TLS)');
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
+    const aside = page.locator('aside');
+    await openDmForm(aside);
+
+    // Click the TCP protocol button (scoped to the form so we don't grab the
+    // "tcp" badge in an existing mapping row).
+    await aside.locator('button:has-text("tcp")').first().click();
+
+    const checkbox = aside.locator('[data-testid="wildcard-checkbox"]');
+    await expect(checkbox).toBeVisible({ timeout: 5_000 });
+    await expect(checkbox).toBeEnabled();
+
+    // And it's actually clickable while TCP is selected.
+    await checkbox.check();
+    await expect(checkbox).toBeChecked();
+  });
+
+  test('TCP wildcard mapping created via form appears with wildcard badge and tcp badge', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const { body: mapperStatus } = await api.getDomainMapperStatus();
+    test.skip(!mapperStatus.enabled, 'Domain mapping not enabled');
+
+    // TCP wildcard specifically needs TLS (dns or selfsigned)
+    const tlsDomain = mapperStatus.baseDomains.find((d: string) => {
+      const dc = mapperStatus.baseDomainConfigs.find(
+        (c: { domain: string; challengeType: string }) => c.domain === d,
+      );
+      return dc && (dc.challengeType === 'dns' || dc.challengeType === 'selfsigned');
+    });
+    test.skip(!tlsDomain, 'No TLS-wildcard-capable base domain');
+
+    const { createWorker, cleanupWorker } = await import('../helpers/worker-lifecycle');
+    const container = await createWorker(request);
+    const uniqueSub = `uitcpwc-${Date.now()}`;
+
+    try {
+      const { body: mapping } = await api.createDomainMapping({
+        subdomain: uniqueSub,
+        baseDomain: tlsDomain,
+        protocol: 'tcp',
+        wildcard: true,
+        workerId: container.id,
+        internalPort: 5432,
+      });
+
+      try {
+        await goToDashboard(page);
+        await selectSidebarTab(page, 'Domains');
+        const aside = page.locator('aside');
+
+        // Find the mapping row by its host — limit search to the list, not
+        // the form that might be open with a similar host preview.
+        const row = aside.locator('div.rounded.px-2').filter({
+          hasText: `*.${uniqueSub}.${tlsDomain}`,
+        }).first();
+        await expect(row).toBeVisible({ timeout: 15_000 });
+        // Row shows the tcp protocol badge and the wildcard badge.
+        await expect(row.locator('text=tcp').first()).toBeVisible();
+        await expect(row.locator('text=wildcard').first()).toBeVisible();
+      } finally {
+        await api.deleteDomainMapping(mapping.id);
+      }
+    } finally {
+      await cleanupWorker(request, container.id);
+    }
+  });
+
+  test('wildcard mapping appears with wildcard badge and *.host prefix in list', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const { body: mapperStatus } = await api.getDomainMapperStatus();
+    test.skip(!mapperStatus.enabled, 'Domain mapping not enabled');
+
+    const baseDomain = mapperStatus.baseDomains.find((d: string) => {
+      const dc = mapperStatus.baseDomainConfigs.find(
+        (c: { domain: string; challengeType: string }) => c.domain === d,
+      );
+      return dc && dc.challengeType !== 'http';
+    });
+    test.skip(!baseDomain, 'No wildcard-capable base domain');
+
+    const { createWorker, cleanupWorker } = await import('../helpers/worker-lifecycle');
+    const container = await createWorker(request);
+    const uniqueSub = `uiwc-${Date.now()}`;
+
+    try {
+      const { body: mapping } = await api.createDomainMapping({
+        subdomain: uniqueSub,
+        baseDomain,
+        protocol: 'http',
+        wildcard: true,
+        workerId: container.id,
+        internalPort: 8080,
+      });
+
+      try {
+        await goToDashboard(page);
+        await selectSidebarTab(page, 'Domains');
+        const aside = page.locator('aside');
+        await expect(
+          aside.locator(`text=*.${uniqueSub}.${baseDomain}`),
+        ).toBeVisible({ timeout: 15_000 });
+        await expect(aside.locator('text=wildcard').first()).toBeVisible();
+      } finally {
+        await api.deleteDomainMapping(mapping.id);
+      }
+    } finally {
+      await cleanupWorker(request, container.id);
+    }
   });
 
   test('shows no active domain mappings message when empty and enabled', async ({ page, request }) => {

@@ -28,6 +28,7 @@ defineRouteMeta({
               baseDomain: { type: 'string' },
               path: { type: 'string', description: 'URL path prefix (empty string = all paths)' },
               protocol: { type: 'string', enum: ['http', 'https', 'tcp'] },
+              wildcard: { type: 'boolean', description: 'Also match any single-label prefix (e.g. *.sub.domain.com). Requires base domain challenge type of none, dns, or selfsigned.' },
               workerId: { type: 'string' },
               workerName: { type: 'string' },
               internalPort: { type: 'integer' },

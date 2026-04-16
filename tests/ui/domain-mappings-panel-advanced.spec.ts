@@ -188,9 +188,10 @@ test.describe('Domain Mappings Panel — UI', () => {
     await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
-    await expect(aside.locator('text=Basic auth')).toBeVisible({ timeout: 5_000 });
+    const basicAuthCheckbox = aside.locator('[data-testid="basic-auth-checkbox"]');
+    await expect(basicAuthCheckbox).toBeVisible({ timeout: 5_000 });
     await aside.locator('button:has-text("tcp")').first().click();
-    await expect(aside.locator('text=Basic auth')).toBeHidden({ timeout: 5_000 });
+    await expect(basicAuthCheckbox).toBeHidden({ timeout: 5_000 });
   });
 
   test('switching protocol back from TCP restores path input', async ({ page, request }) => {
@@ -217,10 +218,11 @@ test.describe('Domain Mappings Panel — UI', () => {
     await selectSidebarTab(page, 'Domains');
     const aside = page.locator('aside');
     await openDmForm(aside);
+    const basicAuthCheckbox = aside.locator('[data-testid="basic-auth-checkbox"]');
     await aside.locator('button:has-text("tcp")').first().click();
-    await expect(aside.locator('text=Basic auth')).toBeHidden({ timeout: 5_000 });
+    await expect(basicAuthCheckbox).toBeHidden({ timeout: 5_000 });
     await aside.locator('button:has-text("http")').first().click();
-    await expect(aside.locator('text=Basic auth')).toBeVisible({ timeout: 5_000 });
+    await expect(basicAuthCheckbox).toBeVisible({ timeout: 5_000 });
   });
 
   test('checking Basic auth reveals username and password fields', async ({ page, request }) => {
@@ -233,7 +235,7 @@ test.describe('Domain Mappings Panel — UI', () => {
     const aside = page.locator('aside');
     await openDmForm(aside);
     await expect(aside.locator('input[placeholder="Username"]')).toBeHidden();
-    await aside.locator('text=Basic auth').click();
+    await aside.locator('[data-testid="basic-auth-checkbox"]').check();
     await expect(aside.locator('input[placeholder="Username"]')).toBeVisible({ timeout: 5_000 });
     await expect(aside.locator('input[placeholder="Password"]')).toBeVisible();
   });

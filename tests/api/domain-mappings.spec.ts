@@ -202,6 +202,7 @@ test.describe('Domain Mappings API', () => {
           expect(body.baseDomain).toBe(mapperStatus.baseDomains[0]);
           expect(body.path).toBe('');
           expect(body.protocol).toBe('https');
+          expect(body.wildcard).toBe(false);
           expect(typeof body.workerName).toBe('string');
           expect(body.internalPort).toBe(8080);
 
@@ -1120,6 +1121,374 @@ test.describe('Domain Mappings API', () => {
       }
       // If absent, the field should simply not exist
       // (either way is valid — depends on DASHBOARD_SUBDOMAIN config)
+    });
+
+    test('baseDomainConfigs entries expose challengeType used by the UI wildcard toggle', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body } = await api.getDomainMapperStatus();
+      if (body.enabled) {
+        expect(Array.isArray(body.baseDomainConfigs)).toBe(true);
+        for (const dc of body.baseDomainConfigs) {
+          expect(typeof dc.domain).toBe('string');
+          expect(['none', 'http', 'dns', 'selfsigned']).toContain(dc.challengeType);
+        }
+      }
+    });
+  });
+
+  test.describe('Wildcard routing', () => {
+    test('defaults wildcard to false when omitted', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled || mapperStatus.baseDomains.length === 0) return;
+
+      const container = await createWorker(request);
+      try {
+        const uniqueSub = `wcdef-${Date.now()}`;
+        const { status, body } = await api.createDomainMapping({
+          subdomain: uniqueSub,
+          baseDomain: mapperStatus.baseDomains[0],
+          protocol: 'http',
+          workerId: container.id,
+          internalPort: 8080,
+        });
+        expect(status).toBe(201);
+        expect(body.wildcard).toBe(false);
+        await api.deleteDomainMapping(body.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('creates HTTP wildcard mapping on a selfsigned base domain', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled) return;
+
+      const baseDomain = mapperStatus.baseDomains.find((d: string) => {
+        const dc = mapperStatus.baseDomainConfigs.find((c: { domain: string; challengeType: string }) => c.domain === d);
+        return dc && dc.challengeType !== 'http';
+      });
+      test.skip(!baseDomain, 'No base domain with wildcard-capable challenge type');
+
+      const container = await createWorker(request);
+      try {
+        const uniqueSub = `wchttp-${Date.now()}`;
+        const { status, body } = await api.createDomainMapping({
+          subdomain: uniqueSub,
+          baseDomain,
+          protocol: 'http',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 8080,
+        });
+        expect(status).toBe(201);
+        expect(body.wildcard).toBe(true);
+        expect(body.subdomain).toBe(uniqueSub);
+        await api.deleteDomainMapping(body.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('creates HTTPS wildcard mapping when base domain has TLS', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled) return;
+
+      const tlsDomain = mapperStatus.baseDomains.find((d: string) => {
+        const dc = mapperStatus.baseDomainConfigs.find((c: { domain: string; challengeType: string }) => c.domain === d);
+        return dc && (dc.challengeType === 'dns' || dc.challengeType === 'selfsigned');
+      });
+      test.skip(!tlsDomain, 'No base domain supporting wildcard HTTPS');
+
+      const container = await createWorker(request);
+      try {
+        const uniqueSub = `wchttps-${Date.now()}`;
+        const { status, body } = await api.createDomainMapping({
+          subdomain: uniqueSub,
+          baseDomain: tlsDomain,
+          protocol: 'https',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 8080,
+        });
+        expect(status).toBe(201);
+        expect(body.wildcard).toBe(true);
+        await api.deleteDomainMapping(body.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('creates TCP wildcard mapping when base domain has TLS', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled) return;
+
+      const tlsDomain = mapperStatus.baseDomains.find((d: string) => {
+        const dc = mapperStatus.baseDomainConfigs.find((c: { domain: string; challengeType: string }) => c.domain === d);
+        return dc && (dc.challengeType === 'dns' || dc.challengeType === 'selfsigned');
+      });
+      test.skip(!tlsDomain, 'No base domain supporting wildcard TCP');
+
+      const container = await createWorker(request);
+      try {
+        const uniqueSub = `wctcp-${Date.now()}`;
+        const { status, body } = await api.createDomainMapping({
+          subdomain: uniqueSub,
+          baseDomain: tlsDomain,
+          protocol: 'tcp',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 5432,
+        });
+        expect(status).toBe(201);
+        expect(body.wildcard).toBe(true);
+        expect(body.protocol).toBe('tcp');
+        await api.deleteDomainMapping(body.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('creates wildcard mapping on bare base domain (empty subdomain)', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled) return;
+
+      const baseDomain = mapperStatus.baseDomains.find((d: string) => {
+        const dc = mapperStatus.baseDomainConfigs.find((c: { domain: string; challengeType: string }) => c.domain === d);
+        return dc && dc.challengeType !== 'http';
+      });
+      test.skip(!baseDomain, 'No base domain supporting wildcard');
+
+      // Two mappings cannot share baseDomain+subdomain+path+protocol — the
+      // bare-domain slot is singular, so this test creates and deletes quickly.
+      const container = await createWorker(request);
+      try {
+        const { status, body } = await api.createDomainMapping({
+          subdomain: '',
+          baseDomain,
+          protocol: 'http',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 8080,
+          path: `/wcbare-${Date.now()}`,
+        });
+        expect(status).toBe(201);
+        expect(body.subdomain).toBe('');
+        expect(body.wildcard).toBe(true);
+        await api.deleteDomainMapping(body.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('rejects wildcard on HTTP-01 ACME base domain', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled) return;
+
+      const httpDomain = mapperStatus.baseDomains.find((d: string) => {
+        const dc = mapperStatus.baseDomainConfigs.find((c: { domain: string; challengeType: string }) => c.domain === d);
+        return dc && dc.challengeType === 'http';
+      });
+      test.skip(!httpDomain, 'No base domain with HTTP-01 ACME challenge configured');
+
+      const { status, body } = await api.createDomainMapping({
+        subdomain: `wchttp01-${Date.now()}`,
+        baseDomain: httpDomain,
+        protocol: 'https',
+        wildcard: true,
+        workerId: 'test',
+        internalPort: 8080,
+      });
+      expect(status).toBe(400);
+      expect(body.statusMessage).toContain('wildcard');
+    });
+
+    test('ignores truthy wildcard values that are not strictly true', async ({ request }) => {
+      // Defense: only `wildcard === true` activates the feature. Strings and
+      // numbers in the payload must be treated as `false`, not silently
+      // coerced, so a typo cannot accidentally expose routes.
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled || mapperStatus.baseDomains.length === 0) return;
+
+      const container = await createWorker(request);
+      try {
+        const { status, body } = await api.createDomainMapping({
+          subdomain: `wctruthy-${Date.now()}`,
+          baseDomain: mapperStatus.baseDomains[0],
+          protocol: 'http',
+          wildcard: 'yes' as unknown as boolean,
+          workerId: container.id,
+          internalPort: 8080,
+        });
+        expect(status).toBe(201);
+        expect(body.wildcard).toBe(false);
+        await api.deleteDomainMapping(body.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('response schema includes wildcard on list and get', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled) return;
+
+      const baseDomain = mapperStatus.baseDomains.find((d: string) => {
+        const dc = mapperStatus.baseDomainConfigs.find((c: { domain: string; challengeType: string }) => c.domain === d);
+        return dc && dc.challengeType !== 'http';
+      });
+      test.skip(!baseDomain, 'No base domain supporting wildcard');
+
+      const container = await createWorker(request);
+      try {
+        const { body: created } = await api.createDomainMapping({
+          subdomain: `wclist-${Date.now()}`,
+          baseDomain,
+          protocol: 'http',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 8080,
+        });
+        try {
+          const { body: list } = await api.listDomainMappings();
+          const found = list.find((m: { id: string }) => m.id === created.id);
+          expect(found).toBeTruthy();
+          expect(found.wildcard).toBe(true);
+        } finally {
+          await api.deleteDomainMapping(created.id);
+        }
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('rejects duplicate wildcard mapping with same subdomain+path+protocol', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled) return;
+
+      const baseDomain = mapperStatus.baseDomains.find((d: string) => {
+        const dc = mapperStatus.baseDomainConfigs.find((c: { domain: string; challengeType: string }) => c.domain === d);
+        return dc && dc.challengeType !== 'http';
+      });
+      test.skip(!baseDomain, 'No base domain supporting wildcard');
+
+      const container = await createWorker(request);
+      try {
+        const uniqueSub = `wcdup-${Date.now()}`;
+        const { body: first } = await api.createDomainMapping({
+          subdomain: uniqueSub,
+          baseDomain,
+          protocol: 'http',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 8080,
+        });
+        try {
+          const { status } = await api.createDomainMapping({
+            subdomain: uniqueSub,
+            baseDomain,
+            protocol: 'http',
+            wildcard: true,
+            workerId: container.id,
+            internalPort: 9090,
+          });
+          expect(status).toBe(409);
+        } finally {
+          await api.deleteDomainMapping(first.id);
+        }
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('rejects non-wildcard mapping that would collide with an existing wildcard on same key', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled) return;
+
+      const baseDomain = mapperStatus.baseDomains.find((d: string) => {
+        const dc = mapperStatus.baseDomainConfigs.find((c: { domain: string; challengeType: string }) => c.domain === d);
+        return dc && dc.challengeType !== 'http';
+      });
+      test.skip(!baseDomain, 'No base domain supporting wildcard');
+
+      const container = await createWorker(request);
+      try {
+        const uniqueSub = `wcmix-${Date.now()}`;
+        const { body: first } = await api.createDomainMapping({
+          subdomain: uniqueSub,
+          baseDomain,
+          protocol: 'http',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 8080,
+        });
+        try {
+          const { status } = await api.createDomainMapping({
+            subdomain: uniqueSub,
+            baseDomain,
+            protocol: 'http',
+            wildcard: false,
+            workerId: container.id,
+            internalPort: 9090,
+          });
+          expect(status).toBe(409);
+        } finally {
+          await api.deleteDomainMapping(first.id);
+        }
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('allows a non-wildcard mapping on a deeper subdomain that the wildcard would otherwise match', async ({ request }) => {
+      // Routing semantics: wildcard `*.sub.domain.com` and an explicit
+      // `foo.sub.domain.com` mapping can coexist — Traefik's priority logic
+      // picks the exact host over the wildcard regex. This test only covers
+      // the API: both mappings should be accepted because they have different
+      // subdomains, so they share no routing key.
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+      if (!mapperStatus.enabled) return;
+
+      const baseDomain = mapperStatus.baseDomains.find((d: string) => {
+        const dc = mapperStatus.baseDomainConfigs.find((c: { domain: string; challengeType: string }) => c.domain === d);
+        return dc && dc.challengeType !== 'http';
+      });
+      test.skip(!baseDomain, 'No base domain supporting wildcard');
+
+      const container = await createWorker(request);
+      try {
+        const parent = `wcparent-${Date.now()}`;
+        const child = `wcchild-${Date.now()}.${parent}`;
+        const { body: wildcard } = await api.createDomainMapping({
+          subdomain: parent,
+          baseDomain,
+          protocol: 'http',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 8080,
+        });
+        const { status, body: exact } = await api.createDomainMapping({
+          subdomain: child,
+          baseDomain,
+          protocol: 'http',
+          workerId: container.id,
+          internalPort: 9090,
+        });
+        expect(status).toBe(201);
+        await api.deleteDomainMapping(exact.id);
+        await api.deleteDomainMapping(wildcard.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
     });
   });
 });

@@ -16,6 +16,7 @@ defineRouteMeta({
               baseDomain: { type: 'string', description: 'Base domain from BASE_DOMAINS' },
               path: { type: 'string', description: 'URL path prefix for routing (e.g. /api). Prefix is stripped before forwarding. Not supported for TCP.' },
               protocol: { type: 'string', enum: ['http', 'https', 'tcp'], description: 'Routing protocol' },
+              wildcard: { type: 'boolean', description: 'Also match any single-label prefix of the host (e.g. *.sub.domain.com alongside sub.domain.com). Requires base domain challenge type of none, dns, or selfsigned — HTTP-01 ACME cannot issue wildcard certificates.' },
               workerId: { type: 'string', description: 'Target worker container ID (either workerId or workerName required)' },
               workerName: { type: 'string', description: 'Target worker container name (either workerId or workerName required)' },
               internalPort: { type: 'integer', description: 'Worker internal port' },
@@ -87,6 +88,17 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const wildcard = body.wildcard === true;
+  if (wildcard) {
+    const domainConfig = config.baseDomainConfigs.find((c) => c.domain === body.baseDomain);
+    if (!domainConfig || domainConfig.challengeType === 'http') {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `wildcard routing is not supported on '${body.baseDomain}' — HTTP-01 ACME cannot issue wildcard certificates. Configure the base domain as plain (:none), :dns:provider, or :selfsigned to use wildcard.`,
+      });
+    }
+  }
+
   if (body.subdomain && !/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(body.subdomain)) {
     throw createError({
       statusCode: 400,
@@ -151,6 +163,7 @@ export default defineEventHandler(async (event) => {
     baseDomain: body.baseDomain,
     path: body.path || '',
     protocol: body.protocol,
+    wildcard,
     workerId: containerInfo.id,
     workerName: containerInfo.name,
     internalPort: intPort,

@@ -387,10 +387,15 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Internal port input
 - Basic auth checkbox (hidden for TCP)
   - When enabled: username + password inputs
+- Wildcard subdomain checkbox
+  - Enabled only when all selected base domains have challenge type `none`, `dns`, or `selfsigned` (disabled with tooltip for `http` HTTP-01 ACME)
+  - When checked, shows live match preview `matches *.<sub>.<baseDomain>`
+  - Auto-unchecks and reverts to false when the user selects a base domain that cannot issue wildcard certs
 - "Cancel" and "Add" buttons
 
 ### 13.4 Mapping List
-- Per-mapping row: protocol badge (blue=http, green=https, purple=tcp) + challenge type badge + full domain with path (if set) + lock icon (if basic auth) + arrow + worker name:port + remove button
+- Per-mapping row: protocol badge (blue=http, green=https, purple=tcp) + challenge type badge + optional indigo `wildcard` badge + full domain with path (if set) + lock icon (if basic auth) + arrow + worker name:port + remove button
+- Wildcard mappings display the host with a `*.` prefix in the list
 - Challenge type badges: none (gray), http (emerald), dns (cyan), selfsigned/self (amber)
 
 ### 13.5 Protocol Interactions
@@ -403,6 +408,19 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Downloads PEM file (`agentor-ca.crt`) via `GET /api/domain-mapper/ca-cert`
 - User must trust this CA in their browser/OS to avoid TLS warnings
 - Self-signed domains use wildcard certificates signed by this CA
+- Per-wildcard-host certs (`sub.domain.com` with SAN `*.sub.domain.com`) are auto-generated on demand the first time a wildcard mapping targets that host, and reused for subsequent mappings
+
+### 13.7 Wildcard routing
+- A mapping with `wildcard: true` matches both the exact host (`sub.domain.com`) and any single-label prefix (`anything.sub.domain.com`), modelling DNS/TLS wildcard semantics. Deeper nesting (`a.b.sub.domain.com`) is intentionally not matched because a wildcard certificate for `*.sub.domain.com` does not cover it.
+- Supported on all three protocols:
+  - **HTTP**: router rule is `Host(\`h\`) || HostRegexp(\`^[^.]+\.h$\`)`.
+  - **HTTPS**: same host clause as HTTP plus the wildcard cert config.
+  - **TCP**: router rule is `HostSNI(\`h\`) || HostSNIRegexp(\`^[^.]+\.h$\`)`. Because SNI is a TLS concept, TCP wildcard is only meaningful on base domains that have TLS — i.e. `:dns:provider` or `:selfsigned`. `:none` cannot do TCP at all (no SNI) and `:http` is rejected like for HTTP/HTTPS.
+- Wildcard is a modifier on the routing key `(subdomain, baseDomain, path, protocol)`; two mappings cannot share the same key regardless of wildcard flag.
+- Exact-host mappings win over wildcards — wildcard routers are given explicit low priority so a dedicated mapping for `foo.sub.domain.com` always beats the wildcard on `sub.domain.com`.
+- Allowed for challenge types: `none` (plain HTTP, no cert), `dns` (router requests `{ main: host, sans: ['*.host'] }` — one cert, `host` is the only name in CT log entries besides the wildcard SAN), and `selfsigned` (locally issued wildcard cert).
+- Rejected with 400 for challenge type `http` — HTTP-01 ACME cannot issue wildcard certificates, and issuing on demand for every possible child would leak all subdomains to Certificate Transparency logs.
+- Also works on the bare base domain (empty subdomain): `*.domain.com` routes all subdomains of the base domain to one worker.
 
 ---
 
@@ -689,12 +707,12 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ### 24.6 Domain Mappings
 - `GET /api/domain-mappings` — list all
-- `POST /api/domain-mappings` — create (subdomain, baseDomain, path, protocol, workerId/workerName, internalPort, basicAuth)
-- `POST /api/domain-mappings/batch` — batch create (single Traefik reconcile)
+- `POST /api/domain-mappings` — create (subdomain, baseDomain, path, protocol, wildcard, workerId/workerName, internalPort, basicAuth)
+- `POST /api/domain-mappings/batch` — batch create (single Traefik reconcile). Accepts `wildcard` per item.
 - `DELETE /api/domain-mappings/:id` — remove (idempotent)
-- `GET /api/domain-mapper/status` — enabled flag, baseDomains list, hasSelfSignedCa flag, dashboard URL
+- `GET /api/domain-mapper/status` — enabled flag, baseDomains list, baseDomainConfigs (domain + challengeType + optional dnsProvider), hasSelfSignedCa flag, dashboard URL
 - `GET /api/domain-mapper/ca-cert` — download self-signed CA certificate PEM (404 when no selfsigned domains)
-- Validations: protocol http/https/tcp, HTTPS/TCP require TLS, subdomain format, path format (must start with /), path not allowed for TCP, port range, duplicate 409 (subdomain+baseDomain+path+protocol), protocol conflict 409
+- Validations: protocol http/https/tcp, HTTPS/TCP require TLS, subdomain format, path format (must start with /), path not allowed for TCP, port range, duplicate 409 (subdomain+baseDomain+path+protocol), protocol conflict 409, wildcard rejected 400 when base domain uses HTTP-01 ACME (`challengeType === 'http'`)
 
 ### 24.7 Environments
 - `GET /api/environments` — list all

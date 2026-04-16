@@ -22,6 +22,7 @@ defineRouteMeta({
                     baseDomain: { type: 'string', description: 'Base domain from BASE_DOMAINS' },
                     path: { type: 'string', description: 'URL path prefix for routing (e.g. /api). Prefix is stripped before forwarding. Not supported for TCP.' },
                     protocol: { type: 'string', enum: ['http', 'https', 'tcp'], description: 'Routing protocol' },
+                    wildcard: { type: 'boolean', description: 'Also match any single-label prefix of the host. Requires base domain challenge type of none, dns, or selfsigned.' },
                     workerId: { type: 'string', description: 'Target worker container ID' },
                     workerName: { type: 'string', description: 'Target worker container name' },
                     internalPort: { type: 'integer', description: 'Worker internal port' },
@@ -116,6 +117,17 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    const itemWildcard = item.wildcard === true;
+    if (itemWildcard) {
+      const domainConfig = config.baseDomainConfigs.find((c) => c.domain === item.baseDomain);
+      if (!domainConfig || domainConfig.challengeType === 'http') {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `wildcard routing is not supported on '${item.baseDomain}' — HTTP-01 ACME cannot issue wildcard certificates. Configure the base domain as plain (:none), :dns:provider, or :selfsigned to use wildcard.`,
+        });
+      }
+    }
+
     if (item.subdomain && !/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(item.subdomain)) {
       throw createError({
         statusCode: 400,
@@ -177,6 +189,7 @@ export default defineEventHandler(async (event) => {
       baseDomain: item.baseDomain,
       path: item.path || '',
       protocol: item.protocol,
+      wildcard: itemWildcard,
       workerId: containerInfo.id,
       workerName: containerInfo.name,
       internalPort: intPort,

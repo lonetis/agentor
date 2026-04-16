@@ -71,6 +71,8 @@ export interface DomainMapping {
   baseDomain: string;
   path: string;
   protocol: 'http' | 'https' | 'tcp';
+  /** When true, also matches any single-label prefix (e.g. `*.sub.domain.com`). */
+  wildcard: boolean;
   workerId: string;
   workerName: string;
   internalPort: number;

@@ -30,6 +30,18 @@ export class SelfSignedCertManager {
     useLogger().info(`[selfsigned-certs] initialized CA + ${selfSignedDomains.length} domain cert(s)`);
   }
 
+  /**
+   * Generate a wildcard certificate for an arbitrary host (typically a
+   * subdomain like `sub.domain.com`) signed by the self-signed CA. The cert
+   * covers both `host` and `*.host` so it can serve any single-label prefix.
+   * Idempotent — skips generation if the cert already exists on disk.
+   */
+  async ensureWildcardCertForHost(host: string): Promise<void> {
+    await mkdir(this.certDir, { recursive: true });
+    await this.ensureCaCert();
+    await this.ensureDomainCert(host);
+  }
+
   async getCaCertPem(): Promise<string> {
     return readFile(join(this.certDir, CA_CERT_FILE), 'utf-8');
   }
