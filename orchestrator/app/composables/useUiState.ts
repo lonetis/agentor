@@ -1,7 +1,57 @@
-import type { PaneNode } from '~/types';
+import type { PaneNode, PaneLeafNode, Tab, TabType } from '~/types';
 
 const STORAGE_KEY = 'agentor-ui-state';
 const WRITE_DEBOUNCE_MS = 500;
+
+const VALID_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>([
+  'terminal',
+  'desktop',
+  'apps',
+  'editor',
+  'vscode',
+  'logs',
+]);
+
+function isLeafShape(node: unknown): node is PaneLeafNode {
+  return !!node && typeof node === 'object' && Array.isArray((node as PaneLeafNode).tabs);
+}
+
+function sanitizeTab(raw: unknown): Tab | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = raw as Partial<Tab>;
+  if (typeof t.id !== 'string' || typeof t.containerId !== 'string') return null;
+  if (typeof t.containerName !== 'string') return null;
+  if (typeof t.type !== 'string' || !VALID_TAB_TYPES.has(t.type as TabType)) return null;
+  return { id: t.id, containerId: t.containerId, containerName: t.containerName, type: t.type as TabType };
+}
+
+function sanitizeNode(raw: unknown): PaneNode | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const n = raw as Partial<PaneLeafNode & { children: unknown[]; direction: string }>;
+  if (typeof n.id !== 'string' || typeof n.sizeFraction !== 'number') return null;
+
+  if (isLeafShape(raw)) {
+    const tabs = (n.tabs as unknown[]).map(sanitizeTab).filter((t): t is Tab => t !== null);
+    if (tabs.length === 0) return null;
+    const activeTabId = typeof n.activeTabId === 'string' && tabs.some((t) => t.id === n.activeTabId)
+      ? n.activeTabId
+      : tabs[0]!.id;
+    return { id: n.id, sizeFraction: n.sizeFraction, tabs, activeTabId };
+  }
+
+  if (Array.isArray(n.children) && (n.direction === 'horizontal' || n.direction === 'vertical')) {
+    const children = n.children.map(sanitizeNode).filter((c): c is PaneNode => c !== null);
+    if (children.length === 0) return null;
+    if (children.length === 1) {
+      // Collapse single-child container into its child, inheriting this node's sizeFraction
+      children[0]!.sizeFraction = n.sizeFraction;
+      return children[0]!;
+    }
+    return { id: n.id, sizeFraction: n.sizeFraction, direction: n.direction, children };
+  }
+
+  return null;
+}
 
 interface PanelStates {
   archived: boolean;
@@ -93,10 +143,11 @@ function loadState(): UiState {
             }
           }
         }
-        // Merge panes
+        // Merge panes — sanitize restored tree, dropping unknown tab types and empty leaves
         if (parsed.panes && typeof parsed.panes === 'object') {
-          if (parsed.panes.rootNode !== undefined) base.panes.rootNode = parsed.panes.rootNode;
-          if (typeof parsed.panes.focusedNodeId === 'string' || parsed.panes.focusedNodeId === null) {
+          const sanitizedRoot = parsed.panes.rootNode != null ? sanitizeNode(parsed.panes.rootNode) : null;
+          base.panes.rootNode = sanitizedRoot;
+          if (sanitizedRoot && typeof parsed.panes.focusedNodeId === 'string') {
             base.panes.focusedNodeId = parsed.panes.focusedNodeId;
           }
         }

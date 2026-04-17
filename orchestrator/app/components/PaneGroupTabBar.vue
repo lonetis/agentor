@@ -125,8 +125,8 @@ const insertIndicatorLeft = computed(() => {
       @click="emit('activate', tab.id)"
       @mousedown="onMiddleClick($event, tab.id)"
     >
-      <UIcon :name="typeIcons[tab.type]!" class="size-3.5 shrink-0" />
-      <span class="truncate max-w-[140px]">{{ tab.type === 'logs' ? 'Logs' : `${tab.containerName} - ${typeLabels[tab.type]}` }}</span>
+      <UIcon :name="typeIcons[tab.type] ?? 'i-lucide-file'" class="size-3.5 shrink-0" />
+      <span class="truncate max-w-[140px]">{{ tab.type === 'logs' ? 'Logs' : `${tab.containerName} - ${typeLabels[tab.type] ?? tab.type}` }}</span>
       <button
         class="ml-1 w-4 h-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity shrink-0 pane-tab-close"
         :class="tab.id === group.activeTabId ? 'opacity-60' : ''"
