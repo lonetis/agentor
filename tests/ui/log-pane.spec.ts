@@ -149,6 +149,52 @@ test.describe('Log Pane', () => {
     }, undefined, { timeout: 10_000 });
   });
 
+  test('scrolling to top triggers loadMore and prepends older entries', async ({ page }) => {
+    await openLogPane(page);
+
+    // Wait for entries to populate so we have something to paginate from.
+    const firstEntry = page.locator('.log-entry').first();
+    const hasEntries = await firstEntry.isVisible({ timeout: 15_000 }).catch(() => false);
+    test.skip(!hasEntries, 'No log entries available — cannot exercise pagination');
+
+    const initialCount = await page.locator('.log-entry').count();
+    test.skip(initialCount < 50, 'Not enough log history for pagination test');
+
+    // Capture the first visible entry's text so we can verify older entries
+    // appear ABOVE it after pagination.
+    const firstEntryTextBefore = await firstEntry.textContent();
+
+    // Scroll to top to trigger loadMore.
+    await page.locator('.log-entries').evaluate((el) => { el.scrollTop = 0; });
+
+    // Either the loading indicator flashes briefly or new entries are
+    // prepended directly. Wait for either outcome by watching for an
+    // increased entry count, the loading indicator, or the end-of-history
+    // marker (no more pages to load).
+    await Promise.race([
+      page.locator('.log-pagination-indicator').waitFor({ timeout: 5_000 }).catch(() => null),
+      page.waitForFunction((before) => {
+        const entries = document.querySelectorAll('.log-entry');
+        return entries.length > before;
+      }, initialCount, { timeout: 5_000 }).catch(() => null),
+    ]);
+    // Allow request to settle.
+    await page.waitForTimeout(500);
+
+    const newCount = await page.locator('.log-entry').count();
+    const endMarkerVisible = await page.locator('.log-pagination-end').isVisible().catch(() => false);
+
+    // Either older entries were appended, or we hit the absolute beginning.
+    expect(newCount > initialCount || endMarkerVisible).toBe(true);
+
+    // If we paginated, the previous "first" entry should now appear later
+    // in the list (older entries inserted above it).
+    if (newCount > initialCount && firstEntryTextBefore) {
+      const newFirstEntryText = await page.locator('.log-entry').first().textContent();
+      expect(newFirstEntryText).not.toBe(firstEntryTextBefore);
+    }
+  });
+
   test('log tab can be closed', async ({ page }) => {
     await openLogPane(page);
 

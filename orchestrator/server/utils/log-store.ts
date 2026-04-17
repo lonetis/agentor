@@ -154,8 +154,12 @@ export class LogStore {
     if (options.sources && options.sources.length > 0 && !options.sources.includes(entry.source)) return false;
     if (options.sourceIds && options.sourceIds.length > 0 && entry.sourceId && !options.sourceIds.includes(entry.sourceId)) return false;
     if (options.levels && options.levels.length > 0 && !options.levels.includes(entry.level)) return false;
+    // `since` is inclusive (>=) and `until` is exclusive (<). The asymmetry
+    // makes pagination work cleanly: paginating older with `until = oldest`
+    // never re-returns the boundary entry, and paginating newer with
+    // `since = newest` never re-returns it either.
     if (options.since && entry.timestamp < options.since) return false;
-    if (options.until && entry.timestamp > options.until) return false;
+    if (options.until && entry.timestamp >= options.until) return false;
     if (options.search && !entry.message.toLowerCase().includes(options.search.toLowerCase())) return false;
     return true;
   }

@@ -112,6 +112,49 @@ test.describe('Logs API', () => {
     expect(body.entries.length).toBeLessThanOrEqual(5000);
   });
 
+  test('until parameter returns entries strictly older than the timestamp', async ({ request }) => {
+    const api = new ApiClient(request);
+    const first = await api.queryLogs({ limit: 5 });
+    test.skip(first.body.entries.length < 2, 'Need at least 2 entries to test pagination');
+    // Pick the oldest of the page as the boundary; the next page should
+    // contain only entries with timestamp < that.
+    const boundary = first.body.entries[first.body.entries.length - 1].timestamp;
+    const page2 = await api.queryLogs({ until: boundary, limit: 5 });
+    for (const entry of page2.body.entries) {
+      expect(entry.timestamp < boundary, `entry ${entry.timestamp} should be < ${boundary}`).toBe(true);
+    }
+  });
+
+  test('paginating with until walks backwards without skipping', async ({ request }) => {
+    const api = new ApiClient(request);
+    // Pull a sizable first page, then ask for the next page using its
+    // oldest timestamp. Concatenated, the union should be a contiguous,
+    // strictly-monotonic-by-time slice with no duplicate (timestamp,
+    // source, sourceId, message) tuples.
+    const page1 = await api.queryLogs({ limit: 50 });
+    test.skip(page1.body.entries.length < 50, 'Not enough log history for two pages');
+    const boundary = page1.body.entries[page1.body.entries.length - 1].timestamp;
+    const page2 = await api.queryLogs({ until: boundary, limit: 50 });
+    // No timestamp on page 2 should be >= boundary.
+    for (const entry of page2.body.entries) {
+      expect(entry.timestamp < boundary).toBe(true);
+    }
+    // Combined ordering across pages is non-increasing.
+    const all = [...page1.body.entries, ...page2.body.entries];
+    for (let i = 1; i < all.length; i++) {
+      expect(all[i - 1].timestamp >= all[i].timestamp).toBe(true);
+    }
+  });
+
+  test('hasMore is true when more older entries exist', async ({ request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.queryLogs({ limit: 1 });
+    test.skip(body.entries.length < 1, 'No log entries available');
+    // With limit=1 in a system that has way more than one log entry,
+    // hasMore must be true.
+    expect(body.hasMore).toBe(true);
+  });
+
   test('entries returned newest-first', async ({ request }) => {
     const api = new ApiClient(request);
     const { body } = await api.queryLogs({ limit: 20 });

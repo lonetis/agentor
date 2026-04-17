@@ -107,11 +107,13 @@ Custom pane (not iframe-based) for managing VS Code tunnel connections to worker
 Centralized log viewer opened via the "Logs" button in the System tab's Quick Links. Opens as a singleton pane tab (ID `__logs__`, type `logs`).
 
 **Architecture** (`LogPane.vue` + `useLogs` composable):
-- `useLogs()` manages module-level singleton state: log entries array, filter state, WebSocket connection
+- `useLogs()` manages module-level singleton state: log entries array, filter state, WebSocket connection, lazy-load state (`loadingMore`, `loadingInitial`, `hasMoreOlder`, `liveTick`)
 - WebSocket connects to `/ws/logs` for live streaming, auto-reconnects after 3s on disconnect
 - On first mount, fetches 500 most recent entries via `GET /api/logs`, then switches to WebSocket for live updates
-- Client-side buffer capped at 5000 entries
+- **Lazy load**: scrolling within ~80px of the top calls `loadMore()`, which fetches the next older page via `GET /api/logs?until=<oldest>&limit=500` and prepends the result. Scroll position is anchored to the same content via a `scrollHeight` delta so the user does not jump. A spinner ("Loading older entries…") shows during fetch; a "Beginning of logs" marker shows once no more pages are available.
+- **Auto-scroll**: a `liveTick` ref bumped only when the WebSocket pushes a new entry triggers scroll-to-bottom (so pagination prepends never trigger an unwanted jump). On first paint, the pane snaps to the bottom once entries arrive.
+- **Soft cap (50,000 entries)** with conditional eviction: only culls from the front when the user is at the bottom (`autoScroll === true`), so scrolled-back history is never yanked out from under the user. Evicted entries are still on disk and can be re-fetched via scroll-up.
+- Filters propagate to both the server (paginated fetches use them) and the client (live entries are gated client-side). Changing a filter refetches the most recent page from scratch via an internal `filterEpoch` that invalidates any in-flight `loadMore`.
 - Filter bar: source toggles (orchestrator, worker, traefik), level toggles (debug, info, warn, error), text search (300ms debounce)
 - Color-coded badges: level (debug=gray, info=blue, warn=amber, error=red), source (orchestrator=purple, worker=green, traefik=orange)
-- Auto-scroll to bottom on new entries; disables on manual scroll up, re-enables when scrolled to bottom
 - Uses terminal CSS variables (`--terminal-*`) for seamless theme integration

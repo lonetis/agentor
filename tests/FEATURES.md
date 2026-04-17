@@ -645,20 +645,30 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Empty state: "No log entries" / "No log entries matching filters"
 
 ### 23.4 Auto-scroll
-- Auto-scrolls to bottom when new entries arrive
+- Auto-scrolls to bottom when new entries arrive (driven by an explicit live tick from the WebSocket — pagination prepends never trigger an unwanted jump to the bottom)
 - Manual scroll up disables auto-scroll
 - Scrolling back to bottom re-enables auto-scroll
 - Auto-scroll toggle button in filter bar
+- On first paint, the pane snaps to the bottom once entries arrive
 
-### 23.5 Actions
+### 23.5 Lazy load (scroll-up history)
+- The full log history is browsable by scrolling up — the viewport is not capped at the initial page
+- When the user scrolls within ~80px of the top, the next older page is fetched via `GET /api/logs?until=<oldest visible timestamp>&limit=500`
+- The fetch is debounced via a `loadingMore` flag so concurrent triggers do not stack
+- After the older entries are prepended, scroll position is anchored to the same content (the user does not jump) by adjusting `scrollTop` by `scrollHeight` delta
+- A spinner ("Loading older entries…") shows at the top of the pane while a page is in flight
+- A dashed "Beginning of logs" marker is shown when no further history exists
+- Filters are applied both server-side (so paginated fetches only return matching entries) and client-side (so live WebSocket entries are gated immediately). Changing filters refetches the most recent matching page from scratch.
+
+### 23.6 Actions
 - Clear button: clears all log files (with confirmation dialog)
 - Status bar: green/red connection dot + "Connected"/"Disconnected" text + entry count
 
-### 23.6 Live Streaming
+### 23.7 Live Streaming
 - WebSocket connection to `/ws/logs` for real-time log entries
 - Auto-reconnect on disconnect (3s delay)
 - History loaded from REST API on mount (500 most recent entries)
-- Client-side buffer capped at 5000 entries
+- Client-side soft cap of 50,000 entries — older entries are evicted only while the user is at the bottom (auto-scroll on); when scrolled into history, eviction is paused so the viewport never collapses under the user. Evicted entries are recoverable via scroll-up since they are still on disk.
 
 ---
 
@@ -777,11 +787,12 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `GET /api/credentials` — credential file status per agent
 
 ### 24.16 Logs
-- `GET /api/logs` — query log entries with filters (sources, sourceIds, levels, since, until, limit, search)
+- `GET /api/logs` — query log entries with filters (sources, sourceIds, levels, since, until, limit, search). `since` is **inclusive** (`>=`) and `until` is **exclusive** (`<`) — paginate older by passing the oldest entry's timestamp as `until` to the next call. Returns `{ entries, hasMore }`.
 - `DELETE /api/logs` — clear all log files
 - `GET /api/log-sources` — list known container log sources
 - `WS /ws/logs` — live log stream (JSON-encoded LogEntry per message, read-only)
 - The orchestrator's *own* container stdout (Nuxt/Nitro/Vite, framework warnings, unhandled errors) is captured into `orchestrator.log` with `source: 'orchestrator'` and `sourceId` set to the orchestrator container name. Intentional `useLogger()` entries also live in the same file but carry no `sourceId`.
+- `since` is inclusive (`>=`); `until` is exclusive (`<`). The asymmetry guarantees that paginating older with `until = currentOldest` never re-returns the boundary entry.
 - Worker container logs include `dockerd`, `code-server`, `vscode-tunnel`, `chromium`, and `microsocks` output (each line tagged with a service prefix like `[dockerd]` or `[code-server]`) in addition to the entrypoint's own stdout.
 - Container log messages never contain a leading Docker `--timestamps` prefix — the prefix is parsed into the entry's `timestamp` field and stripped from `message` for both TTY (`\r\n`) and non-TTY streams.
 - Stdout and stderr of non-TTY containers are demuxed into separate line buffers; stderr lines are tagged `error` regardless of the heuristic level detection.

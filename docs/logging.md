@@ -111,10 +111,18 @@ The log pane opens via the "Logs" button in the System tab's Quick Links section
 | `sources` | string | Comma-separated: `orchestrator,worker,traefik` |
 | `sourceIds` | string | Comma-separated container names |
 | `levels` | string | Comma-separated: `debug,info,warn,error` |
-| `since` | string | ISO 8601 timestamp (entries after) |
-| `until` | string | ISO 8601 timestamp (entries before) |
+| `since` | string | ISO 8601 timestamp — entries with `timestamp >= since` (inclusive) |
+| `until` | string | ISO 8601 timestamp — entries with `timestamp < until` (**exclusive**). Pass the current oldest entry's timestamp to fetch the next older page without duplicating the boundary entry. |
 | `limit` | integer | Max entries (default 500, max 5000) |
 | `search` | string | Substring search in message |
+
+The response is `{ entries, hasMore }` where `entries` is sorted newest-first and `hasMore` indicates whether more entries match beyond the page.
+
+### Lazy-Load Pagination
+
+The Web UI fetches the most recent page on mount and lets the user scroll back through the entire on-disk history. Scrolling within ~80px of the top triggers `GET /api/logs?until=<oldest visible timestamp>&limit=500`; the response is prepended and the scroll position is anchored to the previously-visible content (the user does not jump). A spinner shows during fetch; once the server returns an empty page (or the file boundary is reached), a "Beginning of logs" marker replaces the spinner.
+
+Filters propagate to both the server (paginated fetches only return matching entries) and the client (live WebSocket entries are filtered immediately). Toggling a filter refetches the most recent page from scratch.
 
 ## Configuration
 

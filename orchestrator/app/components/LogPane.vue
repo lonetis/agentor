@@ -1,10 +1,22 @@
 <script setup lang="ts">
 import type { LogLevel, LogSource } from '~/types';
 
-const { filteredEntries, connected, filters, autoScroll, clearLogs } = useLogs();
+const {
+  filteredEntries,
+  connected,
+  filters,
+  autoScroll,
+  loadingMore,
+  loadingInitial,
+  hasMoreOlder,
+  liveTick,
+  loadMore,
+  clearLogs,
+} = useLogs();
 
 const scrollContainer = ref<HTMLElement>();
 const searchInput = ref('');
+const SCROLL_TRIGGER_PX = 80;
 let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function onSearchInput(val: string) {
@@ -56,24 +68,81 @@ function handleClear() {
   }
 }
 
-// Auto-scroll to bottom when new entries arrive
+// Anchor scroll position when older entries are prepended so the user's
+// view does not jump. Records the scrollHeight before prepend; the watcher
+// below applies the delta after Vue has re-rendered.
+let pendingAnchor: { prevHeight: number; prevTop: number } | null = null;
+
+async function maybeLoadMore() {
+  if (loadingMore.value || !hasMoreOlder.value) return;
+  const el = scrollContainer.value;
+  if (!el) return;
+  pendingAnchor = { prevHeight: el.scrollHeight, prevTop: el.scrollTop };
+  const added = await loadMore();
+  if (added === 0) {
+    pendingAnchor = null;
+  }
+  // Re-check immediately in case the visible viewport is still near the
+  // top after loading (small page or fast scroll). The watcher anchors
+  // first, then this fires again if the user is still near the top.
+}
+
+// Restore scroll anchor after the prepended entries have rendered. We watch
+// filteredEntries.length so the anchor is applied even if filters drop a
+// few of the freshly-loaded entries.
 watch(
   () => filteredEntries.value.length,
   () => {
-    if (autoScroll.value && scrollContainer.value) {
-      nextTick(() => {
-        scrollContainer.value!.scrollTop = scrollContainer.value!.scrollHeight;
-      });
+    if (!pendingAnchor) return;
+    const el = scrollContainer.value;
+    if (!el) {
+      pendingAnchor = null;
+      return;
     }
+    nextTick(() => {
+      const anchor = pendingAnchor;
+      if (!anchor || !scrollContainer.value) return;
+      const delta = scrollContainer.value.scrollHeight - anchor.prevHeight;
+      scrollContainer.value.scrollTop = anchor.prevTop + delta;
+      pendingAnchor = null;
+    });
   },
 );
 
-// Detect manual scroll to disable auto-scroll
+// Auto-scroll on live append only — driven by a tick the composable bumps
+// when the WebSocket pushes a new entry. Pagination prepends never bump
+// the tick, so they cannot trigger an unwanted jump to the bottom.
+watch(liveTick, () => {
+  if (autoScroll.value && scrollContainer.value) {
+    nextTick(() => {
+      scrollContainer.value!.scrollTop = scrollContainer.value!.scrollHeight;
+    });
+  }
+});
+
+// Initial paint: jump to bottom once entries first arrive.
+let didInitialScroll = false;
+watch(
+  () => filteredEntries.value.length,
+  (len) => {
+    if (didInitialScroll || len === 0 || !scrollContainer.value) return;
+    didInitialScroll = true;
+    nextTick(() => {
+      if (!scrollContainer.value) return;
+      scrollContainer.value.scrollTop = scrollContainer.value.scrollHeight;
+    });
+  },
+  { immediate: true },
+);
+
 function onScroll() {
   if (!scrollContainer.value) return;
   const el = scrollContainer.value;
   const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
   autoScroll.value = atBottom;
+  if (el.scrollTop <= SCROLL_TRIGGER_PX) {
+    void maybeLoadMore();
+  }
 }
 
 const sources: { id: LogSource; label: string; color: string }[] = [
@@ -149,12 +218,22 @@ const levels: { id: LogLevel; label: string }[] = [
 
     <!-- Log entries -->
     <div ref="scrollContainer" class="log-entries" @scroll="onScroll">
-      <div v-if="filteredEntries.length === 0" class="log-empty">
+      <div v-if="loadingMore" class="log-pagination-indicator">
+        <UIcon name="i-lucide-loader-circle" class="size-3.5 log-spinner" />
+        <span>Loading older entries…</span>
+      </div>
+      <div v-else-if="!hasMoreOlder && filteredEntries.length > 0" class="log-pagination-indicator log-pagination-end">
+        Beginning of logs
+      </div>
+      <div v-if="loadingInitial && filteredEntries.length === 0" class="log-empty">
+        Loading…
+      </div>
+      <div v-else-if="filteredEntries.length === 0" class="log-empty">
         No log entries{{ filters.sources.length > 0 || filters.levels.length > 0 || filters.search ? ' matching filters' : '' }}.
       </div>
       <div
         v-for="(entry, i) in filteredEntries"
-        :key="i"
+        :key="`${entry.timestamp}-${i}`"
         class="log-entry"
         :class="`log-entry-${entry.level}`"
       >
@@ -290,6 +369,29 @@ const levels: { id: LogLevel; label: string }[] = [
   padding: 32px;
   text-align: center;
   color: var(--terminal-text-dimmed);
+}
+
+.log-pagination-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--terminal-text-dimmed);
+  border-bottom: 1px dashed var(--terminal-bar-border);
+}
+
+.log-pagination-end {
+  font-style: italic;
+}
+
+.log-spinner {
+  animation: log-spin 0.8s linear infinite;
+}
+
+@keyframes log-spin {
+  to { transform: rotate(360deg); }
 }
 
 .log-entry {
