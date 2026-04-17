@@ -19,7 +19,6 @@ export class UpdateChecker {
     this.config = config;
     this.status = {
       orchestrator: null,
-      mapper: null,
       worker: null,
       traefik: null,
       isProductionMode: !!config.workerImagePrefix || config.baseDomains.length > 0,
@@ -43,9 +42,8 @@ export class UpdateChecker {
 
   private async getLocalImages(): Promise<void> {
     const prefix = this.config.workerImagePrefix;
-    const images: { key: keyof Pick<UpdateStatus, 'orchestrator' | 'mapper' | 'worker' | 'traefik'>; name: string }[] = [
+    const images: { key: keyof Pick<UpdateStatus, 'orchestrator' | 'worker' | 'traefik'>; name: string }[] = [
       { key: 'orchestrator', name: (prefix || '') + this.config.orchestratorImage },
-      { key: 'mapper', name: (prefix || '') + this.config.mapperImage },
       { key: 'worker', name: (prefix || '') + this.config.workerImage },
       { key: 'traefik', name: this.config.traefikImage },
     ];
@@ -79,12 +77,10 @@ export class UpdateChecker {
     if (hasPrefix) {
       checks.push(
         this.checkImage(prefix + this.config.orchestratorImage),
-        this.checkImage(prefix + this.config.mapperImage),
         this.checkImage(prefix + this.config.workerImage),
       );
     } else {
       checks.push(
-        Promise.resolve(null),
         Promise.resolve(null),
         Promise.resolve(null),
       );
@@ -101,9 +97,8 @@ export class UpdateChecker {
     // Preserve existing local-only entries for images not checked remotely
     this.status = {
       orchestrator: results[0] ?? this.status.orchestrator,
-      mapper: results[1] ?? this.status.mapper,
-      worker: results[2] ?? this.status.worker,
-      traefik: results[3] ?? this.status.traefik,
+      worker: results[1] ?? this.status.worker,
+      traefik: results[2] ?? this.status.traefik,
       isProductionMode: hasPrefix || hasBaseDomains,
     };
 
@@ -281,7 +276,6 @@ export class UpdateChecker {
   async applyUpdates(images?: UpdatableImage[]): Promise<ApplyResult> {
     const result: ApplyResult = {
       orchestratorPulled: false,
-      mapperPulled: false,
       workerPulled: false,
       traefikPulled: false,
       orchestratorRestarting: false,
@@ -298,16 +292,6 @@ export class UpdateChecker {
 
     const shouldUpdate = (key: UpdatableImage) => !images || images.includes(key);
     const prefix = this.config.workerImagePrefix;
-
-    // Pull mapper image if update available
-    if (hasPrefix && shouldUpdate('mapper') && this.status.mapper?.updateAvailable) {
-      try {
-        await this.pullImage(prefix + this.config.mapperImage);
-        result.mapperPulled = true;
-      } catch (err: unknown) {
-        result.errors.push(`Mapper pull failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
 
     // Pull worker image if update available
     if (hasPrefix && shouldUpdate('worker') && this.status.worker?.updateAvailable) {

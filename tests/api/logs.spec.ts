@@ -38,7 +38,7 @@ test.describe('Logs API', () => {
   test('log entry sources are valid', async ({ request }) => {
     const api = new ApiClient(request);
     const { body } = await api.queryLogs({ limit: 50 });
-    const validSources = ['orchestrator', 'worker', 'mapper', 'traefik'];
+    const validSources = ['orchestrator', 'worker', 'traefik'];
     for (const entry of body.entries) {
       expect(validSources).toContain(entry.source);
     }

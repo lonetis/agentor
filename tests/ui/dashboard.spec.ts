@@ -52,7 +52,7 @@ test.describe('Dashboard Page', () => {
     await goToDashboard(page);
     await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
-    // In dev mode, orchestrator/mapper/worker may be null and not rendered.
+    // In dev mode, orchestrator/worker may be null and not rendered.
     // traefik is always pulled from Docker Hub and should always be present.
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
   });

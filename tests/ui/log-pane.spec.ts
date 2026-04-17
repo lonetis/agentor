@@ -49,7 +49,6 @@ test.describe('Log Pane', () => {
 
     await expect(page.locator('.log-filter-btn').filter({ hasText: 'Orchestrator' })).toBeVisible();
     await expect(page.locator('.log-filter-btn').filter({ hasText: 'Worker' })).toBeVisible();
-    await expect(page.locator('.log-filter-btn').filter({ hasText: 'Mapper' })).toBeVisible();
     await expect(page.locator('.log-filter-btn').filter({ hasText: 'Traefik' })).toBeVisible();
   });
 

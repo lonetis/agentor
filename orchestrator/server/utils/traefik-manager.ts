@@ -4,6 +4,7 @@ import { join, dirname } from 'node:path';
 import Docker from 'dockerode';
 import type { Config, BaseDomainConfig } from './config';
 import type { DomainMappingStore, DomainMapping } from './domain-mapping-store';
+import type { PortMappingStore, PortMapping } from './port-mapping-store';
 import type { StorageManager } from './storage';
 import type { SelfSignedCertManager } from './selfsigned-certs';
 
@@ -11,26 +12,34 @@ const TRAEFIK_CONTAINER_NAME = 'agentor-traefik';
 const TRAEFIK_LABEL = 'agentor.managed';
 const TRAEFIK_LABEL_VALUE = 'traefik';
 
+type PortBindings = Record<string, { HostIp: string; HostPort: string }[]>;
+
 export class TraefikManager {
   private docker: Docker;
   private config: Config;
-  private store: DomainMappingStore;
+  private domainStore: DomainMappingStore;
+  private portStore: PortMappingStore;
   private storageManager: StorageManager;
   private selfSignedCertManager: SelfSignedCertManager;
   private reconcileQueue: Promise<void> = Promise.resolve();
   private configFileJustCreated = false;
 
-  constructor(config: Config, store: DomainMappingStore, storageManager: StorageManager, selfSignedCertManager: SelfSignedCertManager) {
+  constructor(
+    config: Config,
+    domainStore: DomainMappingStore,
+    portStore: PortMappingStore,
+    storageManager: StorageManager,
+    selfSignedCertManager: SelfSignedCertManager,
+  ) {
     this.docker = new Docker({ socketPath: '/var/run/docker.sock' });
     this.config = config;
-    this.store = store;
+    this.domainStore = domainStore;
+    this.portStore = portStore;
     this.storageManager = storageManager;
     this.selfSignedCertManager = selfSignedCertManager;
   }
 
   async init(): Promise<void> {
-    if (this.config.baseDomains.length === 0) return;
-
     const selfSignedDomains = this.config.baseDomainConfigs
       .filter((c) => c.challengeType === 'selfsigned')
       .map((c) => c.domain);
@@ -68,30 +77,31 @@ export class TraefikManager {
     return this.reconcileQueue;
   }
 
-  private async forceRecreateNow(): Promise<void> {
-    if (this.config.baseDomains.length === 0) return;
+  private shouldRun(): boolean {
+    const hasDomainMappings = this.domainStore.list().length > 0;
+    const hasPortMappings = this.portStore.list().length > 0;
+    const hasDashboard = !!this.config.dashboardSubdomain && this.config.baseDomains.length > 0;
+    return hasDomainMappings || hasPortMappings || hasDashboard;
+  }
 
-    const mappings = this.store.list();
-    const hasDashboard = !!this.config.dashboardSubdomain;
-    if (mappings.length === 0 && !hasDashboard) return;
+  private async forceRecreateNow(): Promise<void> {
+    if (!this.shouldRun()) return;
 
     await this.removeTraefik();
-    await this.writeTraefikConfig(mappings);
+    await this.writeTraefikConfig(this.domainStore.list(), this.portStore.list());
     await this.createTraefik();
   }
 
   private async reconcileNow(): Promise<void> {
-    if (this.config.baseDomains.length === 0) return;
+    const domainMappings = this.domainStore.list();
+    const portMappings = this.portStore.list();
 
-    const mappings = this.store.list();
-    const hasDashboard = !!this.config.dashboardSubdomain;
-
-    if (mappings.length === 0 && !hasDashboard) {
+    if (!this.shouldRun()) {
       await this.removeTraefik();
       return;
     }
 
-    await this.writeTraefikConfig(mappings);
+    await this.writeTraefikConfig(domainMappings, portMappings);
 
     const container = await this.findTraefik();
     if (container) {
@@ -157,12 +167,16 @@ export class TraefikManager {
     return `^[^.]+\\.${host.replace(/\./g, '\\.')}$`;
   }
 
-  private async writeTraefikConfig(mappings: DomainMapping[]): Promise<void> {
+  private async writeTraefikConfig(
+    domainMappings: DomainMapping[],
+    portMappings: PortMapping[],
+  ): Promise<void> {
     const config = {
       http: { routers: {} as Record<string, unknown>, services: {} as Record<string, unknown>, middlewares: {} as Record<string, unknown> },
       tcp: { routers: {} as Record<string, unknown>, services: {} as Record<string, unknown> },
     };
 
+    // Dashboard router (only if base domain is configured with a dashboard subdomain)
     if (this.config.dashboardSubdomain && this.config.dashboardBaseDomain) {
       const dashHost = `${this.config.dashboardSubdomain}.${this.config.dashboardBaseDomain}`;
       const dashMiddlewares: string[] = [];
@@ -188,11 +202,11 @@ export class TraefikManager {
       };
     }
 
-    // Wildcard self-signed mappings need a per-host wildcard cert generated
+    // Wildcard self-signed domain mappings need a per-host wildcard cert generated
     // before Traefik reads the file provider config. Collect the unique hosts
     // up front and make sure each has a cert on disk.
     const selfSignedWildcardHosts = new Set<string>();
-    for (const m of mappings) {
+    for (const m of domainMappings) {
       if (!m.wildcard) continue;
       const dc = this.getDomainConfig(m.baseDomain);
       if (dc?.challengeType !== 'selfsigned') continue;
@@ -205,7 +219,8 @@ export class TraefikManager {
       await this.selfSignedCertManager.ensureWildcardCertForHost(host);
     }
 
-    for (const m of mappings) {
+    // Domain mappings (HTTP/HTTPS/TCP via web+websecure entrypoints)
+    for (const m of domainMappings) {
       const host = m.subdomain ? `${m.subdomain}.${m.baseDomain}` : m.baseDomain;
       const safeId = m.id.replace(/[^a-zA-Z0-9-]/g, '');
 
@@ -275,6 +290,22 @@ export class TraefikManager {
       }
     }
 
+    // Port mappings — each gets a dedicated TCP entrypoint (defined in Cmd)
+    // and a catch-all TCP router that forwards to the worker. HostSNI(*) accepts
+    // any connection regardless of TLS/SNI, so this works for raw TCP of any
+    // protocol (HTTP, SSH, database, etc.).
+    for (const m of portMappings) {
+      const name = `pm-${m.externalPort}`;
+      config.tcp.routers[name] = {
+        rule: 'HostSNI(`*`)',
+        service: name,
+        entryPoints: [name],
+      };
+      config.tcp.services[name] = {
+        loadBalancer: { servers: [{ address: `${m.workerName}:${m.internalPort}` }] },
+      };
+    }
+
     // Add self-signed TLS certificates to the file provider config — both the
     // per-base-domain wildcards generated at init() time and the per-host
     // wildcards generated above for wildcard subdomain mappings.
@@ -313,13 +344,27 @@ export class TraefikManager {
   }
 
   buildCmd(): string[] {
-    const cmd = [
-      '--entrypoints.web.address=:80',
-      '--entrypoints.websecure.address=:443',
+    const cmd: string[] = [
       '--providers.file.filename=/data/traefik-config.json',
       '--providers.file.watch=true',
       '--ping=true',
     ];
+
+    // Web entrypoints (80/443) are only created when domain mappings or the
+    // dashboard need them. Port-only setups skip these to avoid binding ports
+    // that nothing will serve.
+    const needsWebEntrypoints = this.domainStore.list().length > 0
+      || (!!this.config.dashboardSubdomain && this.config.baseDomains.length > 0);
+    if (needsWebEntrypoints) {
+      cmd.push('--entrypoints.web.address=:80', '--entrypoints.websecure.address=:443');
+    }
+
+    // One entrypoint per port mapping, deterministically ordered by external
+    // port. The order must match createTraefik()'s PortBindings construction
+    // so drift detection does not thrash.
+    for (const m of this.sortedPortMappings()) {
+      cmd.push(`--entrypoints.pm-${m.externalPort}.address=:${m.externalPort}`);
+    }
 
     const hasHttp = this.config.baseDomainConfigs.some((c) => c.challengeType === 'http');
     if (hasHttp) {
@@ -359,17 +404,54 @@ export class TraefikManager {
     return env;
   }
 
+  private sortedPortMappings(): PortMapping[] {
+    return [...this.portStore.list()].sort((a, b) => a.externalPort - b.externalPort);
+  }
+
+  private buildExposedPorts(): Record<string, object> {
+    const exposed: Record<string, object> = {};
+    const needsWebEntrypoints = this.domainStore.list().length > 0
+      || (!!this.config.dashboardSubdomain && this.config.baseDomains.length > 0);
+    if (needsWebEntrypoints) {
+      exposed['80/tcp'] = {};
+      exposed['443/tcp'] = {};
+    }
+    for (const m of this.sortedPortMappings()) {
+      exposed[`${m.externalPort}/tcp`] = {};
+    }
+    return exposed;
+  }
+
+  private buildPortBindings(): PortBindings {
+    const bindings: PortBindings = {};
+    const needsWebEntrypoints = this.domainStore.list().length > 0
+      || (!!this.config.dashboardSubdomain && this.config.baseDomains.length > 0);
+    if (needsWebEntrypoints) {
+      bindings['80/tcp'] = [{ HostIp: '0.0.0.0', HostPort: '80' }];
+      bindings['443/tcp'] = [{ HostIp: '0.0.0.0', HostPort: '443' }];
+    }
+    for (const m of this.sortedPortMappings()) {
+      const hostIp = m.type === 'localhost' ? '127.0.0.1' : '0.0.0.0';
+      bindings[`${m.externalPort}/tcp`] = [{ HostIp: hostIp, HostPort: String(m.externalPort) }];
+    }
+    return bindings;
+  }
+
   private hasContainerConfigDrift(info: Docker.ContainerInspectInfo): boolean {
     const expectedCmd = this.buildCmd();
     const actualCmd = info.Config?.Cmd || [];
     if (JSON.stringify(expectedCmd) !== JSON.stringify(actualCmd)) return true;
 
-    const expectedEnv = this.buildEnv();
-    if (expectedEnv.length === 0) return false;
+    const expectedBindings = this.buildPortBindings();
+    const actualBindings = info.HostConfig?.PortBindings || {};
+    if (!portBindingsMatch(expectedBindings, actualBindings)) return true;
 
-    const actualEnvSet = new Set(info.Config?.Env || []);
-    for (const e of expectedEnv) {
-      if (!actualEnvSet.has(e)) return true;
+    const expectedEnv = this.buildEnv();
+    if (expectedEnv.length > 0) {
+      const actualEnvSet = new Set(info.Config?.Env || []);
+      for (const e of expectedEnv) {
+        if (!actualEnvSet.has(e)) return true;
+      }
     }
     return false;
   }
@@ -388,13 +470,15 @@ export class TraefikManager {
 
     const cmd = this.buildCmd();
     const env = this.buildEnv();
+    const exposedPorts = this.buildExposedPorts();
+    const portBindings = this.buildPortBindings();
 
     const container = await this.docker.createContainer({
       Image: image,
       name: TRAEFIK_CONTAINER_NAME,
       Cmd: cmd,
       ...(env.length > 0 ? { Env: env } : {}),
-      ExposedPorts: { '80/tcp': {}, '443/tcp': {} },
+      ExposedPorts: exposedPorts,
       Labels: {
         [TRAEFIK_LABEL]: TRAEFIK_LABEL_VALUE,
       },
@@ -406,10 +490,7 @@ export class TraefikManager {
       },
       HostConfig: {
         NetworkMode: this.config.dockerNetwork,
-        PortBindings: {
-          '80/tcp': [{ HostIp: '0.0.0.0', HostPort: '80' }],
-          '443/tcp': [{ HostIp: '0.0.0.0', HostPort: '443' }],
-        },
+        PortBindings: portBindings,
         RestartPolicy: { Name: 'unless-stopped' },
         Binds: [
           this.storageManager.getDataBind(true),
@@ -419,7 +500,9 @@ export class TraefikManager {
     });
 
     await container.start();
-    useLogger().info('[traefik-manager] created Traefik container');
+    useLogger().info(
+      `[traefik-manager] created Traefik container (${this.domainStore.list().length} domain, ${this.portStore.list().length} port mapping(s))`,
+    );
     useLogCollector().attach(TRAEFIK_CONTAINER_NAME, container.id, 'traefik').catch(() => {});
   }
 
@@ -463,4 +546,22 @@ export class TraefikManager {
 function generateHtpasswd(username: string, password: string): string {
   const hash = createHash('sha1').update(password).digest('base64');
   return `${username}:{SHA}${hash}`;
+}
+
+function portBindingsMatch(expected: PortBindings, actual: PortBindings | Record<string, unknown>): boolean {
+  const expectedKeys = Object.keys(expected).sort();
+  const actualKeys = Object.keys(actual).sort();
+  if (expectedKeys.length !== actualKeys.length) return false;
+  for (let i = 0; i < expectedKeys.length; i++) {
+    if (expectedKeys[i] !== actualKeys[i]) return false;
+    const e = expected[expectedKeys[i]!]!;
+    const a = (actual as PortBindings)[actualKeys[i]!];
+    if (!Array.isArray(a) || a.length !== e.length) return false;
+    for (let j = 0; j < e.length; j++) {
+      if (e[j]!.HostIp !== (a[j] as { HostIp?: string }).HostIp || e[j]!.HostPort !== (a[j] as { HostPort?: string }).HostPort) {
+        return false;
+      }
+    }
+  }
+  return true;
 }

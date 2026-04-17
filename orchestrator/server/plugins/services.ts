@@ -1,4 +1,4 @@
-import { useDockerService, useContainerManager, usePortMappingStore, useMapperManager, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useStorageManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
+import { useDockerService, useContainerManager, usePortMappingStore, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useStorageManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
 import { loadBuiltInCapabilities, loadBuiltInInstructions, loadBuiltInInitScripts, loadBuiltInEnvironments } from '../utils/built-in-content';
 import { useAuth, migrateAuth } from '../utils/auth';
 
@@ -74,10 +74,6 @@ export default defineNitroPlugin(async () => {
     logger.info(`[agentor] cleaned up ${staleCount} stale port mapping(s)`);
   }
 
-  // Initialize mapper manager (reconcile mapper container with persisted mappings)
-  const mapperManager = useMapperManager();
-  await mapperManager.init();
-
   // Initialize domain mapping store (load from disk) and cleanup stale workers
   const domainMappingStore = useDomainMappingStore();
   await domainMappingStore.init();
@@ -87,7 +83,9 @@ export default defineNitroPlugin(async () => {
     logger.info(`[agentor] cleaned up ${staleDomainCount} stale domain mapping(s)`);
   }
 
-  // Initialize Traefik manager (reconcile Traefik container with persisted domain mappings)
+  // Initialize Traefik manager (reconcile Traefik with persisted port + domain
+  // mappings — Traefik handles both, with port mappings as dedicated TCP
+  // entrypoints alongside HTTP/HTTPS/TCP routing for domain mappings).
   const traefikManager = useTraefikManager();
   await traefikManager.init();
 

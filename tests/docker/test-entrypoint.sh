@@ -140,8 +140,7 @@ docker compose -f /opt/test-stack/stack.yml -p agentor-test down -v --remove-orp
 # Sweep up any orchestrator-spawned workers that aren't part of the compose
 # project — they have label `agentor.managed=true`.
 docker ps -aq --filter "label=agentor.managed" | xargs -r docker rm -f > /dev/null 2>&1 || true
-# Also remove the mapper/traefik containers (label values "mapper"/"traefik")
-docker ps -aq --filter "label=agentor.managed=mapper" | xargs -r docker rm -f > /dev/null 2>&1 || true
+# Also remove the Traefik container (label value "traefik")
 docker ps -aq --filter "label=agentor.managed=traefik" | xargs -r docker rm -f > /dev/null 2>&1 || true
 
 # ---------------------------------------------------------------------------
@@ -169,7 +168,6 @@ build_with_retry() {
     return 1
 }
 
-build_with_retry agentor-mapper:latest /src/mapper
 build_with_retry agentor-worker:latest /src/worker
 build_with_retry agentor-orchestrator:latest /src/orchestrator
 log "Images built."

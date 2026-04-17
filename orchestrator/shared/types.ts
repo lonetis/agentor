@@ -94,11 +94,10 @@ export interface ImageUpdateInfo {
   error?: string;
 }
 
-export type UpdatableImage = 'orchestrator' | 'mapper' | 'worker' | 'traefik';
+export type UpdatableImage = 'orchestrator' | 'worker' | 'traefik';
 
 export interface UpdateStatus {
   orchestrator: ImageUpdateInfo | null;
-  mapper: ImageUpdateInfo | null;
   worker: ImageUpdateInfo | null;
   traefik: ImageUpdateInfo | null;
   isProductionMode: boolean;
@@ -106,7 +105,6 @@ export interface UpdateStatus {
 
 export interface ApplyResult {
   orchestratorPulled: boolean;
-  mapperPulled: boolean;
   workerPulled: boolean;
   traefikPulled: boolean;
   orchestratorRestarting: boolean;
@@ -182,7 +180,7 @@ export interface InitScriptInfo {
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-export type LogSource = 'orchestrator' | 'worker' | 'mapper' | 'traefik';
+export type LogSource = 'orchestrator' | 'worker' | 'traefik';
 
 export interface LogEntry {
   timestamp: string;

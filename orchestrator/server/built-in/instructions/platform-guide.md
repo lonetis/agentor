@@ -10,8 +10,7 @@ There are four components in the platform:
 
 - **Orchestrator** — The central server. It provides the web dashboard, manages all workers, and exposes a REST API. It runs as a Docker container (`agentor-orchestrator`) on the same network as your worker.
 - **Workers** — Isolated Ubuntu containers where agents run. Each worker has its own filesystem, network stack, and persistent workspace. You are running inside a worker right now.
-- **Port Mapper** — An optional proxy container that forwards host ports to internal worker ports. It is managed by the orchestrator and created automatically when port mappings are configured. This is how services running inside workers (like dev servers) become accessible from outside.
-- **Traefik** — An optional reverse proxy that maps domain names to worker ports with automatic TLS. It is managed by the orchestrator and created when domain mappings are configured. This is how workers can serve traffic on proper domain names.
+- **Traefik** — A single reverse proxy container managed by the orchestrator that handles both (a) TCP port mappings from host ports to internal worker ports (one dedicated entrypoint per mapping), and (b) domain-name routing to worker ports with automatic TLS. It is created automatically when the first port or domain mapping is configured. This is how services running inside workers (dev servers, APIs, etc.) become accessible from outside, either by port or by domain name.
 
 You can interact with the orchestrator's API from inside your worker to manage port mappings, domain mappings, and check usage quotas — if these capabilities have been enabled for your environment. Skills for these APIs may be available to you.
 

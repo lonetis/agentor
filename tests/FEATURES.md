@@ -349,6 +349,8 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ## 12. Port Mappings Panel
 
+> Port mappings and domain mappings both run on the same **Traefik** container (`agentor-traefik`). There is no separate `agentor-mapper` container. Each port mapping becomes a dedicated TCP entrypoint on Traefik (`pm-<port>`) with a `HostSNI(*)` catch-all router that forwards to `workerName:internalPort`. Adding or removing a port mapping triggers a Traefik container recreate because entrypoints are part of Traefik's static config.
+
 ### 12.1 Empty State
 - "No active mappings" message
 
@@ -447,7 +449,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ## 15. Images / Update Notification Panel
 
 ### 15.1 Content
-- Per-image row: image name (orchestrator, worker, mapper, traefik)
+- Per-image row: image name (orchestrator, worker, traefik)
 - Production mode indicators: digest values, update available (amber pulsing dot + old→new digest), error, current (green check), not found
 - Per-image "Update" button (production mode, when update available)
 - "Update All" button (production mode, when any updates available)
@@ -626,7 +628,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Tab shows "Logs" label with scroll-text icon
 
 ### 23.2 Filter Bar
-- Source filter buttons: Orch, Worker, Mapper, Traefik (toggle each source on/off)
+- Source filter buttons: Orch, Worker, Traefik (toggle each source on/off)
 - Level filter buttons: DBG, INF, WRN, ERR (toggle each level on/off)
 - When no filters active, all entries shown (buttons appear inactive)
 - Active filter button shows accent border color
@@ -635,7 +637,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ### 23.3 Log Entries
 - Each entry shows: timestamp (HH:MM:SS.mmm) + level badge + source badge + source ID (for container logs) + message
 - Level badges color-coded: debug (gray), info (blue), warn (amber), error (red)
-- Source badges color-coded: orchestrator (purple), worker (green), mapper (cyan), traefik (orange)
+- Source badges color-coded: orchestrator (purple), worker (green), traefik (orange)
 - Source ID shows display name or container name (hidden for orchestrator entries)
 - Error-level entries: red text
 - Warn-level entries: amber text

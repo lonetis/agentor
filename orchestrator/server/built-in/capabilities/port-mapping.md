@@ -10,7 +10,7 @@ Use this skill when you need to make a service running inside this worker contai
 
 ## How it works
 
-Your worker runs inside an isolated Docker container. Ports inside the container are not directly reachable from the host machine. The orchestrator provides a **port mapper** that creates TCP proxies from host ports to your internal ports.
+Your worker runs inside an isolated Docker container. Ports inside the container are not directly reachable from the host machine. The orchestrator routes host ports to your worker through a shared Traefik reverse proxy — each mapping becomes a dedicated TCP entrypoint that forwards traffic to `$WORKER_CONTAINER_NAME:<internalPort>`.
 
 There are two mapping types:
 - **localhost** — The port is only accessible from the host machine (127.0.0.1)
@@ -20,7 +20,7 @@ There are two mapping types:
 
 All requests go to the orchestrator at `$ORCHESTRATOR_URL`. Your container is identified by `$WORKER_CONTAINER_NAME`. Both are pre-set environment variables.
 
-### Check port mapper status
+### Check port mapping status
 
 ```bash
 curl "$ORCHESTRATOR_URL/api/port-mapper/status"

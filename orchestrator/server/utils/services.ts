@@ -3,7 +3,6 @@ import { loadConfig } from './config';
 import { DockerService } from './docker';
 import { ContainerManager } from './container';
 import { PortMappingStore } from './port-mapping-store';
-import { MapperManager } from './mapper-manager';
 import { DomainMappingStore } from './domain-mapping-store';
 import { TraefikManager } from './traefik-manager';
 import { GitHubService } from './github';
@@ -37,10 +36,15 @@ export const useStorageManager = singleton(
 );
 export const useContainerManager = singleton(() => new ContainerManager(useDockerService(), useConfig()));
 export const usePortMappingStore = singleton(() => new PortMappingStore(useConfig().dataDir));
-export const useMapperManager = singleton(() => new MapperManager(useConfig(), usePortMappingStore(), useStorageManager()));
 export const useDomainMappingStore = singleton(() => new DomainMappingStore(useConfig().dataDir));
 export const useSelfSignedCertManager = singleton(() => new SelfSignedCertManager(useConfig().dataDir));
-export const useTraefikManager = singleton(() => new TraefikManager(useConfig(), useDomainMappingStore(), useStorageManager(), useSelfSignedCertManager()));
+export const useTraefikManager = singleton(() => new TraefikManager(
+  useConfig(),
+  useDomainMappingStore(),
+  usePortMappingStore(),
+  useStorageManager(),
+  useSelfSignedCertManager(),
+));
 export const useGitHubService = singleton(() => new GitHubService(useConfig()));
 export const useEnvironmentStore = singleton(() => new EnvironmentStore(useConfig().dataDir));
 export const useWorkerStore = singleton(() => new WorkerStore(useConfig().dataDir));
@@ -59,27 +63,24 @@ export const useLogCollector = singleton(() => new LogCollector(useConfig(), use
 
 /**
  * Removes all port and domain mappings for a worker (by name) and reconciles
- * the mapper/traefik containers if any mappings were removed. Called when a
- * worker is permanently deleted — mappings are preserved across stop, archive,
- * unarchive, and rebuild.
+ * Traefik if any mappings were removed. Called when a worker is permanently
+ * deleted — mappings are preserved across stop, archive, unarchive, and rebuild.
  */
 export async function cleanupWorkerMappings(workerName: string): Promise<void> {
   const portRemoved = await usePortMappingStore().removeForWorkerName(workerName);
   const domainRemoved = await useDomainMappingStore().removeForWorkerName(workerName);
-  if (portRemoved > 0) await useMapperManager().reconcile();
-  if (domainRemoved > 0) await useTraefikManager().reconcile();
+  if (portRemoved > 0 || domainRemoved > 0) await useTraefikManager().reconcile();
 }
 
 /**
  * Updates the workerId field of all mappings for a worker to the new container
- * ID (used after rebuild/unarchive since the Docker container ID changes). The
- * mapper and Traefik both route by workerName via Docker DNS, so fresh lookups
- * pick up the new container automatically — we only need to reconcile() so the
- * mapper container is ensured running (idempotent when bindings match).
+ * ID (used after rebuild/unarchive since the Docker container ID changes).
+ * Traefik routes to workers by name via Docker DNS, so fresh lookups pick up
+ * the new container automatically — we only need to reconcile() so Traefik is
+ * ensured running (idempotent when config matches).
  */
 export async function reassignWorkerMappings(workerName: string, newContainerId: string): Promise<void> {
   const portChanged = await usePortMappingStore().reassignWorkerContainer(workerName, newContainerId);
   const domainChanged = await useDomainMappingStore().reassignWorkerContainer(workerName, newContainerId);
-  if (portChanged > 0) await useMapperManager().reconcile();
-  if (domainChanged > 0) await useTraefikManager().reconcile();
+  if (portChanged > 0 || domainChanged > 0) await useTraefikManager().reconcile();
 }

@@ -35,7 +35,6 @@ services:
       - DASHBOARD_BASE_DOMAIN=docker.localhost
       - BASE_DOMAINS=docker.localhost:selfsigned,docker2.localhost:selfsigned
       - WORKER_IMAGE=agentor-worker:latest
-      - MAPPER_IMAGE=agentor-mapper:latest
       - ORCHESTRATOR_IMAGE=agentor-orchestrator:latest
       - DOCKER_NETWORK=agentor-net
       - DATA_DIR=/data

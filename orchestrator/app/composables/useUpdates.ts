@@ -140,7 +140,6 @@ export function useUpdates() {
     if (!status.value) return 0;
     let count = 0;
     if (status.value.orchestrator?.updateAvailable) count++;
-    if (status.value.mapper?.updateAvailable) count++;
     if (status.value.worker?.updateAvailable) count++;
     if (status.value.traefik?.updateAvailable) count++;
     return count;

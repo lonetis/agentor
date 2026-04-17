@@ -31,7 +31,7 @@ defineRouteMeta({
   },
 });
 
-import { usePortMappingStore, useMapperManager, useContainerManager } from '../../utils/services';
+import { usePortMappingStore, useTraefikManager, useContainerManager } from '../../utils/services';
 import { requireContainerAccess } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
@@ -92,7 +92,7 @@ export default defineEventHandler(async (event) => {
   };
 
   await store.add(mapping);
-  await useMapperManager().reconcile();
+  await useTraefikManager().reconcile();
 
   setResponseStatus(event, 201);
   return mapping;

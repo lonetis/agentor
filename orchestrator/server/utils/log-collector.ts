@@ -38,8 +38,7 @@ export class LogCollector {
       const labelValue = info.Labels['agentor.managed'] || '';
 
       let source: LogSource;
-      if (labelValue === 'mapper') source = 'mapper';
-      else if (labelValue === 'traefik') source = 'traefik';
+      if (labelValue === 'traefik') source = 'traefik';
       else source = 'worker';
 
       const displayName = info.Labels['agentor.display-name'] || undefined;

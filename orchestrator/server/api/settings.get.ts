@@ -60,7 +60,6 @@ export default defineEventHandler(async (event) => {
       { key: 'CONTAINER_PREFIX', label: 'Container Prefix', value: config.containerPrefix, type: 'string' },
       { key: 'WORKER_IMAGE', label: 'Worker Image', value: config.workerImage, type: 'string' },
       { key: 'ORCHESTRATOR_IMAGE', label: 'Orchestrator Image', value: config.orchestratorImage, type: 'string' },
-      { key: 'MAPPER_IMAGE', label: 'Mapper Image', value: config.mapperImage, type: 'string' },
       { key: 'DATA_VOLUME', label: 'Data Volume', value: config.dataVolume, type: 'string' },
       { key: 'DATA_DIR', label: 'Data Directory', value: config.dataDir, type: 'string' },
       ...(config.workerImagePrefix

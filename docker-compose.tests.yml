@@ -20,7 +20,6 @@ services:
       # Source for building the agentor images inside the inner dockerd.
       - ./orchestrator:/src/orchestrator:ro
       - ./worker:/src/worker:ro
-      - ./mapper:/src/mapper:ro
       # Test source. Read-write so playwright can write reports / .auth
       # back to the host for inspection.
       - ./tests:/work/tests

@@ -8,14 +8,12 @@ Browser (xterm.js)       <--WebSocket--> Nitro (crossws)             <--docker s
 Browser (noVNC iframe)   <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (websockify <--> x11vnc <--> Xvfb)
 Browser (code-server)    <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (code-server on port 8443)
 Orchestrator             <--docker exec-> apps/*/manage.sh (start/stop/list app instances in worker)
-Orchestrator (MapperManager)  <--dockerode--> Mapper container (TCP proxies to worker internal ports)
-Orchestrator (TraefikManager) <--dockerode--> Traefik container (domain-based reverse proxy, TLS)
+Orchestrator (TraefikManager) <--dockerode--> Traefik container (unified proxy: port mappings + domain routing, TLS)
 ```
 
-Four managed containers:
-- **Orchestrator**: Nuxt 3 app (SPA mode) with Nitro server, serving dashboard + managing workers, mapper, and Traefik containers via Docker socket
-- **Mapper**: Lightweight Node.js container running TCP reverse proxies. Managed by the orchestrator via dockerode — created/recreated when port mappings change, removed when empty.
-- **Traefik**: Reverse proxy for domain-based routing with Let's Encrypt TLS. Managed by the orchestrator — created when domain mappings or dashboard subdomain are configured, removed when empty. Optional (requires `BASE_DOMAINS` env var).
+Three managed containers:
+- **Orchestrator**: Nuxt 3 app (SPA mode) with Nitro server, serving dashboard + managing workers and the Traefik container via Docker socket
+- **Traefik**: Unified reverse proxy for both TCP port mappings (one dedicated entrypoint per mapping) and HTTP/HTTPS/TCP domain routing with Let's Encrypt TLS. Managed by the orchestrator — created when any port mapping, domain mapping, or dashboard subdomain is configured, removed when empty. Domain routing requires `BASE_DOMAINS`; port mappings work without it.
 - **Workers**: Single unified Docker image (`agentor-worker`, Ubuntu 24.04) with all agent CLIs pre-installed, running in tmux, plus an integrated display stack (Xvfb + fluxbox + x11vnc + noVNC on port 6080), code-server (VS Code on port 8443), and Chromium. Each worker is a single container with all agents available.
 
 ## Storage Modes
@@ -27,7 +25,7 @@ The orchestrator supports two storage modes, auto-detected from how `/data` is m
 | **Volume** | `agentor-data:/data` | `Type: "volume"` | Docker named volumes (`<name>-workspace`, `<name>-docker`, `agentor-traefik-certs`) |
 | **Directory** | `./data:/data` | `Type: "bind"` | Subdirectories under the data directory on the host |
 
-Switch modes by changing one line in the compose file — no env vars needed. `StorageManager` (`orchestrator/server/utils/storage.ts`) self-inspects the orchestrator container on startup to determine the mount type.
+Switch modes by changing one line in the compose file — no env vars needed. `StorageManager` (`orchestrator/server/utils/storage.ts`) self-inspects the orchestrator container on startup to determine the mount type. Traefik shares the data volume/directory read-only to pick up `port-mappings.json`, `domain-mappings.json`, `traefik-config.json`, and self-signed certs.
 
 ### Directory Layout (directory mode)
 
@@ -58,7 +56,7 @@ DinD data always uses Docker named volumes (`<name>-docker`) regardless of stora
 
 | Resource | Volume mode | Directory mode |
 |----------|------------|----------------|
-| Data (mapper/traefik) | `<volumeName>:/data:ro` | `<hostPath>:/data:ro` |
+| Data (Traefik) | `<volumeName>:/data:ro` | `<hostPath>:/data:ro` |
 | Worker workspace | `<name>-workspace:/workspace` | `<hostPath>/workspaces/<name>:/workspace` |
 | Worker agents | `<name>-agents:/home/agent/.agent-data` | `<hostPath>/agents/<name>:/home/agent/.agent-data` |
 | Worker DinD | `<name>-docker:/var/lib/docker` | `<name>-docker:/var/lib/docker` (always named volume) |
@@ -83,7 +81,7 @@ Workers exist in four states:
 | **archived** | Removed | Kept on disk | Preserved (idle) | `archived` |
 | **deleted** | Removed | Removed | Removed | Removed |
 
-Port and domain mappings are keyed by the stable worker name (not the Docker container ID), so they survive stop/restart, archive/unarchive, and rebuild. On rebuild and unarchive, the mapping's `workerId` field is automatically reassigned to the new container ID (`reassignWorkerMappings` in `services.ts`). The mapper and Traefik both route to the worker by name via Docker DNS — fresh lookups pick up the new container automatically, so no forced recreation is needed. Mappings are only removed on permanent delete (via `cleanupWorkerMappings` inside `ContainerManager.remove()` and `ContainerManager.deleteArchived()`).
+Port and domain mappings are keyed by the stable worker name (not the Docker container ID), so they survive stop/restart, archive/unarchive, and rebuild. On rebuild and unarchive, the mapping's `workerId` field is automatically reassigned to the new container ID (`reassignWorkerMappings` in `services.ts`). Traefik routes to the worker by name via Docker DNS — fresh lookups pick up the new container automatically, so no forced recreation is needed. Mappings are only removed on permanent delete (via `cleanupWorkerMappings` inside `ContainerManager.remove()` and `ContainerManager.deleteArchived()`).
 
 ### Workspace, Agents & DinD Storage
 

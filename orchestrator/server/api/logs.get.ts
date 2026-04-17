@@ -6,7 +6,7 @@ defineRouteMeta({
     summary: 'Query log entries',
     operationId: 'getLogs',
     parameters: [
-      { name: 'sources', in: 'query', schema: { type: 'string' }, description: 'Comma-separated log sources (orchestrator,worker,mapper,traefik)' },
+      { name: 'sources', in: 'query', schema: { type: 'string' }, description: 'Comma-separated log sources (orchestrator,worker,traefik)' },
       { name: 'sourceIds', in: 'query', schema: { type: 'string' }, description: 'Comma-separated container names' },
       { name: 'levels', in: 'query', schema: { type: 'string' }, description: 'Comma-separated log levels (debug,info,warn,error)' },
       { name: 'since', in: 'query', schema: { type: 'string' }, description: 'ISO 8601 timestamp (entries after this time)' },

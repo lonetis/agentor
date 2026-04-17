@@ -10,7 +10,7 @@ defineRouteMeta({
           schema: {
             type: 'object',
             properties: {
-              images: { type: 'array', items: { type: 'string', enum: ['orchestrator', 'mapper', 'worker', 'traefik'] }, description: 'Specific images to update (all if omitted)' },
+              images: { type: 'array', items: { type: 'string', enum: ['orchestrator', 'worker', 'traefik'] }, description: 'Specific images to update (all if omitted)' },
             },
           },
         },
@@ -25,7 +25,6 @@ defineRouteMeta({
               type: 'object',
               properties: {
                 orchestratorPulled: { type: 'boolean' },
-                mapperPulled: { type: 'boolean' },
                 workerPulled: { type: 'boolean' },
                 traefikPulled: { type: 'boolean' },
                 orchestratorRestarting: { type: 'boolean' },
@@ -40,7 +39,7 @@ defineRouteMeta({
 });
 
 import type { UpdatableImage } from '../../../shared/types';
-import { useUpdateChecker, useMapperManager, useTraefikManager } from '../../utils/services';
+import { useUpdateChecker, useTraefikManager } from '../../utils/services';
 import { requireAdmin } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
@@ -56,7 +55,6 @@ export default defineEventHandler(async (event) => {
   const images = body?.images;
 
   const hasUpdates = status.orchestrator?.updateAvailable
-    || status.mapper?.updateAvailable
     || status.worker?.updateAvailable
     || status.traefik?.updateAvailable;
 
@@ -65,15 +63,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const result = await checker.applyUpdates(images);
-
-  // Force-recreate mapper container with new image if pulled
-  if (result.mapperPulled) {
-    try {
-      await useMapperManager().forceRecreate();
-    } catch (err: unknown) {
-      result.errors.push(`Mapper recreate failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
 
   // Force-recreate Traefik container with new image if pulled
   if (result.traefikPulled) {

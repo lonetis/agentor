@@ -9,7 +9,7 @@ test.describe('Updates API', () => {
       expect(status).toBe(200);
       expect(typeof body.isProductionMode).toBe('boolean');
       // Each image field is either null or an ImageUpdateInfo object
-      for (const key of ['orchestrator', 'mapper', 'worker', 'traefik'] as const) {
+      for (const key of ['orchestrator', 'worker', 'traefik'] as const) {
         const val = body[key];
         if (val !== null) {
           expect(typeof val.name).toBe('string');
@@ -76,13 +76,14 @@ test.describe('Updates API', () => {
   });
 
   test.describe('Response structure', () => {
-    test('update status includes all four image keys', async ({ request }) => {
+    test('update status includes all three image keys', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.getUpdateStatus();
       expect('orchestrator' in body).toBe(true);
-      expect('mapper' in body).toBe(true);
       expect('worker' in body).toBe(true);
       expect('traefik' in body).toBe(true);
+      // Mapper was merged into Traefik — the key must no longer be present.
+      expect('mapper' in body).toBe(false);
     });
 
     test('check returns same structure as status', async ({ request }) => {
@@ -90,16 +91,16 @@ test.describe('Updates API', () => {
       const { body } = await api.checkForUpdates();
       expect('isProductionMode' in body).toBe(true);
       expect('orchestrator' in body).toBe(true);
-      expect('mapper' in body).toBe(true);
       expect('worker' in body).toBe(true);
       expect('traefik' in body).toBe(true);
+      expect('mapper' in body).toBe(false);
     });
 
-    test('all four images are non-null with name and localDigest fields', async ({ request }) => {
+    test('all three images are non-null with name and localDigest fields', async ({ request }) => {
       const api = new ApiClient(request);
       const { status, body } = await api.getUpdateStatus();
       expect(status).toBe(200);
-      for (const key of ['orchestrator', 'mapper', 'worker', 'traefik'] as const) {
+      for (const key of ['orchestrator', 'worker', 'traefik'] as const) {
         const info = body[key];
         expect(info).not.toBeNull();
         expect(typeof info.name).toBe('string');
@@ -108,12 +109,12 @@ test.describe('Updates API', () => {
       }
     });
 
-    test('mapper, worker, and traefik images have non-empty localDigest', async ({ request }) => {
+    test('worker and traefik images have non-empty localDigest', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.getUpdateStatus();
       // These images always exist locally (built or pulled).
       // The orchestrator image may not exist in dev mode (runs from node:22-alpine).
-      for (const key of ['mapper', 'worker', 'traefik'] as const) {
+      for (const key of ['worker', 'traefik'] as const) {
         expect(body[key].localDigest.length).toBeGreaterThan(0);
       }
     });
@@ -124,7 +125,7 @@ test.describe('Updates API', () => {
       const { body: after } = await api.checkForUpdates();
 
       // Every image that was non-null before check must remain non-null after
-      for (const key of ['orchestrator', 'mapper', 'worker', 'traefik'] as const) {
+      for (const key of ['orchestrator', 'worker', 'traefik'] as const) {
         if (before[key] !== null) {
           expect(after[key]).not.toBeNull();
           // localDigest should be preserved (not cleared by check)
@@ -136,7 +137,7 @@ test.describe('Updates API', () => {
     test('localDigest is a sha256 hash or image ID', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.getUpdateStatus();
-      for (const key of ['orchestrator', 'mapper', 'worker', 'traefik'] as const) {
+      for (const key of ['orchestrator', 'worker', 'traefik'] as const) {
         const info = body[key];
         if (info?.localDigest) {
           // Either "sha256:<hex>" (registry digest or image ID) or bare hex

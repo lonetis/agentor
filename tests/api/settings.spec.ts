@@ -27,7 +27,6 @@ test.describe('Settings API', () => {
     expect(keys).toContain('CONTAINER_PREFIX');
     expect(keys).toContain('WORKER_IMAGE');
     expect(keys).toContain('ORCHESTRATOR_IMAGE');
-    expect(keys).toContain('MAPPER_IMAGE');
     expect(keys).toContain('DATA_VOLUME');
     expect(keys).toContain('DATA_DIR');
   });

@@ -25,8 +25,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 - **Virtual desktop** — Xvfb + fluxbox + noVNC, accessible in-browser
 - **Multi-repo cloning** — clone one or more git repos into each worker at startup
 - **App system** — launch Chromium (with CDP) or SOCKS5 proxy instances inside workers
-- **Port mapper** — dedicated container running TCP reverse proxies to expose worker-internal ports to the host
-- **Domain mapping** — Traefik reverse proxy with TLS (Let's Encrypt HTTP-01/DNS-01 or self-signed CA), subdomain-based routing to worker ports, optional HTTP basic auth
+- **Port & domain mapping** — unified Traefik reverse proxy handling both TCP port forwarding (localhost- or network-bound) and subdomain-based HTTP/HTTPS/TCP routing with TLS (Let's Encrypt HTTP-01/DNS-01 or self-signed CA), optional HTTP basic auth
 - **Auto-updates** — per-image or bulk image updates in production mode with registry-agnostic digest comparison (GHCR + Docker Hub), orchestrator self-replaces
 - **Resource limits** — per-worker CPU and memory constraints
 - **Volume mounts** — bind-mount host directories into workers
@@ -35,7 +34,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 - **File upload/download** — upload files/folders to running workers or during creation, download workspace as `.tar.gz`
 - **Docker-in-Docker** — opt-in per-environment, full Docker daemon inside workers (build, run, compose)
 - **Usage monitoring** — real-time usage/rate limit indicators for OAuth-authenticated agents (Claude, Codex, Gemini)
-- **Centralized logging** — collects logs from all containers (orchestrator, workers, mapper, traefik) with NDJSON storage, log rotation, and a live-streaming log viewer in the dashboard
+- **Centralized logging** — collects logs from all containers (orchestrator, workers, traefik) with NDJSON storage, log rotation, and a live-streaming log viewer in the dashboard
 - **Theme toggle** — switch between system default, light, and dark mode
 - **API docs** — auto-generated OpenAPI 3.1.0 spec with interactive Scalar UI at `/api/docs`
 
@@ -80,10 +79,9 @@ This downloads `docker-compose.yml`, `.env`, and `.cred/` template files into th
 
 Development mode mounts the orchestrator source code into the container with hot reload.
 
-1. **Build images locally:**
+1. **Build the worker image locally** (Traefik is pulled from Docker Hub automatically):
 
    ```bash
-   docker build -t agentor-mapper:latest ./mapper
    docker build -t agentor-worker:latest ./worker
    ```
 
@@ -111,7 +109,7 @@ Open **http://localhost:3000**
 > The production compose file sets `WORKER_IMAGE_PREFIX=ghcr.io/lonetis/` so the orchestrator pulls worker images from GHCR automatically. Docker will pull images on first container creation.
 
 > [!NOTE]
-> The port mapper runs as a separate container (`agentor-mapper`) managed automatically by the orchestrator. It is created when the first port mapping is added and removed when all mappings are deleted. Mapped ports are arbitrary — no fixed ranges.
+> The Traefik reverse proxy (`agentor-traefik`) is managed automatically by the orchestrator and handles both port mappings and domain mappings on the same container. It is created when the first port/domain mapping is added (or the dashboard subdomain is configured) and removed when all of those are gone. Mapped ports are arbitrary — no fixed ranges — but `80`/`443` are reserved when domain routing is active.
 
 ---
 
@@ -134,8 +132,8 @@ The storage mode is auto-detected from the mount type — no env var changes nee
 | Port | Binding | Purpose |
 |------|---------|---------|
 | `3000` | `127.0.0.1` | Web dashboard (includes proxied desktop and editor access) |
-| `80`, `443` | `0.0.0.0` | Traefik reverse proxy (only when `BASE_DOMAINS` is set) |
-| _user-defined_ | `127.0.0.1` or `0.0.0.0` | Port mapper (localhost or external type) |
+| `80`, `443` | `0.0.0.0` | Traefik reverse proxy for domain routing (only when `BASE_DOMAINS` is set) |
+| _user-defined_ | `127.0.0.1` or `0.0.0.0` | Traefik TCP port mappings (localhost or external type, one entrypoint per mapping) |
 
 ## License
 

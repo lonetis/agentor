@@ -1,6 +1,6 @@
 # Agent Orchestrator (Agentor)
 
-Docker orchestrator that spawns isolated AI coding agent workers, each in its own container with terminal access via a web dashboard. All agent CLIs (Claude, Codex, Gemini) are pre-installed in a single unified worker image. Includes a modular app system (Chromium, SOCKS5 proxy), a dynamic port mapper, domain mapping via Traefik, a VS Code editor (code-server), VS Code tunnel (native VS Code client connections), and an automatic update mechanism for production deployments.
+Docker orchestrator that spawns isolated AI coding agent workers, each in its own container with terminal access via a web dashboard. All agent CLIs (Claude, Codex, Gemini) are pre-installed in a single unified worker image. Includes a modular app system (Chromium, SOCKS5 proxy), a unified Traefik reverse proxy for both TCP port mappings and HTTP/HTTPS/TCP domain routing, a VS Code editor (code-server), VS Code tunnel (native VS Code client connections), and an automatic update mechanism for production deployments.
 
 ## Architecture
 
@@ -11,14 +11,12 @@ Browser (noVNC iframe)   <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-
 Browser (code-server)    <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (code-server on port 8443)
 Local VS Code            <--tunnel-----> Microsoft Relay              <--tunnel--------> Worker (code tunnel)
 Orchestrator             <--docker exec-> apps/*/manage.sh (start/stop/list/status app instances in worker)
-Orchestrator (MapperManager)  <--dockerode--> Mapper container (TCP proxies to worker internal ports)
-Orchestrator (TraefikManager) <--dockerode--> Traefik container (domain-based reverse proxy, TLS)
+Orchestrator (TraefikManager) <--dockerode--> Traefik container (unified reverse proxy: port mappings + domain routing, TLS)
 ```
 
-Four managed containers:
-- **Orchestrator**: Nuxt 3 app (SPA mode) with Nitro server, serving dashboard + managing workers, mapper, and Traefik containers via Docker socket
-- **Mapper**: Lightweight Node.js container running TCP reverse proxies. Managed by the orchestrator via dockerode — created/recreated when port mappings change, removed when empty.
-- **Traefik**: Reverse proxy for domain-based routing with Let's Encrypt TLS. Managed by the orchestrator — created when domain mappings or dashboard subdomain are configured, removed when empty. Optional (requires `BASE_DOMAINS` env var).
+Three managed containers:
+- **Orchestrator**: Nuxt 3 app (SPA mode) with Nitro server, serving dashboard + managing workers and the Traefik container via Docker socket
+- **Traefik**: Unified reverse proxy container handling both TCP port mappings (one dedicated entrypoint per mapping) and HTTP/HTTPS/TCP domain routing with Let's Encrypt or self-signed TLS. Managed by the orchestrator — created when any port/domain mapping or dashboard subdomain is configured, removed when empty. Port mappings work without `BASE_DOMAINS`; domain mappings require it.
 - **Workers**: Single unified Docker image (`agentor-worker`, Ubuntu 24.04) with all agent CLIs pre-installed, running in tmux, plus an integrated display stack (Xvfb + fluxbox + x11vnc + noVNC on port 6080), code-server (VS Code on port 8443), VS Code tunnel (native VS Code client via Microsoft relay), and Chromium. Each worker is a single container with all agents available. Three persistent volumes per worker: workspace (`/workspace`), agent config data (`/home/agent/.agent-data` — symlinked to `~/.claude`, `~/.gemini`, `~/.codex`, `~/.agents`, `~/.claude.json`), and optionally DinD (`/var/lib/docker`).
 
 ## Detailed Documentation
@@ -27,7 +25,7 @@ Four managed containers:
 |-------|------|----------|
 | Architecture | @docs/architecture.md | Storage modes (volume vs directory), worker state & persistence, WorkerStore, Docker labels |
 | Worker System | @docs/worker.md | Unified worker image, init scripts, agents, per-user git identity, DinD, host bind mounts, startup sequence |
-| Networking | @docs/networking.md | Port mapper, domain mapping (Traefik), TLS challenges, self-signed certs, config drift detection |
+| Networking | @docs/networking.md | Unified Traefik proxy (port mappings + domain mappings), TLS challenges, self-signed certs, config drift detection |
 | UI | @docs/ui.md | Split pane layout, tmux tab integration, theme system, VS Code editor, UI state persistence |
 | Environments | @docs/environments.md | Environment system, network firewall, capabilities, instructions, worker API exposure |
 | Logging | @docs/logging.md | Centralized logging, log collection, rotation, WebSocket streaming, log pane UI |
@@ -54,8 +52,7 @@ Four managed containers:
 The orchestrator always runs inside Docker (both dev and production).
 
 ```bash
-# Build mapper and worker images locally
-docker build -t agentor-mapper:latest ./mapper
+# Build worker image locally (Traefik uses the upstream image from Docker Hub)
 docker build -t agentor-worker:latest ./worker
 
 # Development (hot reload via mounted source)

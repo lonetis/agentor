@@ -2,7 +2,7 @@ defineRouteMeta({
   openAPI: {
     tags: ['Updates'],
     summary: 'Get update status',
-    description: 'Returns image update status for all managed containers (orchestrator, mapper, worker, traefik).',
+    description: 'Returns image update status for all managed containers (orchestrator, worker, traefik).',
     operationId: 'getUpdateStatus',
     responses: {
       200: {
@@ -13,7 +13,6 @@ defineRouteMeta({
               type: 'object',
               properties: {
                 orchestrator: { $ref: '#/components/schemas/ImageUpdateInfo' },
-                mapper: { $ref: '#/components/schemas/ImageUpdateInfo' },
                 worker: { $ref: '#/components/schemas/ImageUpdateInfo' },
                 traefik: { $ref: '#/components/schemas/ImageUpdateInfo' },
                 isProductionMode: { type: 'boolean' },

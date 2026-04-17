@@ -12,7 +12,7 @@ defineRouteMeta({
   },
 });
 
-import { usePortMappingStore, useMapperManager } from '../../utils/services';
+import { usePortMappingStore, useTraefikManager } from '../../utils/services';
 import { requireAuth } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
 
   const removed = await store.remove(port);
   if (removed) {
-    await useMapperManager().reconcile();
+    await useTraefikManager().reconcile();
   }
   return { ok: true };
 });

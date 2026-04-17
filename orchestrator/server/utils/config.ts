@@ -24,7 +24,6 @@ export interface Config {
   defaultCpuLimit: number;
   defaultMemoryLimit: string;
   workerImage: string;
-  mapperImage: string;
   dataVolume: string;
   orchestratorImage: string;
   workerImagePrefix: string;
@@ -122,7 +121,6 @@ export function loadConfig(): Config {
     defaultCpuLimit: parseFloat(process.env.DEFAULT_CPU_LIMIT || '0'),
     defaultMemoryLimit: process.env.DEFAULT_MEMORY_LIMIT || '',
     workerImage: process.env.WORKER_IMAGE || 'agentor-worker:latest',
-    mapperImage: process.env.MAPPER_IMAGE || 'agentor-mapper:latest',
     dataVolume: process.env.DATA_VOLUME || './data',
     orchestratorImage: process.env.ORCHESTRATOR_IMAGE || 'agentor-orchestrator:latest',
     workerImagePrefix: process.env.WORKER_IMAGE_PREFIX || '',

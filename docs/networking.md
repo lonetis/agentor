@@ -1,26 +1,38 @@
 # Networking
 
-## Port Mapper
+Agentor runs a single **Traefik** container (`agentor-traefik`) that handles both
+TCP port mappings (Layer 4 raw forwarding) and domain-based routing (HTTP/HTTPS
+Layer 7 + TCP Layer 4 via SNI) for all managed workers. There is no separate
+port-mapper container — each port mapping becomes a dedicated Traefik entrypoint
+on the same container. The orchestrator manages Traefik's lifecycle via dockerode.
 
-The port mapper runs as a separate Docker container (`agentor-mapper`), managed by the orchestrator via dockerode. Mappings are persisted to `<DATA_DIR>/port-mappings.json` and survive orchestrator restarts. They also survive worker lifecycle events — stop/restart, archive/unarchive, and rebuild all preserve the mapping. Mappings are only removed when the worker is permanently deleted. Records are keyed by the stable worker name (not the Docker container ID), so the mapper continues routing to the worker after it comes back under a new container ID. The `workerId` field is updated automatically on rebuild and unarchive via `reassignWorkerMappings`.
+## Port Mappings
+
+Port mappings are persisted to `<DATA_DIR>/port-mappings.json` and survive
+orchestrator restarts. They also survive worker lifecycle events — stop/restart,
+archive/unarchive, and rebuild all preserve the mapping. Mappings are only
+removed when the worker is permanently deleted. Records are keyed by the stable
+worker name (not the Docker container ID), so Traefik continues routing to the
+worker after it comes back under a new container ID. The `workerId` field is
+updated automatically on rebuild and unarchive via `reassignWorkerMappings`.
 
 **Architecture:**
 - `PortMappingStore` (`port-mapping-store.ts`): Persists mappings to disk, extends `JsonStore<number, PortMapping>`
-- `MapperManager` (`mapper-manager.ts`): Manages the mapper container lifecycle. On mapping changes, it writes to the store, then reconciles the mapper container (stop+remove+recreate with updated Docker port bindings). Serialized via promise queue.
-- `mapper/proxy.mjs`: Standalone Node.js script that reads `/data/port-mappings.json` and creates `net.createServer()` TCP proxies per mapping
+- `TraefikManager` (`traefik-manager.ts`): Handles both port and domain mappings on the same container. For each port mapping it emits:
+  - A dedicated TCP entrypoint in `buildCmd()`: `--entrypoints.pm-<port>.address=:<port>` (static config — adding or removing a mapping triggers a container recreate via drift detection)
+  - A catch-all TCP router (`HostSNI(*)`) in `traefik-config.json` pointing at `<workerName>:<internalPort>` via Docker DNS (dynamic config — the file provider watch picks up router changes hot, though entrypoint changes still need a recreate)
+  - A Docker `PortBindings` entry with the appropriate `HostIp` (`127.0.0.1` or `0.0.0.0`) matching the mapping type
 
-**Container lifecycle:**
-- Created on first mapping, removed when all mappings are deleted (no idle container)
-- Recreated with new port bindings whenever mappings change
-- Labeled `agentor.managed=mapper` (won't match `=true` filter used for worker listing)
-- Shares the data volume read-only (`DATA_VOLUME:/data:ro`)
-- Connected to `agentor-net` for Docker DNS resolution of worker container names
+**Container recreation triggers:**
+- Any port mapping added/removed (entrypoint list changes → Cmd drift → recreate)
+- Port type changed (`localhost` ↔ `external`) on the same external port (PortBindings drift → recreate)
+- DNS provider env vars added/removed
 
-**Port types (no fixed ranges — any port allowed):**
+**Port types (no fixed ranges — any port except 80/443 when domain routing is also active):**
 - **localhost**: Docker publishes with `127.0.0.1` binding (host only)
 - **external**: Docker publishes with `0.0.0.0` binding (accessible from network)
 
-## Domain Mapping (Traefik)
+## Domain Mappings (Traefik)
 
 Domain-based routing via a Traefik reverse proxy container. Optional — requires `BASE_DOMAINS` env var. Supports multiple base domains with per-domain TLS challenge configuration. Each domain mapping specifies which base domain it uses. Supports HTTP, HTTPS, and TCP protocols with optional HTTP basic auth per mapping. Subdomain is optional — when omitted (empty string), the bare base domain itself is mapped directly (e.g., `example.com` instead of `sub.example.com`). Each base domain can independently be mapped bare or with subdomains. Path-based routing is supported for HTTP/HTTPS — different paths on the same domain can route to different workers (e.g., `/api` to backend, `/app` to frontend). The path prefix is automatically stripped before forwarding (StripPrefix middleware).
 
@@ -88,11 +100,11 @@ On reconcile, `TraefikManager` compares the running container's `Cmd` and DNS-re
 - Dashboard subdomain: if `DASHBOARD_SUBDOMAIN` is set, the orchestrator dashboard is accessible at `<DASHBOARD_SUBDOMAIN>.<DASHBOARD_BASE_DOMAIN>` (defaults to first domain in `BASE_DOMAINS`). Uses the dashboard domain's challenge type for TLS (or plain HTTP if no challenge).
 
 **Container lifecycle:**
-- Created when mappings exist or dashboard subdomain is configured, removed when both are empty
-- Config-only updates (no container restart needed) — Traefik file provider watches for changes
-- Container recreated on Cmd/Env drift (e.g., adding a DNS provider triggers recreate)
+- Created when any port mapping, domain mapping, or dashboard subdomain exists; removed when all three are empty
+- Domain-mapping-only updates are hot-reloaded via the Traefik file provider (no container restart)
+- Container recreated on Cmd/Env/PortBindings drift — e.g. adding a DNS provider, adding or removing a port mapping (entrypoint list changes), or switching a port mapping between `localhost`/`external`
 - Labeled `agentor.managed=traefik`
-- Shares the data volume read-only (`DATA_VOLUME:/data:ro`) for reading `traefik-config.json`
+- Shares the data volume read-only (`DATA_VOLUME:/data:ro`) for reading `port-mappings.json`, `domain-mappings.json`, `traefik-config.json`, and self-signed certs
 - Uses a separate named volume (`agentor-traefik-certs`) for Let's Encrypt certificate storage
 - Connected to `agentor-net` for Docker DNS resolution of worker container names
 

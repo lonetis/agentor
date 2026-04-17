@@ -34,14 +34,13 @@ function imageName(fullName: string): string {
 
 function imageKey(info: ImageUpdateInfo): UpdatableImage | null {
   if (status.value?.orchestrator === info) return 'orchestrator';
-  if (status.value?.mapper === info) return 'mapper';
   if (status.value?.worker === info) return 'worker';
   if (status.value?.traefik === info) return 'traefik';
   return null;
 }
 
 const imageList = computed(() =>
-  [status.value?.orchestrator, status.value?.mapper, status.value?.worker, status.value?.traefik]
+  [status.value?.orchestrator, status.value?.worker, status.value?.traefik]
     .filter((i): i is ImageUpdateInfo => !!i)
 );
 

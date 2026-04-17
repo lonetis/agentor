@@ -7,10 +7,6 @@
 - `docker-compose.dev.yml` - Development Docker Compose (hot reload via mounted source)
 - `.github/workflows/docker-build.yml` - CI: multi-arch image builds for all components
 
-## Mapper
-- `mapper/Dockerfile` - Minimal Node.js Alpine image for the port mapper container
-- `mapper/proxy.mjs` - Standalone TCP proxy script (reads /data/port-mappings.json)
-
 ## Orchestrator — Config
 - `orchestrator/app.config.ts` - App-level configuration
 
@@ -20,7 +16,7 @@
 ## Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build (includes python3/make/g++ for better-sqlite3 native build)
 - `orchestrator/nuxt.config.ts` - Nuxt configuration (modules, SPA mode, Nitro WebSocket)
-- `orchestrator/server/plugins/services.ts` - Nitro startup: init Auth (better-auth + migrations) + Logger + LogStore + LogBroadcaster + LogCollector + Docker + ContainerManager + PortMappingStore + MapperManager + DomainMappingStore + TraefikManager + EnvironmentStore + CapabilityStore + InstructionStore + InitScriptStore + WorkerStore + UpdateChecker + UsageChecker
+- `orchestrator/server/plugins/services.ts` - Nitro startup: init Auth (better-auth + migrations) + Logger + LogStore + LogBroadcaster + LogCollector + Docker + ContainerManager + PortMappingStore + DomainMappingStore + TraefikManager + EnvironmentStore + CapabilityStore + InstructionStore + InitScriptStore + WorkerStore + UpdateChecker + UsageChecker
 - `orchestrator/server/utils/config.ts` - Environment variable parsing (includes `betterAuthSecret`)
 - `orchestrator/server/utils/auth.ts` - better-auth singleton + admin plugin + @better-auth/passkey plugin; exports `useAuth()`, `migrateAuth()`, `hasAnyUsers()`, `setUserRoleDirect()`, `getCredentialSummary()`, `removeUserPassword()`. Implements `resolveUser()` for passkey-first registration via the setup-token store.
 - `orchestrator/server/utils/setup-token-store.ts` - In-memory 5-minute one-shot tokens used as opaque `context` for passkey-first registration when no session exists. Consumed by `/api/setup/create-admin-passkey-token` and the `resolveUser` callback.
@@ -42,7 +38,6 @@
 - `orchestrator/server/utils/docker.ts` - DockerService class (dockerode wrapper)
 - `orchestrator/server/utils/container.ts` - ContainerManager class (container lifecycle, archive/unarchive)
 - `orchestrator/server/utils/port-mapping-store.ts` - PortMappingStore class (extends JsonStore)
-- `orchestrator/server/utils/mapper-manager.ts` - MapperManager class (mapper container lifecycle via dockerode)
 - `orchestrator/server/utils/domain-mapping-store.ts` - DomainMappingStore class (persistent domain mappings)
 - `orchestrator/server/utils/traefik-manager.ts` - TraefikManager class (Traefik container lifecycle, dynamic config generation)
 - `orchestrator/server/utils/update-checker.ts` - UpdateChecker class (GHCR digest polling, image pull, orchestrator self-replacement)
@@ -64,7 +59,7 @@
 - `orchestrator/server/utils/log-broadcaster.ts` - LogBroadcaster class (manages WebSocket peers for live log streaming)
 - `orchestrator/server/utils/log-collector.ts` - LogCollector class (attaches to Docker containers via dockerode logs, handles TTY/non-TTY streams, heuristic level detection)
 - `orchestrator/server/utils/log-levels.ts` - Log level utilities (shouldLog, parseLogLevel)
-- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useMapperManager, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useCredentialMountManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility
+- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useCredentialMountManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)
 - `orchestrator/server/utils/terminal-handler.ts` - Docker stream WebSocket terminal logic (uses ws-utils, exports terminalWsHandler)

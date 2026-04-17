@@ -79,7 +79,6 @@ function onScroll() {
 const sources: { id: LogSource; label: string; color: string }[] = [
   { id: 'orchestrator', label: 'Orchestrator', color: 'purple' },
   { id: 'worker', label: 'Worker', color: 'green' },
-  { id: 'mapper', label: 'Mapper', color: 'cyan' },
   { id: 'traefik', label: 'Traefik', color: 'orange' },
 ];
 
@@ -346,7 +345,6 @@ const levels: { id: LogLevel; label: string }[] = [
 
 .log-source-orchestrator { background: #8b5cf633; color: #a78bfa; }
 .log-source-worker { background: #22c55e33; color: #4ade80; }
-.log-source-mapper { background: #06b6d433; color: #22d3ee; }
 .log-source-traefik { background: #f9731633; color: #fb923c; }
 
 .log-source-id {

@@ -7,11 +7,11 @@ test.describe('Update Notification / Images Section', () => {
     await expect(page.locator('aside .sidebar-tab').filter({ hasText: 'System' })).toBeVisible();
   });
 
-  test('shows all four image names', async ({ page }) => {
+  test('shows all three image names', async ({ page }) => {
     await goToDashboard(page);
     await selectSidebarTab(page, 'System');
     const aside = page.locator('aside');
-    for (const name of ['orchestrator', 'mapper', 'worker', 'traefik']) {
+    for (const name of ['orchestrator', 'worker', 'traefik']) {
       await expect(aside.getByText(name, { exact: true })).toBeVisible({ timeout: 10_000 });
     }
   });
@@ -103,11 +103,11 @@ test.describe('Update Notification / Images Section', () => {
     // Wait for image list to load
     await expect(aside.getByText('traefik', { exact: true })).toBeVisible({ timeout: 10_000 });
 
-    // At least mapper, worker, and traefik should have digests (font-mono spans).
+    // At least worker and traefik should have digests (font-mono spans).
     // The orchestrator image may show "not found" in dev mode (runs from node:22-alpine).
     const digests = aside.locator('span.font-mono');
     const digestCount = await digests.count();
-    expect(digestCount).toBeGreaterThanOrEqual(3);
+    expect(digestCount).toBeGreaterThanOrEqual(2);
   });
 
   test('"Check for updates" or "Re-check" button is visible in production mode', async ({ page }) => {
@@ -257,8 +257,8 @@ test.describe('Update Notification / Images Section', () => {
     // Wait for images section to load
     await expect(aside.getByText('Prune dangling images')).toBeVisible({ timeout: 10_000 });
 
-    // All 4 images should always render a row (both dev and prod mode)
-    for (const key of ['orchestrator', 'mapper', 'worker', 'traefik']) {
+    // All 3 images should always render a row (both dev and prod mode)
+    for (const key of ['orchestrator', 'worker', 'traefik']) {
       await expect(aside.getByText(key, { exact: true })).toBeVisible();
     }
   });
