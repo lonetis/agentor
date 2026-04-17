@@ -79,7 +79,7 @@ The orchestrator container has no `agentor.managed` label — it is found via `o
 
 ## Web UI (LogPane)
 
-The log pane opens via the "Logs" button in the System tab's Quick Links section. It renders as a split pane tab (type `'logs'`, ID `'__logs__'`).
+The log pane opens via the "Logs" button in the System tab's Quick Links section. It renders as a split pane tab (type `'logs'`). Each click opens a new tab instance, so multiple Logs panes can coexist — they share the same underlying in-memory log buffer and WebSocket but each pane has its own viewport and scroll position.
 
 **Features**:
 - Live WebSocket streaming with auto-reconnect (3s)

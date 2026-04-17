@@ -109,13 +109,27 @@ test.describe('Log Pane', () => {
     await expect(tabBar.locator('.tab-item').filter({ hasText: 'Logs' })).toBeVisible();
   });
 
-  test('clicking Logs again re-focuses existing tab', async ({ page }) => {
+  test('clicking Logs again opens an additional Logs tab', async ({ page }) => {
     await openLogPane(page);
 
-    // Click again — should still have exactly one Logs tab
+    // Click again — a second Logs tab should open so multiple instances
+    // can be arranged side-by-side.
     await page.locator('.system-card-link').filter({ hasText: 'Logs' }).click();
     const logsTabs = page.locator('.pane-tab-bar .tab-item').filter({ hasText: 'Logs' });
+    await expect(logsTabs).toHaveCount(2);
+  });
+
+  test('log tab close removes only that instance', async ({ page }) => {
+    await openLogPane(page);
+    await page.locator('.system-card-link').filter({ hasText: 'Logs' }).click();
+
+    const logsTabs = page.locator('.pane-tab-bar .tab-item').filter({ hasText: 'Logs' });
+    await expect(logsTabs).toHaveCount(2);
+
+    // Close the first tab via its close button
+    await logsTabs.first().locator('button').click();
     await expect(logsTabs).toHaveCount(1);
+    await expect(page.locator('.log-pane')).toBeVisible();
   });
 
   test('log pane shows entry count in status bar', async ({ page }) => {

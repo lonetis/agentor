@@ -1,6 +1,7 @@
 import type { Tab, TabType, PaneNode, PaneLeafNode, PaneContainerNode, SplitDirection } from '~/types';
 
 let _nextNodeId = 0;
+let _nextTabSeq = 0;
 
 function maxNodeIdNum(node: PaneNode): number {
   let max = 0;
@@ -16,6 +17,10 @@ function maxNodeIdNum(node: PaneNode): number {
 
 function generateNodeId(): string {
   return `node-${++_nextNodeId}-${Date.now().toString(36)}`;
+}
+
+function generateTabId(type: TabType): string {
+  return `${type}-${++_nextTabSeq}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 const MIN_FRACTION = 0.15;
@@ -151,9 +156,25 @@ const _restored = _uiState.value.panes;
 const rootNode = ref<PaneNode | null>(_restored.rootNode);
 const focusedNodeId = ref<string | null>(_restored.focusedNodeId);
 
-// Rehydrate _nextNodeId so new IDs don't collide with restored tree
+function maxTabSeqNum(node: PaneNode): number {
+  let max = 0;
+  if (isLeaf(node)) {
+    for (const tab of node.tabs) {
+      const match = tab.id.match(/-(\d+)-/);
+      if (match) max = Math.max(max, Number(match[1]));
+    }
+  } else {
+    for (const child of node.children) {
+      max = Math.max(max, maxTabSeqNum(child));
+    }
+  }
+  return max;
+}
+
+// Rehydrate _nextNodeId and _nextTabSeq so new IDs don't collide with restored tree
 if (rootNode.value) {
   _nextNodeId = maxNodeIdNum(rootNode.value);
+  _nextTabSeq = maxTabSeqNum(rootNode.value);
 }
 
 // Persist pane layout changes (debounced via useUiState's scheduleWrite)
@@ -178,10 +199,6 @@ export function useSplitPanes() {
   const tabs = computed(() => paneGroups.value.flatMap((g) => g.tabs));
 
   // --- Helpers ---
-
-  function makeTabId(containerId: string, type: TabType): string {
-    return `${containerId}:${type}`;
-  }
 
   function findGroupForTab(tabId: string): PaneLeafNode | undefined {
     if (!rootNode.value) return undefined;
@@ -211,16 +228,9 @@ export function useSplitPanes() {
   }
 
   function openTab(containerId: string, containerName: string, type: TabType, targetNodeId?: string) {
-    const tabId = makeTabId(containerId, type);
-
-    // If tab already exists, focus it
-    const existingLeaf = findGroupForTab(tabId);
-    if (existingLeaf) {
-      existingLeaf.activeTabId = tabId;
-      focusedNodeId.value = existingLeaf.id;
-      return;
-    }
-
+    // Each call creates a new tab instance so the same (container, type)
+    // pair can be opened multiple times and arranged side-by-side.
+    const tabId = generateTabId(type);
     const tab: Tab = { id: tabId, containerId, containerName, type };
 
     // Find target leaf

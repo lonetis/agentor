@@ -123,6 +123,29 @@ test.describe.serial('Terminal Pane', () => {
     await expect(closeBtn).toBeHidden();
   });
 
+  test('clicking Terminal button twice opens two terminal tabs for the same worker', async ({ page }) => {
+    await goToDashboard(page);
+    const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
+    await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
+
+    const buttons = card.locator('button');
+    // First click — opens the terminal pane
+    await buttons.first().click();
+    await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
+
+    const terminalTabs = page.locator('.pane-tab-bar .tab-item').filter({ hasText: `${displayName} - Terminal` });
+    await expect(terminalTabs).toHaveCount(1);
+
+    // Second click — should open a second, independent terminal tab
+    await buttons.first().click();
+    await expect(terminalTabs).toHaveCount(2);
+
+    // Closing one tab must not remove the sibling
+    await terminalTabs.first().locator('button').click();
+    await expect(terminalTabs).toHaveCount(1);
+    await expect(page.locator('.xterm')).toBeVisible();
+  });
+
   test('typing in terminal produces output via WebSocket', async ({ page }) => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();

@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1252 tests** across 92 test files (~698 API + ~554 UI)
+- **~1254 tests** across 92 test files (~698 API + ~556 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -195,7 +195,7 @@ tests/
 | `service-panes.spec.ts` | 12 | Desktop and editor service panes |
 | `apps-pane.spec.ts` | 8 | Apps pane for container |
 | `workspace-upload.spec.ts` | 8 | Upload button, modal, drop zone, close |
-| `terminal-pane.spec.ts` | 8 | Terminal open, tmux tabs, xterm rows, create button, new tab creation, non-default tab has close button, main tab no close button, keyboard typing produces WebSocket output |
+| `terminal-pane.spec.ts` | 9 | Terminal open, tmux tabs, xterm rows, create button, new tab creation, non-default tab has close button, main tab no close button, clicking Terminal twice opens two independent terminal tabs for the same worker and closing one leaves the other intact, keyboard typing produces WebSocket output |
 | `tmux-tabs.spec.ts` | 9 | Tmux tab bar interactions |
 | `split-pane.spec.ts` | 3 | Placeholder, terminal pane, tab bar |
 | `theme-toggle.spec.ts` | 29 | Dark default, light switch, persistence, all modes |
@@ -204,7 +204,7 @@ tests/
 | `update-notification.spec.ts` | 24 | Images section, image names, toggle, update status |
 | `archived-workers.spec.ts` | 6 | Archived section, collapsible, UI archive, worker card (name, Unarchive, Delete buttons) |
 | `archived-workers-actions.spec.ts` | 4 | Archived worker unarchive/delete actions |
-| `log-pane.spec.ts` | 16 | Logs button visibility, open log pane, filter bar, source/level filter buttons, search input, status bar, entries/empty state, entry structure, tab bar, singleton tab, entry count, source filter toggle, localStorage persistence, scroll-to-top triggers loadMore and prepends older entries, tab close |
+| `log-pane.spec.ts` | 17 | Logs button visibility, open log pane, filter bar, source/level filter buttons, search input, status bar, entries/empty state, entry structure, tab bar, clicking Logs again opens a second independent tab, closing one tab leaves the sibling intact, entry count, source filter toggle, localStorage persistence, scroll-to-top triggers loadMore and prepends older entries, tab close |
 
 ## Design Decisions
 

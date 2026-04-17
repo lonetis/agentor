@@ -104,10 +104,10 @@ Custom pane (not iframe-based) for managing VS Code tunnel connections to worker
 
 ## Log Pane
 
-Centralized log viewer opened via the "Logs" button in the System tab's Quick Links. Opens as a singleton pane tab (ID `__logs__`, type `logs`).
+Centralized log viewer opened via the "Logs" button in the System tab's Quick Links. Each click opens a new independent Logs tab (type `logs`) — multiple log panes can coexist and be arranged side-by-side. All instances share the same underlying module-level log state (one WebSocket, one in-memory entry buffer), so the panes stay in lock-step but each has its own viewport, scroll position, and tab identity.
 
 **Architecture** (`LogPane.vue` + `useLogs` composable):
-- `useLogs()` manages module-level singleton state: log entries array, filter state, WebSocket connection, lazy-load state (`loadingMore`, `loadingInitial`, `hasMoreOlder`, `liveTick`)
+- `useLogs()` manages module-level singleton state: log entries array, filter state, WebSocket connection, lazy-load state (`loadingMore`, `loadingInitial`, `hasMoreOlder`, `liveTick`). Multiple `LogPane.vue` instances subscribe to this shared state.
 - WebSocket connects to `/ws/logs` for live streaming, auto-reconnects after 3s on disconnect
 - On first mount, fetches 500 most recent entries via `GET /api/logs`, then switches to WebSocket for live updates
 - **Lazy load**: scrolling within ~80px of the top calls `loadMore()`, which fetches the next older page via `GET /api/logs?until=<oldest>&limit=500` and prepends the result. Scroll position is anchored to the same content via a `scrollHeight` delta so the user does not jump. A spinner ("Loading older entries…") shows during fetch; a "Beginning of logs" marker shows once no more pages are available.

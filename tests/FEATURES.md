@@ -471,6 +471,8 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Apps (app instance management)
 - Logs (centralized log viewer)
 
+Every pane type supports **multiple simultaneous instances**. Clicking the Terminal, Desktop, Editor, VS Code Tunnel, Apps, or Logs action button opens a brand-new tab each time — the same (container, type) pair can be opened any number of times and arranged side-by-side via the existing drag-to-split interactions. Each tab has its own unique id, independent xterm.js instance, iframe, or component state; backing services (tmux window attach, noVNC, code-server, VS Code tunnel status polling, app instance polling, log stream) already tolerate multiple concurrent clients so no additional reconciliation is required. Closing one tab does not affect sibling tabs of the same type.
+
 ### 16.2 Tab Bar (PaneGroupTabBar)
 - Per-tab: type icon + "[Container] - [Type]" label (truncated 140px) + close button (visible on hover, middle-click also closes)
 - Active tab: highlighted background + accent bottom border
@@ -624,7 +626,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ### 23.1 Opening
 - "Logs" button in System tab's Quick Links section opens the log pane
-- Opens as a split pane tab (type "logs", singleton ID "__logs__")
+- Opens as a split pane tab (type "logs"). Clicking the button again opens an additional independent Logs tab so multiple log panes can be viewed side-by-side. Each instance shares the underlying log stream but can be placed in its own pane group.
 - Tab shows "Logs" label with scroll-text icon
 
 ### 23.2 Filter Bar
