@@ -39,7 +39,7 @@ case "$1" in
       --no-sandbox \
       --disable-dev-shm-usage \
       --disable-gpu \
-      --start-maximized >/dev/null 2>&1 &
+      --start-maximized > >(stdbuf -oL -eL sed -u "s/^/[chromium-$ID] /" >> /proc/1/fd/1) 2>&1 &
 
     CHROMIUM_PID=$!
     echo "$CHROMIUM_PID" > "$PIDS_DIR/$ID.pid"

@@ -1,3 +1,4 @@
+import { hostname } from 'node:os';
 import Docker from 'dockerode';
 import type { LogStore } from './log-store';
 import type { LogBroadcaster } from './log-broadcaster';
@@ -11,6 +12,13 @@ interface AttachedStream {
   containerName: string;
   displayName?: string;
   destroy: () => void;
+}
+
+export interface AttachOptions {
+  // When true, only logs after now are captured. When false (default), all
+  // logs since container start are captured. Use sinceNow=true on orchestrator
+  // startup to avoid re-ingesting historical entries already on disk.
+  sinceNow?: boolean;
 }
 
 export class LogCollector {
@@ -27,8 +35,25 @@ export class LogCollector {
     this.config = config;
   }
 
+  // Attach to the orchestrator's own container so framework/runtime stdout
+  // (Nuxt, Nitro, Vite, console.warn outside useLogger, unhandled errors) is
+  // captured alongside intentional useLogger() output. Source is 'orchestrator'.
+  async attachSelf(): Promise<void> {
+    try {
+      const id = hostname();
+      const container = this.docker.getContainer(id);
+      const info = await container.inspect();
+      const name = (info.Name || '').replace(/^\//, '') || id;
+      await this.attach(name, info.Id, 'orchestrator', undefined, { sinceNow: true });
+    } catch {
+      // Not running in Docker or container not visible — skip silently.
+    }
+  }
+
   async init(): Promise<void> {
-    // Attach to all running managed containers
+    // Attach to all running managed containers (workers + traefik). Use
+    // sinceNow so an orchestrator restart does not replay historical lines
+    // that were already written to disk during the previous lifetime.
     const containers = await this.docker.listContainers({
       filters: { label: ['agentor.managed'] },
     });
@@ -42,74 +67,95 @@ export class LogCollector {
       else source = 'worker';
 
       const displayName = info.Labels['agentor.display-name'] || undefined;
-      await this.attach(name, info.Id, source, displayName);
+      await this.attach(name, info.Id, source, displayName, { sinceNow: true });
     }
   }
 
-  async attach(containerName: string, containerId: string, source: LogSource, displayName?: string): Promise<void> {
-    // Don't double-attach
+  async attach(
+    containerName: string,
+    containerId: string,
+    source: LogSource,
+    displayName?: string,
+    options: AttachOptions = {},
+  ): Promise<void> {
     if (this.attached.has(containerId)) return;
 
     try {
       const container = this.docker.getContainer(containerId);
-      const stream = await container.logs({
+      const logsOpts: { follow: true; stdout: true; stderr: true; timestamps: true; since?: number } = {
         follow: true,
         stdout: true,
         stderr: true,
         timestamps: true,
-        since: Math.floor(Date.now() / 1000),
-      });
-
-      let buffer = '';
-
-      const onData = (chunk: Buffer) => {
-        buffer += chunk.toString('utf-8');
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          const entry = this.parseLine(line, source, containerName, displayName);
-          if (entry && shouldLog(entry.level, this.config.logLevel)) {
-            this.logStore.append(entry, 'containers');
-            this.broadcaster.broadcast(entry);
-          }
-        }
       };
+      if (options.sinceNow) {
+        logsOpts.since = Math.floor(Date.now() / 1000);
+      }
+      const stream = await container.logs(logsOpts);
 
-      // Docker log streams can be multiplexed (non-TTY) or raw (TTY)
-      // For TTY containers, data comes as-is; for non-TTY, each frame has an 8-byte header
       const containerInfo = await container.inspect();
       const isTty = containerInfo.Config?.Tty ?? false;
 
+      const ingest = (line: string, levelOverride?: LogLevel) => {
+        const entry = this.parseLine(line, source, containerName, displayName);
+        if (!entry) return;
+        if (levelOverride) entry.level = levelOverride;
+        if (!shouldLog(entry.level, this.config.logLevel)) return;
+        // Orchestrator self-capture writes to the orchestrator log file so
+        // it sits alongside useLogger() entries. Worker/traefik entries go
+        // to the containers log.
+        const category: 'orchestrator' | 'containers' = source === 'orchestrator' ? 'orchestrator' : 'containers';
+        this.logStore.append(entry, category);
+        this.broadcaster.broadcast(entry);
+      };
+
+      const makeLineHandler = (levelOverride?: LogLevel) => {
+        let buffer = '';
+        return (chunk: Buffer) => {
+          buffer += chunk.toString('utf-8');
+          // Split on either \r\n (TTY mode) or bare \n. A trailing \r on its
+          // own line was previously breaking the timestamp regex's $ anchor.
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            ingest(line, levelOverride);
+          }
+        };
+      };
+
+      let destroy: () => void;
+
       if (isTty) {
+        const onData = makeLineHandler();
         (stream as NodeJS.ReadableStream).on('data', onData);
+        destroy = () => {
+          try {
+            (stream as NodeJS.ReadableStream).removeAllListeners();
+            const s = stream as NodeJS.ReadableStream & { destroy?: () => void };
+            if (typeof s.destroy === 'function') s.destroy();
+          } catch {}
+        };
       } else {
-        // Demux the stream
+        // Non-TTY streams are 8-byte-framed multiplexed stdout/stderr. Each
+        // demuxed side gets its own buffer so partial lines from one stream
+        // never get glued onto the other.
         const { PassThrough } = await import('node:stream');
         const stdout = new PassThrough();
         const stderr = new PassThrough();
-
         this.docker.modem.demuxStream(stream, stdout, stderr);
-
-        stdout.on('data', onData);
-        stderr.on('data', (chunk: Buffer) => {
-          buffer += chunk.toString('utf-8');
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            const entry = this.parseLine(line, source, containerName, displayName);
-            if (entry) {
-              entry.level = 'error';
-              if (shouldLog(entry.level, this.config.logLevel)) {
-                this.logStore.append(entry, 'containers');
-                this.broadcaster.broadcast(entry);
-              }
-            }
-          }
-        });
+        stdout.on('data', makeLineHandler());
+        stderr.on('data', makeLineHandler('error'));
+        destroy = () => {
+          try {
+            stdout.removeAllListeners();
+            stderr.removeAllListeners();
+            stdout.destroy();
+            stderr.destroy();
+            const s = stream as NodeJS.ReadableStream & { destroy?: () => void };
+            if (typeof s.destroy === 'function') s.destroy();
+          } catch {}
+        };
       }
 
       this.attached.set(containerId, {
@@ -117,14 +163,7 @@ export class LogCollector {
         source,
         containerName,
         displayName,
-        destroy: () => {
-          try {
-            (stream as NodeJS.ReadableStream).removeAllListeners();
-            if (typeof (stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy === 'function') {
-              (stream as NodeJS.ReadableStream & { destroy: () => void }).destroy();
-            }
-          } catch {}
-        },
+        destroy,
       });
     } catch {}
   }
@@ -144,36 +183,41 @@ export class LogCollector {
   }
 
   private parseLine(line: string, source: LogSource, containerName: string, displayName?: string): LogEntry | null {
-    // Docker timestamps format: 2026-03-11T14:30:00.123456789Z <message>
-    // Or lines might have 8-byte header prefix already stripped
+    // Docker timestamp format: 2026-03-11T14:30:00.123456789Z <message>
     let timestamp: string;
     let message: string;
 
-    const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z?)\s+(.*)$/);
+    // Trim a trailing \r defensively in case any caller bypassed the splitter.
+    const clean = line.endsWith('\r') ? line.slice(0, -1) : line;
+
+    const tsMatch = clean.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z?)\s+(.*)$/);
     if (tsMatch) {
       timestamp = tsMatch[1]!;
-      // Normalize to ISO with milliseconds
+      // Normalize to ISO with millisecond precision.
       if (timestamp.length > 24) {
         timestamp = timestamp.slice(0, 23) + 'Z';
+      } else if (!timestamp.endsWith('Z')) {
+        timestamp = timestamp + 'Z';
       }
       message = tsMatch[2]!;
     } else {
       timestamp = new Date().toISOString();
-      message = line;
+      message = clean;
     }
 
     if (!message.trim()) return null;
 
     const level = this.detectLevel(message);
 
-    return {
+    const entry: LogEntry = {
       timestamp,
       level,
       source,
       sourceId: containerName,
-      sourceName: displayName,
       message: message.trim(),
     };
+    if (displayName) entry.sourceName = displayName;
+    return entry;
   }
 
   private detectLevel(message: string): LogLevel {

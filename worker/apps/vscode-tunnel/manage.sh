@@ -29,7 +29,13 @@ case "$1" in
       rm -f "$PID_FILE"
     fi
 
-    code tunnel --accept-server-license-terms --name "$NAME" > "$LOG_FILE" 2>&1 &
+    # Mirror tunnel output to /tmp/vscode-tunnel.log (used by `status` to
+    # extract the GitHub device code), and also to PID 1's stdout (=
+    # container stdout, captured by the orchestrator's log collector).
+    # Process substitution keeps `$!` pointing at the `code tunnel` process
+    # itself so `stop` can kill it cleanly.
+    code tunnel --accept-server-license-terms --name "$NAME" \
+      > >(tee -a "$LOG_FILE" | stdbuf -oL -eL sed -u 's/^/[vscode-tunnel] /' >> /proc/1/fd/1) 2>&1 &
 
     echo "$!" > "$PID_FILE"
     echo "OK:$NAME"

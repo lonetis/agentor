@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
+import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 
 test.describe('Logs API', () => {
   test('GET /api/logs returns 200 with entries array', async ({ request }) => {
@@ -157,6 +158,48 @@ test.describe('Logs API', () => {
       expect(typeof source.sourceId).toBe('string');
       expect(typeof source.source).toBe('string');
     }
+  });
+
+  test('container log messages do not contain leading Docker timestamps', async ({ request }) => {
+    const api = new ApiClient(request);
+
+    // Ensure at least one worker has produced TTY logs (entrypoint phases
+    // emit ~30 lines per boot). Create + tear down so the test is hermetic
+    // even if no other test has run a worker yet.
+    const worker = await createWorker(request);
+    try {
+      // Give the log collector a moment to ingest the buffered entrypoint
+      // output now that the container is running.
+      await new Promise((r) => setTimeout(r, 1500));
+
+      const { body } = await api.queryLogs({ sources: 'worker', sourceIds: worker.name, limit: 500 });
+      expect(body.entries.length).toBeGreaterThan(0);
+
+      // The Docker `--timestamps` prefix (e.g. 2026-04-17T10:38:06.779538881Z)
+      // must be stripped from the message before storage. A regression here
+      // means the \r-trailing TTY split bug is back.
+      const tsRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z?\s/;
+      for (const entry of body.entries) {
+        expect(entry.message, `entry: ${JSON.stringify(entry)}`).not.toMatch(tsRe);
+      }
+    } finally {
+      await cleanupWorker(request, worker.id);
+    }
+  });
+
+  test('orchestrator self-stdout is captured into the orchestrator log', async ({ request }) => {
+    const api = new ApiClient(request);
+    // Anything captured by self-attach carries a sourceId (the orchestrator
+    // container name); intentional useLogger() entries do not. We don't
+    // assert any specific message because dev/prod produce different lines,
+    // but at least one stdout-captured entry should exist after enough
+    // framework activity has flushed (Nuxt/Nitro/Vite startup).
+    const { body } = await api.queryLogs({ sources: 'orchestrator', limit: 500 });
+    test.skip(body.entries.length === 0, 'No orchestrator log entries available');
+    const captured = body.entries.filter((e: { sourceId?: string; source: string }) =>
+      e.source === 'orchestrator' && typeof e.sourceId === 'string' && e.sourceId.length > 0,
+    );
+    expect(captured.length).toBeGreaterThan(0);
   });
 
   // Log clear tests are serialized because clearLogs() wipes the global log

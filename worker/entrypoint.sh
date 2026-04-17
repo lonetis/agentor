@@ -192,7 +192,11 @@ if [ "$DOCKER_ENABLED" = "true" ]; then
     "log-opts": { "max-size": "10m", "max-file": "3" }
 }
 DOCKERCONF
-    sudo dockerd > /tmp/dockerd.log 2>&1 &
+    # Mirror dockerd output to both /tmp/dockerd.log (for in-container
+    # debugging) and the container's stdout (so the orchestrator's log
+    # collector captures it). The "[dockerd] " prefix tags entries so they
+    # are distinguishable from other entrypoint output.
+    ( sudo dockerd 2>&1 | stdbuf -oL -eL sed -u 's/^/[dockerd] /' | tee -a /tmp/dockerd.log ) &
     tries=300
     while [ ! -S /var/run/docker.sock ] && [ $tries -gt 0 ]; do
         sleep 0.1
@@ -241,7 +245,7 @@ _log "Display: ready"
 # ==========================================================================
 _step editor "Code editor"
 _log "Code-server: starting..."
-code-server --auth none --bind-addr 0.0.0.0:8443 --disable-telemetry /workspace > /tmp/code-server.log 2>&1 &
+( code-server --auth none --bind-addr 0.0.0.0:8443 --disable-telemetry /workspace 2>&1 | stdbuf -oL -eL sed -u 's/^/[code-server] /' | tee -a /tmp/code-server.log ) &
 wait_for_port 8443
 _done editor "Code editor"
 _log "Code-server: ready"

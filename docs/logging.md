@@ -7,9 +7,9 @@ Centralized logging system that collects logs from all platform containers (orch
 ## Architecture
 
 ```
-Worker containers ──┐
-Traefik container ──┤── dockerode container.logs({ follow }) ──→ LogCollector ──→ LogStore (NDJSON files)
-                    ┘                                                         ──→ LogBroadcaster (WebSocket)
+Worker containers ─────┐
+Traefik container ─────┤── dockerode container.logs({ follow }) ──→ LogCollector ──→ LogStore (NDJSON files)
+Orchestrator (self) ───┘                                                         ──→ LogBroadcaster (WebSocket)
 Orchestrator code ──→ Logger ──→ LogStore + LogBroadcaster
 
 Browser (LogPane) ←── WebSocket /ws/logs ←── LogBroadcaster
@@ -17,10 +17,10 @@ Browser (LogPane) ←── REST GET /api/logs ←── LogStore
 ```
 
 Four components:
-- **Logger** (`logger.ts`): Replaces `console.log/warn/error` in the orchestrator. Buffers entries before `setReady()` during early startup.
+- **Logger** (`logger.ts`): Replaces `console.log/warn/error` in the orchestrator for *intentional* logging. Buffers entries before `setReady()` during early startup. Writes directly to the log store — never to stdout — so it does not double-record alongside the LogCollector self-attach.
 - **LogStore** (`log-store.ts`): NDJSON file storage with size-based rotation. Two log categories: `orchestrator.log` and `containers.log`.
 - **LogBroadcaster** (`log-broadcaster.ts`): Manages WebSocket peers for live log streaming.
-- **LogCollector** (`log-collector.ts`): Attaches to Docker containers via `container.logs({ follow: true })`. Handles both TTY and non-TTY (demuxed) streams. Parses Docker timestamps and detects log level heuristically.
+- **LogCollector** (`log-collector.ts`): Attaches to Docker containers via `container.logs({ follow: true })`. Handles both TTY (raw, `\r\n`-terminated) and non-TTY (8-byte-framed, demuxed into independent stdout/stderr buffers) streams. Parses Docker timestamps and detects log level heuristically. `attachSelf()` runs at the very top of the services plugin and pulls the orchestrator container's own stdout (Nuxt/Nitro/Vite output, `console.warn` outside `useLogger`, unhandled exceptions) into `orchestrator.log` with the orchestrator container name as `sourceId`.
 
 ## Log Entry Format
 
@@ -51,13 +51,25 @@ Logs are stored as NDJSON (one JSON entry per line) in `<DATA_DIR>/logs/`:
 
 ## Container Log Collection
 
-The LogCollector attaches to all managed containers (label `agentor.managed`) on startup and when containers are created/started. It detaches when containers are stopped/removed.
+The LogCollector attaches to:
+- The orchestrator's own container (via `attachSelf()`, identified by `os.hostname()`) — runs as the very first thing in the services plugin so framework stdout is captured from as early as possible. Source = `orchestrator`.
+- All other containers carrying the `agentor.managed` label, on startup (`init()`) and when containers are created/restarted/rebuilt/unarchived. Source = `worker` or `traefik` depending on the label value.
+
+It detaches when containers are stopped, removed, archived, or replaced (rebuild/unarchive detach the old container ID, attach the new one).
 
 **Source detection**: The `agentor.managed` label value determines the source type:
 - `true` → `worker`
 - `traefik` → `traefik`
 
-**TTY vs non-TTY**: Worker containers use TTY mode (raw stream). Traefik containers may use non-TTY mode (multiplexed 8-byte header frames, demuxed via `docker.modem.demuxStream`).
+The orchestrator container has no `agentor.managed` label — it is found via `os.hostname()` in `attachSelf()`.
+
+**Since filter**: `init()` and `attachSelf()` use `since: now` to avoid replaying historical lines on orchestrator restart (those lines are already on disk). Fresh attaches from `ContainerManager.create()/restart()/rebuild()/unarchive()` and `TraefikManager` skip the filter so the entire container history (which is at most milliseconds old) is captured.
+
+**TTY vs non-TTY**: Worker containers use TTY mode (raw stream, `\r\n` line endings — split on `\r?\n` to avoid the trailing `\r` breaking the timestamp regex). Traefik runs non-TTY (8-byte-framed multiplex), demuxed via `docker.modem.demuxStream` into independent stdout/stderr handlers, each with its own line buffer so partial lines never leak across streams. The stderr handler force-tags entries as `error`.
+
+**Worker background services**: `dockerd`, `code-server`, `vscode-tunnel`, `chromium`, and `microsocks` all mirror their stdout/stderr through `tee` (or `>(... >> /proc/1/fd/1)` from the docker-exec entry points) so their output reaches the container's stdout in addition to the in-container debug log file. Each line is prefixed with the service tag (e.g. `[dockerd]`, `[code-server]`, `[vscode-tunnel]`, `[chromium-<id>]`, `[socks5-<id>]`) so the centralized log can tell them apart from entrypoint output.
+
+**Not captured by design**: tmux pane output inside workers (interactive shell / agent CLI output) is served over the terminal WebSocket, not as Docker logs.
 
 **Level detection**: Log level is detected heuristically from message content:
 - `[error]`, `error:` → error

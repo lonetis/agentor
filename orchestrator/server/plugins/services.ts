@@ -8,6 +8,15 @@ export default defineNitroPlugin(async () => {
   await logStore.init();
   const logger = useLogger();
 
+  // Attach the log collector to our own container as early as possible so
+  // framework/runtime stdout (Nuxt, Nitro, Vite, console.warn outside
+  // useLogger, unhandled errors) is captured into orchestrator.log.
+  // Intentional useLogger() output buffers in-memory until setReady() below
+  // and is written to the same file directly — no duplication because
+  // useLogger never prints to stdout.
+  const logCollector = useLogCollector();
+  await logCollector.attachSelf();
+
   // Initialize auth (creates SQLite database and tables on first run)
   useAuth();
   await migrateAuth();
@@ -99,8 +108,9 @@ export default defineNitroPlugin(async () => {
 
   logger.info(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${capabilityStore.list().length} capabilities, ${instructionStore.list().length} instructions, ${initScriptStore.list().length} init scripts, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
 
-  // Mark logger as ready (flushes buffered entries) and start log collector
+  // Mark logger as ready (flushes buffered entries) and start collecting
+  // logs from worker + traefik containers. Self-attach already ran at the
+  // top of this plugin so orchestrator stdout is being captured.
   logger.setReady();
-  const logCollector = useLogCollector();
   await logCollector.init();
 });

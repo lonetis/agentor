@@ -28,7 +28,7 @@ case "$1" in
       rm -f "$PIDS_DIR/$ID.pid" "$PIDS_DIR/$ID.port"
     fi
 
-    microsocks -i 0.0.0.0 -p "$PORT" &
+    microsocks -i 0.0.0.0 -p "$PORT" > >(stdbuf -oL -eL sed -u "s/^/[socks5-$ID] /" >> /proc/1/fd/1) 2>&1 &
 
     SOCKS_PID=$!
     echo "$SOCKS_PID" > "$PIDS_DIR/$ID.pid"

@@ -781,6 +781,11 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `DELETE /api/logs` — clear all log files
 - `GET /api/log-sources` — list known container log sources
 - `WS /ws/logs` — live log stream (JSON-encoded LogEntry per message, read-only)
+- The orchestrator's *own* container stdout (Nuxt/Nitro/Vite, framework warnings, unhandled errors) is captured into `orchestrator.log` with `source: 'orchestrator'` and `sourceId` set to the orchestrator container name. Intentional `useLogger()` entries also live in the same file but carry no `sourceId`.
+- Worker container logs include `dockerd`, `code-server`, `vscode-tunnel`, `chromium`, and `microsocks` output (each line tagged with a service prefix like `[dockerd]` or `[code-server]`) in addition to the entrypoint's own stdout.
+- Container log messages never contain a leading Docker `--timestamps` prefix — the prefix is parsed into the entry's `timestamp` field and stripped from `message` for both TTY (`\r\n`) and non-TTY streams.
+- Stdout and stderr of non-TTY containers are demuxed into separate line buffers; stderr lines are tagged `error` regardless of the heuristic level detection.
+- Tmux pane output inside workers (interactive shell / agent CLI) is intentionally **not** captured as a container log — it is served over the terminal WebSocket.
 
 ### 24.17 WebSocket/Proxy
 - `WS /ws/terminal/:containerId` — terminal (default window)
