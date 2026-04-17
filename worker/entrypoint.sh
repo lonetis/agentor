@@ -264,19 +264,34 @@ else
 fi
 
 # ==========================================================================
-# Phase 4: Git auth
-# Runs with full network before the firewall activates.
+# Phase 4: Git identity + auth
+# Sets global git user from the creating user's profile (name/email from
+# the WORKER JSON). Credential helper requires GITHUB_TOKEN.
 # ==========================================================================
-if [ -n "$GITHUB_TOKEN" ]; then
-    _step git "Git authentication"
-    _log "Git auth: start"
-    export GH_TOKEN="$GITHUB_TOKEN"
-    git config --global credential.https://github.com.helper '!gh auth git-credential'
-    git config --global url."https://github.com/".insteadOf "git@github.com:"
-    _done git "Git authentication"
-    _log "Git auth: done"
+GIT_USER_NAME=$(echo "$WORKER" | jq -r '.gitName // ""')
+GIT_USER_EMAIL=$(echo "$WORKER" | jq -r '.gitEmail // ""')
+
+if [ -n "$GIT_USER_NAME" ] || [ -n "$GIT_USER_EMAIL" ] || [ -n "$GITHUB_TOKEN" ]; then
+    _step git "Git configuration"
+    _log "Git config: start"
+    if [ -n "$GIT_USER_NAME" ]; then
+        git config --global user.name "$GIT_USER_NAME"
+        _log "Git config: user.name=$GIT_USER_NAME"
+    fi
+    if [ -n "$GIT_USER_EMAIL" ]; then
+        git config --global user.email "$GIT_USER_EMAIL"
+        _log "Git config: user.email=$GIT_USER_EMAIL"
+    fi
+    if [ -n "$GITHUB_TOKEN" ]; then
+        export GH_TOKEN="$GITHUB_TOKEN"
+        git config --global credential.https://github.com.helper '!gh auth git-credential'
+        git config --global url."https://github.com/".insteadOf "git@github.com:"
+        _log "Git config: credential helper configured"
+    fi
+    _done git "Git configuration"
+    _log "Git config: done"
 else
-    _skip git "Git authentication"
+    _skip git "Git configuration"
 fi
 
 # ==========================================================================

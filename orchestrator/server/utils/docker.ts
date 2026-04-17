@@ -31,6 +31,8 @@ export interface WorkerJsonPayload {
   displayName: string;
   repos: { provider: string; url: string; branch?: string }[];
   initScript: string;
+  gitName: string;
+  gitEmail: string;
 }
 
 const MANAGED_LABEL = 'agentor.managed';

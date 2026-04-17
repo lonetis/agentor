@@ -64,6 +64,8 @@ export interface ContainerInfo {
   capabilityNames?: string[];
   instructionNames?: string[];
   userId: string;
+  gitName?: string;
+  gitEmail?: string;
 }
 
 export interface CreateContainerRequest {
@@ -77,6 +79,10 @@ export interface CreateContainerRequest {
   initScript?: string;
   /** Populated server-side from the authenticated session — never sent by clients. */
   userId?: string;
+  /** Populated server-side from the authenticated session — never sent by clients. */
+  gitName?: string;
+  /** Populated server-side from the authenticated session — never sent by clients. */
+  gitEmail?: string;
 }
 
 export interface ImageUpdateInfo {

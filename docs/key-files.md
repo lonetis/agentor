@@ -158,14 +158,12 @@
 - `worker/memfd-exec.py` - Script executor via memfd_create (no temp files on disk, supports any shebang)
 - `worker/setup.sh` - Runs ENVIRONMENT.setupScript via memfd (called by entrypoint Phase 7)
 - `worker/init.sh` - Runs WORKER.initScript via memfd or falls back to bash (tmux pane command)
-- `worker/git-wrapper.sh` - Process-tree-aware git identity wrapper (installed at /usr/local/bin/git)
 - `worker/apps/chromium/manage.sh` - Chromium app manager (start/stop/list via docker exec)
 - `worker/apps/socks5/manage.sh` - SOCKS5 proxy app manager
 - `worker/apps/vscode-tunnel/manage.sh` - VS Code tunnel manager (start/stop/status via docker exec)
 - `worker/agents/claude/setup.sh` - Claude auth + config + capabilities/instructions writing (reads CAPABILITIES/INSTRUCTIONS JSON env vars)
 - `worker/agents/codex/setup.sh` - Codex auth + config + capabilities/instructions writing
 - `worker/agents/gemini/setup.sh` - Gemini auth + config + capabilities/instructions writing
-- `worker/agents/*/git-identity` - Per-agent git identity (two lines: name, email)
 
 ## Tests
 - `tests/playwright.config.ts` - Playwright config (two projects: api + ui, parallel workers, timeouts)
@@ -175,7 +173,7 @@
 - `tests/helpers/ui-helpers.ts` - Page navigation and interaction helpers
 - `tests/helpers/test-users.ts` - Create/sign-in/delete test users via the admin API (used by passkey + authorization tests)
 - `tests/helpers/webauthn.ts` - Install/dispose Chrome DevTools virtual WebAuthn authenticator for end-to-end passkey tests (`installVirtualAuthenticator(page)`)
-- `tests/api/*.spec.ts` - API integration tests (32 files)
-- `tests/ui/*.spec.ts` - UI integration tests (37 files)
+- `tests/api/*.spec.ts` - API integration tests (48 files)
+- `tests/ui/*.spec.ts` - UI integration tests (43 files)
 - `tests/FEATURES.md` - Feature inventory driving test coverage
 - `tests/TESTS.md` - Test suite documentation with counts per file

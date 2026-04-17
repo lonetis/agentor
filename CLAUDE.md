@@ -26,7 +26,7 @@ Four managed containers:
 | Topic | File | Contents |
 |-------|------|----------|
 | Architecture | @docs/architecture.md | Storage modes (volume vs directory), worker state & persistence, WorkerStore, Docker labels |
-| Worker System | @docs/worker.md | Unified worker image, init scripts, agents, git identity wrapper, DinD, host bind mounts, startup sequence |
+| Worker System | @docs/worker.md | Unified worker image, init scripts, agents, per-user git identity, DinD, host bind mounts, startup sequence |
 | Networking | @docs/networking.md | Port mapper, domain mapping (Traefik), TLS challenges, self-signed certs, config drift detection |
 | UI | @docs/ui.md | Split pane layout, tmux tab integration, theme system, VS Code editor, UI state persistence |
 | Environments | @docs/environments.md | Environment system, network firewall, capabilities, instructions, worker API exposure |

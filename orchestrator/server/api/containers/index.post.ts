@@ -89,6 +89,8 @@ export default defineEventHandler(async (event) => {
     environmentId: body.environmentId || undefined,
     initScript: body.initScript || undefined,
     userId: user.id,
+    gitName: user.name,
+    gitEmail: user.email,
   });
 
   setResponseStatus(event, 201);

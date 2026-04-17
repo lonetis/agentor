@@ -820,3 +820,17 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Gemini: configured in `~/.gemini/settings.json` under `mcpServers`
 - Write-once: user modifications to config files are preserved on restart/rebuild
 - MCP packages are downloaded via `npx -y` on first agent use
+
+---
+
+## 27. Git Identity
+
+### 27.1 Per-User Git Config
+- When a user creates a worker, the worker's `git config --global user.name` and `user.email` are set from the creating user's profile (name and email from the auth system)
+- The `WORKER` JSON env var includes `gitName` and `gitEmail` fields
+- The entrypoint reads these fields via `jq` and calls `git config --global`
+- `ContainerInfo` and `WorkerRecord` include `gitName` and `gitEmail` fields
+- Git identity persists across rebuild (stored in WorkerRecord, re-passed in WORKER JSON)
+- Git identity persists across archive/unarchive (same mechanism)
+- No per-agent git wrapper — agent CLIs add `Co-authored-by` trailers to their commits for attribution
+- No `/usr/local/bin/git` wrapper installed — `git` resolves to `/usr/bin/git` directly

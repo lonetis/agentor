@@ -150,10 +150,6 @@ COPY --chmod=755 setup.sh /home/agent/setup.sh
 COPY --chmod=755 init.sh /home/agent/init.sh
 COPY --chmod=755 apps/ /home/agent/apps/
 
-# Git identity wrapper — shadows /usr/bin/git, detects the calling agent
-# via /proc process tree and sets author/committer from agents/*/git-identity
-COPY --chmod=755 git-wrapper.sh /usr/local/bin/git
-
 RUN mkdir -p /workspace /home/agent/pids /home/agent/profiles && \
     chown -R agent:agent /workspace /home/agent/pids /home/agent/profiles
 

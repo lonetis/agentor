@@ -8,7 +8,7 @@ A single Docker image (`agentor-worker`, built from `worker/`) contains all agen
 - `ENVIRONMENT` — network mode, allowed domains, dockerEnabled, setupScript, envVars, exposeApis
 - `CAPABILITIES` — array of `{ name, content }` entries
 - `INSTRUCTIONS` — array of `{ name, content }` entries
-- `WORKER` — name, displayName, repos, initScript
+- `WORKER` — name, displayName, repos, initScript, gitName, gitEmail
 
 Individual env vars that CLIs read directly remain as-is: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`.
 
@@ -27,7 +27,7 @@ The unified worker image (`worker/`) provides:
 - App management scripts in `/home/agent/apps/` (chromium/manage.sh, socks5/manage.sh, vscode-tunnel/manage.sh)
 - Shared `agent` user (uid 1000) with passwordless sudo
 - Helper scripts: `memfd-exec.py` (memfd script executor), `setup.sh` (setup script runner), `init.sh` (init script runner)
-- Common entrypoint: tmux session, env var export, agent setups (+ platform files), docker daemon, display stack, code-server, VS Code tunnel, git auth, repo clone, network firewall, setup script (memfd), init script (memfd), launch
+- Common entrypoint: tmux session, env var export, agent setups (+ platform files), docker daemon, display stack, code-server, VS Code tunnel, git identity + auth, repo clone, network firewall, setup script (memfd), init script (memfd), launch
 
 ### Pre-installed Agents
 
@@ -39,12 +39,11 @@ The unified worker image (`worker/`) provides:
 
 1. Install the CLI in `worker/Dockerfile`
 2. Create `worker/agents/<agent-id>/setup.sh` (auth/settings + capabilities/instructions writing — reads from `CAPABILITIES` and `INSTRUCTIONS` JSON env vars)
-3. Create `worker/agents/<agent-id>/git-identity` (two lines: name, email — used by the git wrapper)
-4. Add an agent config entry in `orchestrator/server/utils/agent-config.ts` (API domains, env vars)
-5. Add a built-in init script file in `orchestrator/server/built-in/init-scripts/`
-6. Add a credential mapping in `orchestrator/server/utils/credential-mounts.ts` (`AGENT_CREDENTIAL_MAPPINGS`)
-7. Add a template file in `.cred.example/` and document in `.cred.example/README`
-8. Rebuild the worker image
+3. Add an agent config entry in `orchestrator/server/utils/agent-config.ts` (API domains, env vars)
+4. Add a built-in init script file in `orchestrator/server/built-in/init-scripts/`
+5. Add a credential mapping in `orchestrator/server/utils/credential-mounts.ts` (`AGENT_CREDENTIAL_MAPPINGS`)
+6. Add a template file in `.cred.example/` and document in `.cred.example/README`
+7. Rebuild the worker image
 
 No entrypoint changes needed — agent setup scripts handle all agent-specific logic (auth, settings, capabilities, instructions).
 
@@ -78,9 +77,9 @@ The orchestrator automatically passes configured tokens to workers and the UI sh
 
 **Current providers:** GitHub (via `gh` CLI for auth + clone)
 
-## Git Identity Wrapper
+## Git Identity
 
-A process-tree-aware git wrapper (`worker/git-wrapper.sh`, installed at `/usr/local/bin/git`) shadows `/usr/bin/git`. On every `git` call, it walks the `/proc` process tree to detect which agent binary is an ancestor. When a match is found, it reads the identity from `worker/agents/<agent>/git-identity` (two-line file: name, email) and sets `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL` before exec-ing the real git. This ensures commits are attributed to the correct agent regardless of which one is running, even when multiple agents are used in different tmux tabs within the same worker. Manual `git` usage (no agent ancestor) falls back to global git config.
+Each worker's git identity is configured from the creating user's profile (name and email from the auth system). The orchestrator passes `gitName` and `gitEmail` in the `WORKER` JSON env var, and the entrypoint sets `git config --global user.name` and `user.email` accordingly. This means when user A creates a worker, all git commits inside that worker are attributed to user A. Agent CLIs add `Co-authored-by` trailers to their commits for attribution. The identity persists across rebuild and archive/unarchive (stored in `WorkerRecord`).
 
 ## Docker-in-Docker (DinD)
 
@@ -117,7 +116,7 @@ Fully synchronous — every phase runs foreground and completes before the next 
 3. **Display stack** — Xvfb + fluxbox + x11vnc + websockify/noVNC, wait for each service
 3b. **Code editor** — code-server on port 8443 (`--auth none --bind-addr 0.0.0.0:8443`), wait for port ready
 3c. **VS Code tunnel** — `code tunnel --accept-server-license-terms --name <worker-name>` in background. First run requires GitHub device code auth (shown in the VS Code Tunnel pane). Auth persists per worker in the agent-data volume (`~/.vscode` symlinked to `.agent-data/.vscode`); subsequent runs of the same worker auto-connect.
-4. **Git authentication** — if `GITHUB_TOKEN`: `gh auth login` + `gh auth setup-git`; otherwise skipped
+4. **Git identity + auth** — sets `git config --global user.name/email` from `WORKER.gitName`/`WORKER.gitEmail` (creating user's profile); if `GITHUB_TOKEN`: configures `gh` credential helper; otherwise skipped when none apply
 5. **Repository clone** — if `WORKER.repos`: parallel clone per repo, wait for all; otherwise skipped
 6. **Network firewall** — reads `ENVIRONMENT.networkMode` + `.allowedDomains` via jq; dnsmasq + ipset + iptables; skipped for `full` mode
 7. **User setup script** — runs `/home/agent/setup.sh` which reads `ENVIRONMENT.setupScript` and executes via memfd (no temp files)

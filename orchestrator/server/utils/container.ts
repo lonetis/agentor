@@ -216,6 +216,8 @@ export class ContainerManager {
         capabilityNames: worker?.capabilityNames,
         instructionNames: worker?.instructionNames,
         userId: worker?.userId ?? '',
+        gitName: worker?.gitName,
+        gitEmail: worker?.gitEmail,
       });
     }
 
@@ -248,11 +250,16 @@ export class ContainerManager {
     const memoryLimit = envConfig.memoryLimit || request.memoryLimit || this.config.defaultMemoryLimit || undefined;
     const dockerEnabled = envConfig.dockerEnabled ?? true;
 
+    const gitName = request.gitName || '';
+    const gitEmail = request.gitEmail || '';
+
     const workerJson: WorkerJsonPayload = {
       name,
       displayName: request.displayName || '',
       repos,
       initScript: request.initScript?.trim() || '',
+      gitName,
+      gitEmail,
     };
 
     const container = await this.dockerService.createWorkerContainer({
@@ -308,6 +315,8 @@ export class ContainerManager {
       capabilityNames,
       instructionNames,
       userId: request.userId ?? '',
+      gitName: gitName || undefined,
+      gitEmail: gitEmail || undefined,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -455,6 +464,8 @@ export class ContainerManager {
       displayName: info.displayName || '',
       repos: info.repos || [],
       initScript: info.initScript || '',
+      gitName: info.gitName || '',
+      gitEmail: info.gitEmail || '',
     };
 
     const container = await this.dockerService.createWorkerContainer({
@@ -497,6 +508,8 @@ export class ContainerManager {
       capabilityNames: info.capabilityNames,
       instructionNames: info.instructionNames,
       userId: info.userId,
+      gitName: info.gitName,
+      gitEmail: info.gitEmail,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -554,6 +567,8 @@ export class ContainerManager {
       displayName: worker.displayName || '',
       repos: worker.repos || [],
       initScript: worker.initScript || '',
+      gitName: worker.gitName || '',
+      gitEmail: worker.gitEmail || '',
     };
 
     const container = await this.dockerService.createWorkerContainer({
@@ -598,6 +613,8 @@ export class ContainerManager {
       capabilityNames: worker.capabilityNames,
       instructionNames: worker.instructionNames,
       userId: worker.userId,
+      gitName: worker.gitName,
+      gitEmail: worker.gitEmail,
     };
 
     this.containers.set(container.id, containerInfo);
@@ -685,6 +702,8 @@ export class ContainerManager {
       imageId: info.imageId,
       status: 'active',
       userId: info.userId,
+      gitName: info.gitName,
+      gitEmail: info.gitEmail,
     };
   }
 

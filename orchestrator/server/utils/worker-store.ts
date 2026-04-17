@@ -27,6 +27,8 @@ export interface WorkerRecord {
   status: 'active' | 'archived';
   archivedAt?: string;
   userId: string;
+  gitName?: string;
+  gitEmail?: string;
 }
 
 export class WorkerStore extends JsonStore<string, WorkerRecord> {
