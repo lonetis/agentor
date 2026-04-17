@@ -510,7 +510,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - xterm.js with WebSocket connection to Docker exec
 - 10,000 line scrollback
 - Alt+scroll for fast scrolling
-- Font: Cascadia Code / Fira Code / JetBrains Mono / Menlo (14px)
+- Font: Menlo / Cascadia Code / Fira Code / JetBrains Mono (14px)
 - Auto-resize on container element resize (ResizeObserver)
 - Theme-reactive (dark/light mode switching)
 - Native text selection override (Mac: altKey, others: shiftKey)

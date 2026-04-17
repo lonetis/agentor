@@ -79,7 +79,7 @@ export function useTerminal() {
 
     const term = new TerminalClass({
       theme: getTheme(),
-      fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, monospace',
+      fontFamily: 'Menlo, "Cascadia Code", "Fira Code", "JetBrains Mono", monospace',
       fontSize: 14,
       cursorBlink: true,
       allowProposedApi: true,
