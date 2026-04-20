@@ -56,11 +56,19 @@ test.describe.serial('Agent data persistence — mount verification', () => {
     expect(output).toContain('/home/agent/.agent-data/.claude.json');
   });
 
-  test('credential files are symlinked from .agent-creds', async () => {
-    const output = await execInWorker(containerId, 'readlink ~/.claude/.credentials.json 2>/dev/null; readlink ~/.codex/auth.json 2>/dev/null; readlink ~/.gemini/oauth_creds.json 2>/dev/null');
-    expect(output).toContain('/home/agent/.agent-creds/claude.json');
-    expect(output).toContain('/home/agent/.agent-creds/codex.json');
-    expect(output).toContain('/home/agent/.agent-creds/gemini.json');
+  test('credential files are the per-user bind mount (regular files, not symlinks)', async () => {
+    // Each credential file is bind-mounted from <DATA_DIR>/users/<userId>/credentials/<file>.json
+    // directly at the CLI's expected path inside the agent-data volume. Writes go straight
+    // to the host file and every worker the user owns sees the same credentials.
+    const output = await execInWorker(
+      containerId,
+      'stat -c "%F" ~/.claude/.credentials.json ~/.codex/auth.json ~/.gemini/oauth_creds.json 2>/dev/null',
+    );
+    const lines = output.trim().split(/\r?\n/).filter(Boolean);
+    expect(lines.length).toBe(3);
+    for (const line of lines) {
+      expect(line).toBe('regular file');
+    }
   });
 
   test('claude settings.json exists with expected keys', async () => {

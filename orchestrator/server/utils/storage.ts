@@ -1,12 +1,23 @@
 import Docker from 'dockerode';
-import { mkdir, rm, chown } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, rm, chown, stat, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type { Config } from './config';
 
 type StorageMode = 'volume' | 'directory';
 
 const AGENT_UID = 1000;
 const AGENT_GID = 1000;
+
+/** Relative paths inside a worker's agents directory where the orchestrator
+ * pre-creates empty mountpoint files. Docker Desktop's virtiofs refuses to
+ * nest a file bind mount inside a directory bind mount unless the target
+ * already exists on the host, so we touch these files before starting the
+ * container and then bind the per-user credential file on top. */
+const CREDENTIAL_MOUNT_POINTS = [
+  '.claude/.credentials.json',
+  '.codex/auth.json',
+  '.gemini/oauth_creds.json',
+];
 
 export class StorageManager {
   private docker: Docker;
@@ -110,8 +121,9 @@ export class StorageManager {
     return 'agentor-traefik-certs:/letsencrypt';
   }
 
-  /** Ensure workspace and agents directories exist with correct ownership
-   * (directory mode only). */
+  /** Ensure workspace and agents directories exist with correct ownership,
+   * and pre-create the credential mountpoint files so Docker Desktop's virtiofs
+   * can layer per-user credential file binds on top (directory mode only). */
   async ensureWorkerDirs(userId: string, name: string): Promise<void> {
     if (this.mode !== 'directory') return;
 
@@ -126,6 +138,23 @@ export class StorageManager {
     const agentsDir = join(userDir, 'agents', name);
     await mkdir(agentsDir, { recursive: true });
     await this.chownDir(agentsDir);
+
+    for (const relPath of CREDENTIAL_MOUNT_POINTS) {
+      const mountpoint = join(agentsDir, relPath);
+      const parent = dirname(mountpoint);
+      await mkdir(parent, { recursive: true });
+      await this.chownDir(parent);
+      try {
+        await stat(mountpoint);
+      } catch {
+        await writeFile(mountpoint, '', { mode: 0o600 });
+        try {
+          await chown(mountpoint, AGENT_UID, AGENT_GID);
+        } catch {
+          // See chownDir — best effort.
+        }
+      }
+    }
   }
 
   /** In-container path of a user's private data directory (`/data/users/<userId>/`). */

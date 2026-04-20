@@ -3,10 +3,13 @@ import { join } from 'node:path';
 import type { StorageManager } from './storage';
 import type { CredentialInfo } from '../../shared/types';
 
-/** Files expected to exist in each user's credentials directory. The `fileName`
- * inside the user's on-disk directory, and the `containerPath` where workers
- * expect the bind-mounted file. These container paths match what
- * `worker/entrypoint.sh` (phase 0a) symlinks into each agent's config dir. */
+/** Files expected to exist in each user's credentials directory. `fileName` is
+ * the per-user file on the host; `containerPath` is where the file is bind-mounted
+ * inside the worker — the exact path each CLI reads and writes. The paths nest
+ * inside the agent-data volume, so the orchestrator pre-creates the mountpoint
+ * files on the host (see `StorageManager.ensureWorkerDirs`) to keep Docker
+ * Desktop's virtiofs happy with the nested bind. Writes by the CLI land on the
+ * host file immediately and every worker the same user owns sees the update. */
 export interface AgentCredentialMapping {
   agentId: string;
   fileName: string;
@@ -14,9 +17,9 @@ export interface AgentCredentialMapping {
 }
 
 export const AGENT_CREDENTIAL_MAPPINGS: AgentCredentialMapping[] = [
-  { agentId: 'claude', fileName: 'claude.json', containerPath: '/home/agent/.agent-creds/claude.json' },
-  { agentId: 'codex', fileName: 'codex.json', containerPath: '/home/agent/.agent-creds/codex.json' },
-  { agentId: 'gemini', fileName: 'gemini.json', containerPath: '/home/agent/.agent-creds/gemini.json' },
+  { agentId: 'claude', fileName: 'claude.json', containerPath: '/home/agent/.agent-data/.claude/.credentials.json' },
+  { agentId: 'codex', fileName: 'codex.json', containerPath: '/home/agent/.agent-data/.codex/auth.json' },
+  { agentId: 'gemini', fileName: 'gemini.json', containerPath: '/home/agent/.agent-data/.gemini/oauth_creds.json' },
 ];
 
 const AGENT_UID = 1000;

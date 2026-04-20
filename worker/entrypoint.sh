@@ -124,14 +124,6 @@ if [ -d "$AGENT_DATA" ]; then
     fi
     ln -sfn "$AGENT_DATA/.claude.json" /home/agent/.claude.json
 
-    # Symlink credential files from neutral mount path into the persistent agent dirs
-    # (credential bind mounts go to ~/.agent-creds/ to avoid nested bind mount issues)
-    if [ -d /home/agent/.agent-creds ]; then
-        [ -f /home/agent/.agent-creds/claude.json ] && ln -sfn /home/agent/.agent-creds/claude.json "$AGENT_DATA/.claude/.credentials.json"
-        [ -f /home/agent/.agent-creds/codex.json ] && ln -sfn /home/agent/.agent-creds/codex.json "$AGENT_DATA/.codex/auth.json"
-        [ -f /home/agent/.agent-creds/gemini.json ] && ln -sfn /home/agent/.agent-creds/gemini.json "$AGENT_DATA/.gemini/oauth_creds.json"
-    fi
-
     _log "Agent data: symlinks created"
 fi
 

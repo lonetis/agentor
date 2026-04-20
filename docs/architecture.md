@@ -86,7 +86,7 @@ DinD data always uses Docker named volumes (`<containerName>-docker`) regardless
 | Data (Traefik) | `<volumeName>:/data:ro` | `<hostPath>:/data:ro` |
 | Worker workspace | `<containerName>-workspace:/workspace` | `<hostPath>/users/<userId>/workspaces/<name>:/workspace` |
 | Worker agents | `<containerName>-agents:/home/agent/.agent-data` | `<hostPath>/users/<userId>/agents/<name>:/home/agent/.agent-data` |
-| Worker per-user creds (×3) | `<dataHostPath>/users/<userId>/credentials/<file>:/home/agent/.agent-creds/<file>` | `<hostPath>/users/<userId>/credentials/<file>:/home/agent/.agent-creds/<file>` |
+| Worker per-user creds (×3) | `<dataHostPath>/users/<userId>/credentials/{claude,codex,gemini}.json:/home/agent/.agent-data/{.claude/.credentials.json,.codex/auth.json,.gemini/oauth_creds.json}` | same, with `<hostPath>` in front of `/users/...`. Directory mode pre-creates these mountpoints on the host so Docker Desktop's virtiofs accepts the nested file bind. |
 | Worker DinD | `<containerName>-docker:/var/lib/docker` | `<containerName>-docker:/var/lib/docker` (always named volume) |
 | Traefik certs | `agentor-traefik-certs:/letsencrypt` | `<hostPath>/traefik-certs:/letsencrypt` |
 
