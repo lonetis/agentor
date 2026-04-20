@@ -27,7 +27,7 @@ const form = reactive({
 });
 
 const systemEnvVars = ref<OrchestratorEnvVar[]>([]);
-const { data: credentials } = useFetch<CredentialInfo[]>('/api/credentials', { default: () => [] });
+const { data: credentials } = useFetch<CredentialInfo[]>('/api/account/agent-credentials', { default: () => [] });
 
 const { data: allCapabilities } = useFetch<CapabilityInfo[]>('/api/capabilities', { default: () => [] });
 const { data: allInstructions } = useFetch<InstructionInfo[]>('/api/instructions', { default: () => [] });
@@ -177,11 +177,12 @@ function handleSave() {
       </p>
     </fieldset>
 
-    <!-- Credentials -->
+    <!-- Credentials (signed-in user's OAuth files — same files every worker
+         this user creates will inherit) -->
     <fieldset v-if="credentials.length > 0">
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Credentials</legend>
+      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Your agent OAuth credentials</legend>
       <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
-        OAuth credential files shared across all workers. Log in once inside any worker to configure.
+        Log in once inside any of your workers — credentials are stored per user and shared across all of your workers. Manage them in Account → Agent OAuth credentials.
       </p>
       <div class="space-y-1">
         <div
@@ -190,10 +191,10 @@ function handleSave() {
           class="flex items-center gap-2 text-xs font-mono px-2 py-1 bg-gray-100/60 dark:bg-gray-800/50 rounded"
         >
           <UIcon name="i-heroicons-key" class="text-gray-400 dark:text-gray-500 w-3 h-3 shrink-0" />
-          <span class="text-gray-500 dark:text-gray-400">.cred/{{ cred.fileName }}</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ cred.agentId }}</span>
           <span class="text-gray-400 dark:text-gray-600">&mdash;</span>
           <span :class="cred.configured ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-600'">
-            {{ cred.configured ? 'configured' : 'not set' }}
+            {{ cred.configured ? 'logged in' : 'not logged in' }}
           </span>
         </div>
       </div>

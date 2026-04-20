@@ -4,17 +4,19 @@ import type { Config } from './config';
 import { getAppType } from './apps';
 import { DockerService } from './docker';
 import type { EnvironmentJsonPayload, CapabilityJsonEntry, InstructionJsonEntry, WorkerJsonPayload } from './docker';
+import { zeroUserEnvVars } from './user-env-store';
 import type { AppInstanceInfo, TmuxWindow } from '../../shared/types';
 import { getAllGitCloneDomains } from './git-providers';
 import { getAllAgentApiDomains } from './agent-config';
 import { getPackageManagerDomains } from './environments';
 import type { EnvironmentStore } from './environments';
 import type { WorkerStore, WorkerRecord } from './worker-store';
-import type { CredentialMountManager } from './credential-mounts';
+import type { UserCredentialManager } from './user-credentials';
+import type { UserEnvVarStore } from './user-env-store';
 import type { CapabilityStore } from './capability-store';
 import type { InstructionStore } from './instruction-store';
 import type { StorageManager } from './storage';
-import type { NetworkMode, ExposeApis, ServiceStatus, VsCodeTunnelStatus, ContainerInfo, ContainerStatus, CreateContainerRequest } from '../../shared/types';
+import type { NetworkMode, ExposeApis, ServiceStatus, VsCodeTunnelStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, UserEnvVars } from '../../shared/types';
 
 
 interface ResolvedEnvConfig {
@@ -34,7 +36,8 @@ export class ContainerManager {
   private config: Config;
   private environmentStore?: EnvironmentStore;
   private workerStore?: WorkerStore;
-  private credentialMountManager?: CredentialMountManager;
+  private userCredentialManager?: UserCredentialManager;
+  private userEnvStore?: UserEnvVarStore;
   private capabilityStore?: CapabilityStore;
   private instructionStore?: InstructionStore;
   private storageManager?: StorageManager;
@@ -51,8 +54,12 @@ export class ContainerManager {
     this.workerStore = store;
   }
 
-  setCredentialMountManager(manager: CredentialMountManager): void {
-    this.credentialMountManager = manager;
+  setUserCredentialManager(manager: UserCredentialManager): void {
+    this.userCredentialManager = manager;
+  }
+
+  setUserEnvStore(store: UserEnvVarStore): void {
+    this.userEnvStore = store;
   }
 
   setCapabilityStore(store: CapabilityStore): void {
@@ -65,6 +72,16 @@ export class ContainerManager {
 
   setStorageManager(manager: StorageManager): void {
     this.storageManager = manager;
+  }
+
+  private async resolveUserEnvAndBinds(userId: string): Promise<{ userEnv: UserEnvVars; credentialBinds: string[] }> {
+    const userEnv = this.userEnvStore?.getOrDefault(userId) ?? zeroUserEnvVars(userId);
+    let credentialBinds: string[] = [];
+    if (this.userCredentialManager && userId) {
+      await this.userCredentialManager.ensureUserDir(userId);
+      credentialBinds = this.userCredentialManager.getBindMountsForUser(userId);
+    }
+    return { userEnv, credentialBinds };
   }
 
   private resolveCapabilitiesAndInstructions(
@@ -252,6 +269,7 @@ export class ContainerManager {
 
     const gitName = request.gitName || '';
     const gitEmail = request.gitEmail || '';
+    const userId = request.userId ?? '';
 
     const workerJson: WorkerJsonPayload = {
       name,
@@ -262,6 +280,8 @@ export class ContainerManager {
       gitEmail,
     };
 
+    const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(userId);
+
     const container = await this.dockerService.createWorkerContainer({
       name,
       displayName: request.displayName || undefined,
@@ -269,12 +289,13 @@ export class ContainerManager {
       memoryLimit,
       mounts: request.mounts,
       dockerEnabled,
-      credentialBinds: this.credentialMountManager?.getBindMounts(),
+      credentialBinds,
       environmentJson: envConfig.environmentJson,
       capabilitiesJson: envConfig.capabilitiesJson,
       instructionsJson: envConfig.instructionsJson,
       workerJson,
       storageManager: this.storageManager,
+      userEnv,
     });
 
     const image = this.config.workerImagePrefix + this.config.workerImage;
@@ -468,18 +489,21 @@ export class ContainerManager {
       gitEmail: info.gitEmail || '',
     };
 
+    const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(info.userId);
+
     const container = await this.dockerService.createWorkerContainer({
       name: info.name,
       displayName: info.displayName,
       cpuLimit,
       memoryLimit,
       dockerEnabled,
-      credentialBinds: this.credentialMountManager?.getBindMounts(),
+      credentialBinds,
       environmentJson: envConfig.environmentJson,
       capabilitiesJson: envConfig.capabilitiesJson,
       instructionsJson: envConfig.instructionsJson,
       workerJson,
       storageManager: this.storageManager,
+      userEnv,
     });
 
     const image = this.config.workerImagePrefix + this.config.workerImage;
@@ -571,18 +595,21 @@ export class ContainerManager {
       gitEmail: worker.gitEmail || '',
     };
 
+    const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(worker.userId);
+
     const container = await this.dockerService.createWorkerContainer({
       name: worker.name,
       displayName: worker.displayName,
       cpuLimit,
       memoryLimit,
       dockerEnabled,
-      credentialBinds: this.credentialMountManager?.getBindMounts(),
+      credentialBinds,
       environmentJson: envConfig.environmentJson,
       capabilitiesJson: envConfig.capabilitiesJson,
       instructionsJson: envConfig.instructionsJson,
       workerJson,
       storageManager: this.storageManager,
+      userEnv,
     });
 
     await this.workerStore.unarchive(worker.name, container.id);

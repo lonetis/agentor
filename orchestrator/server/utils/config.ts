@@ -14,11 +14,6 @@ export interface DnsProviderConfig {
 }
 
 export interface Config {
-  githubToken: string;
-  anthropicApiKey: string;
-  claudeCodeOauthToken: string;
-  openaiApiKey: string;
-  geminiApiKey: string;
   dockerNetwork: string;
   containerPrefix: string;
   defaultCpuLimit: number;
@@ -111,11 +106,6 @@ export function loadConfig(): Config {
     : baseDomains[0] || '';
 
   return {
-    githubToken: process.env.GITHUB_TOKEN || '',
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
-    claudeCodeOauthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN || '',
-    openaiApiKey: process.env.OPENAI_API_KEY || '',
-    geminiApiKey: process.env.GEMINI_API_KEY || '',
     dockerNetwork: process.env.DOCKER_NETWORK || 'agentor-net',
     containerPrefix: process.env.CONTAINER_PREFIX || 'agentor-worker',
     defaultCpuLimit: parseFloat(process.env.DEFAULT_CPU_LIMIT || '0'),

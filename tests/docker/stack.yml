@@ -21,9 +21,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - agentor-data:/data
-      # Stub credential files baked into the test-runner image. Empty {}
-      # is enough — CredentialMountManager only checks for file existence.
-      - /opt/test-stack/cred:/cred:ro
     environment:
       # BASE_URL for tests is http://localhost:3000 (loopback to the
       # orchestrator), so better-auth's primary URL must match for cookie

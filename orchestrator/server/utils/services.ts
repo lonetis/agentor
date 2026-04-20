@@ -5,12 +5,13 @@ import { ContainerManager } from './container';
 import { PortMappingStore } from './port-mapping-store';
 import { DomainMappingStore } from './domain-mapping-store';
 import { TraefikManager } from './traefik-manager';
-import { GitHubService } from './github';
 import { EnvironmentStore } from './environments';
 import { WorkerStore } from './worker-store';
 import { UpdateChecker } from './update-checker';
 import { UsageChecker } from './usage-checker';
-import { CredentialMountManager } from './credential-mounts';
+import { UserCredentialManager } from './user-credentials';
+import { UserEnvVarStore } from './user-env-store';
+import { OrphanSweeper } from './orphan-sweeper';
 import { CapabilityStore } from './capability-store';
 import { InstructionStore } from './instruction-store';
 import { InitScriptStore } from './init-script-store';
@@ -45,13 +46,16 @@ export const useTraefikManager = singleton(() => new TraefikManager(
   useStorageManager(),
   useSelfSignedCertManager(),
 ));
-export const useGitHubService = singleton(() => new GitHubService(useConfig()));
 export const useEnvironmentStore = singleton(() => new EnvironmentStore(useConfig().dataDir));
 export const useWorkerStore = singleton(() => new WorkerStore(useConfig().dataDir));
 export const useUpdateChecker = singleton(() => new UpdateChecker(useConfig()));
 export const useUsageChecker = singleton(() => new UsageChecker(useConfig()));
-export const useCredentialMountManager = singleton(
-  () => new CredentialMountManager(new Docker({ socketPath: '/var/run/docker.sock' }))
+export const useUserCredentialManager = singleton(
+  () => new UserCredentialManager(useStorageManager())
+);
+export const useUserEnvStore = singleton(() => new UserEnvVarStore(useConfig().dataDir));
+export const useOrphanSweeper = singleton(
+  () => new OrphanSweeper(useUserEnvStore(), useUserCredentialManager(), useUsageChecker()),
 );
 export const useCapabilityStore = singleton(() => new CapabilityStore(useConfig().dataDir));
 export const useInstructionStore = singleton(() => new InstructionStore(useConfig().dataDir));

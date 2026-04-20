@@ -123,4 +123,4 @@ See @docs/testing.md for full details (writing tests, conventions, helpers, debu
 
 ## Environment Variables
 
-See @.env.example for full list. Agent API keys (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) are optional — for OAuth/subscription auth, log in once inside any worker instead (see @.cred.example/README). Claude also supports `CLAUDE_CODE_OAUTH_TOKEN` (1-year setup token, generated via `claude setup-token`).
+See @.env.example for full list. `.env` only holds orchestrator-wide settings (logging, Traefik, dashboard auth, ACME providers). All user-scoped secrets — agent API keys (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY`), `CLAUDE_CODE_OAUTH_TOKEN`, `GITHUB_TOKEN`, and arbitrary custom env vars — are stored per user via the dashboard's Account modal (`PUT /api/account/env-vars`), persisted in `<DATA_DIR>/user-env-vars.json`. OAuth/subscription credentials are also per-user — log in once inside any of your workers and the cred files are written to `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json` and bind-mounted into every other worker that user owns.

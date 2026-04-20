@@ -1,8 +1,7 @@
 # Key Files
 
 ## Root
-- `.env.example` - All environment variables with descriptions and defaults
-- `.cred.example/` - Template credential files for OAuth/subscription auth (claude.json, codex.json, gemini.json, README)
+- `.env.example` - All orchestrator-wide environment variables (logging, Traefik, dashboard auth, ACME). User-scoped secrets (agent API keys, GitHub token, custom env vars) live in the dashboard's Account modal, not here.
 - `docker-compose.prod.yml` - Production Docker Compose configuration (GHCR images)
 - `docker-compose.dev.yml` - Development Docker Compose (hot reload via mounted source)
 - `.github/workflows/docker-build.yml` - CI: multi-arch image builds for all components
@@ -11,7 +10,7 @@
 - `orchestrator/app.config.ts` - App-level configuration
 
 ## Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UpdatableImage, LogLevel, LogSource, LogEntry). All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UserCustomEnvVar, UserEnvVars, UserEnvVarsInput, UpdatableImage, LogLevel, LogSource, LogEntry). All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
 
 ## Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build (includes python3/make/g++ for better-sqlite3 native build)
@@ -30,6 +29,11 @@
 - `orchestrator/server/api/account/credentials.get.ts` - Returns `{ hasPassword, passkeyCount }` for the current user
 - `orchestrator/server/api/account/set-password.post.ts` - Sets a new password without requiring a current one (wraps better-auth's server-only `setPassword`)
 - `orchestrator/server/api/account/remove-password.post.ts` - Removes the password credential. Refuses if no passkey is registered.
+- `orchestrator/server/api/account/env-vars.get.ts` - Returns the caller's `UserEnvVars` (well-known agent API/OAuth keys + GitHub token + customEnvVars) — owner-only
+- `orchestrator/server/api/account/env-vars.put.ts` - Upserts the caller's `UserEnvVars`. Validates customEnvVars key names and rejects reserved keys.
+- `orchestrator/server/api/account/agent-credentials.get.ts` - Per-user agent OAuth credential file status (`[{ agentId, fileName, configured }]`)
+- `orchestrator/server/api/account/agent-credentials/[agentId].delete.ts` - Resets one agent's per-user OAuth file to `{}` so the next CLI login writes fresh tokens
+- `orchestrator/server/utils/orphan-sweeper.ts` - OrphanSweeper class. Runs at startup and every 10 minutes; reads the auth DB's user table and prunes any per-user env-vars row / credentials directory / usage state whose userId is no longer present. Uses a timer rather than a middleware so nothing touches better-auth's request pipeline.
 - `orchestrator/server/utils/init-script-store.ts` - InitScriptStore class (extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/agent-config.ts` - Static agent configuration registry (API domains, env var mappings per agent)
 - `orchestrator/server/utils/git-providers.ts` - Git provider registry (GIT_PROVIDER_REGISTRY)
@@ -44,7 +48,8 @@
 - `orchestrator/server/utils/usage-checker.ts` - UsageChecker class (agent usage API polling, OAuth token refresh for Codex)
 - `orchestrator/server/utils/environments.ts` - EnvironmentStore class, network mode types, package manager domains list
 - `orchestrator/server/utils/worker-store.ts` - WorkerStore class (persistent worker metadata for archive/unarchive)
-- `orchestrator/server/utils/credential-mounts.ts` - CredentialMountManager class (resolves host path of /cred mount, generates bind mount strings for worker containers) + AGENT_CREDENTIAL_MAPPINGS registry
+- `orchestrator/server/utils/user-credentials.ts` - UserCredentialManager class (per-user OAuth credential files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json`, ensures dirs/files, generates per-user bind strings, statusList + reset) + AGENT_CREDENTIAL_MAPPINGS registry
+- `orchestrator/server/utils/user-env-store.ts` - UserEnvVarStore class (per-user JsonStore at `<DATA_DIR>/user-env-vars.json` — well-known agent API keys + GitHub token + arbitrary customEnvVars per userId, with renderUserEnvVars helper)
 - `orchestrator/server/utils/storage.ts` - StorageManager class (auto-detects volume vs directory storage mode, provides bind string construction and cleanup for worker workspaces, agent config data, DinD, Traefik certs)
 - `orchestrator/server/utils/selfsigned-certs.ts` - SelfSignedCertManager class (CA + wildcard cert generation using node-forge for selfsigned domains)
 - `orchestrator/server/utils/capability-store.ts` - CapabilityStore class (extends JsonStore, built-in seeding)
@@ -59,11 +64,11 @@
 - `orchestrator/server/utils/log-broadcaster.ts` - LogBroadcaster class (manages WebSocket peers for live log streaming)
 - `orchestrator/server/utils/log-collector.ts` - LogCollector class (attaches to Docker containers via dockerode logs, handles TTY/non-TTY streams, heuristic level detection)
 - `orchestrator/server/utils/log-levels.ts` - Log level utilities (shouldLog, parseLogLevel)
-- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useGitHubService, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useCredentialMountManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility
+- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useUserCredentialManager, useUserEnvStore, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility. (GitHubService is per-token via `getGitHubServiceForToken(token)` rather than a singleton, since the token comes from each caller's UserEnvVars.)
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)
 - `orchestrator/server/utils/terminal-handler.ts` - Docker stream WebSocket terminal logic (uses ws-utils, exports terminalWsHandler)
-- `orchestrator/server/utils/github.ts` - GitHubService class (GitHub API wrapper, repo/branch operations)
+- `orchestrator/server/utils/github.ts` - GitHubService class (GitHub API wrapper, repo/branch operations) — per-token via `getGitHubServiceForToken(token)` so each user uses their own token from their Account env vars
 - `orchestrator/server/api/logs.get.ts` - Query log entries with filters (sources, levels, search, since, until, limit)
 - `orchestrator/server/api/logs.delete.ts` - Clear all log files
 - `orchestrator/server/api/log-sources.get.ts` - List known container log sources

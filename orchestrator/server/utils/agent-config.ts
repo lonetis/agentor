@@ -1,10 +1,7 @@
-import type { Config } from './config';
-
 interface AgentConfig {
   id: string;
   displayName: string;
   apiDomains: string[];
-  envVars: Record<string, string>; // env var name → config key
 }
 
 const AGENT_CONFIGS: AgentConfig[] = [
@@ -19,10 +16,6 @@ const AGENT_CONFIGS: AgentConfig[] = [
       'sentry.io',
       'storage.googleapis.com',
     ],
-    envVars: {
-      ANTHROPIC_API_KEY: 'anthropicApiKey',
-      CLAUDE_CODE_OAUTH_TOKEN: 'claudeCodeOauthToken',
-    },
   },
   {
     id: 'codex',
@@ -35,7 +28,6 @@ const AGENT_CONFIGS: AgentConfig[] = [
       'ab.chatgpt.com',
       'sentry.io',
     ],
-    envVars: { OPENAI_API_KEY: 'openaiApiKey' },
   },
   {
     id: 'gemini',
@@ -49,7 +41,6 @@ const AGENT_CONFIGS: AgentConfig[] = [
       'registry.npmjs.org',
       'github.com',
     ],
-    envVars: { GEMINI_API_KEY: 'geminiApiKey' },
   },
   {
     id: 'vscode-tunnel',
@@ -63,13 +54,8 @@ const AGENT_CONFIGS: AgentConfig[] = [
       'update.code.visualstudio.com',
       'vscode.download.prss.microsoft.com',
     ],
-    envVars: {},
   },
 ];
-
-export function listAgentConfigs(): AgentConfig[] {
-  return AGENT_CONFIGS;
-}
 
 export function getAllAgentApiDomains(): string[] {
   const domains = new Set<string>();
@@ -77,18 +63,4 @@ export function getAllAgentApiDomains(): string[] {
     for (const d of agent.apiDomains) domains.add(d);
   }
   return [...domains];
-}
-
-export function getAllAgentEnvVars(config: Config): string[] {
-  const vars: string[] = [];
-  const seen = new Set<string>();
-  for (const agent of AGENT_CONFIGS) {
-    for (const [envName, configKey] of Object.entries(agent.envVars)) {
-      if (seen.has(envName)) continue;
-      seen.add(envName);
-      const value = config[configKey as keyof Config];
-      if (value) vars.push(`${envName}=${value}`);
-    }
-  }
-  return vars;
 }

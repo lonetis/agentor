@@ -2,9 +2,8 @@ import Docker from 'dockerode';
 import type { Duplex } from 'node:stream';
 import type { Config } from './config';
 import { getAppType } from './apps';
-import { listGitProviders } from './git-providers';
-import { getAllAgentEnvVars } from './agent-config';
-import type { MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ExposeApis } from '../../shared/types';
+import { renderUserEnvVars } from './user-env-store';
+import type { MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ExposeApis, UserEnvVars } from '../../shared/types';
 import type { StorageManager } from './storage';
 
 export interface EnvironmentJsonPayload {
@@ -72,6 +71,9 @@ export class DockerService {
     instructionsJson: InstructionJsonEntry[];
     workerJson: WorkerJsonPayload;
     storageManager?: StorageManager;
+    /** Per-user env vars (agent API keys, GitHub token, custom). Already
+     * resolved against the worker owner's account by the container manager. */
+    userEnv: UserEnvVars;
   }): Promise<Docker.Container> {
     const env: string[] = [];
 
@@ -81,20 +83,12 @@ export class DockerService {
     env.push(`INSTRUCTIONS=${JSON.stringify(opts.instructionsJson)}`);
     env.push(`WORKER=${JSON.stringify(opts.workerJson)}`);
 
-    // Individual: agent API keys (CLIs read directly from env)
-    for (const v of getAllAgentEnvVars(this.config)) {
-      env.push(v);
-    }
+    // Agent API keys, git provider tokens, and custom env vars — all
+    // sourced from the worker owner's per-user account in a single pass
+    // via `renderUserEnvVars`. CustomEnvVars entries can override well-known
+    // slots using the same KEY.
+    for (const line of renderUserEnvVars(opts.userEnv)) env.push(line);
 
-    // Individual: git provider tokens (gh CLI reads directly from env)
-    for (const provider of listGitProviders()) {
-      const token = this.config[provider.tokenConfigKey as keyof Config];
-      if (token) {
-        env.push(`${provider.tokenEnvVar}=${token}`);
-      }
-    }
-
-    // Orchestrator API access
     env.push('ORCHESTRATOR_URL=http://agentor-orchestrator:3000');
     env.push(`WORKER_CONTAINER_NAME=${opts.name}`);
 
@@ -131,7 +125,6 @@ export class DockerService {
       }
     }
 
-    // Credential file bind mounts (OAuth tokens shared across all workers)
     if (opts.credentialBinds?.length) {
       binds.push(...opts.credentialBinds);
     }

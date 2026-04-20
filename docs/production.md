@@ -20,19 +20,20 @@ Automatic image update detection and per-image or bulk updates for production de
 
 ## Agent Usage Monitoring
 
-Polls agent usage APIs to show remaining capacity in the sidebar. Works for OAuth-authenticated agents (credential files in `.cred/` or `CLAUDE_CODE_OAUTH_TOKEN` env var). API key auth has no usage endpoints.
+Polls agent usage APIs to show each user's remaining capacity in the sidebar. Works for OAuth-authenticated agents (per-user credential files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json`, or the per-user `CLAUDE_CODE_OAUTH_TOKEN` set in the Account modal). API key auth has no usage endpoints.
 
 **Architecture:**
-- `UsageChecker` (`usage-checker.ts`): Singleton + 5min polling. Per-agent state (results, backoff, last fetch time) persisted to `usage.json` in the data directory — each agent tracks its own fetch time and backoff independently, so a failure in one agent doesn't affect others. On restart, serves persisted results immediately; only re-fetches agents whose data is stale. Reads credential files from `/cred/` and `CLAUDE_CODE_OAUTH_TOKEN` env var, detects auth type per agent (OAuth > API key > none), fetches usage in parallel
-- `UsagePanel.vue`: Sidebar component showing per-agent auth badge + progress bars per usage window + "Fetched Xm ago" relative timestamp
+- `UsageChecker` (`usage-checker.ts`): Singleton + 5min polling. State is per-user — `Map<userId, Map<agentId, AgentState>>` — persisted to `usage.json` in the data directory. Each user's agents track their own fetch time and backoff independently. On restart, serves persisted results immediately; only re-fetches agents whose data is stale. Reads each user's credential files via `UserCredentialManager`, detects auth type per agent (OAuth > API key > none) per-user, fetches usage in parallel.
+- `/api/usage` and `/api/usage/refresh` are auth-gated. Each call returns only `requireAuth(event).user.id`'s state — users never see one another's usage.
+- `UsagePanel.vue`: Sidebar component showing per-agent auth badge + progress bars per usage window + "Fetched Xm ago" relative timestamp (for the signed-in user only)
 - `useUsage.ts`: composable for 5min polling of `/api/usage`
 
 **Supported agents:**
 
 | Agent | Endpoint | Auth | Token Refresh |
 |-------|----------|------|---------------|
-| Claude | `GET https://api.anthropic.com/api/oauth/usage` | Bearer + `anthropic-beta: oauth-2025-04-20` | Not needed (CLI handles it). Supports `.cred/claude.json` OAuth or `CLAUDE_CODE_OAUTH_TOKEN` env var |
-| Codex | `GET https://chatgpt.com/backend-api/wham/usage` | Bearer (+ optional `ChatGPT-Account-Id`) | Hardcoded client_id, refreshes when `last_refresh` > 8 days |
+| Claude | `GET https://api.anthropic.com/api/oauth/usage` | Bearer + `anthropic-beta: oauth-2025-04-20` | Not needed (CLI handles it). Supports per-user `claude.json` OAuth or per-user `CLAUDE_CODE_OAUTH_TOKEN` from Account env vars |
+| Codex | `GET https://chatgpt.com/backend-api/wham/usage` | Bearer (+ optional `ChatGPT-Account-Id`) | Hardcoded client_id, refreshes when `last_refresh` > 8 days. Refreshed token is written back to that user's `codex.json`. |
 | Gemini | `POST https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota` | Bearer | Not implemented (CLI client_id/secret not available in orchestrator); reports error if token expired |
 
 **Normalized output:** All APIs are mapped to a common `UsageWindow` type with `label`, `utilization` (0-100%), and `resetsAt` (ISO 8601). Claude shows Session/Weekly/Sonnet windows, Codex shows Session/Weekly (+ Reserve when credits available), Gemini shows per-model-family windows (Pro/Flash). Progress bars use green (<50%), amber (50-79%), red (>=80%) coloring.

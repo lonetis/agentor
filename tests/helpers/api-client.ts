@@ -429,10 +429,26 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
-  // ─── Credentials ───────────────────────────────────────────────
-  async listCredentials() {
-    const res = await this.request.get(`${BASE_URL}/api/credentials`);
-    return { status: res.status(), body: await res.json() };
+  // ─── Account env vars (per-user) ──────────────────────────────
+  async getAccountEnvVars() {
+    const res = await this.request.get(`${BASE_URL}/api/account/env-vars`);
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  async putAccountEnvVars(data: Record<string, unknown>) {
+    const res = await this.request.put(`${BASE_URL}/api/account/env-vars`, { data });
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  // ─── Account agent credentials (per-user OAuth file status) ───
+  async listAccountAgentCredentials() {
+    const res = await this.request.get(`${BASE_URL}/api/account/agent-credentials`);
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  async resetAccountAgentCredential(agentId: string) {
+    const res = await this.request.delete(`${BASE_URL}/api/account/agent-credentials/${agentId}`);
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
   }
 
   // ─── Agent API Domains ─────────────────────────────────────────

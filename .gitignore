@@ -8,10 +8,13 @@ node_modules/
 # Environment
 .env
 
-# OAuth credentials
+# Legacy credential directory (no longer used by the orchestrator — per-user
+# credentials are stored under data/users/<userId>/credentials/ — but keep
+# the pattern so installations upgrading from the old layout don't
+# accidentally commit leftover local files)
 .cred/
 
-# Persistent data (environments, etc.)
+# Persistent data (environments, per-user credentials, etc.)
 data/
 
 # Playwright

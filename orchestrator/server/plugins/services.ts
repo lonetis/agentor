@@ -1,4 +1,4 @@
-import { useDockerService, useContainerManager, usePortMappingStore, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useCredentialMountManager, useStorageManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
+import { useDockerService, useContainerManager, usePortMappingStore, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useUserCredentialManager, useUserEnvStore, useOrphanSweeper, useStorageManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
 import { loadBuiltInCapabilities, loadBuiltInInstructions, loadBuiltInInitScripts, loadBuiltInEnvironments } from '../utils/built-in-content';
 import { useAuth, migrateAuth } from '../utils/auth';
 
@@ -29,13 +29,17 @@ export default defineNitroPlugin(async () => {
   const storageManager = useStorageManager();
   await storageManager.init();
 
-  // Initialize credential mount manager (resolve host path of /cred bind mount)
-  const credentialMountManager = useCredentialMountManager();
-  await credentialMountManager.init();
+  // Initialize per-user env-var store (one JSON file keyed by user id) and
+  // per-user credential manager (wraps StorageManager for lazy creation of
+  // `<DATA_DIR>/users/<userId>/credentials/*.json`).
+  const userEnvStore = useUserEnvStore();
+  await userEnvStore.init();
+  const userCredentialManager = useUserCredentialManager();
 
   const containerManager = useContainerManager();
-  containerManager.setCredentialMountManager(credentialMountManager);
   containerManager.setStorageManager(storageManager);
+  containerManager.setUserEnvStore(userEnvStore);
+  containerManager.setUserCredentialManager(userCredentialManager);
   await containerManager.sync();
 
   // Initialize environment store (load from disk, seed built-ins) and connect to container manager
@@ -102,9 +106,18 @@ export default defineNitroPlugin(async () => {
   const updateChecker = useUpdateChecker();
   await updateChecker.init();
 
-  // Initialize usage checker (polls agent usage APIs for OAuth-authenticated agents)
+  // Initialize usage checker (polls agent usage APIs for OAuth-authenticated
+  // agents — per-user).
   const usageChecker = useUsageChecker();
+  usageChecker.setUserEnvStore(userEnvStore);
+  usageChecker.setCredentialManager(userCredentialManager);
   await usageChecker.init();
+
+  // Start the orphan sweeper — on a 10-minute interval, prunes per-user
+  // data (env vars row, credentials dir, usage state) for users that no
+  // longer exist in the auth DB. Uses a timer rather than a middleware to
+  // avoid ever touching better-auth's request/response handling.
+  useOrphanSweeper().start();
 
   logger.info(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${capabilityStore.list().length} capabilities, ${instructionStore.list().length} instructions, ${initScriptStore.list().length} init scripts, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);
 

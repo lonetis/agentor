@@ -40,22 +40,25 @@ test.describe('Settings API', () => {
     expect(section.items.length).toBeGreaterThan(0);
   });
 
-  test('contains agent-auth section', async ({ request }) => {
+  test('does NOT contain agent-auth section (per-user, lives in Account modal)', async ({ request }) => {
     const api = new ApiClient(request);
     const { body } = await api.getSettings();
     const section = body.find((s: { id: string }) => s.id === 'agent-auth');
-    expect(section).toBeTruthy();
-    expect(section.label).toBe('Agent Authentication');
-    expect(section.items.length).toBeGreaterThan(0);
+    expect(section).toBeUndefined();
   });
 
-  test('contains git-providers section', async ({ request }) => {
+  test('git-providers section exists but contains only clone domains, not tokens', async ({ request }) => {
     const api = new ApiClient(request);
     const { body } = await api.getSettings();
     const section = body.find((s: { id: string }) => s.id === 'git-providers');
     expect(section).toBeTruthy();
     expect(section.label).toBe('Git Providers');
-    expect(section.items.length).toBeGreaterThan(0);
+
+    // No `*Token` items — per-user tokens belong to /api/account/env-vars.
+    const keys = section.items.map((i: { key: string }) => i.key);
+    expect(keys.some((k: string) => k.endsWith('Token') || k === 'GITHUB_TOKEN')).toBe(false);
+    // Clone domain entries should still be present.
+    expect(keys.some((k: string) => k.endsWith('.cloneDomains'))).toBe(true);
   });
 
   test('contains network section', async ({ request }) => {

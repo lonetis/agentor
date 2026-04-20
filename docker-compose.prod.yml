@@ -13,7 +13,6 @@ services:
       #   Directory mode (host bind mount):   ./data:/data   (default)
       #   Volume mode (Docker named volume):  agentor-data:/data
       - ./data:/data
-      - ./.cred:/cred
     environment:
       - WORKER_IMAGE_PREFIX=ghcr.io/lonetis/
     env_file: .env

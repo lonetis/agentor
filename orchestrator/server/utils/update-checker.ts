@@ -166,13 +166,12 @@ export class UpdateChecker {
 
   private async getRegistryToken(ref: ImageRef): Promise<string> {
     if (ref.registry === 'ghcr.io') {
+      // Anonymous token is sufficient for public images. Private GHCR images
+      // are out of scope for the orchestrator's self-update — deploy via
+      // `docker login ghcr.io` on the host instead.
       const tokenUrl = `https://ghcr.io/token?scope=repository:${ref.repo}:pull`;
-      const headers: Record<string, string> = {};
-      if (this.config.githubToken) {
-        headers['Authorization'] = 'Basic ' + Buffer.from(`token:${this.config.githubToken}`).toString('base64');
-      }
       try {
-        const resp = await fetch(tokenUrl, { headers });
+        const resp = await fetch(tokenUrl);
         if (resp.ok) {
           const data = await resp.json() as { token?: string };
           return data.token || '';
@@ -244,8 +243,6 @@ export class UpdateChecker {
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
-    } else if (ref.registry === 'ghcr.io' && this.config.githubToken) {
-      headers['Authorization'] = `Bearer ${this.config.githubToken}`;
     }
 
     const resp = await fetch(url, { headers });
@@ -255,15 +252,11 @@ export class UpdateChecker {
   }
 
   async pullImage(imageName: string): Promise<void> {
-    const ref = this.parseImageRef(imageName);
-    const isGhcr = ref.registry === 'ghcr.io';
-
-    const auth = isGhcr && this.config.githubToken
-      ? { username: 'token', password: this.config.githubToken }
-      : undefined;
-
+    // Images pulled by the orchestrator are public — agent credentials are
+    // per-user and not available at infrastructure scope. Deploy private
+    // images with `docker login` on the host.
     await new Promise<void>((resolve, reject) => {
-      this.docker.pull(imageName, { authconfig: auth }, (err: Error | null, stream: NodeJS.ReadableStream | undefined) => {
+      this.docker.pull(imageName, {}, (err: Error | null, stream: NodeJS.ReadableStream | undefined) => {
         if (err || !stream) return reject(err || new Error('No stream returned'));
         this.docker.modem.followProgress(stream, (err2: Error | null) => {
           if (err2) reject(err2);

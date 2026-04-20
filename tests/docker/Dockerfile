@@ -16,15 +16,10 @@ RUN apt-get update \
 # Inner dockerd config (overlay2 + log rotation, mirrors worker entrypoint).
 COPY daemon.json /etc/docker/daemon.json
 
-# Inner agentor stack compose file + stub credentials.
-# The stubs satisfy CredentialMountManager so worker entrypoint creates the
-# `~/.claude/.credentials.json` etc. symlinks (which the credential-symlink
-# test asserts on). Real agent auth isn't needed in CI — agents requiring
-# credentials skip themselves when no real key is present.
-RUN mkdir -p /opt/test-stack/cred \
-    && printf '{}' > /opt/test-stack/cred/claude.json \
-    && printf '{}' > /opt/test-stack/cred/codex.json \
-    && printf '{}' > /opt/test-stack/cred/gemini.json
+# Inner agentor stack compose file. Per-user agent credential files are
+# created on-demand by UserCredentialManager when each user is provisioned —
+# no pre-seeded files needed. Tests requiring real agent auth skip
+# themselves when no key is present in the admin user's account env vars.
 COPY stack.yml /opt/test-stack/stack.yml
 
 # Test runner entrypoint — boots dockerd, builds images, brings up the

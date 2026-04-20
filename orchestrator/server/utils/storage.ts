@@ -13,8 +13,13 @@ export class StorageManager {
   private config: Config;
 
   mode: StorageMode = 'volume';
-  /** Volume name (volume mode) or host path (directory mode) — used in bind strings */
+  /** Volume name (volume mode) or host path (directory mode) — used in bind strings
+   * that Docker interprets via name or path depending on the first character. */
   dataRef = '';
+  /** Absolute host path of the data directory — always a filesystem path, even
+   * in volume mode (`/var/lib/docker/volumes/<volume>/_data`). Used to build
+   * file-level bind mounts for per-user credentials. Empty if resolution failed. */
+  dataHostPath = '';
   /** In-container path for fs operations (always /data) */
   dataDir: string;
 
@@ -51,11 +56,16 @@ export class StorageManager {
       if (dataMount.Type === 'bind') {
         this.mode = 'directory';
         this.dataRef = dataMount.Source;
+        this.dataHostPath = dataMount.Source;
         useLogger().info(`[storage] directory mode — host path: ${this.dataRef}`);
       } else {
         this.mode = 'volume';
         this.dataRef = dataMount.Name || this.config.dataVolume;
-        useLogger().info(`[storage] volume mode — volume: ${this.dataRef}`);
+        // Docker surfaces the volume's host data dir as Source for volume mounts.
+        this.dataHostPath = dataMount.Source || '';
+        useLogger().info(
+          `[storage] volume mode — volume: ${this.dataRef}${this.dataHostPath ? ` (host path: ${this.dataHostPath})` : ''}`,
+        );
       }
     } catch (err: unknown) {
       useLogger().error(`[storage] init failed, falling back to volume mode: ${err instanceof Error ? err.message : err}`);
@@ -110,6 +120,37 @@ export class StorageManager {
     const agentsDir = join(this.dataDir, 'agents', name);
     await mkdir(agentsDir, { recursive: true });
     await this.chownDir(agentsDir);
+  }
+
+  /** In-container path of a user's private data directory (`/data/users/<userId>/`). */
+  getUserDir(userId: string): string {
+    return join(this.dataDir, 'users', userId);
+  }
+
+  /** Host path of a user's data directory, for constructing Docker bind strings.
+   * Only valid when `dataHostPath` was resolved successfully at init. */
+  getUserHostDir(userId: string): string {
+    if (!this.dataHostPath) {
+      throw new Error('[storage] dataHostPath not resolved — cannot build per-user host path');
+    }
+    return join(this.dataHostPath, 'users', userId);
+  }
+
+  /** Ensure a user's data + credentials directories exist with correct ownership
+   * (directory mode only — volume mode relies on the entrypoint's chown). */
+  async ensureUserDir(userId: string): Promise<void> {
+    const userDir = this.getUserDir(userId);
+    const credDir = join(userDir, 'credentials');
+    await mkdir(credDir, { recursive: true });
+    if (this.mode === 'directory') {
+      await this.chownDir(userDir);
+      await this.chownDir(credDir);
+    }
+  }
+
+  /** Remove a user's entire data directory (credentials + anything else). */
+  async removeUserDir(userId: string): Promise<void> {
+    await rm(this.getUserDir(userId), { recursive: true, force: true });
   }
 
   /** Remove a worker's workspace (volume or directory) */

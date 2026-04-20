@@ -2,7 +2,7 @@
 
 ## Unified Worker Image
 
-A single Docker image (`agentor-worker`, built from `worker/`) contains all agent CLIs and their setup scripts. OAuth/subscription credentials are stored as JSON files in `.cred/` on the host and bind-mounted directly into worker containers at the correct paths (e.g., `.cred/claude.json` → `/home/agent/.claude/.credentials.json`). All workers share the same credential files, so users only need to log in once inside any worker after installation — the credentials are written back automatically and propagate to all workers. Copying OAuth tokens from a local machine is not supported because refresh token rotation would cause the local and worker tokens to go out of sync. API keys (always-valid, no rotation) remain in `.env`. On container startup, ALL agent setup scripts run to configure settings for every installed agent. Users start agents via init script presets or manually in the terminal.
+A single Docker image (`agentor-worker`, built from `worker/`) contains all agent CLIs and their setup scripts. **Credentials are scoped per user**: OAuth/subscription tokens live as JSON files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json` and are bind-mounted into every worker that user owns at `/home/agent/.agent-creds/<file>.json`. The entrypoint then symlinks each into the agent CLI's expected path (e.g. `/home/agent/.agent-creds/claude.json` → `~/.claude/.credentials.json`). All of *one user's* workers therefore share the same credentials, so logging in once inside any of them propagates to the rest. Different users have completely isolated credentials. API keys, the GitHub token, and arbitrary custom env vars are also per-user — managed from the dashboard's Account modal and persisted in `<DATA_DIR>/user-env-vars.json`. Copying OAuth tokens from a local machine is not supported because refresh token rotation would cause the local and worker tokens to go out of sync — always log in inside a worker.
 
 **Structured JSON env vars** — the orchestrator passes 4 JSON env vars to workers instead of 20+ individual variables:
 - `ENVIRONMENT` — network mode, allowed domains, dockerEnabled, setupScript, envVars, exposeApis
@@ -10,7 +10,7 @@ A single Docker image (`agentor-worker`, built from `worker/`) contains all agen
 - `INSTRUCTIONS` — array of `{ name, content }` entries
 - `WORKER` — name, displayName, repos, initScript, gitName, gitEmail
 
-Individual env vars that CLIs read directly remain as-is: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`.
+Individual env vars that CLIs read directly are populated **from the worker owner's per-user `UserEnvVars` record**: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, plus any custom keys the user added. Two infrastructural env vars are added by the orchestrator regardless of user: `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`.
 
 ### Worker Image Contents
 
@@ -39,11 +39,10 @@ The unified worker image (`worker/`) provides:
 
 1. Install the CLI in `worker/Dockerfile`
 2. Create `worker/agents/<agent-id>/setup.sh` (auth/settings + capabilities/instructions writing — reads from `CAPABILITIES` and `INSTRUCTIONS` JSON env vars)
-3. Add an agent config entry in `orchestrator/server/utils/agent-config.ts` (API domains, env vars)
+3. Add an agent config entry in `orchestrator/server/utils/agent-config.ts` (API domains, env vars referencing fields on `UserEnvVars`)
 4. Add a built-in init script file in `orchestrator/server/built-in/init-scripts/`
-5. Add a credential mapping in `orchestrator/server/utils/credential-mounts.ts` (`AGENT_CREDENTIAL_MAPPINGS`)
-6. Add a template file in `.cred.example/` and document in `.cred.example/README`
-7. Rebuild the worker image
+5. Add a credential mapping in `orchestrator/server/utils/user-credentials.ts` (`AGENT_CREDENTIAL_MAPPINGS`) — fileName + container path. The file lives under `<DATA_DIR>/users/<userId>/credentials/` and is bind-mounted into each of that user's workers.
+6. Rebuild the worker image
 
 No entrypoint changes needed — agent setup scripts handle all agent-specific logic (auth, settings, capabilities, instructions).
 
@@ -51,7 +50,7 @@ No entrypoint changes needed — agent setup scripts handle all agent-specific l
 
 Init scripts are managed via `InitScriptStore` (`orchestrator/server/utils/init-script-store.ts`), stored as JSON in `<DATA_DIR>/init-scripts.json`. Built-in init script files live in `orchestrator/server/built-in/init-scripts/` as plain `.sh` files — the filename (without extension) is both the ID and the name. Custom scripts can be created via the Init Scripts modal in the sidebar. Init scripts are just bash scripts — they are not tied to any specific agent.
 
-Agent-specific configuration (API domains, env var mappings) lives separately in `orchestrator/server/utils/agent-config.ts` as a static registry (`AGENT_CONFIGS`). This provides `getAllAgentApiDomains()` (firewall allowlist) and `getAllAgentEnvVars(config)` (env vars for worker containers).
+Agent-specific configuration (API domains) lives separately in `orchestrator/server/utils/agent-config.ts` as a static registry (`AGENT_CONFIGS`). This provides `getAllAgentApiDomains()` (firewall allowlist). Worker env vars come from the worker owner's `UserEnvVars` record via `renderUserEnvVars()`.
 
 The UI provides a dropdown to select a script, which populates an editable init script textarea. Users can modify the script or write fully custom ones. The dropdown syncs both ways — editing the textarea to match a script selects it, clearing it switches to None, and any other edit switches to Custom. A "Manage" button opens the Init Scripts modal for CRUD operations.
 
@@ -116,7 +115,7 @@ Fully synchronous — every phase runs foreground and completes before the next 
 3. **Display stack** — Xvfb + fluxbox + x11vnc + websockify/noVNC, wait for each service
 3b. **Code editor** — code-server on port 8443 (`--auth none --bind-addr 0.0.0.0:8443`), wait for port ready
 3c. **VS Code tunnel** — `code tunnel --accept-server-license-terms --name <worker-name>` in background. First run requires GitHub device code auth (shown in the VS Code Tunnel pane). Auth persists per worker in the agent-data volume (`~/.vscode` symlinked to `.agent-data/.vscode`); subsequent runs of the same worker auto-connect.
-4. **Git identity + auth** — sets `git config --global user.name/email` from `WORKER.gitName`/`WORKER.gitEmail` (creating user's profile); if `GITHUB_TOKEN`: configures `gh` credential helper; otherwise skipped when none apply
+4. **Git identity + auth** — sets `git config --global user.name/email` from `WORKER.gitName`/`WORKER.gitEmail` (creating user's profile); if the worker owner's `GITHUB_TOKEN` is set in their account env vars: configures `gh` credential helper; otherwise skipped
 5. **Repository clone** — if `WORKER.repos`: parallel clone per repo, wait for all; otherwise skipped
 6. **Network firewall** — reads `ENVIRONMENT.networkMode` + `.allowedDomains` via jq; dnsmasq + ipset + iptables; skipped for `full` mode
 7. **User setup script** — runs `/home/agent/setup.sh` which reads `ENVIRONMENT.setupScript` and executes via memfd (no temp files)

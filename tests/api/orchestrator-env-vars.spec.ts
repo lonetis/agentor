@@ -20,20 +20,23 @@ test.describe('Orchestrator Env Vars API', () => {
     }
   });
 
-  test('includes GITHUB_TOKEN entry', async ({ request }) => {
+  test('reports orchestrator-wide settings only — no per-user secrets', async ({ request }) => {
     const api = new ApiClient(request);
     const { body } = await api.listOrchestratorEnvVars();
-    const githubToken = body.find((e: { name: string }) => e.name === 'GITHUB_TOKEN');
-    expect(githubToken).toBeTruthy();
+    const names = body.map((e: { name: string }) => e.name);
+
+    // Per-user secrets MUST NOT be reported here — they live in /api/account/env-vars.
+    expect(names).not.toContain('GITHUB_TOKEN');
+    expect(names).not.toContain('ANTHROPIC_API_KEY');
+    expect(names).not.toContain('CLAUDE_CODE_OAUTH_TOKEN');
+    expect(names).not.toContain('OPENAI_API_KEY');
+    expect(names).not.toContain('GEMINI_API_KEY');
   });
 
-  test('includes agent API key entries', async ({ request }) => {
+  test('includes BASE_DOMAINS entry', async ({ request }) => {
     const api = new ApiClient(request);
     const { body } = await api.listOrchestratorEnvVars();
-    // Should include at least one agent API key entry (e.g. ANTHROPIC_API_KEY)
-    const agentKeys = body.filter((e: { name: string }) =>
-      e.name.includes('API_KEY') || e.name === 'GITHUB_TOKEN'
-    );
-    expect(agentKeys.length).toBeGreaterThan(0);
+    const baseDomains = body.find((e: { name: string }) => e.name === 'BASE_DOMAINS');
+    expect(baseDomains).toBeTruthy();
   });
 });

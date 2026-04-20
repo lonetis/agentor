@@ -40,10 +40,11 @@ test.describe('Settings Modal', () => {
   test('contains expected section labels', async ({ page }) => {
     const dialog = await openSettingsModal(page);
 
+    // Agent Authentication section was removed — agent API keys + tokens
+    // are per-user now and live in the Account modal, not System Settings.
     const expectedSections = [
       'Docker & Infrastructure',
       'Worker Defaults',
-      'Agent Authentication',
       'Git Providers',
       'Network',
       'Init Scripts',

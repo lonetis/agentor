@@ -35,6 +35,7 @@ Switch modes by changing one line in the compose file — no env vars needed. `S
 ├── port-mappings.json
 ├── domain-mappings.json
 ├── traefik-config.json
+├── user-env-vars.json   ← per-user env vars (API keys, GitHub token, custom)
 ├── workspaces/          ← worker workspace dirs
 │   ├── agentor-worker-happy-panda/
 │   └── agentor-worker-cool-tiger/
@@ -46,6 +47,12 @@ Switch modes by changing one line in the compose file — no env vars needed. `S
 │   │   ├── .agents/     ← symlinked to ~/.agents
 │   │   └── .claude.json ← symlinked to ~/.claude.json
 │   └── agentor-worker-cool-tiger/
+├── users/               ← per-user data, keyed by user id
+│   └── <userId>/
+│       └── credentials/
+│           ├── claude.json   ← bind-mounted into every worker that user owns
+│           ├── codex.json
+│           └── gemini.json
 └── traefik-certs/       ← ACME certificates
     └── acme.json
 ```
@@ -59,8 +66,11 @@ DinD data always uses Docker named volumes (`<name>-docker`) regardless of stora
 | Data (Traefik) | `<volumeName>:/data:ro` | `<hostPath>:/data:ro` |
 | Worker workspace | `<name>-workspace:/workspace` | `<hostPath>/workspaces/<name>:/workspace` |
 | Worker agents | `<name>-agents:/home/agent/.agent-data` | `<hostPath>/agents/<name>:/home/agent/.agent-data` |
+| Worker per-user creds (×3) | `<dataHostPath>/users/<userId>/credentials/<file>:/home/agent/.agent-creds/<file>` | `<hostPath>/users/<userId>/credentials/<file>:/home/agent/.agent-creds/<file>` |
 | Worker DinD | `<name>-docker:/var/lib/docker` | `<name>-docker:/var/lib/docker` (always named volume) |
 | Traefik certs | `agentor-traefik-certs:/letsencrypt` | `<hostPath>/traefik-certs:/letsencrypt` |
+
+`<dataHostPath>` is resolved by `StorageManager` at startup via Docker self-inspection (in volume mode, Docker reports the volume's `_data` directory as the mount source). Only the worker owner's three credential files are bind-mounted into each container — different users' credentials are never visible to one another.
 
 ### Cleanup
 
@@ -69,6 +79,7 @@ DinD data always uses Docker named volumes (`<name>-docker`) regardless of stora
 | Remove workspace | `docker volume rm <name>-workspace` | `rm -rf /data/workspaces/<name>/` |
 | Remove agents | `docker volume rm <name>-agents` | `rm -rf /data/agents/<name>/` |
 | Remove DinD | `docker volume rm <name>-docker` | `docker volume rm <name>-docker` (same) |
+| Remove user data (on user delete) | `rm -rf /data/users/<userId>/` | same |
 
 ## Worker State & Persistence
 

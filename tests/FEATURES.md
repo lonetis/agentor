@@ -63,8 +63,11 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Accessible from the sidebar footer by clicking the user info area
 - **Profile section**: edit name and email, Save button. Email changes apply immediately (no verification email sent — Agentor does not send email).
 - **Change password section**: current password + new password (min 8 chars) + confirm new password. Server rejects the wrong current password.
+- **API keys & tokens section**: per-user inputs for `GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`. All fields are masked password inputs with a show/hide eye toggle. Values are injected into every worker the user creates.
+- **Custom environment variables section**: list of `{key, value}` rows with Add/Remove. Keys validated to `[A-Z_][A-Z0-9_]*`; reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.) are rejected with an inline error. Saved together with the API keys via a single "Save env vars" button (`PUT /api/account/env-vars`).
+- **Agent OAuth credentials section**: per-agent (claude/codex/gemini) status indicator (`Logged in` green / `Not logged in` gray) plus a per-agent **Reset** button (two-step confirm) that overwrites the OAuth file with `{}` so the next CLI login writes fresh tokens. Login itself happens by running the agent CLI inside one of the user's workers — credentials live at `<DATA_DIR>/users/<userId>/credentials/` and are bind-mounted into all of the user's workers.
 - Success and error messages displayed per section
-- Backed by `/api/auth/update-user`, `/api/auth/change-email`, and `/api/auth/change-password` (built-in better-auth endpoints)
+- Backed by `/api/auth/update-user`, `/api/auth/change-email`, `/api/auth/change-password` (built-in better-auth) and Agentor's per-user `/api/account/env-vars` and `/api/account/agent-credentials` endpoints
 
 ### 0.9c Admin Password Reset
 - In the Users modal each row has a "Reset password" button that prompts for a new password and calls `/api/auth/admin/set-user-password`
@@ -332,7 +335,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - "System Settings" title + "Expand all" / "Collapse all" buttons
 - Description: "Read-only view of all system configuration"
 - Loading state: "Loading settings..."
-- Collapsible sections by category (8): Docker, Worker Defaults, Agent Authentication, Git Providers, Domain Mapping, Network, Init Scripts, App Types
+- Collapsible sections by category: Docker, Worker Defaults, Git Providers (clone domains only; tokens are per-user), Domain Mapping, Network, Init Scripts, App Types. (The legacy Agent Authentication section is removed — agent API keys and OAuth tokens are per-user and managed from the Account modal.)
 - Per-item: label + env var key (monospace) + value display
   - Status type: colored badge (configured=success)
   - Boolean type: badge (enabled/disabled)
@@ -427,6 +430,8 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ---
 
 ## 14. Usage Panel
+
+> Per-user. The panel shows only the signed-in user's usage. `/api/usage` and `/api/usage/refresh` both require an authenticated session (return 401 otherwise) and are scoped to `requireAuth(event).user.id`. The orchestrator polls each user that has OAuth credentials independently.
 
 ### 14.1 Content
 - Loading state: "Loading..."
@@ -781,12 +786,21 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/github/repos/:owner/:repo/branches` — list branches + default
 
 ### 24.15 Configuration
-- `GET /api/settings` — all settings (categorized, read-only)
-- `GET /api/orchestrator-env-vars` — env vars with configured status
-- `GET /api/git-providers` — provider list with token status
+- `GET /api/settings` — orchestrator-wide settings (Docker, Worker Defaults, Git Providers (clone domains only), Network, Init Scripts, App Types). The old `agent-auth` section is removed — agent API keys live per user under `/api/account/env-vars`.
+- `GET /api/orchestrator-env-vars` — orchestrator-wide env vars (BASE_DOMAINS, DASHBOARD_*, ACME_EMAIL, BETTER_AUTH_*, etc.). Does NOT include `GITHUB_TOKEN` or any `*_API_KEY` — those are per user.
+- `GET /api/git-providers` — provider list with the **current user's** token status (per-user `tokenConfigured` boolean comes from their `UserEnvVars`)
 - `GET /api/agent-api-domains` — firewall allowlist
 - `GET /api/package-manager-domains` — PM domain list
-- `GET /api/credentials` — credential file status per agent
+
+### 24.15a Per-user Account env vars and credentials
+- `GET /api/account/env-vars` — returns the current user's `UserEnvVars` `{ githubToken, anthropicApiKey, claudeCodeOauthToken, openaiApiKey, geminiApiKey, customEnvVars[], updatedAt }`. Owner-only — admins do NOT see other users' values via this endpoint.
+- `PUT /api/account/env-vars` — upserts the current user's `UserEnvVars`. Partial updates are allowed (omitted fields keep their previous value). `customEnvVars` keys must match `[A-Z_][A-Z0-9_]*`, must not collide with reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.), and must be unique. Validation failures return 400.
+- `GET /api/account/agent-credentials` — returns `[{ agentId, fileName, configured }]` for the current user. `configured` is true when the per-user OAuth file at `<DATA_DIR>/users/<userId>/credentials/<fileName>` contains more than `{}`.
+- `DELETE /api/account/agent-credentials/:agentId` — overwrites that agent's per-user OAuth file with `{}` so the next CLI login writes a fresh token. Unknown agent ids return 400.
+- **Scoping**: env vars and credentials are strictly per-user. Each user's workers inherit only their own env vars; user A's worker can never read user B's tokens.
+- **Worker provisioning**: when a worker is created/rebuilt/unarchived, the orchestrator resolves the worker owner's `UserEnvVars` and bind-mounts that user's three credential files into `/home/agent/.agent-creds/{claude,codex,gemini}.json`.
+- **Precedence inside the worker**: agent + git tokens come from `UserEnvVars`; the per-environment `envVars` field is exported by the entrypoint AFTER Docker's env array, so an Environment can override any per-user var (including `GITHUB_TOKEN`).
+- **User deletion cleanup**: a background `OrphanSweeper` runs at orchestrator startup and every 10 minutes; it reads the auth DB's user table and prunes any per-user `user-env-vars.json` row, `<DATA_DIR>/users/<userId>/` directory, and usage-state entry whose user is no longer present. Implemented as a timer rather than a middleware so nothing touches better-auth's request pipeline.
 
 ### 24.16 Logs
 - `GET /api/logs` — query log entries with filters (sources, sourceIds, levels, since, until, limit, search). `since` is **inclusive** (`>=`) and `until` is **exclusive** (`<`) — paginate older by passing the oldest entry's timestamp as `until` to the next call. Returns `{ entries, hasMore }`.

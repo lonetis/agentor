@@ -1,9 +1,10 @@
-import { readFile, writeFile, unlink } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Config } from './config';
-import type { AgentUsageInfo, AgentUsageStatus, AgentAuthType, UsageWindow } from '../../shared/types';
+import type { AgentUsageInfo, AgentUsageStatus, AgentAuthType } from '../../shared/types';
+import type { UserEnvVarStore } from './user-env-store';
+import type { UserCredentialManager } from './user-credentials';
 
-const CRED_DIR = '/cred';
 const POLL_INTERVAL_MS = 300_000;
 
 interface AgentState {
@@ -12,7 +13,7 @@ interface AgentState {
 }
 
 interface PersistedUsageState {
-  agents: Record<string, { info: AgentUsageInfo; lastFetchTime: number; backoffUntil: number }>;
+  users: Record<string, Record<string, { info: AgentUsageInfo; lastFetchTime: number; backoffUntil: number }>>;
 }
 
 const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
@@ -43,14 +44,18 @@ interface GeminiCredFile {
   id_token?: string;
 }
 
+/** Usage checker, per-user. Each user's OAuth credentials (stored under
+ * `<DATA_DIR>/users/<userId>/credentials/`) are polled independently. Callers
+ * of the public API always pass a `userId` — admins still only see their own
+ * usage (ownership is enforced at the route layer). */
 export class UsageChecker {
   private config: Config;
-  private agentStates = new Map<string, AgentState>();
+  private userEnvStore?: UserEnvVarStore;
+  private credMgr?: UserCredentialManager;
+  private userStates = new Map<string, Map<string, AgentState>>();
+  private rateLimitBackoff = new Map<string, number>(); // key: `${userId}:${agentId}`
   private pollInterval: ReturnType<typeof setInterval> | null = null;
-  /** Per-agent backoff state for rate-limited endpoints (persisted to disk) */
-  private rateLimitBackoff = new Map<string, number>();
   private stateFilePath: string;
-  /** Serializes fetchAll() calls to prevent concurrent API requests */
   private fetchQueue: Promise<void> = Promise.resolve();
 
   constructor(config: Config) {
@@ -58,102 +63,70 @@ export class UsageChecker {
     this.stateFilePath = join(config.dataDir, 'usage.json');
   }
 
+  setUserEnvStore(store: UserEnvVarStore): void {
+    this.userEnvStore = store;
+  }
+
+  setCredentialManager(mgr: UserCredentialManager): void {
+    this.credMgr = mgr;
+  }
+
   async init(): Promise<void> {
     await this.loadState();
-    await this.deleteLegacyFiles();
 
-    const now = Date.now();
-    const anyStale = !this.agentStates.size || [...this.agentStates.values()].some(
-      (s) => now - s.lastFetchTime >= POLL_INTERVAL_MS,
-    );
-
-    if (anyStale) {
-      await this.fetchAll();
-    } else {
-      const oldest = Math.min(...[...this.agentStates.values()].map((s) => s.lastFetchTime));
-      useLogger().info(`[usage-checker] skipping initial fetch (${Math.round((now - oldest) / 1000)}s since oldest check, serving persisted data)`);
-    }
-
-    // Detect OAuth from credential files so polling starts even when the initial fetch was skipped
-    const hasAnyOAuth = await this.hasOAuthCredentials();
-    if (hasAnyOAuth) {
-      this.pollInterval = setInterval(() => {
-        this.fetchAll().catch((err) => {
-          useLogger().error(`[usage-checker] poll error: ${err instanceof Error ? err.message : err}`);
-        });
-      }, POLL_INTERVAL_MS);
-    }
-  }
-
-  async refresh(): Promise<AgentUsageStatus> {
+    // Kick off a background poll for every user that has OAuth creds. If none
+    // do (fresh install) we still start the interval so new users are picked
+    // up on the next tick.
     await this.fetchAll();
-    return this.getStatus();
+    this.pollInterval = setInterval(() => {
+      this.fetchAll().catch((err) => {
+        useLogger().error(`[usage-checker] poll error: ${err instanceof Error ? err.message : err}`);
+      });
+    }, POLL_INTERVAL_MS);
   }
 
-  getStatus(): AgentUsageStatus {
-    const agents = [...this.agentStates.values()].map((s) => ({
-      ...s.info,
-      lastFetchTime: s.lastFetchTime > 0 ? new Date(s.lastFetchTime).toISOString() : undefined,
-    }));
+  async refresh(userId: string): Promise<AgentUsageStatus> {
+    await this.fetchUser(userId);
+    return this.getStatus(userId);
+  }
+
+  getStatus(userId: string): AgentUsageStatus {
+    const agents: AgentUsageInfo[] = [];
+    const map = this.userStates.get(userId);
+    if (map) {
+      for (const state of map.values()) {
+        agents.push({
+          ...state.info,
+          lastFetchTime: state.lastFetchTime > 0 ? new Date(state.lastFetchTime).toISOString() : undefined,
+        });
+      }
+    }
     return { agents };
   }
 
-  private async hasOAuthCredentials(): Promise<boolean> {
-    const [claude, codex, gemini] = await Promise.all([
-      this.readCredFile<ClaudeCredFile>('claude.json'),
-      this.readCredFile<CodexCredFile>('codex.json'),
-      this.readCredFile<GeminiCredFile>('gemini.json'),
-    ]);
-    return !!(claude?.claudeAiOauth?.accessToken || this.config.claudeCodeOauthToken || codex?.tokens?.access_token || gemini?.access_token);
+  /** Clear persisted state for a user (called on user deletion). */
+  async forgetUser(userId: string): Promise<void> {
+    this.userStates.delete(userId);
+    for (const key of [...this.rateLimitBackoff.keys()]) {
+      if (key.startsWith(`${userId}:`)) this.rateLimitBackoff.delete(key);
+    }
+    await this.saveState();
   }
 
-  private async loadState(): Promise<void> {
-    try {
-      const raw = await readFile(this.stateFilePath, 'utf-8');
-      const data = JSON.parse(raw) as PersistedUsageState;
-      if (data.agents && typeof data.agents === 'object') {
-        const now = Date.now();
-        for (const [id, entry] of Object.entries(data.agents)) {
-          if (entry.info) {
-            this.agentStates.set(id, {
-              info: entry.info,
-              lastFetchTime: typeof entry.lastFetchTime === 'number' ? entry.lastFetchTime : 0,
-            });
-          }
-          if (typeof entry.backoffUntil === 'number' && entry.backoffUntil > now) {
-            this.rateLimitBackoff.set(id, entry.backoffUntil);
-          }
-        }
-      }
-    } catch {
-      // File doesn't exist or is invalid — start fresh
-    }
-  }
+  // ─── Polling ─────────────────────────────────────────────────
 
-  private async saveState(): Promise<void> {
-    const agents: PersistedUsageState['agents'] = {};
-    for (const [id, state] of this.agentStates) {
-      agents[id] = {
-        info: state.info,
-        lastFetchTime: state.lastFetchTime,
-        backoffUntil: this.rateLimitBackoff.get(id) ?? 0,
-      };
+  private async candidateUserIds(): Promise<string[]> {
+    // Every user in the env-var store is a candidate (they may have a Claude
+    // setup token, an OAuth cred file, or both — `doFetchUser` short-circuits
+    // per-agent when there's no token). Anyone we've already polled stays on
+    // the list so their persisted state keeps getting refreshed across
+    // restarts even if the env store entry was cleared.
+    const ids = new Set<string>();
+    if (this.userEnvStore) {
+      for (const entry of this.userEnvStore.list()) ids.add(entry.userId);
     }
-    try {
-      await writeFile(this.stateFilePath, JSON.stringify({ agents }));
-    } catch (err) {
-      useLogger().error(`[usage-checker] failed to save state: ${err instanceof Error ? err.message : err}`);
-    }
-  }
-
-  private async deleteLegacyFiles(): Promise<void> {
-    const legacyFiles = [
-      join(this.config.dataDir, 'usage-backoff.json'),
-      join(this.config.dataDir, 'usage-last-fetch.json'),
-    ];
-    for (const file of legacyFiles) {
-      try { await unlink(file); } catch { /* doesn't exist — fine */ }
-    }
+    for (const id of this.userStates.keys()) ids.add(id);
+    return [...ids];
   }
 
   private fetchAll(): Promise<void> {
@@ -161,41 +134,102 @@ export class UsageChecker {
     return this.fetchQueue;
   }
 
-  private async doFetchAll(): Promise<void> {
-    const now = Date.now();
+  private fetchUser(userId: string): Promise<void> {
+    this.fetchQueue = this.fetchQueue.then(() => this.doFetchUser(userId)).catch(() => {});
+    return this.fetchQueue;
+  }
 
-    // Only fetch agents whose data is stale (older than POLL_INTERVAL_MS)
-    const fetchers: Array<() => Promise<AgentUsageInfo>> = [];
+  private async doFetchAll(): Promise<void> {
+    const userIds = await this.candidateUserIds();
+    // Parallel per-user — each user's three agents are independent. One
+    // user's slow upstream API should not block others.
+    await Promise.all(userIds.map((userId) => this.doFetchUser(userId)));
+  }
+
+  private async doFetchUser(userId: string): Promise<void> {
+    if (!userId) return;
+    const now = Date.now();
+    const existing = this.userStates.get(userId) ?? new Map<string, AgentState>();
+
     const agentIds = ['claude', 'codex', 'gemini'] as const;
     const fetchFns = [
-      () => this.fetchClaudeUsage(),
-      () => this.fetchCodexUsage(),
-      () => this.fetchGeminiUsage(),
+      () => this.fetchClaudeUsage(userId),
+      () => this.fetchCodexUsage(userId),
+      () => this.fetchGeminiUsage(userId),
     ];
 
+    const fetchers: Array<() => Promise<AgentUsageInfo>> = [];
     for (let i = 0; i < agentIds.length; i++) {
-      const existing = this.agentStates.get(agentIds[i]!);
-      if (!existing || now - existing.lastFetchTime >= POLL_INTERVAL_MS) {
+      const state = existing.get(agentIds[i]!);
+      if (!state || now - state.lastFetchTime >= POLL_INTERVAL_MS) {
         fetchers.push(fetchFns[i]!);
       }
     }
-
     if (fetchers.length === 0) return;
 
     const results = await Promise.all(fetchers.map((fn) => fn()));
-
     for (const info of results) {
-      this.agentStates.set(info.agentId, {
-        info,
-        lastFetchTime: now,
-      });
+      existing.set(info.agentId, { info, lastFetchTime: now });
     }
+    this.userStates.set(userId, existing);
     await this.saveState();
   }
 
-  private async readCredFile<T>(fileName: string): Promise<T | null> {
+  // ─── Persistence ────────────────────────────────────────────
+
+  private async loadState(): Promise<void> {
     try {
-      const raw = await readFile(join(CRED_DIR, fileName), 'utf-8');
+      const raw = await readFile(this.stateFilePath, 'utf-8');
+      const data = JSON.parse(raw) as PersistedUsageState;
+      const now = Date.now();
+      if (data.users && typeof data.users === 'object') {
+        for (const [userId, agents] of Object.entries(data.users)) {
+          const map = new Map<string, AgentState>();
+          for (const [agentId, entry] of Object.entries(agents)) {
+            if (entry?.info) {
+              map.set(agentId, {
+                info: entry.info,
+                lastFetchTime: typeof entry.lastFetchTime === 'number' ? entry.lastFetchTime : 0,
+              });
+            }
+            if (typeof entry?.backoffUntil === 'number' && entry.backoffUntil > now) {
+              this.rateLimitBackoff.set(`${userId}:${agentId}`, entry.backoffUntil);
+            }
+          }
+          if (map.size > 0) this.userStates.set(userId, map);
+        }
+      }
+    } catch {
+      // File missing / invalid → start fresh
+    }
+  }
+
+  private async saveState(): Promise<void> {
+    const users: PersistedUsageState['users'] = {};
+    for (const [userId, map] of this.userStates) {
+      const agents: PersistedUsageState['users'][string] = {};
+      for (const [agentId, state] of map) {
+        agents[agentId] = {
+          info: state.info,
+          lastFetchTime: state.lastFetchTime,
+          backoffUntil: this.rateLimitBackoff.get(`${userId}:${agentId}`) ?? 0,
+        };
+      }
+      users[userId] = agents;
+    }
+    try {
+      await writeFile(this.stateFilePath, JSON.stringify({ users }));
+    } catch (err) {
+      useLogger().error(`[usage-checker] failed to save state: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  // ─── Credential file I/O ────────────────────────────────────
+
+  private async readCredFile<T>(userId: string, fileName: string): Promise<T | null> {
+    if (!this.credMgr) return null;
+    try {
+      const raw = await readFile(this.credMgr.filePath(userId, fileName), 'utf-8');
       const trimmed = raw.trim();
       if (trimmed.length <= 2) return null;
       return JSON.parse(trimmed) as T;
@@ -204,26 +238,32 @@ export class UsageChecker {
     }
   }
 
-  private detectAuthType(agentId: string, hasOAuth: boolean): AgentAuthType {
-    if (hasOAuth) return 'oauth';
-    if (agentId === 'claude' && this.config.claudeCodeOauthToken) return 'oauth';
-    const keyMap: Record<string, string> = {
+  private detectAuthType(userId: string, agentId: string, hasOAuthFile: boolean): AgentAuthType {
+    if (hasOAuthFile) return 'oauth';
+    const env = this.userEnvStore?.getOrDefault(userId);
+    if (agentId === 'claude' && env?.claudeCodeOauthToken) return 'oauth';
+    const keyMap: Record<string, keyof NonNullable<typeof env>> = {
       claude: 'anthropicApiKey',
       codex: 'openaiApiKey',
       gemini: 'geminiApiKey',
     };
     const configKey = keyMap[agentId];
-    if (configKey && this.config[configKey as keyof Config]) return 'api-key';
+    if (env && configKey && typeof env[configKey] === 'string' && env[configKey]) return 'api-key';
     return 'none';
   }
 
-  // ─── Claude ────────────────────────────────────────────────────
+  // ─── Claude ─────────────────────────────────────────────────
 
-  private async fetchClaudeUsage(): Promise<AgentUsageInfo> {
+  private async fetchClaudeUsage(userId: string): Promise<AgentUsageInfo> {
     const now = new Date().toISOString();
-    const cred = await this.readCredFile<ClaudeCredFile>('claude.json');
-    const token = cred?.claudeAiOauth?.accessToken || this.config.claudeCodeOauthToken || '';
-    const authType = this.detectAuthType('claude', !!(cred?.claudeAiOauth?.accessToken || this.config.claudeCodeOauthToken));
+    const cred = await this.readCredFile<ClaudeCredFile>(userId, 'claude.json');
+    const envToken = this.userEnvStore?.getOrDefault(userId).claudeCodeOauthToken;
+    const token = cred?.claudeAiOauth?.accessToken || envToken || '';
+    const authType = this.detectAuthType(
+      userId,
+      'claude',
+      !!(cred?.claudeAiOauth?.accessToken || envToken),
+    );
 
     const base: AgentUsageInfo = {
       agentId: 'claude',
@@ -233,11 +273,10 @@ export class UsageChecker {
       windows: [],
       lastChecked: now,
     };
-
     if (!token) return base;
 
-    // Skip if rate-limited
-    const backoffUntil = this.rateLimitBackoff.get('claude');
+    const backoffKey = `${userId}:claude`;
+    const backoffUntil = this.rateLimitBackoff.get(backoffKey);
     if (backoffUntil && Date.now() < backoffUntil) {
       base.error = `Rate limited — retrying after ${new Date(backoffUntil).toISOString()}`;
       return base;
@@ -246,73 +285,48 @@ export class UsageChecker {
     try {
       const resp = await fetch('https://api.anthropic.com/api/oauth/usage', {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           'anthropic-beta': 'oauth-2025-04-20',
         },
       });
-
       if (resp.status === 429) {
         const retryAfter = resp.headers.get('retry-after');
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
-        this.rateLimitBackoff.set('claude', Date.now() + delayMs);
+        this.rateLimitBackoff.set(backoffKey, Date.now() + delayMs);
         await this.saveState();
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
-
-      // Clear backoff on success or non-429 responses
-      if (this.rateLimitBackoff.delete('claude')) await this.saveState();
-
+      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveState();
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
         return base;
       }
-
       interface ClaudeWindow { utilization: number; resets_at: string }
-      const data = await resp.json() as {
+      const data = (await resp.json()) as {
         five_hour?: ClaudeWindow | null;
         seven_day?: ClaudeWindow | null;
         seven_day_sonnet?: ClaudeWindow | null;
       };
-
       base.usageAvailable = true;
-      if (data.five_hour) {
-        base.windows.push({
-          label: 'Session',
-          utilization: data.five_hour.utilization,
-          resetsAt: data.five_hour.resets_at,
-        });
-      }
-      if (data.seven_day) {
-        base.windows.push({
-          label: 'Weekly',
-          utilization: data.seven_day.utilization,
-          resetsAt: data.seven_day.resets_at,
-        });
-      }
-      if (data.seven_day_sonnet) {
-        base.windows.push({
-          label: 'Sonnet',
-          utilization: data.seven_day_sonnet.utilization,
-          resetsAt: data.seven_day_sonnet.resets_at,
-        });
-      }
+      if (data.five_hour) base.windows.push({ label: 'Session', utilization: data.five_hour.utilization, resetsAt: data.five_hour.resets_at });
+      if (data.seven_day) base.windows.push({ label: 'Weekly', utilization: data.seven_day.utilization, resetsAt: data.seven_day.resets_at });
+      if (data.seven_day_sonnet) base.windows.push({ label: 'Sonnet', utilization: data.seven_day_sonnet.utilization, resetsAt: data.seven_day_sonnet.resets_at });
     } catch (err: unknown) {
       base.error = err instanceof Error ? err.message : String(err);
     }
-
     return base;
   }
 
-  // ─── Codex ─────────────────────────────────────────────────────
+  // ─── Codex ──────────────────────────────────────────────────
 
-  private async fetchCodexUsage(): Promise<AgentUsageInfo> {
+  private async fetchCodexUsage(userId: string): Promise<AgentUsageInfo> {
     const now = new Date().toISOString();
-    const cred = await this.readCredFile<CodexCredFile>('codex.json');
+    const cred = await this.readCredFile<CodexCredFile>(userId, 'codex.json');
     let token = cred?.tokens?.access_token;
     const refreshToken = cred?.tokens?.refresh_token;
-    const authType = this.detectAuthType('codex', !!token);
+    const authType = this.detectAuthType(userId, 'codex', !!token);
 
     const base: AgentUsageInfo = {
       agentId: 'codex',
@@ -322,16 +336,14 @@ export class UsageChecker {
       windows: [],
       lastChecked: now,
     };
-
     if (!token) return base;
 
-    // Refresh token if last_refresh > 8 days ago
     if (refreshToken && cred?.last_refresh) {
       const lastRefresh = new Date(cred.last_refresh).getTime();
       const eightDays = 8 * 24 * 60 * 60 * 1000;
       if (Date.now() - lastRefresh > eightDays) {
         try {
-          token = await this.refreshCodexToken(refreshToken, cred);
+          token = await this.refreshCodexToken(userId, refreshToken, cred);
         } catch (err: unknown) {
           base.error = `Token refresh failed: ${err instanceof Error ? err.message : String(err)}`;
           return base;
@@ -339,72 +351,46 @@ export class UsageChecker {
       }
     }
 
-    // Skip if rate-limited
-    const codexBackoff = this.rateLimitBackoff.get('codex');
-    if (codexBackoff && Date.now() < codexBackoff) {
-      base.error = `Rate limited — retrying after ${new Date(codexBackoff).toISOString()}`;
+    const backoffKey = `${userId}:codex`;
+    const backoffUntil = this.rateLimitBackoff.get(backoffKey);
+    if (backoffUntil && Date.now() < backoffUntil) {
+      base.error = `Rate limited — retrying after ${new Date(backoffUntil).toISOString()}`;
       return base;
     }
 
     try {
-      const headers: Record<string, string> = {
-        'Authorization': `Bearer ${token}`,
-      };
-      if (cred?.tokens?.account_id) {
-        headers['ChatGPT-Account-Id'] = cred.tokens.account_id;
-      }
-
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      if (cred?.tokens?.account_id) headers['ChatGPT-Account-Id'] = cred.tokens.account_id;
       const resp = await fetch('https://chatgpt.com/backend-api/wham/usage', { headers });
-
       if (resp.status === 429) {
         const retryAfter = resp.headers.get('retry-after');
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
-        this.rateLimitBackoff.set('codex', Date.now() + delayMs);
+        this.rateLimitBackoff.set(backoffKey, Date.now() + delayMs);
         await this.saveState();
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
-
-      if (this.rateLimitBackoff.delete('codex')) await this.saveState();
-
+      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveState();
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
         return base;
       }
-
       interface CodexWindow { used_percent: number; reset_at: number; limit_window_seconds: number }
-      const data = await resp.json() as {
+      const data = (await resp.json()) as {
         plan_type?: string;
-        rate_limit?: {
-          primary_window?: CodexWindow | null;
-          secondary_window?: CodexWindow | null;
-        };
-        credits?: {
-          has_credits?: boolean;
-          unlimited?: boolean;
-          balance?: string;
-        };
+        rate_limit?: { primary_window?: CodexWindow | null; secondary_window?: CodexWindow | null };
+        credits?: { has_credits?: boolean; unlimited?: boolean; balance?: string };
       };
-
       base.usageAvailable = true;
       if (data.plan_type) base.planType = data.plan_type;
-
       if (data.rate_limit?.primary_window) {
         const w = data.rate_limit.primary_window;
-        base.windows.push({
-          label: 'Session',
-          utilization: w.used_percent,
-          resetsAt: new Date(w.reset_at * 1000).toISOString(),
-        });
+        base.windows.push({ label: 'Session', utilization: w.used_percent, resetsAt: new Date(w.reset_at * 1000).toISOString() });
       }
       if (data.rate_limit?.secondary_window) {
         const w = data.rate_limit.secondary_window;
-        base.windows.push({
-          label: 'Weekly',
-          utilization: w.used_percent,
-          resetsAt: new Date(w.reset_at * 1000).toISOString(),
-        });
+        base.windows.push({ label: 'Weekly', utilization: w.used_percent, resetsAt: new Date(w.reset_at * 1000).toISOString() });
       }
       if (data.credits?.has_credits || data.credits?.unlimited) {
         const balance = parseFloat(data.credits.balance || '0');
@@ -417,11 +403,10 @@ export class UsageChecker {
     } catch (err: unknown) {
       base.error = err instanceof Error ? err.message : String(err);
     }
-
     return base;
   }
 
-  private async refreshCodexToken(refreshToken: string, cred: CodexCredFile): Promise<string> {
+  private async refreshCodexToken(userId: string, refreshToken: string, cred: CodexCredFile): Promise<string> {
     const resp = await fetch(CODEX_TOKEN_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -432,16 +417,8 @@ export class UsageChecker {
         scope: 'openid profile email',
       }),
     });
-
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-    const data = await resp.json() as {
-      access_token: string;
-      refresh_token?: string;
-      id_token?: string;
-    };
-
-    // Write updated tokens back
+    const data = (await resp.json()) as { access_token: string; refresh_token?: string; id_token?: string };
     const updated: CodexCredFile = {
       ...cred,
       tokens: {
@@ -452,19 +429,20 @@ export class UsageChecker {
       },
       last_refresh: new Date().toISOString(),
     };
-
-    await writeFile(join(CRED_DIR, 'codex.json'), JSON.stringify(updated, null, 2));
-    useLogger().info('[usage-checker] refreshed Codex OAuth token');
+    if (this.credMgr) {
+      await writeFile(this.credMgr.filePath(userId, 'codex.json'), JSON.stringify(updated, null, 2));
+    }
+    useLogger().info(`[usage-checker] refreshed Codex OAuth token for user ${userId}`);
     return data.access_token;
   }
 
-  // ─── Gemini ────────────────────────────────────────────────────
+  // ─── Gemini ─────────────────────────────────────────────────
 
-  private async fetchGeminiUsage(): Promise<AgentUsageInfo> {
+  private async fetchGeminiUsage(userId: string): Promise<AgentUsageInfo> {
     const now = new Date().toISOString();
-    const cred = await this.readCredFile<GeminiCredFile>('gemini.json');
+    const cred = await this.readCredFile<GeminiCredFile>(userId, 'gemini.json');
     const token = cred?.access_token;
-    const authType = this.detectAuthType('gemini', !!token);
+    const authType = this.detectAuthType(userId, 'gemini', !!token);
 
     const base: AgentUsageInfo = {
       agentId: 'gemini',
@@ -474,112 +452,74 @@ export class UsageChecker {
       windows: [],
       lastChecked: now,
     };
-
     if (!token) return base;
 
-    // Check if token is expired — we can't refresh without the CLI's client_id/secret
     if (cred?.expiry_date && cred.expiry_date < Date.now()) {
       base.error = 'Token expired — run gemini in a worker to refresh';
       return base;
     }
 
-    // Skip if rate-limited
-    const geminiBackoff = this.rateLimitBackoff.get('gemini');
-    if (geminiBackoff && Date.now() < geminiBackoff) {
-      base.error = `Rate limited — retrying after ${new Date(geminiBackoff).toISOString()}`;
+    const backoffKey = `${userId}:gemini`;
+    const backoffUntil = this.rateLimitBackoff.get(backoffKey);
+    if (backoffUntil && Date.now() < backoffUntil) {
+      base.error = `Rate limited — retrying after ${new Date(backoffUntil).toISOString()}`;
       return base;
     }
 
     try {
       const resp = await fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: '{}',
       });
-
       if (resp.status === 429) {
         const retryAfter = resp.headers.get('retry-after');
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
-        this.rateLimitBackoff.set('gemini', Date.now() + delayMs);
+        this.rateLimitBackoff.set(backoffKey, Date.now() + delayMs);
         await this.saveState();
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
-
-      if (this.rateLimitBackoff.delete('gemini')) await this.saveState();
-
+      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveState();
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
         return base;
       }
-
-      const data = await resp.json() as {
-        buckets?: Array<{
-          modelId?: string;
-          remainingFraction?: number;
-          resetTime?: string;
-          tokenType?: string;
-        }>;
+      const data = (await resp.json()) as {
+        buckets?: Array<{ modelId?: string; remainingFraction?: number; resetTime?: string; tokenType?: string }>;
       };
-
       base.usageAvailable = true;
-
       if (data.buckets && data.buckets.length > 0) {
-        // Group buckets by model family (Pro vs Flash)
         const families: Record<string, { lowestRemaining: number; earliestReset: string | null }> = {};
-
         for (const bucket of data.buckets) {
           const modelId = bucket.modelId || '';
           let family: string;
-          if (modelId.includes('-pro')) {
-            family = 'Pro';
-          } else if (modelId.includes('-flash')) {
-            family = 'Flash';
-          } else {
-            family = modelId;
-          }
-
-          if (!families[family]) {
-            families[family] = { lowestRemaining: 1, earliestReset: null };
-          }
+          if (modelId.includes('-pro')) family = 'Pro';
+          else if (modelId.includes('-flash')) family = 'Flash';
+          else family = modelId;
+          if (!families[family]) families[family] = { lowestRemaining: 1, earliestReset: null };
           const f = families[family]!;
-
           const remaining = bucket.remainingFraction ?? 1;
-          if (remaining < f.lowestRemaining) {
-            f.lowestRemaining = remaining;
-          }
+          if (remaining < f.lowestRemaining) f.lowestRemaining = remaining;
           if (bucket.resetTime) {
-            if (!f.earliestReset || bucket.resetTime < f.earliestReset) {
-              f.earliestReset = bucket.resetTime;
-            }
+            if (!f.earliestReset || bucket.resetTime < f.earliestReset) f.earliestReset = bucket.resetTime;
           }
         }
-
-        // Sort: Pro first, then Flash, then others
         const order = ['Pro', 'Flash'];
         const sorted = Object.keys(families).sort((a, b) => {
           const ai = order.indexOf(a);
           const bi = order.indexOf(b);
           return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
         });
-
         for (const family of sorted) {
           const f = families[family]!;
-          base.windows.push({
-            label: family,
-            utilization: Math.round((1 - f.lowestRemaining) * 100),
-            resetsAt: f.earliestReset,
-          });
+          base.windows.push({ label: family, utilization: Math.round((1 - f.lowestRemaining) * 100), resetsAt: f.earliestReset });
         }
       }
     } catch (err: unknown) {
       base.error = err instanceof Error ? err.message : String(err);
     }
-
     return base;
   }
 }

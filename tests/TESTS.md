@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1254 tests** across 92 test files (~698 API + ~556 UI)
+- **~1282 tests** across 95 test files (~719 API + ~563 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -98,13 +98,13 @@ tests/
     worker-lifecycle.ts    # Container create/cleanup utilities
     ui-helpers.ts          # Page navigation and interaction helpers
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
-  api/                     # API endpoint tests (~487 tests across 32 files)
-  ui/                      # UI interaction tests (~477 tests across 37 files)
+  api/                     # API endpoint tests (~719 tests across 51 files)
+  ui/                      # UI interaction tests (~563 tests across 44 files)
 ```
 
 ## Test Categories
 
-### API Tests (~693 tests, 49 files)
+### API Tests (~719 tests, 51 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -139,18 +139,20 @@ tests/
 | `capabilities.spec.ts` | 24 | Capabilities CRUD, built-in capabilities, validation |
 | `instructions.spec.ts` | 27 | Instruction entry CRUD, built-in entries, validation |
 | `init-scripts.spec.ts` | 25 | Init script CRUD, built-in scripts, validation |
-| `settings.spec.ts` | 11 | Settings endpoint, categorized sections |
-| `credentials.spec.ts` | 6 | Credential file status per agent |
+| `settings.spec.ts` | 11 | Settings endpoint, categorized sections — verifies the legacy `agent-auth` section is gone and `git-providers` reports clone domains only (no per-user tokens) |
+| `account-env-vars.spec.ts` | 11 | Per-user env vars: GET/PUT auth gating, fresh-user defaults, well-known field upsert + partial PUT, customEnvVars round-trip, validation (lowercase / digit-prefixed / reserved / duplicate keys), per-user isolation, admin cannot see another user's values via the endpoint |
+| `account-credentials.spec.ts` | 5 | Per-user agent OAuth credential file listing + reset: auth gating, 3-entry shape for a fresh user, idempotent DELETE, unknown agent id rejection, independent listings per user |
+| `user-scoped-worker-env.spec.ts` | 5 | End-to-end propagation: GITHUB_TOKEN, ANTHROPIC_API_KEY, and arbitrary custom env vars from one user's account flow into that user's workers via printenv; user A's worker shows A's token while B's shows B's; an Environment's envVars override the per-user value |
 | `selfsigned-certs.spec.ts` | 10 | Self-signed CA certificate operations |
 | `agent-api-domains.spec.ts` | 5 | Agent API domain allowlist |
 | `git-providers.spec.ts` | 2 | Provider list, GitHub provider fields |
 | `app-types.spec.ts` | 4 | Type list, chromium/socks5 types, port defs |
 | `package-manager-domains.spec.ts` | 4 | Domain list, npm/pypi, valid domain format |
-| `orchestrator-env-vars.spec.ts` | 4 | Env var list, fields, token/credential entries |
+| `orchestrator-env-vars.spec.ts` | 4 | Env var list, fields, presence of orchestrator-wide keys (BASE_DOMAINS), explicit absence of per-user secrets (GITHUB_TOKEN / *_API_KEY) |
 | `github.spec.ts` | 14 | Repos list, username, orgs, repo field validation, branches, branch field validation, create repo validation (missing owner/name, empty owner/name, no token), response shape validation, non-existent repo branches |
 | `updates.spec.ts` | 11 | Update status, manual check trigger, apply rejection, response structure (3 image keys — orchestrator/worker/traefik, no mapper), check consistency |
 | `traefik-unified.spec.ts` | 8 | Merged-mapper regression tests: `/api/log-sources` never returns `mapper`; `/api/updates` has no `mapper` key; `UpdatableImage` enum is 3 values; port mapping create/delete works while Traefik is up for domain mappings; port + domain mapping can coexist on the same worker; settings expose no `MAPPER_IMAGE` |
-| `usage.spec.ts` | 7 | Usage endpoint, agent usage status |
+| `usage.spec.ts` | 7 | Per-user usage: GET/POST require auth (401 unauth), refresh populates 3 agents for the caller, refresh-then-get returns the same list, agent shape after refresh, per-user isolation (user B's OAuth token doesn't show up in user A's status) |
 | `logs.spec.ts` | 28 | Log query response shape, entry fields, valid levels/sources, source/level/multi-level/search filtering, limit control/default/max clamping, newest-first ordering, ISO timestamps, combined filters, log-sources endpoint, container messages have no leading Docker timestamp (regression for the TTY \r split bug), orchestrator self-stdout captured with sourceId, until is exclusive (boundary entry not duplicated), backwards pagination via until walks contiguously without skipping, hasMore reports remaining matches, clear logs (serialized), clear idempotency |
 | `terminal-exec.spec.ts` | 14 | WebSocket connect, initial output, echo command, pwd /workspace, HOME /home/agent, exit codes, named tmux window, resize, concurrent window isolation, multiline output, whoami agent user, non-existent container, ws-* tmux session cleanup on disconnect, multiple connections cleanup |
 | `agent-prompting.spec.ts` | 6 | Agent CLI start + prompt response for Claude, Codex, Gemini (2 tests each, skipped without credentials) |
@@ -158,7 +160,7 @@ tests/
 | `git-identity.spec.ts` | 10 | Per-user git config (user.name/email from auth profile), WORKER env var contains gitName/gitEmail, no git wrapper at /usr/local/bin/git, persistence across rebuild, persistence across archive/unarchive, ContainerInfo includes gitName/gitEmail |
 | `mcp-servers-loaded.spec.ts` | 6 | MCP server verification: Claude config keys + commands via jq, Codex `mcp list` output + enabled status, Gemini config keys + commands via jq |
 
-### UI Tests (~507 tests, 39 files)
+### UI Tests (~563 tests, 44 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -167,6 +169,7 @@ tests/
 | `route-guard.spec.ts` | 6 | Unauth user on `/` → `/login`, unauth user on `/login` stays, unauth user on `/setup` (when complete) → `/login`, `/api/setup/status` public, signed-in user visiting `/login` redirected to `/`, signed-in user on `/` loads dashboard |
 | `users-modal.spec.ts` | 6 | Admin opens Users modal from System tab, create user via modal, promote + demote user, delete user, reset password, regular user does not see System tab |
 | `account-modal.spec.ts` | 5 | Opens from sidebar footer, updates name (persists after reload), updates email (new email can sign in), changes password (new password can sign in), Close button dismisses modal |
+| `account-modal-env-vars.spec.ts` | 5 | API keys / Custom env vars / Agent OAuth credentials sections render; GitHub token saves and persists across modal close+reopen; custom env var add+save+reload round-trip; invalid custom key surfaces an inline error; fresh user sees all 3 agents as Not logged in |
 | `dashboard.spec.ts` | 11 | Page load, title, buttons, sections, images, sidebar labels |
 | `sidebar.spec.ts` | 27 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design, Capabilities/Instructions/Init Scripts row stacks vertically on narrow sidebar, tab bar horizontal scroll + overflow dropdown (20% visibility threshold, live updates on scroll, hidden when all tabs fit) |
 | `create-worker-modal.spec.ts` | 29 | Open/close, form fields, name input, add repo/mount, environment dropdown, init preset dropdown, Create action |

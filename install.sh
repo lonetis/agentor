@@ -111,13 +111,9 @@ echo ""
 sync_file "$BASE/docker-compose.prod.yml" "docker-compose.yml"
 sync_file "$BASE/.env.example"            ".env"
 
-mkdir -p .cred
-sync_file "$BASE/.cred.example/claude.json"  ".cred/claude.json"
-sync_file "$BASE/.cred.example/codex.json"   ".cred/codex.json"
-sync_file "$BASE/.cred.example/gemini.json"  ".cred/gemini.json"
-
 echo ""
 echo "Done! Next steps:"
-echo "  1. Edit .env with your API keys (for OAuth, log in inside a worker — see .cred/README)"
-echo "  2. docker compose up -d"
-echo "  3. Open http://localhost:3000"
+echo "  1. docker compose up -d"
+echo "  2. Open http://localhost:3000 and create your admin account"
+echo "  3. Open Account → API keys & tokens to set agent API keys + GitHub token"
+echo "     For OAuth subscriptions, log in once inside a worker (see README)"

@@ -170,6 +170,24 @@ export interface CredentialInfo {
   configured: boolean;
 }
 
+export interface UserCustomEnvVar {
+  key: string;
+  value: string;
+}
+
+export interface UserEnvVars {
+  userId: string;
+  githubToken: string;
+  anthropicApiKey: string;
+  claudeCodeOauthToken: string;
+  openaiApiKey: string;
+  geminiApiKey: string;
+  customEnvVars: UserCustomEnvVar[];
+  updatedAt: string;
+}
+
+export type UserEnvVarsInput = Partial<Omit<UserEnvVars, 'userId' | 'updatedAt'>>;
+
 export interface InitScriptInfo {
   id: string;
   name: string;

@@ -219,7 +219,7 @@ Use `test.describe.serial` when tests share state (e.g., stop then restart a con
 
 ### Conditional Skips
 - **Traefik integration tests**: Skipped when `BASE_DOMAINS` is not configured
-- **Agent prompting tests**: Skipped when agent credentials are not configured (checks `/api/orchestrator-env-vars` for API keys and `.cred/` files)
+- **Agent prompting tests**: Skipped when the admin user has no agent credentials configured. The helper checks `/api/account/env-vars` for the admin's API keys and `/api/account/agent-credentials` for OAuth file status; if none are set the test is skipped.
 - **Domain mappings UI**: Some tests skipped when `BASE_DOMAINS` is not set
 
 ### Terminal WebSocket Tests

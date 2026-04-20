@@ -34,6 +34,32 @@ const passkeySuccess = ref('');
 const passkeyAddName = ref('');
 const passkeyAddLoading = ref(false);
 
+// API keys + custom env vars (per-user, injected into every worker the user creates)
+interface EnvVarsForm {
+  githubToken: string;
+  anthropicApiKey: string;
+  claudeCodeOauthToken: string;
+  openaiApiKey: string;
+  geminiApiKey: string;
+  customEnvVars: { key: string; value: string }[];
+}
+const envForm = reactive<EnvVarsForm>({
+  githubToken: '',
+  anthropicApiKey: '',
+  claudeCodeOauthToken: '',
+  openaiApiKey: '',
+  geminiApiKey: '',
+  customEnvVars: [],
+});
+const envLoading = ref(false);
+const envError = ref('');
+const envSuccess = ref('');
+const envVisible = reactive<Record<string, boolean>>({});
+const { envVars: _envVarsRef, credentials: agentCreds, fetchAll: fetchEnvAndCreds, save: saveEnvVars, resetCredential } = useUserEnvVars();
+const credResetConfirmId = ref<string | null>(null);
+const credResetError = ref('');
+const credResetSuccess = ref('');
+
 // Credential summary (drives the UI: do we have a password? do we have passkeys?)
 const credentials = ref<CredentialSummary>({ hasPassword: true, passkeyCount: 0 });
 
@@ -55,6 +81,10 @@ function resetMessages() {
   passwordSuccess.value = '';
   passkeyError.value = '';
   passkeySuccess.value = '';
+  envError.value = '';
+  envSuccess.value = '';
+  credResetError.value = '';
+  credResetSuccess.value = '';
 }
 
 async function refreshCredentialSummary() {
@@ -89,6 +119,26 @@ async function refreshPasskeysEnabled() {
   }
 }
 
+async function loadEnvVars() {
+  envLoading.value = true;
+  try {
+    await fetchEnvAndCreds();
+    const v = _envVarsRef.value;
+    if (v) {
+      envForm.githubToken = v.githubToken;
+      envForm.anthropicApiKey = v.anthropicApiKey;
+      envForm.claudeCodeOauthToken = v.claudeCodeOauthToken;
+      envForm.openaiApiKey = v.openaiApiKey;
+      envForm.geminiApiKey = v.geminiApiKey;
+      envForm.customEnvVars = v.customEnvVars.map((e) => ({ ...e }));
+    }
+  } catch (err: any) {
+    envError.value = err?.data?.statusMessage || err?.message || 'Failed to load env vars';
+  } finally {
+    envLoading.value = false;
+  }
+}
+
 watch(open, async (v) => {
   if (v) {
     const u = currentUser.value as any;
@@ -99,12 +149,14 @@ watch(open, async (v) => {
     password.confirm = '';
     passkeyAddName.value = '';
     resetMessages();
+    // Env vars + agent-credentials aren't needed for the password / passkey
+    // flow at the top of the modal, so fire them in the background rather
+    // than blocking the critical render path.
+    loadEnvVars().catch(() => {});
     await Promise.all([
       refreshCredentialSummary(),
       refreshPasskeysEnabled(),
     ]);
-    // Only load the passkey list if the feature is actually available —
-    // otherwise the client call returns a 404 from the unregistered plugin.
     if (passkeysEnabled.value) {
       await refreshPasskeys();
     } else {
@@ -112,6 +164,60 @@ watch(open, async (v) => {
     }
   }
 });
+
+function addCustomEnvVar() {
+  envForm.customEnvVars.push({ key: '', value: '' });
+}
+
+function removeCustomEnvVar(index: number) {
+  envForm.customEnvVars.splice(index, 1);
+}
+
+function toggleVisible(field: string) {
+  envVisible[field] = !envVisible[field];
+}
+
+async function handleEnvSave() {
+  resetMessages();
+  envLoading.value = true;
+  try {
+    await saveEnvVars({
+      githubToken: envForm.githubToken,
+      anthropicApiKey: envForm.anthropicApiKey,
+      claudeCodeOauthToken: envForm.claudeCodeOauthToken,
+      openaiApiKey: envForm.openaiApiKey,
+      geminiApiKey: envForm.geminiApiKey,
+      customEnvVars: envForm.customEnvVars
+        .map((e) => ({ key: e.key.trim(), value: e.value }))
+        .filter((e) => e.key.length > 0),
+    });
+    envSuccess.value = 'Env vars saved';
+  } catch (err: any) {
+    envError.value = err?.data?.statusMessage || err?.message || 'Failed to save env vars';
+  } finally {
+    envLoading.value = false;
+  }
+}
+
+async function handleResetCredential(agentId: string) {
+  credResetError.value = '';
+  credResetSuccess.value = '';
+  if (credResetConfirmId.value !== agentId) {
+    credResetConfirmId.value = agentId;
+    return;
+  }
+  try {
+    await resetCredential(agentId);
+    credResetSuccess.value = `${agentId} credential reset — log in again inside a worker`;
+    credResetConfirmId.value = null;
+  } catch (err: any) {
+    credResetError.value = err?.data?.statusMessage || err?.message || 'Failed to reset credential';
+  }
+}
+
+function cancelResetCredential() {
+  credResetConfirmId.value = null;
+}
 
 async function handleProfileSave() {
   resetMessages();
@@ -195,6 +301,8 @@ async function handlePasswordSave() {
         await $fetch('/api/account/set-password', {
           method: 'POST',
           body: { newPassword: password.next },
+          retry: 2,
+          retryDelay: 500,
         });
         passwordSuccess.value = 'Password set';
       } catch (err: any) {
@@ -225,7 +333,7 @@ async function handleRemovePassword() {
   }
   passwordLoading.value = true;
   try {
-    await $fetch('/api/account/remove-password', { method: 'POST' });
+    await $fetch('/api/account/remove-password', { method: 'POST', retry: 2, retryDelay: 500 });
     passwordSuccess.value = 'Password removed';
     removePasswordConfirm.value = false;
     await refreshCredentialSummary();
@@ -433,6 +541,218 @@ async function handleDeletePasskey(p: PasskeyRow) {
               </UButton>
             </div>
           </div>
+        </section>
+
+        <div class="border-t border-gray-200 dark:border-gray-800"></div>
+
+        <!-- API keys & tokens section — well-known slots for agent API keys and
+             the GitHub token. Injected as env vars into every worker this user
+             creates. -->
+        <section class="space-y-3" data-testid="account-api-keys">
+          <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">API keys & tokens</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            Injected as environment variables into every worker you create. Values are only visible to you.
+          </p>
+
+          <UFormField label="GitHub token" :hint="'GITHUB_TOKEN'">
+            <div class="flex gap-2">
+              <UInput
+                v-model="envForm.githubToken"
+                :type="envVisible.githubToken ? 'text' : 'password'"
+                autocomplete="off"
+                class="flex-1"
+                data-testid="env-githubToken"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                :icon="envVisible.githubToken ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                @click="toggleVisible('githubToken')"
+              />
+            </div>
+          </UFormField>
+
+          <UFormField label="Anthropic API key" :hint="'ANTHROPIC_API_KEY'">
+            <div class="flex gap-2">
+              <UInput
+                v-model="envForm.anthropicApiKey"
+                :type="envVisible.anthropicApiKey ? 'text' : 'password'"
+                autocomplete="off"
+                class="flex-1"
+                data-testid="env-anthropicApiKey"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                :icon="envVisible.anthropicApiKey ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                @click="toggleVisible('anthropicApiKey')"
+              />
+            </div>
+          </UFormField>
+
+          <UFormField label="Claude Code OAuth token" :hint="'CLAUDE_CODE_OAUTH_TOKEN'">
+            <div class="flex gap-2">
+              <UInput
+                v-model="envForm.claudeCodeOauthToken"
+                :type="envVisible.claudeCodeOauthToken ? 'text' : 'password'"
+                autocomplete="off"
+                class="flex-1"
+                data-testid="env-claudeCodeOauthToken"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                :icon="envVisible.claudeCodeOauthToken ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                @click="toggleVisible('claudeCodeOauthToken')"
+              />
+            </div>
+          </UFormField>
+
+          <UFormField label="OpenAI API key" :hint="'OPENAI_API_KEY'">
+            <div class="flex gap-2">
+              <UInput
+                v-model="envForm.openaiApiKey"
+                :type="envVisible.openaiApiKey ? 'text' : 'password'"
+                autocomplete="off"
+                class="flex-1"
+                data-testid="env-openaiApiKey"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                :icon="envVisible.openaiApiKey ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                @click="toggleVisible('openaiApiKey')"
+              />
+            </div>
+          </UFormField>
+
+          <UFormField label="Gemini API key" :hint="'GEMINI_API_KEY'">
+            <div class="flex gap-2">
+              <UInput
+                v-model="envForm.geminiApiKey"
+                :type="envVisible.geminiApiKey ? 'text' : 'password'"
+                autocomplete="off"
+                class="flex-1"
+                data-testid="env-geminiApiKey"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                :icon="envVisible.geminiApiKey ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                @click="toggleVisible('geminiApiKey')"
+              />
+            </div>
+          </UFormField>
+        </section>
+
+        <!-- Custom env vars section — same save button as API keys -->
+        <section class="space-y-3" data-testid="account-custom-env-vars">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">Custom environment variables</h3>
+            <UButton size="xs" variant="ghost" icon="i-lucide-plus" @click="addCustomEnvVar">Add</UButton>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            Additional <code class="font-mono">KEY=value</code> pairs exposed to every worker you create.
+            Keys must match <code class="font-mono">[A-Z_][A-Z0-9_]*</code>.
+          </p>
+
+          <div v-if="envForm.customEnvVars.length === 0" class="text-sm text-gray-500 dark:text-gray-400 italic">
+            None configured.
+          </div>
+          <div
+            v-for="(row, idx) in envForm.customEnvVars"
+            :key="idx"
+            class="flex items-center gap-2"
+            data-testid="custom-env-row"
+          >
+            <UInput v-model="row.key" placeholder="KEY" class="w-40" data-testid="custom-env-key" />
+            <UInput
+              v-model="row.value"
+              :type="envVisible[`custom-${idx}`] ? 'text' : 'password'"
+              placeholder="value"
+              class="flex-1"
+              data-testid="custom-env-value"
+            />
+            <UButton
+              size="sm"
+              color="neutral"
+              variant="ghost"
+              :icon="envVisible[`custom-${idx}`] ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+              @click="toggleVisible(`custom-${idx}`)"
+            />
+            <UButton
+              size="sm"
+              color="error"
+              variant="ghost"
+              icon="i-lucide-x"
+              @click="removeCustomEnvVar(idx)"
+            />
+          </div>
+
+          <p v-if="envError" class="text-sm text-red-600 dark:text-red-400" data-testid="env-error">{{ envError }}</p>
+          <p v-if="envSuccess" class="text-sm text-emerald-600 dark:text-emerald-400" data-testid="env-success">{{ envSuccess }}</p>
+          <div class="flex justify-end">
+            <UButton size="sm" :loading="envLoading" @click="handleEnvSave" data-testid="env-save">Save env vars</UButton>
+          </div>
+        </section>
+
+        <div class="border-t border-gray-200 dark:border-gray-800"></div>
+
+        <!-- Agent OAuth credentials — read-only status + reset per agent.
+             Login happens inside a worker by running the agent CLI. -->
+        <section class="space-y-3" data-testid="account-agent-credentials">
+          <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">Agent OAuth credentials</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            Log in once inside any of your workers. Tokens are stored per user and shared across all of your workers.
+          </p>
+          <div v-if="agentCreds.length === 0" class="text-sm text-gray-500 dark:text-gray-400 italic">
+            No agents configured.
+          </div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="c in agentCreds"
+              :key="c.agentId"
+              class="flex items-center gap-3 p-2 rounded-md border border-gray-200 dark:border-gray-800"
+              :data-testid="`agent-cred-${c.agentId}`"
+            >
+              <span class="size-2 rounded-full"
+                :class="c.configured ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"
+              />
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-gray-900 dark:text-gray-100 capitalize">{{ c.agentId }}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ c.configured ? 'Logged in' : 'Not logged in' }}
+                </div>
+              </div>
+              <div class="flex gap-1">
+                <UButton
+                  v-if="credResetConfirmId !== c.agentId"
+                  size="xs"
+                  color="error"
+                  variant="ghost"
+                  :disabled="!c.configured"
+                  @click="handleResetCredential(c.agentId)"
+                >
+                  Reset
+                </UButton>
+                <template v-else>
+                  <UButton size="xs" color="neutral" variant="ghost" @click="cancelResetCredential">
+                    Cancel
+                  </UButton>
+                  <UButton size="xs" color="error" @click="handleResetCredential(c.agentId)">
+                    Confirm reset
+                  </UButton>
+                </template>
+              </div>
+            </div>
+          </div>
+          <p v-if="credResetError" class="text-sm text-red-600 dark:text-red-400">{{ credResetError }}</p>
+          <p v-if="credResetSuccess" class="text-sm text-emerald-600 dark:text-emerald-400">{{ credResetSuccess }}</p>
         </section>
       </div>
     </template>

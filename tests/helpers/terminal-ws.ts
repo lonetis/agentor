@@ -45,25 +45,32 @@ export interface AgentCredentials {
 }
 
 /**
- * Check which agents have credentials configured (API keys or .cred/ files).
+ * Check which agents have credentials configured for the *currently
+ * authenticated* user (the project-level admin in our test setup). API keys
+ * come from `/api/account/env-vars`; OAuth file status from
+ * `/api/account/agent-credentials`.
  */
 export async function checkAgentCredentials(request: APIRequestContext): Promise<AgentCredentials> {
   const api = new ApiClient(request);
   const [{ body: envVars }, { body: creds }] = await Promise.all([
-    api.listOrchestratorEnvVars(),
-    api.listCredentials(),
+    api.getAccountEnvVars(),
+    api.listAccountAgentCredentials(),
   ]);
 
-  const vars = envVars as { name: string; configured: boolean }[];
-  const hasEnv = (name: string) => vars.find(v => v.name === name)?.configured ?? false;
-
+  const env = envVars as {
+    githubToken?: string;
+    anthropicApiKey?: string;
+    claudeCodeOauthToken?: string;
+    openaiApiKey?: string;
+    geminiApiKey?: string;
+  };
   const credFiles = creds as { agentId: string; configured: boolean }[];
   const hasCred = (agentId: string) => credFiles.find(c => c.agentId === agentId)?.configured ?? false;
 
   return {
-    claude: hasEnv('ANTHROPIC_API_KEY') || hasEnv('CLAUDE_CODE_OAUTH_TOKEN') || hasCred('claude'),
-    codex: hasEnv('OPENAI_API_KEY') || hasCred('codex'),
-    gemini: hasEnv('GEMINI_API_KEY') || hasCred('gemini'),
+    claude: !!env.anthropicApiKey || !!env.claudeCodeOauthToken || hasCred('claude'),
+    codex: !!env.openaiApiKey || hasCred('codex'),
+    gemini: !!env.geminiApiKey || hasCred('gemini'),
   };
 }
 

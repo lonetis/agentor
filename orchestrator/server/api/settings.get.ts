@@ -13,12 +13,9 @@ defineRouteMeta({
   },
 });
 
-import { useConfig, useCredentialMountManager, useInitScriptStore } from '../utils/services';
+import { useConfig, useInitScriptStore } from '../utils/services';
 import { listGitProviders } from '../utils/git-providers';
 import { listAppTypes } from '../utils/apps';
-import { AGENT_CREDENTIAL_MAPPINGS } from '../utils/credential-mounts';
-import { listAgentConfigs } from '../utils/agent-config';
-import type { Config } from '../utils/config';
 import { requireAdmin } from '../utils/auth-helpers';
 
 interface SettingItem {
@@ -35,12 +32,6 @@ interface SettingSection {
   items: SettingItem[];
 }
 
-function mask(value: string): string {
-  if (!value) return '';
-  if (value.length <= 8) return '****';
-  return value.slice(0, 4) + '****' + value.slice(-4);
-}
-
 function statusValue(configured: boolean): string {
   return configured ? 'configured' : 'not configured';
 }
@@ -48,7 +39,6 @@ function statusValue(configured: boolean): string {
 export default defineEventHandler(async (event) => {
   requireAdmin(event);
   const config = useConfig();
-  const credentialMountManager = useCredentialMountManager();
   const sections: SettingSection[] = [];
 
   // --- Docker & Infrastructure ---
@@ -78,57 +68,9 @@ export default defineEventHandler(async (event) => {
     ],
   });
 
-  // --- Agent Authentication ---
-  const authItems: SettingItem[] = [];
-
-  // API keys + setup tokens
-  const envVarLabels: Record<string, string> = {
-    CLAUDE_CODE_OAUTH_TOKEN: 'Claude Setup Token',
-  };
-  const seen = new Set<string>();
-  for (const agent of listAgentConfigs()) {
-    for (const [envName, configKey] of Object.entries(agent.envVars)) {
-      if (seen.has(envName)) continue;
-      seen.add(envName);
-      const value = config[configKey as keyof Config] as string;
-      authItems.push({
-        key: envName,
-        label: envVarLabels[envName] || `${agent.displayName} API Key`,
-        value: statusValue(!!value),
-        type: 'status',
-        sensitive: true,
-      });
-    }
-  }
-
-  // OAuth credential files
-  for (const mapping of AGENT_CREDENTIAL_MAPPINGS) {
-    const configured = await credentialMountManager.getCredentialStatus(mapping.fileName);
-    authItems.push({
-      key: `.cred/${mapping.fileName}`,
-      label: `${mapping.agentId.charAt(0).toUpperCase() + mapping.agentId.slice(1)} OAuth Credentials`,
-      value: statusValue(configured),
-      type: 'status',
-    });
-  }
-
-  sections.push({
-    id: 'agent-auth',
-    label: 'Agent Authentication',
-    items: authItems,
-  });
-
-  // --- Git Providers ---
+  // --- Git Providers (domains only; tokens are per-user, see Account modal) ---
   const gitItems: SettingItem[] = [];
   for (const provider of listGitProviders()) {
-    const tokenValue = config[provider.tokenConfigKey as keyof Config] as string;
-    gitItems.push({
-      key: provider.tokenEnvVar,
-      label: `${provider.displayName} Token`,
-      value: statusValue(!!tokenValue),
-      type: 'status',
-      sensitive: true,
-    });
     gitItems.push({
       key: `${provider.id}.cloneDomains`,
       label: `${provider.displayName} Clone Domains`,

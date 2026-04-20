@@ -1,5 +1,3 @@
-import type { Config } from './config';
-
 export interface GitHubRepo {
   fullName: string;
   private: boolean;
@@ -17,13 +15,15 @@ interface CacheEntry<T> {
 
 const CACHE_TTL = 60_000; // 60s
 
+/** Per-token GitHub API wrapper. Tokens come from individual users'
+ * `UserEnvVars.githubToken`. Instances are cached by token so repeated calls
+ * within 60s reuse the same upstream data. */
 export class GitHubService {
   private token: string;
   private cache = new Map<string, CacheEntry<unknown>>();
 
-  constructor(config: Config) {
-    this.token = config.githubToken;
-    useLogger().info(`[github] initialized (token ${this.hasToken ? 'configured' : 'not set'})`);
+  constructor(token: string) {
+    this.token = token;
   }
 
   get hasToken(): boolean {
@@ -186,4 +186,17 @@ export class GitHubService {
   private setCache<T>(key: string, data: T): void {
     this.cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
   }
+}
+
+const instances = new Map<string, GitHubService>();
+
+/** Returns a GitHubService bound to the given token, reusing instances so
+ * their per-token caches persist across requests. */
+export function getGitHubServiceForToken(token: string): GitHubService {
+  let inst = instances.get(token);
+  if (!inst) {
+    inst = new GitHubService(token);
+    instances.set(token, inst);
+  }
+  return inst;
 }
