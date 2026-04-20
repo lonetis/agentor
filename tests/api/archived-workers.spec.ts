@@ -208,7 +208,7 @@ test.describe('Archived Workers API', () => {
   });
 
   test.describe('Mapping persistence across archive/unarchive', () => {
-    test('port mappings survive archive and are reassigned on unarchive', async ({ request }) => {
+    test('port mappings survive archive and unarchive (keyed by containerName)', async ({ request }) => {
       const container = await createWorker(request);
       const api = new ApiClient(request);
       const port = 10000 + Math.floor(Math.random() * 50000);
@@ -221,21 +221,23 @@ test.describe('Archived Workers API', () => {
       });
 
       try {
-        // Archive — mapping must remain, but container ID is gone
+        // Archive — mapping must remain, keyed by containerName not container ID
         await api.archiveContainer(container.id);
 
         const { body: afterArchive } = await api.listPortMappings();
         const archivedMapping = afterArchive.find((m: { externalPort: number }) => m.externalPort === port);
         expect(archivedMapping).toBeTruthy();
         expect(archivedMapping.workerName).toBe(container.name);
+        expect(archivedMapping.containerName).toBe(container.containerName);
 
-        // Unarchive — mapping workerId should now point at the new container
+        // Unarchive — containerName is stable; Traefik will pick up the new
+        // container automatically via Docker DNS.
         const { body: unarchived } = await api.unarchiveWorker(container.name);
         const { body: afterUnarchive } = await api.listPortMappings();
         const restoredMapping = afterUnarchive.find((m: { externalPort: number }) => m.externalPort === port);
         expect(restoredMapping).toBeTruthy();
         expect(restoredMapping.workerName).toBe(container.name);
-        expect(restoredMapping.workerId).toBe(unarchived.id);
+        expect(restoredMapping.containerName).toBe(container.containerName);
 
         await cleanupWorker(request, unarchived.id);
       } finally {

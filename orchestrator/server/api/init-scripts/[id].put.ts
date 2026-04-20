@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
 
   const store = useInitScriptStore();
 
-  const existing = store.get(id);
+  const existing = store.getById(id);
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Init script not found' });
   }

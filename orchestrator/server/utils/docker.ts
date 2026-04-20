@@ -35,6 +35,8 @@ export interface WorkerJsonPayload {
 }
 
 const MANAGED_LABEL = 'agentor.managed';
+const USER_ID_LABEL = 'agentor.user-id';
+const WORKER_NAME_LABEL = 'agentor.worker-name';
 
 export class DockerService {
   private docker: Docker;
@@ -59,7 +61,12 @@ export class DockerService {
   }
 
   async createWorkerContainer(opts: {
+    /** Owner user id — used for labels, directory paths, and env var injection. */
+    userId: string;
+    /** Per-user worker name — used for the hostname and the workspace dir. */
     name: string;
+    /** Globally unique Docker container name (`<prefix>-<userId>-<name>`). */
+    containerName: string;
     displayName?: string;
     cpuLimit?: number;
     memoryLimit?: string;
@@ -90,7 +97,7 @@ export class DockerService {
     for (const line of renderUserEnvVars(opts.userEnv)) env.push(line);
 
     env.push('ORCHESTRATOR_URL=http://agentor-orchestrator:3000');
-    env.push(`WORKER_CONTAINER_NAME=${opts.name}`);
+    env.push(`WORKER_CONTAINER_NAME=${opts.containerName}`);
 
     const memBytes = opts.memoryLimit ? this.parseMemoryLimit(opts.memoryLimit) : 0;
     const nanoCpus = opts.cpuLimit ? Math.floor(opts.cpuLimit * 1e9) : 0;
@@ -99,29 +106,20 @@ export class DockerService {
       (m) => `${m.source}:${m.target}${m.readOnly ? ':ro' : ''}`
     );
 
-    // Persistent workspace — named volume (volume mode) or host directory (directory mode)
+    // Persistent workspace — named volume (volume mode) or host directory under
+    // the user's data dir (directory mode).
     if (opts.storageManager) {
-      await opts.storageManager.ensureWorkerDirs(opts.name);
-      binds.push(opts.storageManager.getWorkerWorkspaceBind(opts.name));
+      await opts.storageManager.ensureWorkerDirs(opts.userId, opts.name);
+      binds.push(opts.storageManager.getWorkerWorkspaceBind(opts.userId, opts.name, opts.containerName));
+      binds.push(opts.storageManager.getWorkerAgentsBind(opts.userId, opts.name, opts.containerName));
+      if (opts.dockerEnabled) {
+        binds.push(opts.storageManager.getWorkerDockerBind(opts.containerName));
+      }
     } else {
-      binds.push(`${opts.name}-workspace:/workspace`);
-    }
-
-    // Persistent agent config data (~/.claude, ~/.gemini, ~/.codex, ~/.agents)
-    // Mounted at /home/agent/.agent-data, symlinked by entrypoint to expected paths
-    if (opts.storageManager) {
-      binds.push(opts.storageManager.getWorkerAgentsBind(opts.name));
-    } else {
-      binds.push(`${opts.name}-agents:/home/agent/.agent-data`);
-    }
-
-    // Docker-in-Docker: overlay2 cannot nest on the container's overlayfs root,
-    // but works on a volume or host directory. Data persists across container restarts.
-    if (opts.dockerEnabled) {
-      if (opts.storageManager) {
-        binds.push(opts.storageManager.getWorkerDockerBind(opts.name));
-      } else {
-        binds.push(`${opts.name}-docker:/var/lib/docker`);
+      binds.push(`${opts.containerName}-workspace:/workspace`);
+      binds.push(`${opts.containerName}-agents:/home/agent/.agent-data`);
+      if (opts.dockerEnabled) {
+        binds.push(`${opts.containerName}-docker:/var/lib/docker`);
       }
     }
 
@@ -140,13 +138,18 @@ export class DockerService {
 
     const container = await this.docker.createContainer({
       Image: image,
-      name: opts.name,
-      Hostname: opts.name.replace(/^agentor-worker-/, ''),
+      name: opts.containerName,
+      // Hostname is the per-user short name so the shell prompt and tools
+      // inside the worker show the friendly name rather than the long
+      // `<prefix>-<userId>-<name>` Docker container name.
+      Hostname: opts.name,
       Env: env,
       Tty: true,
       OpenStdin: true,
       Labels: {
         [MANAGED_LABEL]: 'true',
+        [USER_ID_LABEL]: opts.userId,
+        [WORKER_NAME_LABEL]: opts.name,
       },
       HostConfig: {
         NetworkMode: this.config.dockerNetwork,
@@ -162,7 +165,7 @@ export class DockerService {
     });
 
     await container.start();
-    useLogger().info(`[docker] created container ${opts.name}`);
+    useLogger().info(`[docker] created container ${opts.containerName}`);
     return container;
   }
 

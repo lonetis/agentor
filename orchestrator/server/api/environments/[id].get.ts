@@ -18,7 +18,7 @@ import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
 export default defineEventHandler((event) => {
   const ctx = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
-  const env = useEnvironmentStore().get(id);
+  const env = useEnvironmentStore().getById(id);
 
   if (!env) {
     throw createError({ statusCode: 404, statusMessage: 'Environment not found' });

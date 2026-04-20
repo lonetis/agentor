@@ -17,13 +17,13 @@ let _db: Database.Database | null = null;
 /**
  * Resolves the BETTER_AUTH_SECRET.
  * Reads from env var first, otherwise generates one and persists it to
- * `<dataDir>/.auth-secret` on first run so the secret survives restarts.
+ * `<dataDir>/auth.secret` on first run so the secret survives restarts.
  */
 function resolveAuthSecret(dataDir: string): string {
   const envSecret = process.env.BETTER_AUTH_SECRET?.trim();
   if (envSecret) return envSecret;
 
-  const secretPath = join(dataDir, '.auth-secret');
+  const secretPath = join(dataDir, 'auth.secret');
   if (existsSync(secretPath)) {
     return readFileSync(secretPath, 'utf-8').trim();
   }

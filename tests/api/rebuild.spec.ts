@@ -140,7 +140,7 @@ test.describe('POST /api/containers/:id/rebuild', () => {
     expect(status).toBeGreaterThanOrEqual(400);
   });
 
-  test('preserves port mappings across rebuild and reassigns workerId', async ({ request }) => {
+  test('preserves port mappings across rebuild (keyed by containerName)', async ({ request }) => {
     const container = await createWorker(request);
     const api = new ApiClient(request);
 
@@ -157,12 +157,13 @@ test.describe('POST /api/containers/:id/rebuild', () => {
       const { body } = await api.rebuildContainer(container.id);
       createdContainerIds.push(body.id);
 
-      // Mapping should still exist, but now point at the new container ID
+      // Mapping should still exist; containerName is the stable routing key so
+      // it does not change across rebuild, while the Docker container id does.
       const { body: mappings } = await api.listPortMappings();
       const found = mappings.find((m: { externalPort: number }) => m.externalPort === port);
       expect(found).toBeTruthy();
       expect(found.workerName).toBe(container.name);
-      expect(found.workerId).toBe(body.id);
+      expect(found.containerName).toBe(container.containerName);
       expect(found.internalPort).toBe(8080);
     } finally {
       await api.deletePortMapping(port);

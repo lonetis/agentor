@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
 
   const store = useDomainMappingStore();
-  const existing = store.get(id);
+  const existing = store.findById(id);
   if (!existing) {
     return { ok: true };
   }

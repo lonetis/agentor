@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
   const store = useInitScriptStore();
 
-  const existing = store.get(id);
+  const existing = store.getById(id);
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Init script not found' });
   }

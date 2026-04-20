@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { JsonStore } from './json-store';
+import { BuiltInAndUserStore } from './built-in-and-user-store';
 import { loadConfig } from './config';
 import type { NetworkMode, ExposeApis } from '../../shared/types';
 import type { BuiltInEnvironment } from './built-in-content';
@@ -160,141 +160,45 @@ export const DEFAULT_PACKAGE_MANAGER_DOMAINS = [
   'keys.openpgp.org',
 ];
 
-export class EnvironmentStore extends JsonStore<string, Environment> {
+/** Built-in environments live in `<DATA_DIR>/defaults/environments.json`.
+ * User-created environments live in `<DATA_DIR>/users/<userId>/environments.json`. */
+export class EnvironmentStore extends BuiltInAndUserStore<Environment, BuiltInEnvironment> {
   constructor(dataDir: string) {
-    super(dataDir, 'environments.json', (e) => e.id);
-  }
-
-  override list(): Environment[] {
-    return super.list().sort((a, b) => {
-      if (a.builtIn !== b.builtIn) return a.builtIn ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
+    super(dataDir, 'environments.json', 'environment');
   }
 
   async create(data: Omit<Environment, 'id' | 'builtIn' | 'createdAt' | 'updatedAt'>): Promise<Environment> {
+    if (!data.userId) throw new Error('create: userId is required for user environments');
     const now = new Date().toISOString();
     const env: Environment = { ...data, id: nanoid(12), builtIn: false, createdAt: now, updatedAt: now };
-    this.items.set(env.id, env);
-    await this.persist();
-    useLogger().info(`[environments] created "${env.name}" (${env.id}) for user ${env.userId ?? 'global'}`);
+    await this.setItem(data.userId, env);
+    useLogger().info(`[environment] created "${env.name}" (${env.id}) for user ${env.userId}`);
     return env;
   }
 
-  async update(id: string, data: Partial<Omit<Environment, 'id' | 'builtIn' | 'createdAt' | 'updatedAt'>>): Promise<Environment> {
-    const existing = this.items.get(id);
-    if (!existing) {
-      useLogger().warn(`[environments] update failed — not found: ${id}`);
-      throw new Error(`Environment not found: ${id}`);
-    }
-    if (existing.builtIn) {
-      useLogger().warn(`[environments] update rejected — built-in: "${existing.name}" (${id})`);
-      throw new Error('Cannot modify built-in environments');
-    }
-    const updated: Environment = {
-      ...existing,
-      ...data,
-      id: existing.id,
-      builtIn: existing.builtIn,
-      createdAt: existing.createdAt,
-      updatedAt: new Date().toISOString(),
+  update(id: string, data: Partial<Omit<Environment, 'id' | 'builtIn' | 'createdAt' | 'updatedAt'>>): Promise<Environment> {
+    return this.updateUserItem(id, data as Partial<Environment>);
+  }
+
+  protected override snapshotBuiltIn(item: BuiltInEnvironment, now: string): Environment {
+    return {
+      id: item.id,
+      name: item.name,
+      cpuLimit: item.cpuLimit,
+      memoryLimit: item.memoryLimit,
+      networkMode: item.networkMode as NetworkMode,
+      allowedDomains: item.allowedDomains,
+      includePackageManagerDomains: item.includePackageManagerDomains,
+      dockerEnabled: item.dockerEnabled,
+      envVars: item.envVars,
+      setupScript: item.setupScript,
+      exposeApis: item.exposeApis,
+      enabledCapabilityIds: item.enabledCapabilityIds,
+      enabledInstructionIds: item.enabledInstructionIds,
+      builtIn: true,
+      userId: null,
+      createdAt: now,
+      updatedAt: now,
     };
-    this.items.set(id, updated);
-    await this.persist();
-    useLogger().info(`[environments] updated "${updated.name}" (${id})`);
-    return updated;
-  }
-
-  async delete(id: string): Promise<void> {
-    const existing = this.items.get(id);
-    if (!existing) {
-      useLogger().warn(`[environments] delete failed — not found: ${id}`);
-      throw new Error(`Environment not found: ${id}`);
-    }
-    if (existing.builtIn) {
-      useLogger().warn(`[environments] delete rejected — built-in: "${existing.name}" (${id})`);
-      throw new Error('Cannot delete built-in environments');
-    }
-    this.items.delete(id);
-    await this.persist();
-    useLogger().info(`[environments] deleted "${existing.name}" (${id})`);
-  }
-
-  async seedBuiltIns(items: BuiltInEnvironment[]): Promise<void> {
-    let changed = false;
-    const now = new Date().toISOString();
-    const incomingIds = new Set(items.map((i) => i.id));
-    useLogger().debug(`[environments] seeding ${items.length} built-in environment(s)`);
-
-    for (const [id, entry] of this.items) {
-      if (entry.builtIn && !incomingIds.has(id)) {
-        useLogger().info(`[environments] removing stale built-in "${entry.name}" (${id})`);
-        this.items.delete(id);
-        changed = true;
-      }
-    }
-
-    for (const item of items) {
-      const existing = this.items.get(item.id);
-      if (!existing) {
-        useLogger().info(`[environments] adding built-in "${item.name}" (${item.id})`);
-        this.items.set(item.id, {
-          id: item.id,
-          name: item.name,
-          cpuLimit: item.cpuLimit,
-          memoryLimit: item.memoryLimit,
-          networkMode: item.networkMode as NetworkMode,
-          allowedDomains: item.allowedDomains,
-          includePackageManagerDomains: item.includePackageManagerDomains,
-          dockerEnabled: item.dockerEnabled,
-          envVars: item.envVars,
-          setupScript: item.setupScript,
-          exposeApis: item.exposeApis,
-          enabledCapabilityIds: item.enabledCapabilityIds,
-          enabledInstructionIds: item.enabledInstructionIds,
-          builtIn: true,
-          userId: null,
-          createdAt: now,
-          updatedAt: now,
-        });
-        changed = true;
-      } else if (this.builtInChanged(existing, item)) {
-        useLogger().info(`[environments] updating built-in "${item.name}" (${item.id})`);
-        this.items.set(item.id, {
-          ...existing,
-          name: item.name,
-          cpuLimit: item.cpuLimit,
-          memoryLimit: item.memoryLimit,
-          networkMode: item.networkMode as NetworkMode,
-          allowedDomains: item.allowedDomains,
-          includePackageManagerDomains: item.includePackageManagerDomains,
-          dockerEnabled: item.dockerEnabled,
-          envVars: item.envVars,
-          setupScript: item.setupScript,
-          exposeApis: item.exposeApis,
-          enabledCapabilityIds: item.enabledCapabilityIds,
-          enabledInstructionIds: item.enabledInstructionIds,
-          userId: null,
-          updatedAt: now,
-        });
-        changed = true;
-      }
-    }
-    if (changed) await this.persist();
-    useLogger().info(`[environments] seeded built-ins — ${this.items.size} environment(s) total`);
-  }
-
-  private builtInChanged(existing: Environment, incoming: BuiltInEnvironment): boolean {
-    return existing.name !== incoming.name
-      || existing.cpuLimit !== incoming.cpuLimit
-      || existing.memoryLimit !== incoming.memoryLimit
-      || existing.networkMode !== incoming.networkMode
-      || existing.dockerEnabled !== incoming.dockerEnabled
-      || existing.envVars !== incoming.envVars
-      || existing.setupScript !== incoming.setupScript
-      || JSON.stringify(existing.allowedDomains) !== JSON.stringify(incoming.allowedDomains)
-      || JSON.stringify(existing.exposeApis) !== JSON.stringify(incoming.exposeApis)
-      || JSON.stringify(existing.enabledCapabilityIds) !== JSON.stringify(incoming.enabledCapabilityIds)
-      || JSON.stringify(existing.enabledInstructionIds) !== JSON.stringify(incoming.enabledInstructionIds);
   }
 }

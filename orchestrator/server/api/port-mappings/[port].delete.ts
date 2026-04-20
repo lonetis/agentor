@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const store = usePortMappingStore();
-  const existing = store.get(port);
+  const existing = store.findByPort(port);
   if (!existing) {
     return { ok: true };
   }

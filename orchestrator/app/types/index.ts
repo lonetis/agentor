@@ -58,8 +58,10 @@ export interface AppTypeInfo {
 export interface PortMapping {
   externalPort: number;
   type: 'localhost' | 'external';
-  workerId: string;
+  /** Per-user worker name. */
   workerName: string;
+  /** Globally unique Docker container name. */
+  containerName: string;
   internalPort: number;
   appType?: string;
   instanceId?: string;
@@ -73,8 +75,10 @@ export interface DomainMapping {
   protocol: 'http' | 'https' | 'tcp';
   /** When true, also matches any single-label prefix (e.g. `*.sub.domain.com`). */
   wildcard: boolean;
-  workerId: string;
+  /** Per-user worker name. */
   workerName: string;
+  /** Globally unique Docker container name. */
+  containerName: string;
   internalPort: number;
   basicAuth?: {
     username: string;

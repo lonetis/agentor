@@ -18,7 +18,7 @@ import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
 export default defineEventHandler((event) => {
   const ctx = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
-  const script = useInitScriptStore().get(id);
+  const script = useInitScriptStore().getById(id);
 
   if (!script) {
     throw createError({ statusCode: 404, statusMessage: 'Init script not found' });

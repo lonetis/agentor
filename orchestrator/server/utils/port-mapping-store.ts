@@ -1,65 +1,67 @@
-import { JsonStore } from './json-store';
+import { UserScopedJsonStore } from './user-scoped-store';
 
 export interface PortMapping {
   externalPort: number;
   type: 'localhost' | 'external';
-  workerId: string;
+  /** Per-user worker name — shown in the UI ("happy-panda"). */
   workerName: string;
+  /** Globally unique Docker container name — used as the Traefik backend
+   * address and as the stable identifier across rebuild/unarchive (the
+   * container name stays the same, only the container ID changes). */
+  containerName: string;
   internalPort: number;
   appType?: string;
   instanceId?: string;
   userId: string;
 }
 
-export class PortMappingStore extends JsonStore<number, PortMapping> {
+export class PortMappingStore extends UserScopedJsonStore<number, PortMapping> {
   constructor(dataDir: string) {
     super(dataDir, 'port-mappings.json', (m) => m.externalPort);
   }
 
+  override list(): PortMapping[] {
+    return super.list().sort((a, b) => a.externalPort - b.externalPort);
+  }
+
+  /** Returns the (userId, mapping) pair that owns `externalPort`, or undefined.
+   * External ports are globally unique (the host can only bind one per port),
+   * so there is at most one owner. */
+  findByPort(externalPort: number): { userId: string; item: PortMapping } | undefined {
+    return this.findWithOwner((m) => m.externalPort === externalPort);
+  }
+
   async add(mapping: PortMapping): Promise<void> {
-    if (this.has(mapping.externalPort)) {
+    const existing = this.findByPort(mapping.externalPort);
+    if (existing) {
       useLogger().warn(`[port-mappings] duplicate port ${mapping.externalPort} rejected`);
       throw new Error(`Port ${mapping.externalPort} is already mapped`);
     }
-    this.items.set(mapping.externalPort, mapping);
-    await this.persist();
-    useLogger().info(`[port-mappings] added ${mapping.type} mapping :${mapping.externalPort} → ${mapping.workerName}:${mapping.internalPort}`);
+    await this.setItem(mapping.userId, mapping);
+    useLogger().info(
+      `[port-mappings] added ${mapping.type} mapping :${mapping.externalPort} → ${mapping.containerName}:${mapping.internalPort}`,
+    );
   }
 
   async remove(externalPort: number): Promise<boolean> {
-    const existed = this.items.delete(externalPort);
-    if (existed) {
-      await this.persist();
-      useLogger().info(`[port-mappings] removed mapping :${externalPort}`);
-    } else {
+    const owner = this.findByPort(externalPort);
+    if (!owner) {
       useLogger().debug(`[port-mappings] remove called for non-existent port ${externalPort}`);
+      return false;
     }
-    return existed;
+    await this.deleteItem(owner.userId, externalPort);
+    useLogger().info(`[port-mappings] removed mapping :${externalPort}`);
+    return true;
   }
 
-  async removeForWorkerName(workerName: string): Promise<number> {
-    const count = await this.removeWhere((m) => m.workerName === workerName);
-    if (count > 0) useLogger().info(`[port-mappings] removed ${count} mapping(s) for worker ${workerName}`);
+  async removeForContainerName(containerName: string): Promise<number> {
+    const count = await this.removeWhere((m) => m.containerName === containerName);
+    if (count > 0) useLogger().info(`[port-mappings] removed ${count} mapping(s) for container ${containerName}`);
     return count;
   }
 
-  async reassignWorkerContainer(workerName: string, newWorkerId: string): Promise<number> {
-    let changed = 0;
-    for (const mapping of this.items.values()) {
-      if (mapping.workerName === workerName && mapping.workerId !== newWorkerId) {
-        mapping.workerId = newWorkerId;
-        changed++;
-      }
-    }
-    if (changed > 0) {
-      await this.persist();
-      useLogger().info(`[port-mappings] reassigned ${changed} mapping(s) for worker ${workerName} to new container`);
-    }
-    return changed;
-  }
-
-  async cleanupStaleWorkers(knownWorkerNames: Set<string>): Promise<number> {
-    const count = await this.removeWhere((m) => !knownWorkerNames.has(m.workerName));
+  async cleanupStaleContainers(knownContainerNames: Set<string>): Promise<number> {
+    const count = await this.removeWhere((m) => !knownContainerNames.has(m.containerName));
     if (count > 0) useLogger().warn(`[port-mappings] cleaned up ${count} stale mapping(s)`);
     return count;
   }

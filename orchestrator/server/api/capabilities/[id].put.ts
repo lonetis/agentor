@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
   const body = await readBody(event);
 
-  const existing = useCapabilityStore().get(id);
+  const existing = useCapabilityStore().getById(id);
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Capability not found' });
   }

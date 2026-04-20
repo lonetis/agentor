@@ -18,7 +18,7 @@ import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
 export default defineEventHandler((event) => {
   const ctx = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
-  const capability = useCapabilityStore().get(id);
+  const capability = useCapabilityStore().getById(id);
 
   if (!capability) {
     throw createError({ statusCode: 404, statusMessage: 'Capability not found' });

@@ -17,106 +17,94 @@ export default defineNitroPlugin(async () => {
   const logCollector = useLogCollector();
   await logCollector.attachSelf();
 
-  // Initialize auth (creates SQLite database and tables on first run)
+  // Auth DB + Docker network are independent of each other.
   useAuth();
-  await migrateAuth();
+  const dockerService = useDockerService();
+  await Promise.all([migrateAuth(), dockerService.ensureNetwork()]);
   logger.info('[agentor] auth initialized');
 
-  const dockerService = useDockerService();
-  await dockerService.ensureNetwork();
-
-  // Initialize storage manager (auto-detect volume vs directory mode from /data mount)
+  // Storage manager must finish before any store init — stores resolve paths
+  // via `<DATA_DIR>/...` and seedBuiltIns writes into `<DATA_DIR>/defaults/`.
   const storageManager = useStorageManager();
   await storageManager.init();
+  await storageManager.ensureDefaultsDir();
 
-  // Initialize per-user env-var store (one JSON file keyed by user id) and
-  // per-user credential manager (wraps StorageManager for lazy creation of
-  // `<DATA_DIR>/users/<userId>/credentials/*.json`).
   const userEnvStore = useUserEnvStore();
-  await userEnvStore.init();
   const userCredentialManager = useUserCredentialManager();
-
   const containerManager = useContainerManager();
   containerManager.setStorageManager(storageManager);
   containerManager.setUserEnvStore(userEnvStore);
   containerManager.setUserCredentialManager(userCredentialManager);
-  await containerManager.sync();
 
-  // Initialize environment store (load from disk, seed built-ins) and connect to container manager
+  // All stores load independently; built-in seeding also writes to a separate
+  // defaults/ file per store, so we fan them out. `containerManager.sync()` is
+  // a Docker API roundtrip and is independent of store state (it only reads
+  // workers via optional chaining); it runs in parallel here and
+  // `reconcileWorkers()` below re-upserts once the worker store is ready.
   const environmentStore = useEnvironmentStore();
-  await environmentStore.init();
-  await environmentStore.seedBuiltIns(await loadBuiltInEnvironments());
-  containerManager.setEnvironmentStore(environmentStore);
-
-  // Initialize capability and instruction stores (load from disk, seed built-ins)
   const capabilityStore = useCapabilityStore();
-  await capabilityStore.init();
-  await capabilityStore.seedBuiltIns(await loadBuiltInCapabilities());
-  containerManager.setCapabilityStore(capabilityStore);
-
   const instructionStore = useInstructionStore();
-  await instructionStore.init();
-  await instructionStore.seedBuiltIns(await loadBuiltInInstructions());
-  containerManager.setInstructionStore(instructionStore);
-
-  // Initialize init script store (load from disk, seed built-ins)
   const initScriptStore = useInitScriptStore();
-  await initScriptStore.init();
-  await initScriptStore.seedBuiltIns(await loadBuiltInInitScripts());
-
-  // Initialize worker store (load from disk) and connect to container manager
   const workerStore = useWorkerStore();
-  await workerStore.init();
-  containerManager.setWorkerStore(workerStore);
+  const portMappingStore = usePortMappingStore();
+  const domainMappingStore = useDomainMappingStore();
 
-  // Reconcile worker store with Docker state (register new containers, archive missing ones)
+  await Promise.all([
+    userEnvStore.init(),
+    (async () => {
+      await environmentStore.init();
+      await environmentStore.seedBuiltIns(await loadBuiltInEnvironments());
+    })(),
+    (async () => {
+      await capabilityStore.init();
+      await capabilityStore.seedBuiltIns(await loadBuiltInCapabilities());
+    })(),
+    (async () => {
+      await instructionStore.init();
+      await instructionStore.seedBuiltIns(await loadBuiltInInstructions());
+    })(),
+    (async () => {
+      await initScriptStore.init();
+      await initScriptStore.seedBuiltIns(await loadBuiltInInitScripts());
+    })(),
+    workerStore.init(),
+    portMappingStore.init(),
+    domainMappingStore.init(),
+    containerManager.sync(),
+  ]);
+
+  containerManager.setEnvironmentStore(environmentStore);
+  containerManager.setCapabilityStore(capabilityStore);
+  containerManager.setInstructionStore(instructionStore);
+  containerManager.setWorkerStore(workerStore);
   await containerManager.reconcileWorkers();
 
-  // Initialize port mapping store (load from disk) and cleanup stale workers.
   // Mappings survive stop/archive/unarchive/rebuild, so the cleanup set
-  // includes BOTH active containers and archived workers (matched by name).
-  const portMappingStore = usePortMappingStore();
-  await portMappingStore.init();
+  // includes BOTH active containers and archived workers (matched by containerName).
+  const knownContainerNames = new Set<string>();
+  for (const c of containerManager.list()) knownContainerNames.add(c.containerName);
+  for (const w of workerStore.list()) knownContainerNames.add(w.containerName);
 
-  const knownWorkerNames = new Set<string>();
-  for (const c of containerManager.list()) knownWorkerNames.add(c.name);
-  for (const w of workerStore.list()) knownWorkerNames.add(w.name);
+  const [staleCount, staleDomainCount] = await Promise.all([
+    portMappingStore.cleanupStaleContainers(knownContainerNames),
+    domainMappingStore.cleanupStaleContainers(knownContainerNames),
+  ]);
+  if (staleCount > 0) logger.info(`[agentor] cleaned up ${staleCount} stale port mapping(s)`);
+  if (staleDomainCount > 0) logger.info(`[agentor] cleaned up ${staleDomainCount} stale domain mapping(s)`);
 
-  const staleCount = await portMappingStore.cleanupStaleWorkers(knownWorkerNames);
-  if (staleCount > 0) {
-    logger.info(`[agentor] cleaned up ${staleCount} stale port mapping(s)`);
-  }
-
-  // Initialize domain mapping store (load from disk) and cleanup stale workers
-  const domainMappingStore = useDomainMappingStore();
-  await domainMappingStore.init();
-
-  const staleDomainCount = await domainMappingStore.cleanupStaleWorkers(knownWorkerNames);
-  if (staleDomainCount > 0) {
-    logger.info(`[agentor] cleaned up ${staleDomainCount} stale domain mapping(s)`);
-  }
-
-  // Initialize Traefik manager (reconcile Traefik with persisted port + domain
-  // mappings — Traefik handles both, with port mappings as dedicated TCP
-  // entrypoints alongside HTTP/HTTPS/TCP routing for domain mappings).
+  // Traefik reads the mapping stores; init it once they are clean.
   const traefikManager = useTraefikManager();
   await traefikManager.init();
 
-  // Initialize update checker (polls GHCR for newer images in production mode)
   const updateChecker = useUpdateChecker();
-  await updateChecker.init();
-
-  // Initialize usage checker (polls agent usage APIs for OAuth-authenticated
-  // agents — per-user).
   const usageChecker = useUsageChecker();
   usageChecker.setUserEnvStore(userEnvStore);
   usageChecker.setCredentialManager(userCredentialManager);
-  await usageChecker.init();
+  await Promise.all([updateChecker.init(), usageChecker.init()]);
 
   // Start the orphan sweeper — on a 10-minute interval, prunes per-user
-  // data (env vars row, credentials dir, usage state) for users that no
-  // longer exist in the auth DB. Uses a timer rather than a middleware to
-  // avoid ever touching better-auth's request/response handling.
+  // data for users that no longer exist in the auth DB. Uses a timer rather
+  // than a middleware to avoid ever touching better-auth's request pipeline.
   useOrphanSweeper().start();
 
   logger.info(`[agentor] Synced ${containerManager.list().length} containers, ${workerStore.listArchived().length} archived, ${environmentStore.list().length} environments, ${capabilityStore.list().length} capabilities, ${instructionStore.list().length} instructions, ${initScriptStore.list().length} init scripts, ${portMappingStore.list().length} port mappings, ${domainMappingStore.list().length} domain mappings`);

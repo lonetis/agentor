@@ -25,8 +25,8 @@ defineRouteMeta({
             properties: {
               externalPort: { type: 'integer' },
               type: { type: 'string', enum: ['localhost', 'external'] },
-              workerId: { type: 'string' },
-              workerName: { type: 'string' },
+              workerName: { type: 'string', description: 'Per-user worker name' },
+              containerName: { type: 'string', description: 'Globally unique Docker container name' },
               internalPort: { type: 'integer' },
               appType: { type: 'string' },
               instanceId: { type: 'string' },

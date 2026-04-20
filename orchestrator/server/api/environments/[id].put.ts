@@ -50,7 +50,7 @@ export default defineEventHandler(async (event) => {
 
   const store = useEnvironmentStore();
 
-  const existing = store.get(id);
+  const existing = store.getById(id);
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Environment not found' });
   }

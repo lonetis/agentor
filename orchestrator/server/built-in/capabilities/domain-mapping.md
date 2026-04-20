@@ -245,7 +245,7 @@ TCP mappings route at the transport layer using TLS SNI — path and basic auth 
 curl "$ORCHESTRATOR_URL/api/domain-mappings"
 ```
 
-Returns a JSON array of all active domain mappings. Each entry includes `id`, `subdomain`, `baseDomain`, `path`, `protocol`, `wildcard`, `workerId`, `workerName`, `internalPort`, and optional `basicAuth`.
+Returns a JSON array of the caller's active domain mappings. Each entry includes `id`, `subdomain`, `baseDomain`, `path`, `protocol`, `wildcard`, `workerName` (your per-user worker name), `containerName` (the globally unique Docker container name), `internalPort`, and optional `basicAuth`.
 
 ### Delete a domain mapping
 

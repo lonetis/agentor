@@ -20,6 +20,7 @@ test.describe('Port Mappings Panel', () => {
 
   test.describe('With a worker', () => {
     let containerId: string;
+    let containerDockerName: string;
     let _portCounter = 0;
     function uniquePort(): number {
       const base = 10000 + Math.floor(Math.random() * 40000);
@@ -29,6 +30,7 @@ test.describe('Port Mappings Panel', () => {
     test.beforeEach(async ({ request }) => {
       const container = await createWorker(request);
       containerId = container.id;
+      containerDockerName = container.containerName as string;
     });
 
     test.afterEach(async ({ request }) => {
@@ -36,7 +38,7 @@ test.describe('Port Mappings Panel', () => {
       const api = new ApiClient(request);
       const { body: mappings } = await api.listPortMappings();
       for (const m of mappings) {
-        if (m.workerId === containerId) {
+        if (m.containerName === containerDockerName) {
           try { await api.deletePortMapping(m.externalPort); } catch { /* ignore */ }
         }
       }

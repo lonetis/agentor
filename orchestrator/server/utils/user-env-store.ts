@@ -1,4 +1,5 @@
-import { JsonStore } from './json-store';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { UserEnvVars, UserEnvVarsInput, UserCustomEnvVar } from '../../shared/types';
 
 export const USER_ENV_KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
@@ -33,9 +34,53 @@ export function zeroUserEnvVars(userId: string): UserEnvVars {
   };
 }
 
-export class UserEnvVarStore extends JsonStore<string, UserEnvVars> {
+const FILENAME = 'env-vars.json';
+
+/** Per-user env vars, persisted as a single JSON object at
+ * `<DATA_DIR>/users/<userId>/env-vars.json`. The `userId` is the directory
+ * name; it is not persisted inside the file itself.
+ *
+ * Serialized writes per user via an in-memory save queue. */
+export class UserEnvVarStore {
+  private items = new Map<string, UserEnvVars>();
+  private dataDir: string;
+  private saveQueues = new Map<string, Promise<void>>();
+
   constructor(dataDir: string) {
-    super(dataDir, 'user-env-vars.json', (e) => e.userId);
+    this.dataDir = dataDir;
+  }
+
+  async init(): Promise<void> {
+    const usersDir = join(this.dataDir, 'users');
+    let userIds: string[] = [];
+    try {
+      userIds = await readdir(usersDir);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw err;
+    }
+    await Promise.all(
+      userIds
+        .filter((userId) => !userId.startsWith('.'))
+        .map((userId) => this.loadUser(userId)),
+    );
+  }
+
+  async loadUser(userId: string): Promise<void> {
+    const filePath = this.filePath(userId);
+    try {
+      const raw = await readFile(filePath, 'utf-8');
+      const parsed = JSON.parse(raw) as Omit<UserEnvVars, 'userId'>;
+      this.items.set(userId, { userId, ...parsed });
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+      useLogger().error(`[user-env-store] failed to load ${filePath}: ${err instanceof Error ? err.message : err}`);
+      throw err;
+    }
+  }
+
+  list(): UserEnvVars[] {
+    return Array.from(this.items.values());
   }
 
   getOrDefault(userId: string): UserEnvVars {
@@ -59,15 +104,45 @@ export class UserEnvVarStore extends JsonStore<string, UserEnvVars> {
       updatedAt: new Date().toISOString(),
     };
     this.items.set(userId, merged);
-    await this.persist();
+    await this.persist(userId);
     useLogger().debug(`[user-env-store] upserted env vars for user ${userId}`);
     return merged;
   }
 
   async delete(userId: string): Promise<void> {
-    if (this.items.delete(userId)) {
-      await this.persist();
-      useLogger().info(`[user-env-store] removed env vars for user ${userId}`);
+    if (!this.items.has(userId)) return;
+    this.items.delete(userId);
+    try {
+      await rm(this.filePath(userId), { force: true });
+    } catch {
+      // best effort — directory may already be gone
+    }
+    useLogger().info(`[user-env-store] removed env vars for user ${userId}`);
+  }
+
+  private filePath(userId: string): string {
+    return join(this.dataDir, 'users', userId, FILENAME);
+  }
+
+  private persist(userId: string): Promise<void> {
+    const prev = this.saveQueues.get(userId) ?? Promise.resolve();
+    const next = prev.then(() => this.write(userId));
+    this.saveQueues.set(userId, next.catch(() => {}));
+    return next;
+  }
+
+  private async write(userId: string): Promise<void> {
+    const entry = this.items.get(userId);
+    if (!entry) return;
+    const filePath = this.filePath(userId);
+    try {
+      await mkdir(join(this.dataDir, 'users', userId), { recursive: true });
+      // Strip `userId` — it's implied by the file location.
+      const { userId: _u, ...body } = entry;
+      await writeFile(filePath, JSON.stringify(body, null, 2));
+    } catch (err) {
+      useLogger().error(`[user-env-store] failed to save ${filePath}: ${err instanceof Error ? err.message : err}`);
+      throw err;
     }
   }
 }

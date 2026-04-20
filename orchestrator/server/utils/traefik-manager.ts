@@ -244,7 +244,7 @@ export class TraefikManager {
           ...(m.wildcard ? { priority: 1 } : {}),
         };
         config.tcp.services[`tcp-${safeId}`] = {
-          loadBalancer: { servers: [{ address: `${m.workerName}:${m.internalPort}` }] },
+          loadBalancer: { servers: [{ address: `${m.containerName}:${m.internalPort}` }] },
         };
       } else {
         const middlewares: string[] = [];
@@ -285,7 +285,7 @@ export class TraefikManager {
           ...(m.wildcard ? { priority: 1 } : {}),
         };
         config.http.services[`http-${safeId}`] = {
-          loadBalancer: { servers: [{ url: `http://${m.workerName}:${m.internalPort}` }] },
+          loadBalancer: { servers: [{ url: `http://${m.containerName}:${m.internalPort}` }] },
         };
       }
     }
@@ -302,7 +302,7 @@ export class TraefikManager {
         entryPoints: [name],
       };
       config.tcp.services[name] = {
-        loadBalancer: { servers: [{ address: `${m.workerName}:${m.internalPort}` }] },
+        loadBalancer: { servers: [{ address: `${m.containerName}:${m.internalPort}` }] },
       };
     }
 

@@ -692,9 +692,8 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `POST /api/containers/:id/restart` — restart worker
 - `DELETE /api/containers/:id` — remove worker (cleans up port/domain mappings, volumes, store)
 - `POST /api/containers/:id/rebuild` — rebuild worker (destroys and recreates with latest image, preserves workspace, agents, and DinD volumes plus metadata — equivalent to archive + unarchive)
-- `POST /api/containers/:id/archive` — archive (port/domain mappings are preserved and reattach to the new container on unarchive)
-- `POST /api/containers/:id/rebuild` — rebuild worker (port/domain mappings are preserved; their `workerId` field is reassigned to the new container automatically)
-- Port and domain mappings survive stop/restart, archive/unarchive, and rebuild. Mappings are only removed on permanent delete (`DELETE /api/containers/:id` or `DELETE /api/archived/:name`).
+- `POST /api/containers/:id/archive` — archive (port/domain mappings are preserved and reattach to the new container on unarchive via the stable `containerName`)
+- Port and domain mappings survive stop/restart, archive/unarchive, and rebuild — they are keyed by the globally unique `containerName` which is stable across the worker's whole lifecycle. Traefik routes to the container by DNS name, so lookups pick up the new container after rebuild/unarchive without any mapping changes. Mappings are only removed on permanent delete (`DELETE /api/containers/:id` or `DELETE /api/archived/:name`).
 - `GET /api/containers/:id/logs` — logs with optional ?tail=N (default 200, max 10000)
 - `GET /api/containers/:id/workspace` — download workspace .tar.gz
 - `POST /api/containers/:id/workspace` — upload files (multipart, path traversal protection)
@@ -719,14 +718,14 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 
 ### 24.5 Port Mappings
 - `GET /api/port-mappings` — list all
-- `POST /api/port-mappings` — create (externalPort, internalPort, type, workerId/workerName)
+- `POST /api/port-mappings` — create (externalPort, internalPort, type, workerId or workerName). `workerName` accepts either the per-user short name (dashboard) or the globally unique Docker `containerName` (worker-API shortcut via `$WORKER_CONTAINER_NAME`). Response includes both `workerName` and `containerName`.
 - `DELETE /api/port-mappings/:port` — remove
 - `GET /api/port-mapper/status` — counts by type
 - Validations: port range 1-65535, type localhost/external, worker must exist and be running, duplicate port 409
 
 ### 24.6 Domain Mappings
 - `GET /api/domain-mappings` — list all
-- `POST /api/domain-mappings` — create (subdomain, baseDomain, path, protocol, wildcard, workerId/workerName, internalPort, basicAuth)
+- `POST /api/domain-mappings` — create (subdomain, baseDomain, path, protocol, wildcard, workerId or workerName, internalPort, basicAuth). `workerName` accepts either the per-user short name or the `containerName`. Response includes both `workerName` and `containerName`.
 - `POST /api/domain-mappings/batch` — batch create (single Traefik reconcile). Accepts `wildcard` per item.
 - `DELETE /api/domain-mappings/:id` — remove (idempotent)
 - `GET /api/domain-mapper/status` — enabled flag, baseDomains list, baseDomainConfigs (domain + challengeType + optional dnsProvider), hasSelfSignedCa flag, dashboard URL

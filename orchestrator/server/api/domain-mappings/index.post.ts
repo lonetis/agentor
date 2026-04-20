@@ -132,12 +132,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const containerManager = useContainerManager();
-  // Resolve worker by ID or name
+  // Resolve worker by container ID, globally unique container name (worker-API
+  // shortcut via `WORKER_CONTAINER_NAME`), or per-user worker name (UI).
   let containerInfo;
   if (body.workerId) {
     containerInfo = containerManager.get(body.workerId);
   } else if (body.workerName) {
-    containerInfo = containerManager.list().find((c) => c.name === body.workerName);
+    containerInfo = containerManager.findByContainerName(body.workerName)
+      ?? containerManager.list().find((c) => c.name === body.workerName);
   }
   if (!containerInfo || containerInfo.status !== 'running') {
     throw createError({
@@ -164,8 +166,8 @@ export default defineEventHandler(async (event) => {
     path: body.path || '',
     protocol: body.protocol,
     wildcard,
-    workerId: containerInfo.id,
     workerName: containerInfo.name,
+    containerName: containerInfo.containerName,
     internalPort: intPort,
     userId: containerInfo.userId,
     ...(hasUser && hasPass

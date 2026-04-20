@@ -163,7 +163,8 @@ export default defineEventHandler(async (event) => {
     if (item.workerId) {
       containerInfo = containerManager.get(item.workerId);
     } else if (item.workerName) {
-      containerInfo = containerManager.list().find((c) => c.name === item.workerName);
+      containerInfo = containerManager.findByContainerName(item.workerName)
+        ?? containerManager.list().find((c) => c.name === item.workerName);
     }
     if (!containerInfo || containerInfo.status !== 'running') {
       throw createError({
@@ -190,8 +191,8 @@ export default defineEventHandler(async (event) => {
       path: item.path || '',
       protocol: item.protocol,
       wildcard: itemWildcard,
-      workerId: containerInfo.id,
       workerName: containerInfo.name,
+      containerName: containerInfo.containerName,
       internalPort: intPort,
       userId: containerInfo.userId,
       ...(hasUser && hasPass

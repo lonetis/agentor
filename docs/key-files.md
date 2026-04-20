@@ -49,7 +49,9 @@
 - `orchestrator/server/utils/environments.ts` - EnvironmentStore class, network mode types, package manager domains list
 - `orchestrator/server/utils/worker-store.ts` - WorkerStore class (persistent worker metadata for archive/unarchive)
 - `orchestrator/server/utils/user-credentials.ts` - UserCredentialManager class (per-user OAuth credential files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json`, ensures dirs/files, generates per-user bind strings, statusList + reset) + AGENT_CREDENTIAL_MAPPINGS registry
-- `orchestrator/server/utils/user-env-store.ts` - UserEnvVarStore class (per-user JsonStore at `<DATA_DIR>/user-env-vars.json` — well-known agent API keys + GitHub token + arbitrary customEnvVars per userId, with renderUserEnvVars helper)
+- `orchestrator/server/utils/user-env-store.ts` - UserEnvVarStore class (one file per user at `<DATA_DIR>/users/<userId>/env-vars.json` — well-known agent API keys + GitHub token + arbitrary customEnvVars, with renderUserEnvVars helper)
+- `orchestrator/server/utils/user-scoped-store.ts` - UserScopedJsonStore<K, V> base class. Loads from `<DATA_DIR>/users/*/<filename>` and keeps `Map<userId, Map<K, V>>` in memory; each user's file is persisted independently. Used by WorkerStore, PortMappingStore, DomainMappingStore, and the user half of the built-in-plus-user stores (Environments, Capabilities, Instructions, InitScripts).
+- `orchestrator/server/utils/defaults-store.ts` - DefaultsStore<V> base class. Single-file JSON store at `<DATA_DIR>/defaults/<filename>` holding built-in, platform-seeded entries. Written by `seedBuiltIns()`; never mutated by user-facing APIs.
 - `orchestrator/server/utils/storage.ts` - StorageManager class (auto-detects volume vs directory storage mode, provides bind string construction and cleanup for worker workspaces, agent config data, DinD, Traefik certs)
 - `orchestrator/server/utils/selfsigned-certs.ts` - SelfSignedCertManager class (CA + wildcard cert generation using node-forge for selfsigned domains)
 - `orchestrator/server/utils/capability-store.ts` - CapabilityStore class (extends JsonStore, built-in seeding)

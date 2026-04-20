@@ -64,12 +64,16 @@ export default defineEventHandler(async (event) => {
   const store = usePortMappingStore();
   const containerManager = useContainerManager();
 
-  // Resolve worker by ID or name
+  // Resolve worker by container ID, container name (worker-facing API shortcut),
+  // or by per-user worker name (UI). All three paths converge on a ContainerInfo.
   let containerInfo;
   if (body.workerId) {
     containerInfo = containerManager.get(body.workerId);
   } else if (body.workerName) {
-    containerInfo = containerManager.list().find((c) => c.name === body.workerName);
+    // `workerName` accepts either the per-user short name (admin/UI) or the
+    // globally unique Docker container name (worker-facing API shortcut).
+    containerInfo = containerManager.findByContainerName(body.workerName)
+      ?? containerManager.list().find((c) => c.name === body.workerName);
   }
   if (!containerInfo || containerInfo.status !== 'running') {
     throw createError({
@@ -83,8 +87,8 @@ export default defineEventHandler(async (event) => {
   const mapping = {
     externalPort: extPort,
     type: body.type as 'localhost' | 'external',
-    workerId: containerInfo.id,
     workerName: containerInfo.name,
+    containerName: containerInfo.containerName,
     internalPort: intPort,
     appType: body.appType as string | undefined,
     instanceId: body.instanceId as string | undefined,

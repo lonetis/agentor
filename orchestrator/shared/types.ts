@@ -41,7 +41,13 @@ export type ContainerStatus = 'creating' | 'running' | 'stopped' | 'removing' | 
 
 export interface ContainerInfo {
   id: string;
+  /** Per-user worker name (e.g. the short auto-generated `happy-panda` or a
+   * user-provided slug). Two users can have workers with the same `name`. */
   name: string;
+  /** Globally unique Docker container name — `<containerPrefix>-<userId>-<name>`.
+   * Used as the stable DNS identifier for routing (Traefik services point here)
+   * and as the prefix for per-worker volume names. */
+  containerName: string;
   displayName?: string;
   repos?: RepoConfig[];
   mounts?: MountConfig[];

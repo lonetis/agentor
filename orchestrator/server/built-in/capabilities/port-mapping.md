@@ -55,7 +55,7 @@ This maps host port 9000 to port 3000 inside your container. The user can then o
 curl "$ORCHESTRATOR_URL/api/port-mappings"
 ```
 
-Returns a JSON array of all active port mappings across all workers. Each entry includes `externalPort`, `type`, `workerId`, `workerName`, and `internalPort`.
+Returns a JSON array of the caller's active port mappings. Each entry includes `externalPort`, `type`, `workerName` (your per-user worker name), `containerName` (the globally unique Docker container name), and `internalPort`.
 
 ### Delete a port mapping
 

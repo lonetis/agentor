@@ -1,4 +1,4 @@
-import { JsonStore } from './json-store';
+import { UserScopedJsonStore } from './user-scoped-store';
 
 export interface DomainMapping {
   id: string;
@@ -13,8 +13,11 @@ export interface DomainMapping {
    * ACME cannot issue wildcard certificates.
    */
   wildcard: boolean;
-  workerId: string;
+  /** Per-user worker name — shown in the UI. */
   workerName: string;
+  /** Globally unique Docker container name — used as the Traefik backend
+   * address and as the stable identifier across rebuild/unarchive. */
+  containerName: string;
   internalPort: number;
   basicAuth?: {
     username: string;
@@ -23,7 +26,7 @@ export interface DomainMapping {
   userId: string;
 }
 
-export class DomainMappingStore extends JsonStore<string, DomainMapping> {
+export class DomainMappingStore extends UserScopedJsonStore<string, DomainMapping> {
   constructor(dataDir: string) {
     super(dataDir, 'domain-mappings.json', (m) => m.id);
   }
@@ -31,16 +34,24 @@ export class DomainMappingStore extends JsonStore<string, DomainMapping> {
   override async init(): Promise<void> {
     await super.init();
     // Backfill missing `wildcard` field on legacy records persisted before the feature existed.
-    for (const m of this.items.values()) {
-      if (typeof m.wildcard !== 'boolean') m.wildcard = false;
+    for (const map of this.items.values()) {
+      for (const m of map.values()) {
+        if (typeof m.wildcard !== 'boolean') m.wildcard = false;
+      }
     }
+  }
+
+  /** Returns the (userId, mapping) pair that owns `id`, or undefined. Mapping
+   * ids are nanoid-generated so globally unique. */
+  findById(id: string): { userId: string; item: DomainMapping } | undefined {
+    return this.findWithOwner((m) => m.id === id);
   }
 
   async add(mapping: DomainMapping): Promise<void> {
     const fullDomain = mapping.subdomain ? `${mapping.subdomain}.${mapping.baseDomain}` : mapping.baseDomain;
     const fullRoute = mapping.path ? `${fullDomain}${mapping.path}` : fullDomain;
 
-    for (const existing of this.items.values()) {
+    for (const existing of this.list()) {
       if (existing.subdomain !== mapping.subdomain || existing.baseDomain !== mapping.baseDomain) continue;
 
       // HTTPS and TCP both use Traefik's websecure entrypoint (port 443) —
@@ -58,47 +69,33 @@ export class DomainMappingStore extends JsonStore<string, DomainMapping> {
         throw new Error(`'${fullRoute}' is already mapped for protocol '${mapping.protocol}'`);
       }
     }
-    this.items.set(mapping.id, mapping);
-    await this.persist();
-    useLogger().info(`[domain-mappings] added ${mapping.protocol} mapping ${fullRoute} → ${mapping.workerName}:${mapping.internalPort}${mapping.basicAuth ? ' (auth)' : ''}`);
+    await this.setItem(mapping.userId, mapping);
+    useLogger().info(
+      `[domain-mappings] added ${mapping.protocol} mapping ${fullRoute} → ${mapping.containerName}:${mapping.internalPort}${mapping.basicAuth ? ' (auth)' : ''}`,
+    );
   }
 
   async remove(id: string): Promise<boolean> {
-    const mapping = this.items.get(id);
-    const existed = this.items.delete(id);
-    if (existed) {
-      await this.persist();
-      const fullDomain = mapping!.subdomain ? `${mapping!.subdomain}.${mapping!.baseDomain}` : mapping!.baseDomain;
-      useLogger().info(`[domain-mappings] removed ${mapping!.protocol} mapping ${fullDomain} (${id})`);
-    } else {
+    const owner = this.findById(id);
+    if (!owner) {
       useLogger().debug(`[domain-mappings] remove called for non-existent id ${id}`);
+      return false;
     }
-    return existed;
+    const mapping = owner.item;
+    await this.deleteItem(owner.userId, id);
+    const fullDomain = mapping.subdomain ? `${mapping.subdomain}.${mapping.baseDomain}` : mapping.baseDomain;
+    useLogger().info(`[domain-mappings] removed ${mapping.protocol} mapping ${fullDomain} (${id})`);
+    return true;
   }
 
-  async removeForWorkerName(workerName: string): Promise<number> {
-    const count = await this.removeWhere((m) => m.workerName === workerName);
-    if (count > 0) useLogger().info(`[domain-mappings] removed ${count} mapping(s) for worker ${workerName}`);
+  async removeForContainerName(containerName: string): Promise<number> {
+    const count = await this.removeWhere((m) => m.containerName === containerName);
+    if (count > 0) useLogger().info(`[domain-mappings] removed ${count} mapping(s) for container ${containerName}`);
     return count;
   }
 
-  async reassignWorkerContainer(workerName: string, newWorkerId: string): Promise<number> {
-    let changed = 0;
-    for (const mapping of this.items.values()) {
-      if (mapping.workerName === workerName && mapping.workerId !== newWorkerId) {
-        mapping.workerId = newWorkerId;
-        changed++;
-      }
-    }
-    if (changed > 0) {
-      await this.persist();
-      useLogger().info(`[domain-mappings] reassigned ${changed} mapping(s) for worker ${workerName} to new container`);
-    }
-    return changed;
-  }
-
-  async cleanupStaleWorkers(knownWorkerNames: Set<string>): Promise<number> {
-    const count = await this.removeWhere((m) => !knownWorkerNames.has(m.workerName));
+  async cleanupStaleContainers(knownContainerNames: Set<string>): Promise<number> {
+    const count = await this.removeWhere((m) => !knownContainerNames.has(m.containerName));
     if (count > 0) useLogger().warn(`[domain-mappings] cleaned up ${count} stale mapping(s)`);
     return count;
   }

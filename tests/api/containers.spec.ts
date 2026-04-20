@@ -59,11 +59,13 @@ test.describe('Containers API', () => {
       expect(names.size).toBe(5);
     });
 
-    test('generated names are valid container names', async ({ request }) => {
+    test('generated names are valid per-user worker names', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.generateName();
-      // Container names: prefix + adjective-animal (lowercase, dashes)
-      expect(body.name).toMatch(/^agentor-worker-[a-z]+-[a-z]+$/);
+      // Per-user names: adjective-animal (lowercase, dashes). The
+      // containerPrefix + userId segment is added server-side when building the
+      // Docker container name.
+      expect(body.name).toMatch(/^[a-z]+-[a-z]+$/);
     });
   });
 

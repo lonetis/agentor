@@ -12,10 +12,13 @@ test.describe('Port Mappings API', () => {
   let containerId: string;
   let containerName: string;
 
+  let containerDockerName: string;
+
   test.beforeAll(async ({ request }) => {
     const container = await createWorker(request);
     containerId = container.id;
     containerName = container.name as string;
+    containerDockerName = container.containerName as string;
   });
 
   test.afterAll(async ({ request }) => {
@@ -23,7 +26,7 @@ test.describe('Port Mappings API', () => {
     const api = new ApiClient(request);
     const { body: mappings } = await api.listPortMappings();
     for (const m of mappings) {
-      if (m.workerId === containerId) {
+      if (m.containerName === containerDockerName) {
         try { await api.deletePortMapping(m.externalPort); } catch { /* ignore */ }
       }
     }

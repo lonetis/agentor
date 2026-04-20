@@ -22,13 +22,13 @@ async function loadDetails() {
 
   fetches.push(
     $fetch<PortMapping[]>('/api/port-mappings')
-      .then((all) => { portMappings.value = all.filter((m) => m.workerId === props.container.id); })
+      .then((all) => { portMappings.value = all.filter((m) => m.containerName === props.container.containerName); })
       .catch(() => {}),
   );
 
   fetches.push(
     $fetch<DomainMapping[]>('/api/domain-mappings')
-      .then((all) => { domainMappings.value = all.filter((m) => m.workerId === props.container.id); })
+      .then((all) => { domainMappings.value = all.filter((m) => m.containerName === props.container.containerName); })
       .catch(() => {}),
   );
 

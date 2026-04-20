@@ -30,6 +30,22 @@ interface ResolvedEnvConfig {
   instructionsJson: InstructionJsonEntry[];
 }
 
+const WORKER_MANAGED_LABEL = 'agentor.managed';
+const WORKER_USER_ID_LABEL = 'agentor.user-id';
+const WORKER_NAME_LABEL = 'agentor.worker-name';
+
+/** Sanitize a user-provided worker name: lowercase, hyphen-safe, <=48 chars.
+ * Matches the Docker container name charset when combined with
+ * `<containerPrefix>-<userId>-<name>`. */
+function sanitizeWorkerName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 48);
+}
+
 export class ContainerManager {
   private containers: Map<string, ContainerInfo> = new Map();
   private dockerService: DockerService;
@@ -72,6 +88,19 @@ export class ContainerManager {
 
   setStorageManager(manager: StorageManager): void {
     this.storageManager = manager;
+  }
+
+  /** Build a Docker-safe globally unique container name from userId + worker name. */
+  buildContainerName(userId: string, name: string): string {
+    return `${this.config.containerPrefix}-${userId}-${name}`;
+  }
+
+  /** VS Code tunnel name — must be 3-20 alphanumeric + hyphens. Combine a short
+   * userId prefix with the worker name so two users with the same short name
+   * do not collide. */
+  private buildTunnelName(userId: string, name: string): string {
+    const shortId = userId.slice(0, 8);
+    return `${shortId}-${name}`.slice(0, 20);
   }
 
   private async resolveUserEnvAndBinds(userId: string): Promise<{ userEnv: UserEnvVars; credentialBinds: string[] }> {
@@ -147,7 +176,7 @@ export class ContainerManager {
     }
 
     const resolvedId = environmentId || 'default';
-    const env = this.environmentStore.get(resolvedId);
+    const env = this.environmentStore.getById(resolvedId);
     if (!env) throw new Error(`Environment not found: ${resolvedId}`);
 
     let domains: string[] = [];
@@ -205,12 +234,23 @@ export class ContainerManager {
     this.containers.clear();
 
     for (const dc of dockerContainers) {
-      const name = dc.Names[0]?.replace(/^\//, '') || dc.Id.slice(0, 12);
-      const worker = this.workerStore?.get(name);
+      const containerName = dc.Names[0]?.replace(/^\//, '') || dc.Id.slice(0, 12);
+      const labels = dc.Labels ?? {};
+      const labelUserId = labels[WORKER_USER_ID_LABEL] ?? '';
+      const labelName = labels[WORKER_NAME_LABEL] ?? '';
+
+      // Prefer the store's record (authoritative metadata), fall back to labels.
+      const worker = labelUserId && labelName
+        ? this.workerStore?.get(labelUserId, labelName)
+        : this.workerStore?.findByContainerName(containerName);
+
+      const userId = worker?.userId ?? labelUserId ?? '';
+      const name = worker?.name ?? labelName ?? containerName;
 
       this.containers.set(dc.Id, {
         id: dc.Id,
         name,
+        containerName,
         displayName: worker?.displayName,
         repos: worker?.repos,
         mounts: worker?.mounts,
@@ -232,7 +272,7 @@ export class ContainerManager {
         exposeApis: worker?.exposeApis,
         capabilityNames: worker?.capabilityNames,
         instructionNames: worker?.instructionNames,
-        userId: worker?.userId ?? '',
+        userId,
         gitName: worker?.gitName,
         gitEmail: worker?.gitEmail,
       });
@@ -249,18 +289,52 @@ export class ContainerManager {
     return this.containers.get(id);
   }
 
-  generateName(): string {
-    return `${this.config.containerPrefix}-${uniqueNamesGenerator({
-      dictionaries: [adjectives, animals],
-      separator: '-',
-      style: 'lowerCase',
-    })}`;
+  /** Find an active container by its globally unique Docker container name. */
+  findByContainerName(containerName: string): ContainerInfo | undefined {
+    for (const c of this.containers.values()) {
+      if (c.containerName === containerName) return c;
+    }
+    return undefined;
+  }
+
+  /** Find an active container owned by `userId` with user-facing name `name`. */
+  findByUserAndName(userId: string, name: string): ContainerInfo | undefined {
+    for (const c of this.containers.values()) {
+      if (c.userId === userId && c.name === name) return c;
+    }
+    return undefined;
+  }
+
+  /** Generate a short, per-user-unique worker name. */
+  generateName(userId: string): string {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const candidate = uniqueNamesGenerator({
+        dictionaries: [adjectives, animals],
+        separator: '-',
+        style: 'lowerCase',
+      });
+      if (!this.workerStore?.has(userId, candidate) && !this.findByUserAndName(userId, candidate)) {
+        return candidate;
+      }
+    }
+    // Fallback: guarantee uniqueness with a short suffix.
+    return `worker-${nanoid(6).toLowerCase()}`;
   }
 
   async create(request: CreateContainerRequest): Promise<ContainerInfo> {
+    const userId = request.userId ?? '';
+    if (!userId) throw new Error('create: userId is required');
+
     const envConfig = this.resolveEnvironmentConfig(request.environmentId);
 
-    const name = request.name || this.generateName();
+    const rawName = request.name || this.generateName(userId);
+    const name = sanitizeWorkerName(rawName);
+    if (!name) throw new Error('Worker name must contain at least one alphanumeric character');
+    if (this.workerStore?.has(userId, name) || this.findByUserAndName(userId, name)) {
+      throw new Error(`You already have a worker named '${name}'`);
+    }
+    const containerName = this.buildContainerName(userId, name);
+
     const repos = request.repos?.filter((r) => r.url) || [];
 
     const cpuLimit = envConfig.cpuLimit ?? request.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
@@ -269,7 +343,6 @@ export class ContainerManager {
 
     const gitName = request.gitName || '';
     const gitEmail = request.gitEmail || '';
-    const userId = request.userId ?? '';
 
     const workerJson: WorkerJsonPayload = {
       name,
@@ -283,7 +356,9 @@ export class ContainerManager {
     const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(userId);
 
     const container = await this.dockerService.createWorkerContainer({
+      userId,
       name,
+      containerName,
       displayName: request.displayName || undefined,
       cpuLimit,
       memoryLimit,
@@ -314,6 +389,7 @@ export class ContainerManager {
     const containerInfo: ContainerInfo = {
       id: container.id,
       name,
+      containerName,
       displayName: request.displayName || undefined,
       repos: repos.length > 0 ? repos : undefined,
       mounts,
@@ -335,7 +411,7 @@ export class ContainerManager {
       exposeApis,
       capabilityNames,
       instructionNames,
-      userId: request.userId ?? '',
+      userId,
       gitName: gitName || undefined,
       gitEmail: gitEmail || undefined,
     };
@@ -347,9 +423,9 @@ export class ContainerManager {
     }
 
     // Attach log collector to the new container
-    useLogCollector().attach(name, container.id, 'worker', request.displayName || undefined).catch(() => {});
+    useLogCollector().attach(containerName, container.id, 'worker', request.displayName || undefined).catch(() => {});
 
-    useLogger().info(`[container] created worker ${name} (${container.id.slice(0, 12)})`);
+    useLogger().info(`[container] created worker ${containerName} (${container.id.slice(0, 12)})`);
 
     return containerInfo;
   }
@@ -378,7 +454,7 @@ export class ContainerManager {
     const info = this.containers.get(id);
     if (info) {
       info.status = 'stopped';
-      useLogger().info(`[container] stopped ${info.name}`);
+      useLogger().info(`[container] stopped ${info.containerName}`);
     }
   }
 
@@ -388,9 +464,8 @@ export class ContainerManager {
     const info = this.containers.get(id);
     if (info) {
       info.status = 'running';
-      // Re-attach log collector after restart
-      useLogCollector().attach(info.name, id, 'worker', info.displayName).catch(() => {});
-      useLogger().info(`[container] restarted ${info.name}`);
+      useLogCollector().attach(info.containerName, id, 'worker', info.displayName).catch(() => {});
+      useLogger().info(`[container] restarted ${info.containerName}`);
     }
   }
 
@@ -398,25 +473,19 @@ export class ContainerManager {
     useLogCollector().detach(id);
     const info = this.containers.get(id);
     await this.dockerService.removeContainer(id);
-    if (info?.name) {
-      await cleanupWorkerMappings(info.name);
+    if (info) {
+      await cleanupWorkerMappings(info.containerName);
       if (this.storageManager) {
-        await this.storageManager.removeWorkerDocker(info.name);
-        await this.storageManager.removeWorkerWorkspace(info.name);
-        await this.storageManager.removeWorkerAgents(info.name);
-      } else {
-        await this.dockerService.removeVolume(`${info.name}-docker`);
-        await this.dockerService.removeVolume(`${info.name}-workspace`);
-        await this.dockerService.removeVolume(`${info.name}-agents`);
+        await this.storageManager.removeWorkerDocker(info.containerName);
+        await this.storageManager.removeWorkerWorkspace(info.userId, info.name, info.containerName);
+        await this.storageManager.removeWorkerAgents(info.userId, info.name, info.containerName);
       }
       if (this.workerStore) {
-        await this.workerStore.delete(info.name).catch((err) => {
-          useLogger().error(`[container] failed to delete worker record '${info.name}': ${err instanceof Error ? err.message : err}`);
+        await this.workerStore.delete(info.userId, info.name).catch((err) => {
+          useLogger().error(`[container] failed to delete worker record '${info.containerName}': ${err instanceof Error ? err.message : err}`);
         });
       }
-    }
-    if (info) {
-      useLogger().info(`[container] removed ${info.name}`);
+      useLogger().info(`[container] removed ${info.containerName}`);
     }
     this.containers.delete(id);
   }
@@ -434,10 +503,10 @@ export class ContainerManager {
 
     if (this.workerStore) {
       await this.workerStore.upsert(this.containerInfoToWorkerRecord(info));
-      await this.workerStore.archive(info.name);
+      await this.workerStore.archive(info.userId, info.name);
     }
 
-    useLogger().info(`[container] archived ${info.name}`);
+    useLogger().info(`[container] archived ${info.containerName}`);
     this.containers.delete(id);
   }
 
@@ -455,7 +524,6 @@ export class ContainerManager {
 
     this.containers.delete(id);
 
-    // Resolve environment config (graceful fallback to current container info if environment was deleted)
     const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
     let envConfig: ResolvedEnvConfig = {
       environmentJson: {
@@ -492,7 +560,9 @@ export class ContainerManager {
     const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(info.userId);
 
     const container = await this.dockerService.createWorkerContainer({
+      userId: info.userId,
       name: info.name,
+      containerName: info.containerName,
       displayName: info.displayName,
       cpuLimit,
       memoryLimit,
@@ -510,6 +580,7 @@ export class ContainerManager {
     const containerInfo: ContainerInfo = {
       id: container.id,
       name: info.name,
+      containerName: info.containerName,
       displayName: info.displayName,
       repos: info.repos,
       mounts: info.mounts,
@@ -542,26 +613,24 @@ export class ContainerManager {
       await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
     }
 
-    // Reassign persisted port/domain mappings to the new container ID
-    await reassignWorkerMappings(info.name, container.id);
+    // Mappings reconcile on Traefik restart — they key by containerName which is unchanged.
+    await reassignWorkerMappings(info.containerName);
 
-    // Attach log collector to the rebuilt container
-    useLogCollector().attach(info.name, container.id, 'worker', info.displayName).catch(() => {});
+    useLogCollector().attach(info.containerName, container.id, 'worker', info.displayName).catch(() => {});
 
-    useLogger().info(`[container] rebuilt ${info.name} (${container.id.slice(0, 12)})`);
+    useLogger().info(`[container] rebuilt ${info.containerName} (${container.id.slice(0, 12)})`);
 
     return containerInfo;
   }
 
-  async unarchive(name: string): Promise<ContainerInfo> {
+  async unarchive(userId: string, name: string): Promise<ContainerInfo> {
     if (!this.workerStore) throw new Error('WorkerStore not available');
 
-    const worker = this.workerStore.get(name);
+    const worker = this.workerStore.get(userId, name);
     if (!worker || worker.status !== 'archived') {
       throw new Error('Archived worker not found');
     }
 
-    // Resolve environment config (graceful fallback to snapshotted worker data if environment was deleted)
     const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
     let envConfig: ResolvedEnvConfig = {
       environmentJson: {
@@ -573,13 +642,13 @@ export class ContainerManager {
         exposeApis: worker.exposeApis || defaultExposeApis,
       },
       includePackageManagerDomains: worker.includePackageManagerDomains,
-      capabilitiesJson: worker.capabilityNames?.map((name) => ({ name, content: '' })) || [],
-      instructionsJson: worker.instructionNames?.map((name) => ({ name, content: '' })) || [],
+      capabilitiesJson: worker.capabilityNames?.map((n) => ({ name: n, content: '' })) || [],
+      instructionsJson: worker.instructionNames?.map((n) => ({ name: n, content: '' })) || [],
     };
     try {
       envConfig = this.resolveEnvironmentConfig(worker.environmentId);
     } catch {
-      // Environment may have been deleted since archival — use snapshotted worker data
+      // Environment may have been deleted — use snapshotted worker data
     }
 
     const cpuLimit = envConfig.cpuLimit ?? worker.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
@@ -598,7 +667,9 @@ export class ContainerManager {
     const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(worker.userId);
 
     const container = await this.dockerService.createWorkerContainer({
+      userId: worker.userId,
       name: worker.name,
+      containerName: worker.containerName,
       displayName: worker.displayName,
       cpuLimit,
       memoryLimit,
@@ -612,12 +683,13 @@ export class ContainerManager {
       userEnv,
     });
 
-    await this.workerStore.unarchive(worker.name, container.id);
+    await this.workerStore.unarchive(worker.userId, worker.name, container.id);
 
     const image = this.config.workerImagePrefix + this.config.workerImage;
     const containerInfo: ContainerInfo = {
       id: container.id,
       name: worker.name,
+      containerName: worker.containerName,
       displayName: worker.displayName,
       repos: worker.repos,
       mounts: worker.mounts,
@@ -646,37 +718,31 @@ export class ContainerManager {
 
     this.containers.set(container.id, containerInfo);
 
-    // Reassign persisted port/domain mappings to the new container ID
-    await reassignWorkerMappings(worker.name, container.id);
+    await reassignWorkerMappings(worker.containerName);
 
-    // Attach log collector to the unarchived container
-    useLogCollector().attach(worker.name, container.id, 'worker', worker.displayName).catch(() => {});
+    useLogCollector().attach(worker.containerName, container.id, 'worker', worker.displayName).catch(() => {});
 
-    useLogger().info(`[container] unarchived ${name} (${container.id.slice(0, 12)})`);
+    useLogger().info(`[container] unarchived ${worker.containerName} (${container.id.slice(0, 12)})`);
 
     return containerInfo;
   }
 
-  async deleteArchived(name: string): Promise<void> {
+  async deleteArchived(userId: string, name: string): Promise<void> {
     if (!this.workerStore) throw new Error('WorkerStore not available');
 
-    const worker = this.workerStore.get(name);
+    const worker = this.workerStore.get(userId, name);
     if (!worker || worker.status !== 'archived') {
       throw new Error('Archived worker not found');
     }
 
-    await cleanupWorkerMappings(name);
+    await cleanupWorkerMappings(worker.containerName);
 
     if (this.storageManager) {
-      await this.storageManager.removeWorkerWorkspace(name);
-      await this.storageManager.removeWorkerDocker(name);
-      await this.storageManager.removeWorkerAgents(name);
-    } else {
-      await this.dockerService.removeVolume(`${name}-workspace`);
-      await this.dockerService.removeVolume(`${name}-docker`);
-      await this.dockerService.removeVolume(`${name}-agents`);
+      await this.storageManager.removeWorkerWorkspace(worker.userId, worker.name, worker.containerName);
+      await this.storageManager.removeWorkerDocker(worker.containerName);
+      await this.storageManager.removeWorkerAgents(worker.userId, worker.name, worker.containerName);
     }
-    await this.workerStore.delete(name);
+    await this.workerStore.delete(worker.userId, worker.name);
   }
 
   listArchived(): WorkerRecord[] {
@@ -686,19 +752,18 @@ export class ContainerManager {
   async reconcileWorkers(): Promise<void> {
     if (!this.workerStore) return;
 
-    const activeNames = new Set<string>();
+    const activeContainerNames = new Set<string>();
     for (const [, info] of this.containers) {
-      activeNames.add(info.name);
-      const existing = this.workerStore.get(info.name);
+      activeContainerNames.add(info.containerName);
+      const existing = this.workerStore.get(info.userId, info.name);
       if (!existing || existing.status === 'active') {
-        // Always update active workers with latest Docker state (image, etc.)
         await this.workerStore.upsert(this.containerInfoToWorkerRecord(info));
       }
     }
 
     for (const worker of this.workerStore.listActive()) {
-      if (!activeNames.has(worker.name)) {
-        await this.workerStore.archive(worker.name);
+      if (!activeContainerNames.has(worker.containerName)) {
+        await this.workerStore.archive(worker.userId, worker.name);
       }
     }
   }
@@ -707,6 +772,7 @@ export class ContainerManager {
     return {
       id: info.id,
       name: info.name,
+      containerName: info.containerName,
       displayName: info.displayName,
       environmentId: info.environmentId,
       environmentName: info.environmentName,
@@ -745,7 +811,6 @@ export class ContainerManager {
   async createTmuxWindow(id: string, name?: string): Promise<TmuxWindow> {
     const windowName = name || `shell-${nanoid(4)}`;
     await this.dockerService.execTmux(id, ['new-window', '-t', 'main:', '-n', windowName]);
-    // Fetch the newly created window to get its index
     const windows = await this.dockerService.execListTmuxWindows(id);
     const created = windows.findLast((w) => w.name === windowName);
     if (!created) {
@@ -792,8 +857,8 @@ export class ContainerManager {
   async startVsCodeTunnel(workerId: string): Promise<void> {
     this.assertRunning(workerId);
     const info = this.containers.get(workerId)!;
-    const name = info.name.replace(/^agentor-worker-/, '');
-    const output = await this.dockerService.execVsCodeTunnel(workerId, ['start', name]);
+    const tunnelName = this.buildTunnelName(info.userId, info.name);
+    const output = await this.dockerService.execVsCodeTunnel(workerId, ['start', tunnelName]);
     const trimmed = output.trim();
     if (trimmed.startsWith('ERR:')) {
       throw new Error(trimmed.substring(4));
@@ -853,7 +918,6 @@ export class ContainerManager {
       throw new Error(`Maximum ${appType.displayName} instances reached (${appType.maxInstances})`);
     }
 
-    // Allocate port from the app type's first port range
     const portDef = appType.ports[0];
     if (!portDef) throw new Error(`No port range defined for ${appType.displayName}`);
     const usedPorts = new Set(existing.map((i) => i.port));

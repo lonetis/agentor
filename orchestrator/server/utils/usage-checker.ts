@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Config } from './config';
 import type { AgentUsageInfo, AgentUsageStatus, AgentAuthType } from '../../shared/types';
@@ -6,15 +6,16 @@ import type { UserEnvVarStore } from './user-env-store';
 import type { UserCredentialManager } from './user-credentials';
 
 const POLL_INTERVAL_MS = 300_000;
+const USAGE_FILENAME = 'usage.json';
 
 interface AgentState {
   info: AgentUsageInfo;
   lastFetchTime: number;
 }
 
-interface PersistedUsageState {
-  users: Record<string, Record<string, { info: AgentUsageInfo; lastFetchTime: number; backoffUntil: number }>>;
-}
+/** Shape persisted to each user's `users/<userId>/usage.json` — a flat map of
+ * agentId → state. The `userId` is implied by the file path. */
+type PersistedUserUsage = Record<string, { info: AgentUsageInfo; lastFetchTime: number; backoffUntil: number }>;
 
 const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const CODEX_TOKEN_ENDPOINT = 'https://auth.openai.com/oauth/token';
@@ -55,12 +56,14 @@ export class UsageChecker {
   private userStates = new Map<string, Map<string, AgentState>>();
   private rateLimitBackoff = new Map<string, number>(); // key: `${userId}:${agentId}`
   private pollInterval: ReturnType<typeof setInterval> | null = null;
-  private stateFilePath: string;
   private fetchQueue: Promise<void> = Promise.resolve();
+  private saveQueues = new Map<string, Promise<void>>();
+  /** Serialized payload most recently written to each user's usage.json, so we
+   * can skip the writeFile() when nothing changed between 5-minute polls. */
+  private lastWritten = new Map<string, string>();
 
   constructor(config: Config) {
     this.config = config;
-    this.stateFilePath = join(config.dataDir, 'usage.json');
   }
 
   setUserEnvStore(store: UserEnvVarStore): void {
@@ -110,7 +113,11 @@ export class UsageChecker {
     for (const key of [...this.rateLimitBackoff.keys()]) {
       if (key.startsWith(`${userId}:`)) this.rateLimitBackoff.delete(key);
     }
-    await this.saveState();
+    try {
+      await rm(this.stateFilePath(userId), { force: true });
+    } catch {
+      // best effort — the containing dir may already be gone
+    }
   }
 
   // ─── Polling ─────────────────────────────────────────────────
@@ -172,55 +179,86 @@ export class UsageChecker {
       existing.set(info.agentId, { info, lastFetchTime: now });
     }
     this.userStates.set(userId, existing);
-    await this.saveState();
+    await this.saveUser(userId);
   }
 
   // ─── Persistence ────────────────────────────────────────────
 
+  private stateFilePath(userId: string): string {
+    return join(this.config.dataDir, 'users', userId, USAGE_FILENAME);
+  }
+
   private async loadState(): Promise<void> {
+    const usersDir = join(this.config.dataDir, 'users');
+    let userIds: string[] = [];
     try {
-      const raw = await readFile(this.stateFilePath, 'utf-8');
-      const data = JSON.parse(raw) as PersistedUsageState;
-      const now = Date.now();
-      if (data.users && typeof data.users === 'object') {
-        for (const [userId, agents] of Object.entries(data.users)) {
-          const map = new Map<string, AgentState>();
-          for (const [agentId, entry] of Object.entries(agents)) {
-            if (entry?.info) {
-              map.set(agentId, {
-                info: entry.info,
-                lastFetchTime: typeof entry.lastFetchTime === 'number' ? entry.lastFetchTime : 0,
-              });
-            }
-            if (typeof entry?.backoffUntil === 'number' && entry.backoffUntil > now) {
-              this.rateLimitBackoff.set(`${userId}:${agentId}`, entry.backoffUntil);
-            }
-          }
-          if (map.size > 0) this.userStates.set(userId, map);
+      userIds = await readdir(usersDir);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+      return;
+    }
+    const now = Date.now();
+    await Promise.all(
+      userIds
+        .filter((userId) => !userId.startsWith('.'))
+        .map((userId) => this.loadUserState(userId, now)),
+    );
+  }
+
+  private async loadUserState(userId: string, now: number): Promise<void> {
+    try {
+      const raw = await readFile(this.stateFilePath(userId), 'utf-8');
+      const data = JSON.parse(raw) as PersistedUserUsage;
+      const map = new Map<string, AgentState>();
+      for (const [agentId, entry] of Object.entries(data)) {
+        if (entry?.info) {
+          map.set(agentId, {
+            info: entry.info,
+            lastFetchTime: typeof entry.lastFetchTime === 'number' ? entry.lastFetchTime : 0,
+          });
+        }
+        if (typeof entry?.backoffUntil === 'number' && entry.backoffUntil > now) {
+          this.rateLimitBackoff.set(`${userId}:${agentId}`, entry.backoffUntil);
         }
       }
-    } catch {
-      // File missing / invalid → start fresh
+      if (map.size > 0) this.userStates.set(userId, map);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+      useLogger().error(`[usage-checker] failed to load ${this.stateFilePath(userId)}: ${err instanceof Error ? err.message : err}`);
     }
   }
 
-  private async saveState(): Promise<void> {
-    const users: PersistedUsageState['users'] = {};
-    for (const [userId, map] of this.userStates) {
-      const agents: PersistedUsageState['users'][string] = {};
+  private saveUser(userId: string): Promise<void> {
+    const prev = this.saveQueues.get(userId) ?? Promise.resolve();
+    const next = prev.then(() => this.writeUser(userId));
+    this.saveQueues.set(userId, next.catch(() => {}));
+    return next;
+  }
+
+  private async writeUser(userId: string): Promise<void> {
+    const map = this.userStates.get(userId);
+    const filePath = this.stateFilePath(userId);
+    try {
+      if (!map || map.size === 0) {
+        await rm(filePath, { force: true });
+        this.lastWritten.delete(userId);
+        return;
+      }
+      const payload: PersistedUserUsage = {};
       for (const [agentId, state] of map) {
-        agents[agentId] = {
+        payload[agentId] = {
           info: state.info,
           lastFetchTime: state.lastFetchTime,
           backoffUntil: this.rateLimitBackoff.get(`${userId}:${agentId}`) ?? 0,
         };
       }
-      users[userId] = agents;
-    }
-    try {
-      await writeFile(this.stateFilePath, JSON.stringify({ users }));
+      const serialized = JSON.stringify(payload);
+      if (this.lastWritten.get(userId) === serialized) return;
+      await mkdir(join(this.config.dataDir, 'users', userId), { recursive: true });
+      await writeFile(filePath, serialized);
+      this.lastWritten.set(userId, serialized);
     } catch (err) {
-      useLogger().error(`[usage-checker] failed to save state: ${err instanceof Error ? err.message : err}`);
+      useLogger().error(`[usage-checker] failed to save ${filePath}: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -294,11 +332,11 @@ export class UsageChecker {
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
         this.rateLimitBackoff.set(backoffKey, Date.now() + delayMs);
-        await this.saveState();
+        await this.saveUser(userId);
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
-      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveState();
+      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveUser(userId);
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
         return base;
@@ -367,11 +405,11 @@ export class UsageChecker {
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
         this.rateLimitBackoff.set(backoffKey, Date.now() + delayMs);
-        await this.saveState();
+        await this.saveUser(userId);
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
-      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveState();
+      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveUser(userId);
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
         return base;
@@ -477,11 +515,11 @@ export class UsageChecker {
         const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
         const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
         this.rateLimitBackoff.set(backoffKey, Date.now() + delayMs);
-        await this.saveState();
+        await this.saveUser(userId);
         base.error = `Rate limited — retry after ${delaySec}s`;
         return base;
       }
-      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveState();
+      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveUser(userId);
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
         return base;

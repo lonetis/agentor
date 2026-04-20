@@ -4,13 +4,14 @@ import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 
 test.describe('Domain Mappings API — Advanced', () => {
   const createdContainerIds: string[] = [];
+  const createdContainerNames: string[] = [];
 
   test.afterEach(async ({ request }) => {
     // Clean up domain mappings only for our workers (not globally — avoids parallel interference)
     const api = new ApiClient(request);
     const { body: mappings } = await api.listDomainMappings();
     for (const m of mappings) {
-      if (createdContainerIds.includes(m.workerId)) {
+      if (createdContainerNames.includes(m.containerName)) {
         try { await api.deleteDomainMapping(m.id); } catch { /* ignore */ }
       }
     }
@@ -18,6 +19,7 @@ test.describe('Domain Mappings API — Advanced', () => {
       await cleanupWorker(request, id);
     }
     createdContainerIds.length = 0;
+    createdContainerNames.length = 0;
   });
 
   test.describe('Domain mapper status', () => {
@@ -48,6 +50,7 @@ test.describe('Domain Mappings API — Advanced', () => {
       const baseDomain = statusBody.baseDomains[0];
       const container = await createWorker(request);
       createdContainerIds.push(container.id);
+      createdContainerNames.push(container.containerName);
 
       // Create first mapping
       const { status: firstStatus } = await api.createDomainMapping({
@@ -85,6 +88,7 @@ test.describe('Domain Mappings API — Advanced', () => {
       const baseDomain = statusBody.baseDomains[0];
       const container = await createWorker(request);
       createdContainerIds.push(container.id);
+      createdContainerNames.push(container.containerName);
 
       const { status: httpsStatus } = await api.createDomainMapping({
         subdomain: confSub,
@@ -119,6 +123,7 @@ test.describe('Domain Mappings API — Advanced', () => {
       const multiSub = `t-multi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const container = await createWorker(request);
       createdContainerIds.push(container.id);
+      createdContainerNames.push(container.containerName);
 
       const { status: first } = await api.createDomainMapping({
         subdomain: multiSub,
@@ -155,6 +160,7 @@ test.describe('Domain Mappings API — Advanced', () => {
       const authSub = `t-auth-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const container = await createWorker(request);
       createdContainerIds.push(container.id);
+      createdContainerNames.push(container.containerName);
 
       const { status, body } = await api.createDomainMapping({
         subdomain: authSub,

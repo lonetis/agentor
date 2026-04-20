@@ -55,7 +55,18 @@ export const useUserCredentialManager = singleton(
 );
 export const useUserEnvStore = singleton(() => new UserEnvVarStore(useConfig().dataDir));
 export const useOrphanSweeper = singleton(
-  () => new OrphanSweeper(useUserEnvStore(), useUserCredentialManager(), useUsageChecker()),
+  () => new OrphanSweeper(
+    useUserEnvStore(),
+    useUserCredentialManager(),
+    useUsageChecker(),
+    useWorkerStore(),
+    usePortMappingStore(),
+    useDomainMappingStore(),
+    useEnvironmentStore(),
+    useCapabilityStore(),
+    useInstructionStore(),
+    useInitScriptStore(),
+  ),
 );
 export const useCapabilityStore = singleton(() => new CapabilityStore(useConfig().dataDir));
 export const useInstructionStore = singleton(() => new InstructionStore(useConfig().dataDir));
@@ -66,25 +77,25 @@ export const useLogger = singleton(() => new Logger(useConfig(), useLogStore(), 
 export const useLogCollector = singleton(() => new LogCollector(useConfig(), useLogStore(), useLogBroadcaster()));
 
 /**
- * Removes all port and domain mappings for a worker (by name) and reconciles
- * Traefik if any mappings were removed. Called when a worker is permanently
- * deleted — mappings are preserved across stop, archive, unarchive, and rebuild.
+ * Removes all port and domain mappings for a worker (keyed by its globally
+ * unique Docker container name) and reconciles Traefik if any were removed.
+ * Called when a worker is permanently deleted — mappings are preserved across
+ * stop, archive, unarchive, and rebuild because the container name is stable.
  */
-export async function cleanupWorkerMappings(workerName: string): Promise<void> {
-  const portRemoved = await usePortMappingStore().removeForWorkerName(workerName);
-  const domainRemoved = await useDomainMappingStore().removeForWorkerName(workerName);
+export async function cleanupWorkerMappings(containerName: string): Promise<void> {
+  const portRemoved = await usePortMappingStore().removeForContainerName(containerName);
+  const domainRemoved = await useDomainMappingStore().removeForContainerName(containerName);
   if (portRemoved > 0 || domainRemoved > 0) await useTraefikManager().reconcile();
 }
 
 /**
- * Updates the workerId field of all mappings for a worker to the new container
- * ID (used after rebuild/unarchive since the Docker container ID changes).
- * Traefik routes to workers by name via Docker DNS, so fresh lookups pick up
- * the new container automatically — we only need to reconcile() so Traefik is
- * ensured running (idempotent when config matches).
+ * Reconcile Traefik after a worker rebuild/unarchive. Traefik routes to workers
+ * by name via Docker DNS so a fresh lookup automatically picks up the new
+ * container — this just ensures Traefik is running and its config is current
+ * (idempotent when nothing changed).
  */
-export async function reassignWorkerMappings(workerName: string, newContainerId: string): Promise<void> {
-  const portChanged = await usePortMappingStore().reassignWorkerContainer(workerName, newContainerId);
-  const domainChanged = await useDomainMappingStore().reassignWorkerContainer(workerName, newContainerId);
-  if (portChanged > 0 || domainChanged > 0) await useTraefikManager().reconcile();
+export async function reassignWorkerMappings(containerName: string): Promise<void> {
+  const hasPort = usePortMappingStore().list().some((m) => m.containerName === containerName);
+  const hasDomain = useDomainMappingStore().list().some((m) => m.containerName === containerName);
+  if (hasPort || hasDomain) await useTraefikManager().reconcile();
 }

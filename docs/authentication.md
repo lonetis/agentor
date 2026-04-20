@@ -17,21 +17,28 @@ Two roles: `admin` and `user`.
 
 ## Resource Ownership
 
-User-owned resources carry a `userId` field populated from the authenticated session on creation:
+User-owned resources carry a `userId` field populated from the authenticated session on creation. Each user's data lives in its own subtree under `<DATA_DIR>/users/<userId>/`:
 
-| Resource | Storage | Owner field |
-|----------|---------|-------------|
-| Workers | `workers.json` | `WorkerRecord.userId` |
-| Port mappings | `port-mappings.json` | `PortMapping.userId` (copied from the target worker) |
-| Domain mappings | `domain-mappings.json` | `DomainMapping.userId` (copied from the target worker) |
-| Environments | `environments.json` | `Environment.userId` (or `null` for built-ins) |
-| Capabilities | `capabilities.json` | `Capability.userId` (or `null` for built-ins) |
-| Instructions | `instructions.json` | `Instruction.userId` (or `null` for built-ins) |
-| Init scripts | `init-scripts.json` | `InitScript.userId` (or `null` for built-ins) |
+| Resource | Storage | Owner |
+|----------|---------|-------|
+| Workers | `users/<userId>/workers.json` | `WorkerRecord.userId` |
+| Port mappings | `users/<userId>/port-mappings.json` | `PortMapping.userId` (copied from the target worker) |
+| Domain mappings | `users/<userId>/domain-mappings.json` | `DomainMapping.userId` (copied from the target worker) |
+| Custom environments | `users/<userId>/environments.json` | `Environment.userId` |
+| Custom capabilities | `users/<userId>/capabilities.json` | `Capability.userId` |
+| Custom instructions | `users/<userId>/instructions.json` | `Instruction.userId` |
+| Custom init scripts | `users/<userId>/init-scripts.json` | `InitScript.userId` |
+| Env vars | `users/<userId>/env-vars.json` | file path is the owner id |
+| Usage state | `users/<userId>/usage.json` | file path is the owner id |
+| OAuth credentials | `users/<userId>/credentials/{claude,codex,gemini}.json` | file path is the owner id |
+| Worker workspace (dir mode) | `users/<userId>/workspaces/<name>/` | owned by the worker |
+| Worker agent data (dir mode) | `users/<userId>/agents/<name>/` | owned by the worker |
 
-Built-in resources seeded from `server/built-in/` always have `userId: null` — they are globally visible and read-only for everyone.
+Built-in, platform-seeded resources live separately at `<DATA_DIR>/defaults/{environments,capabilities,instructions,init-scripts}.json` with `userId: null`. They are re-seeded on every orchestrator startup from `server/built-in/` and are globally visible; mutation attempts (update/delete) return 400.
 
-List endpoints filter by ownership: admins see everything, regular users see their own + `userId === null`. Single-resource endpoints (GET/PUT/DELETE) verify ownership and return 403 for unauthorized access.
+List endpoints merge the `defaults/` store and the caller's per-user store: admins see every user's data plus built-ins, regular users see their own rows plus `userId === null`. Single-resource endpoints (GET/PUT/DELETE) verify ownership (`user.id === resource.userId` or admin role) and return 403 for unauthorized access.
+
+A background orphan sweeper (`server/utils/orphan-sweeper.ts`) runs at startup and every 10 minutes: it reads the auth DB's `user` table and, for any candidate `userId` present in any per-user store whose row is no longer in the auth DB, drops that user from every in-memory store and recursively removes `<DATA_DIR>/users/<userId>/` — taking workspaces, agent dirs, credentials, and every per-user JSON file with it.
 
 ## Architecture
 
@@ -53,7 +60,7 @@ Application data remains in JSON files (via `JsonStore`) — we only use SQLite 
 
 ### Secret
 
-`BETTER_AUTH_SECRET` (env var) is used to sign session cookies. If unset, a random 32-byte secret is generated on first run and persisted to `<DATA_DIR>/.auth-secret` so sessions survive restarts without requiring manual secret management.
+`BETTER_AUTH_SECRET` (env var) is used to sign session cookies. If unset, a random 32-byte secret is generated on first run and persisted to `<DATA_DIR>/auth.secret` so sessions survive restarts without requiring manual secret management.
 
 ### WebSocket Authentication
 
@@ -116,7 +123,7 @@ The `TerminalWsClient` helper reads cookies from `tests/.auth/admin-api.json` an
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BETTER_AUTH_SECRET` | auto-generated | Session signing secret. If empty, a random 32-byte hex is generated and written to `<DATA_DIR>/.auth-secret` on first run. |
+| `BETTER_AUTH_SECRET` | auto-generated | Session signing secret. If empty, a random 32-byte hex is generated and written to `<DATA_DIR>/auth.secret` on first run. |
 | `BETTER_AUTH_URL` | `http://localhost:3000` | Base URL used by better-auth for cookie domain and default trusted origin. Override for production deployments. |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | — | Extra comma-separated origins to accept on auth mutations' `Origin` header. `localhost:3000`, `127.0.0.1:3000`, `BETTER_AUTH_URL`, and the dashboard subdomain (`DASHBOARD_SUBDOMAIN.DASHBOARD_BASE_DOMAIN`, both http and https) are always trusted automatically. |
 | `BETTER_AUTH_RP_ID` | `${DASHBOARD_SUBDOMAIN}.${DASHBOARD_BASE_DOMAIN}` | WebAuthn Relying Party ID for passkeys. Only relevant when passkeys are enabled (i.e., when the dashboard is served over Traefik). Override to use a parent domain so one passkey works across multiple subdomains. |

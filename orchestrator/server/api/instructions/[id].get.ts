@@ -18,7 +18,7 @@ import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
 export default defineEventHandler((event) => {
   const ctx = requireAuth(event);
   const id = getRouterParam(event, 'id')!;
-  const entry = useInstructionStore().get(id);
+  const entry = useInstructionStore().getById(id);
 
   if (!entry) {
     throw createError({ statusCode: 404, statusMessage: 'Instruction not found' });
