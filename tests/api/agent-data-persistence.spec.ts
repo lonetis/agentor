@@ -64,11 +64,11 @@ test.describe.serial('Agent data persistence — mount verification', () => {
       containerId,
       'stat -c "%F" ~/.claude/.credentials.json ~/.codex/auth.json ~/.gemini/oauth_creds.json 2>/dev/null',
     );
-    const lines = output.trim().split(/\r?\n/).filter(Boolean);
-    expect(lines.length).toBe(3);
-    for (const line of lines) {
-      expect(line).toBe('regular file');
-    }
+    // Terminal echoes the command line before the output, so line counting is
+    // fragile — count occurrences of each file type in the buffer instead.
+    const regularCount = (output.match(/regular file/g) ?? []).length;
+    expect(regularCount).toBe(3);
+    expect(output).not.toContain('symbolic link');
   });
 
   test('claude settings.json exists with expected keys', async () => {

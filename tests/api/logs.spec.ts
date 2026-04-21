@@ -215,7 +215,7 @@ test.describe('Logs API', () => {
       // output now that the container is running.
       await new Promise((r) => setTimeout(r, 1500));
 
-      const { body } = await api.queryLogs({ sources: 'worker', sourceIds: worker.name, limit: 500 });
+      const { body } = await api.queryLogs({ sources: 'worker', sourceIds: worker.containerName, limit: 500 });
       expect(body.entries.length).toBeGreaterThan(0);
 
       // The Docker `--timestamps` prefix (e.g. 2026-04-17T10:38:06.779538881Z)
