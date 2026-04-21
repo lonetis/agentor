@@ -34,6 +34,38 @@ function tlsSniHandshake(servername: string, port = 443): Promise<{
   });
 }
 
+/**
+ * Retry a TLS SNI handshake while Traefik's file provider catches up with a
+ * newly-written router. When no TCP router matches the incoming SNI, Traefik
+ * closes the connection immediately — Node surfaces that as "Client network
+ * socket disconnected before secure TLS connection was established" or
+ * ECONNRESET. Both are treated as "not ready yet" and retried until the
+ * deadline; every other error (including DNS failure) is re-thrown on the spot.
+ */
+async function waitForTlsSni(
+  servername: string,
+  port = 443,
+  timeoutMs = 30_000,
+): Promise<{ cert: tls.DetailedPeerCertificate; authorized: boolean }> {
+  const deadline = Date.now() + timeoutMs;
+  let lastErr: unknown;
+  while (Date.now() < deadline) {
+    try {
+      return await tlsSniHandshake(servername, port);
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const transient =
+        /disconnected before secure TLS|ECONNRESET|EPIPE|socket hang up|handshake timeout/i.test(msg);
+      if (!transient) throw err;
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error(`TLS SNI handshake never succeeded for ${servername}`);
+}
+
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 /**
@@ -552,20 +584,19 @@ test.describe('Traefik Integration', () => {
         expect(createStatus).toBe(201);
         expect(mapping.wildcard).toBe(true);
 
-        // Give Traefik time to pick up the file provider change.
-        await new Promise(r => setTimeout(r, 3000));
-
         const child = `wcchild.${parent}.${tlsDomain}`;
         try {
           // The handshake completing at all is the assertion that matters:
           // Traefik only accepts the TCP connection if a TCP router matches
           // the SNI. If no router matches, Traefik drops the connection and
-          // the handshake fails with ECONNRESET / ETIMEDOUT. The cert served
-          // during TLS termination is a secondary concern — Traefik's file
-          // watcher races with our reconcile, so on early connects it may
-          // serve its built-in fallback cert. We still inspect the SAN list
-          // to log what the user would actually see.
-          const { cert } = await tlsSniHandshake(child);
+          // the handshake fails with ECONNRESET / "socket disconnected". That
+          // happens during the window where our config write has landed but
+          // the file watcher has not yet reloaded, so we retry until Traefik
+          // catches up. The cert served during TLS termination is secondary —
+          // the file watcher may still be serving the built-in fallback cert
+          // on the first successful handshake. We inspect the SAN list only
+          // to log what the user would see.
+          const { cert } = await waitForTlsSni(child, 443, 30_000);
           const sans = (cert.subjectaltname || '').split(',').map((s) => s.trim());
           // eslint-disable-next-line no-console
           console.log(`[tcp-wildcard] SNI ${child} → cert SANs: ${sans.join(', ') || '(none)'}`);
