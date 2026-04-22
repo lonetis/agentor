@@ -206,8 +206,7 @@ tests/
 
 ### Parallel safety
 - Tests use unique display names with `Date.now()` to avoid collisions
-- No `cleanupAllWorkers` in `afterEach` (causes race conditions)
-- Each test cleans up only resources it created
+- No global cleanup in `afterEach` — each test only deletes resources it created (global teardown of all workers/mappings/etc. would race with parallel tests)
 - Serial test groups (`test.describe.serial`) for stateful container flows
 
 ### Selectors

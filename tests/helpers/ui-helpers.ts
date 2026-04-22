@@ -212,13 +212,6 @@ export async function expectSidebarTabExists(page: Page, tabLabel: string): Prom
 }
 
 /**
- * @deprecated Sidebar sections are now tabs — use selectSidebarTab instead.
- */
-export async function toggleSidebarSection(page: Page, sectionName: string): Promise<void> {
-  await selectSidebarTab(page, sectionName);
-}
-
-/**
  * Click the collapse sidebar button.
  */
 export async function collapseSidebar(page: Page): Promise<void> {

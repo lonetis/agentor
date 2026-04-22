@@ -31,16 +31,6 @@ export class DomainMappingStore extends UserScopedJsonStore<string, DomainMappin
     super(dataDir, 'domain-mappings.json', (m) => m.id);
   }
 
-  override async init(): Promise<void> {
-    await super.init();
-    // Backfill missing `wildcard` field on legacy records persisted before the feature existed.
-    for (const map of this.items.values()) {
-      for (const m of map.values()) {
-        if (typeof m.wildcard !== 'boolean') m.wildcard = false;
-      }
-    }
-  }
-
   /** Returns the (userId, mapping) pair that owns `id`, or undefined. Mapping
    * ids are nanoid-generated so globally unique. */
   findById(id: string): { userId: string; item: DomainMapping } | undefined {

@@ -102,38 +102,3 @@ export async function cleanupWorker(
     await new Promise(r => setTimeout(r, 500));
   }
 }
-
-/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
-export async function cleanupAllWorkers(request: APIRequestContext): Promise<void> {
-  throw new Error('cleanupAllWorkers is not safe for parallel test execution — clean up by specific ID instead');
-}
-
-/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
-export async function cleanupAllPortMappings(request: APIRequestContext): Promise<void> {
-  throw new Error('cleanupAllPortMappings is not safe for parallel test execution — clean up by specific ID instead');
-}
-
-/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
-export async function cleanupAllDomainMappings(request: APIRequestContext): Promise<void> {
-  throw new Error('cleanupAllDomainMappings is not safe for parallel test execution — clean up by specific ID instead');
-}
-
-/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
-export async function cleanupAllEnvironments(request: APIRequestContext): Promise<void> {
-  throw new Error('cleanupAllEnvironments is not safe for parallel test execution — clean up by specific ID instead');
-}
-
-/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
-export async function cleanupAllCustomCapabilities(request: APIRequestContext): Promise<void> {
-  throw new Error('cleanupAllCustomCapabilities is not safe for parallel test execution — clean up by specific ID instead');
-}
-
-/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
-export async function cleanupAllCustomInstructions(request: APIRequestContext): Promise<void> {
-  throw new Error('cleanupAllCustomInstructions is not safe for parallel test execution — clean up by specific ID instead');
-}
-
-/** @deprecated Do not use — deletes ALL resources globally, breaking parallel tests. */
-export async function cleanupAllCustomInitScripts(request: APIRequestContext): Promise<void> {
-  throw new Error('cleanupAllCustomInitScripts is not safe for parallel test execution — clean up by specific ID instead');
-}
