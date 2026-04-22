@@ -3,7 +3,7 @@
 # Built on the Playwright base image (Node 22 + Chromium preinstalled),
 # with Docker Engine layered on top so the runner can boot a fresh
 # agentor stack inside its own dockerd (DinD).
-FROM mcr.microsoft.com/playwright:v1.58.2-noble
+FROM mcr.microsoft.com/playwright:v1.59.1-noble
 
 # Install Docker Engine + compose plugin + a few utilities.
 # get.docker.com is the official upstream installer.
