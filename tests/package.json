@@ -17,12 +17,12 @@
     "test:docker:clean": "docker compose -f ../docker-compose.tests.yml down -v --remove-orphans && docker volume rm agentor-test-runner-docker 2>/dev/null || true"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
-    "@types/node": "^25.3.2",
+    "@playwright/test": "^1.59.1",
+    "@types/node": "^25.6.0",
     "@types/ssh2": "^1.15.5",
-    "@types/ws": "^8.18.0",
+    "@types/ws": "^8.18.1",
     "ssh2": "^1.17.0",
     "typescript": "^5.9.3",
-    "ws": "^8.18.0"
+    "ws": "^8.20.0"
   }
 }
