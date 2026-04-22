@@ -16,30 +16,23 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../../utils/services';
-import { useAuth } from '../../../utils/auth';
+import { requireAuthFromEvent } from '../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const containerId = getRouterParam(event, 'containerId')!;
   const path = getRouterParam(event, 'path') || '';
 
-  const containerManager = useContainerManager();
-  const info = containerManager.get(containerId);
-
+  const info = useContainerManager().get(containerId);
   if (!info || info.status !== 'running') {
     throw createError({ statusCode: 404, statusMessage: 'Container not found or not running' });
   }
 
-  const session: any = await (useAuth() as any).api.getSession({ headers: event.headers }).catch(() => null);
-  if (!session || !session.user) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' });
-  }
-  const role = session.user.role;
-  if (role !== 'admin' && info.userId !== session.user.id) {
+  const ctx = await requireAuthFromEvent(event);
+  if (ctx.user.role !== 'admin' && info.userId !== ctx.user.id) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
   }
 
   const url = getRequestURL(event);
   const target = `http://${info.name}:6080/${path}${url.search}`;
-
   return proxyRequest(event, target);
 });

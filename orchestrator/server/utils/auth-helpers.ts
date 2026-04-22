@@ -102,6 +102,53 @@ export function requireContainerAccess(
 }
 
 /**
+ * Normalises a better-auth `getSession` result into our AuthContext shape.
+ * Returns null if the session is missing or incomplete.
+ */
+function toAuthContext(session: any): AuthContext | null {
+  if (!session || !session.user || !session.session) return null;
+  return {
+    user: {
+      id: session.user.id,
+      email: session.user.email,
+      name: session.user.name,
+      role: session.user.role ?? null,
+    },
+    session: {
+      id: session.session.id,
+      token: session.session.token,
+      userId: session.session.userId,
+      expiresAt: new Date(session.session.expiresAt),
+    },
+  };
+}
+
+/**
+ * Loads the auth context directly from an h3 event. Used by routes outside
+ * `/api/` that are not covered by the global auth middleware (e.g. the
+ * `/editor/*` and `/desktop/*` reverse proxies). Returns null on any error
+ * or missing session — the caller decides whether to throw 401.
+ */
+export async function resolveAuthFromEvent(event: H3Event): Promise<AuthContext | null> {
+  try {
+    const auth = useAuth();
+    const session: any = await auth.api.getSession({ headers: event.headers });
+    return toAuthContext(session);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Like `resolveAuthFromEvent` but throws 401 instead of returning null.
+ */
+export async function requireAuthFromEvent(event: H3Event): Promise<AuthContext> {
+  const ctx = await resolveAuthFromEvent(event);
+  if (!ctx) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' });
+  return ctx;
+}
+
+/**
  * Validates a WebSocket peer by checking its upgrade request's cookies.
  * Returns the auth context if valid, null otherwise.
  * Used in crossws `open` handlers to reject unauthenticated connections.
@@ -114,25 +161,9 @@ export async function authenticateWsPeer(peer: any): Promise<AuthContext | null>
       ?? '';
     if (!cookieHeader) return null;
 
-    const headers = new Headers({ cookie: cookieHeader });
-    const auth = useAuth() as any;
-    const session: any = await auth.api.getSession({ headers });
-    if (!session || !session.user || !session.session) return null;
-
-    return {
-      user: {
-        id: session.user.id,
-        email: session.user.email,
-        name: session.user.name,
-        role: (session.user as any).role ?? null,
-      },
-      session: {
-        id: session.session.id,
-        token: session.session.token,
-        userId: session.session.userId,
-        expiresAt: new Date(session.session.expiresAt),
-      },
-    };
+    const auth = useAuth();
+    const session: any = await auth.api.getSession({ headers: new Headers({ cookie: cookieHeader }) });
+    return toAuthContext(session);
   } catch {
     return null;
   }
