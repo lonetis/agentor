@@ -2,12 +2,13 @@
 
 ## Overview
 
-- **~1000 tests** across 69 test files (~508 API + ~492 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
-- Parallel execution with 4 workers (configurable)
+- Parallel execution with up to 8 workers (`TEST_WORKERS` env var overrides; CI forces 1)
 - All tests independent and self-cleaning
+
+Per-file test counts are tracked in [`tests/TESTS.md`](../tests/TESTS.md).
 
 Unit tests (vitest) are planned but not yet implemented.
 
@@ -59,7 +60,7 @@ Failed tests automatically produce all debug artifacts — no flags needed:
 | Traces | `retain-on-failure` | Failed tests (DOM snapshots, network, console, actions) |
 | Video | `retain-on-failure` | Failed tests (full browser session recording) |
 | Screenshots | `only-on-failure` | Failed tests (final page state) |
-| Retries | 1 locally, 2 in CI | All tests get 1 automatic retry |
+| Retries | 2 | All tests get up to 2 automatic retries (both locally and in CI) |
 
 All artifacts are saved in `test-results/<test-folder>/` and linked from the HTML report (`npm run test:report`).
 

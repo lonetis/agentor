@@ -106,7 +106,7 @@ export class ApiClient {
     // Use FormData (the recommended way in Playwright for file uploads)
     const form = new FormData();
     for (const f of files) {
-      const blob = new Blob([f.content], { type: f.mimeType || 'application/octet-stream' });
+      const blob = new Blob([new Uint8Array(f.content)], { type: f.mimeType || 'application/octet-stream' });
       const file = new File([blob], f.name, { type: f.mimeType || 'application/octet-stream' });
       form.append('files', file, f.name);
     }
