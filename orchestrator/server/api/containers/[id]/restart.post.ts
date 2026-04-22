@@ -14,17 +14,16 @@ defineRouteMeta({
 
 import { useContainerManager } from '../../../utils/services';
 import { requireContainerAccess } from '../../../utils/auth-helpers';
+import { rethrowAsHttpError } from '../../../utils/http-errors';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
   try {
-    const containerManager = useContainerManager();
-    requireContainerAccess(event, containerManager.get(id));
-    await containerManager.restart(id);
+    const cm = useContainerManager();
+    requireContainerAccess(event, cm.get(id));
+    await cm.restart(id);
     return { ok: true };
-  } catch (err: unknown) {
-    if ((err as any)?.statusCode) throw err;
-    const message = err instanceof Error ? err.message : 'Operation failed';
-    throw createError({ statusCode: 500, statusMessage: message });
+  } catch (err) {
+    rethrowAsHttpError(err);
   }
 });
