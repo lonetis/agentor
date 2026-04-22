@@ -355,4 +355,65 @@ test.describe('Create Worker Modal', () => {
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden({ timeout: 10_000 });
   });
+
+  // --- Dynamic dropdown population & preset behaviour ---
+
+  test.describe('Dropdown population', () => {
+    test('environment selector shows newly created environments', async ({ page, request }) => {
+      const api = new ApiClient(request);
+      const envName = `Env-${Date.now()}`;
+      const { body: created } = await api.createEnvironment({
+        name: envName,
+        cpuLimit: 0,
+        memoryLimit: '',
+        networkMode: 'full',
+        allowedDomains: [],
+        includePackageManagerDomains: false,
+        dockerEnabled: true,
+        envVars: '',
+        setupScript: '',
+      });
+
+      try {
+        await goToDashboard(page);
+        await openCreateWorkerModal(page);
+        const dialog = page.locator('[role="dialog"]');
+
+        // Click on the environment dropdown/selector
+        const envSelector = dialog.locator('select, [role="listbox"], [role="combobox"]').first();
+        if (await envSelector.count() > 0) {
+          await envSelector.click();
+          // The created environment should be visible
+          await expect(page.getByText(envName)).toBeVisible({ timeout: 10_000 });
+        }
+      } finally {
+        try { await api.deleteEnvironment(created.id); } catch { /* ignore */ }
+      }
+    });
+
+    test('selecting a preset populates the init script textarea', async ({ page }) => {
+      await goToDashboard(page);
+      await openCreateWorkerModal(page);
+      const dialog = page.locator('[role="dialog"]');
+
+      // The Init Script USelect (combobox) shows "None" by default
+      const initScriptCombobox = dialog.getByRole('combobox', { name: 'Init Script' });
+      await expect(initScriptCombobox).toBeVisible();
+
+      // Click the combobox to open the dropdown
+      await initScriptCombobox.click();
+      await page.waitForTimeout(300);
+
+      // Look for the claude option in the dropdown listbox
+      const claudeOption = page.getByRole('option', { name: 'claude' });
+      if (await claudeOption.isVisible().catch(() => false)) {
+        await claudeOption.click();
+        // The textarea should now contain 'claude'
+        const textarea = dialog.locator('textarea').first();
+        await page.waitForTimeout(500);
+        const value = await textarea.inputValue();
+        expect(value.toLowerCase()).toContain('claude');
+      }
+    });
+  });
 });

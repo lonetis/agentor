@@ -481,5 +481,59 @@ test.describe('Environments API', () => {
       expect(typeof body.createdAt).toBe('string');
       expect(typeof body.updatedAt).toBe('string');
     });
+
+    test('stores multi-line env vars including comments and empty values', async ({ request }) => {
+      const api = new ApiClient(request);
+      const envVars = 'FOO=bar\nBAZ=qux\n# comment line\nEMPTY=';
+      const { status, body } = await api.createEnvironment({
+        name: `MultilineEnv-${Date.now()}`,
+        envVars,
+      });
+      expect(status).toBe(201);
+      expect(body.envVars).toBe(envVars);
+      createdEnvIds.push(body.id);
+    });
+  });
+
+  test.describe('Partial update behavior', () => {
+    test('partial update preserves unchanged fields', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: created } = await api.createEnvironment({
+        name: `PartialUpdate-${Date.now()}`,
+        cpuLimit: 2,
+        memoryLimit: '1g',
+        dockerEnabled: true,
+        envVars: 'FOO=bar',
+        setupScript: 'echo setup',
+      });
+      createdEnvIds.push(created.id);
+
+      const { status, body: updated } = await api.updateEnvironment(created.id, {
+        name: `PartialUpdate-${Date.now()}-renamed`,
+        cpuLimit: 4,
+      });
+      expect(status).toBe(200);
+      expect(updated.cpuLimit).toBe(4);
+      // Unchanged fields preserved
+      expect(updated.memoryLimit).toBe('1g');
+      expect(updated.dockerEnabled).toBe(true);
+      expect(updated.envVars).toBe('FOO=bar');
+      expect(updated.setupScript).toBe('echo setup');
+      // Timestamps: createdAt stable, updatedAt bumps
+      expect(updated.createdAt).toBe(created.createdAt);
+      expect(updated.updatedAt).not.toBe(created.updatedAt);
+    });
+
+    test('deleted environment no longer appears in list', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: created } = await api.createEnvironment({
+        name: `DeleteList-${Date.now()}`,
+      });
+      const { status: delStatus } = await api.deleteEnvironment(created.id);
+      expect(delStatus).toBe(200);
+
+      const { body: list } = await api.listEnvironments();
+      expect(list.find((e: { id: string }) => e.id === created.id)).toBeFalsy();
+    });
   });
 });

@@ -1491,4 +1491,41 @@ test.describe('Domain Mappings API', () => {
       }
     });
   });
+
+  test.describe('Multi-base-domain support', () => {
+    test('allows the same subdomain on two different base domains', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: status } = await api.getDomainMapperStatus();
+      test.skip(!status.enabled || status.baseDomains.length < 2, 'Requires at least two configured base domains');
+
+      const subdomain = `multi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const container = await createWorker(request);
+      try {
+        const { status: first, body: firstMapping } = await api.createDomainMapping({
+          subdomain,
+          baseDomain: status.baseDomains[0],
+          protocol: 'https',
+          workerId: container.id,
+          workerName: container.name,
+          internalPort: 8080,
+        });
+        expect(first).toBe(201);
+
+        const { status: second, body: secondMapping } = await api.createDomainMapping({
+          subdomain,
+          baseDomain: status.baseDomains[1],
+          protocol: 'https',
+          workerId: container.id,
+          workerName: container.name,
+          internalPort: 8080,
+        });
+        expect(second).toBe(201);
+
+        await api.deleteDomainMapping(firstMapping.id);
+        await api.deleteDomainMapping(secondMapping.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+  });
 });

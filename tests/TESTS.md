@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1282 tests** across 95 test files (~719 API + ~563 UI)
+- **~1276 tests** across 89 test files (~724 API + ~552 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -104,7 +104,7 @@ tests/
 
 ## Test Categories
 
-### API Tests (~719 tests, 51 files)
+### API Tests (~724 tests, 50 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -126,11 +126,9 @@ tests/
 | `rebuild.spec.ts` | 12 | Rebuild running/stopped container, preserves metadata (name, displayName, createdAt, initScript, environment config), returns new container ID, removes old ID from list, preserves port mappings across rebuild (keyed by the stable `containerName`), non-existent container error, response field completeness |
 | `tmux-panes.spec.ts` | 29 | Window CRUD, name validation, main window protection, duplicates, rename verify, whitespace name, non-existent container, auto-generated name format, rename/delete idempotency, main always present, 50-char name, rename main behavior, missing newName in body |
 | `apps.spec.ts` | 23 | App lifecycle (socks5 start/stop, chromium), error handling (invalid type, non-existent container/instance), response fields (id/port on start, instance fields on list, ok on stop), VS Code tunnel singleton (app-type shape, start returns id=`vscode`+port=0, second start returns 409, list status in `{running, auth_required}`), SSH singleton with auto port mapping (app-type shape with `fixedInternalPort: 22` + `autoPortMapping` 22000–22999, start allocates external port + writes store entry with appType='ssh'/instanceId='ssh', second start 409, stop/start reuses the same external port, stop does not remove the mapping) |
-| `environments.spec.ts` | 38 | Full CRUD, all 5 network modes, field validation, partial update, timestamps, dockerEnabled, includePackageManagerDomains, list field completeness, networkMode change (full→custom), non-existent environmentId, name type validation (number/null/boolean), update with same name, delete+re-fetch, list sorting, cpuLimit zero, all fields populated, empty name rejection, negative cpuLimit |
-| `environments-advanced.spec.ts` | 7 | Advanced environment operations |
+| `environments.spec.ts` | 41 | Full CRUD, all 5 network modes, field validation, partial update, timestamps, dockerEnabled, includePackageManagerDomains, list field completeness, networkMode change (full→custom), non-existent environmentId, name type validation (number/null/boolean), update with same name, delete+re-fetch, list sorting, cpuLimit zero, all fields populated, empty name rejection, negative cpuLimit, multi-line env vars, partial update preserves unchanged fields, deleted environment filtered from list |
 | `port-mappings.spec.ts` | 29 | CRUD, response fields, validation (external + internal ports: 0, 65536, NaN, float, string, negative -1), duplicate detection, mapper status invariant, stopped worker rejection, mapper status counts after operations |
-| `domain-mappings.spec.ts` | 73 | Status, list, CRUD (HTTPS/HTTP/TCP), validation (protocol, subdomain, port, baseDomain, worker), response fields, basicAuth CRUD, basicAuth validation (username-only, password-only), subdomain edge cases (leading/trailing hyphens, underscores, consecutive dots, single-char, numeric, multi-level, 64-char), port edge cases (0, 65536, negative, float, min/max valid, string coercion), protocol conflict detection (duplicate, HTTP+HTTPS allowed, HTTPS+TCP conflict, HTTP+TCP allowed), stopped worker rejection, path validation (leading slash, invalid chars, TCP rejection, root normalization, trailing slash strip, valid path, different paths on same domain, duplicate path+protocol, default empty), mapper status fields (totalMappings, baseDomains, dashboardUrl, baseDomainConfigs with challengeType), wildcard routing (default false, HTTP/HTTPS/TCP wildcards, bare-domain wildcard, HTTP-01 ACME rejection, non-strict truthy coercion, wildcard field on list, duplicate detection with wildcard, mixing wildcard/non-wildcard on same key, coexistence with deeper explicit subdomain) |
-| `domain-mappings-advanced.spec.ts` | 9 | Advanced domain mapping operations |
+| `domain-mappings.spec.ts` | 75 | Status, list, CRUD (HTTPS/HTTP/TCP), validation (protocol, subdomain, port, baseDomain, worker), response fields, basicAuth CRUD, basicAuth validation (username-only, password-only), subdomain edge cases (leading/trailing hyphens, underscores, consecutive dots, single-char, numeric, multi-level, 64-char), port edge cases (0, 65536, negative, float, min/max valid, string coercion), protocol conflict detection (duplicate, HTTP+HTTPS allowed, HTTPS+TCP conflict, HTTP+TCP allowed), stopped worker rejection, path validation (leading slash, invalid chars, TCP rejection, root normalization, trailing slash strip, valid path, different paths on same domain, duplicate path+protocol, default empty), mapper status fields (totalMappings, baseDomains, dashboardUrl, baseDomainConfigs with challengeType), wildcard routing (default false, HTTP/HTTPS/TCP wildcards, bare-domain wildcard, HTTP-01 ACME rejection, non-strict truthy coercion, wildcard field on list, duplicate detection with wildcard, mixing wildcard/non-wildcard on same key, coexistence with deeper explicit subdomain), multi-base-domain routing (same subdomain on two different base domains) |
 | `domain-mappings-batch.spec.ts` | 23 | Batch domain mapping creation, batch path support (create with path, TCP path rejection, default empty path) |
 | `traefik-integration.spec.ts` | 34 | HTTPS routing (traffic via subdomain, TLS certificate), HTTP routing, BasicAuth (401 without credentials, 200 with credentials), Traefik lifecycle (container existence, mapping count updates, list verification), multi-domain support (baseDomains list, same subdomain on different domains), dashboard subdomain URL, wildcard routing (HTTPS + HTTP wildcard matches a child subdomain, exact host mapping beats wildcard priority, TCP wildcard terminates TLS on child SNI with wildcard cert, TCP wildcard stored mapping round-trip) |
 | `archived-workers.spec.ts` | 15 | Archive/unarchive/delete flow, error handling, response fields (name/createdAt/archivedAt/displayName), unarchive returns new id, unarchive preserves displayName, unarchive and verify running, double archive error, image/environmentId fields, port mappings survive archive and unarchive (keyed by `containerName`), port mappings removed on permanent delete of archived worker |
@@ -160,7 +158,7 @@ tests/
 | `git-identity.spec.ts` | 10 | Per-user git config (user.name/email from auth profile), WORKER env var contains gitName/gitEmail, no git wrapper at /usr/local/bin/git, persistence across rebuild, persistence across archive/unarchive, ContainerInfo includes gitName/gitEmail |
 | `mcp-servers-loaded.spec.ts` | 6 | MCP server verification: Claude config keys + commands via jq, Codex `mcp list` output + enabled status, Gemini config keys + commands via jq |
 
-### UI Tests (~563 tests, 44 files)
+### UI Tests (~552 tests, 39 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -172,15 +170,12 @@ tests/
 | `account-modal-env-vars.spec.ts` | 6 | API keys / Custom env vars / SSH Access / Agent OAuth credentials sections render; GitHub token saves and persists across modal close+reopen; custom env var add+save+reload round-trip; invalid custom key surfaces an inline error; fresh user sees all 3 agents as Not logged in; SSH public key textarea save+reload round-trip |
 | `dashboard.spec.ts` | 11 | Page load, title, buttons, sections, images, sidebar labels |
 | `sidebar.spec.ts` | 27 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design, Capabilities/Instructions/Init Scripts row stacks vertically on narrow sidebar, tab bar horizontal scroll + overflow dropdown (20% visibility threshold, live updates on scroll, hidden when all tabs fit) |
-| `create-worker-modal.spec.ts` | 29 | Open/close, form fields, name input, add repo/mount, environment dropdown, init preset dropdown, Create action |
-| `create-worker-modal-advanced.spec.ts` | 8 | Advanced modal interactions |
+| `create-worker-modal.spec.ts` | 31 | Open/close, form fields, name input, add repo/mount, environment dropdown, init preset dropdown, Create action, dropdown populates newly created environments, selecting a preset populates init-script textarea |
 | `cross-modal-navigation.spec.ts` | 6 | Manage button navigation between modals |
-| `container-card.spec.ts` | 14 | Name, status, buttons, icons, stop/restart/archive, Restart hidden when running |
-| `container-card-advanced.spec.ts` | 7 | Advanced container card interactions, icon-only action buttons, single button row layout, compact card design |
+| `container-card.spec.ts` | 15 | Name, status, buttons, icons, stop/restart/archive, Restart hidden when running, archive action hides card after confirmation, icon-only action buttons, compact card design |
 | `rebuild.spec.ts` | 6 | Rebuild button visibility (running + stopped), confirm dialog dismiss cancels, rebuild state transition, display name preserved, new container ID after rebuild |
 | `container-detail-modal.spec.ts` | 43 | Modal content, Worker section (Container/ID/Image/ImageID/Created), Configuration section (Environment/CPU/Memory/Docker), Network (Mode/Allowed Domains/Package Managers), Repositories, Mounts, Init Script, Exposed Worker APIs (badges), Capabilities (badges), Instructions (badges), Env Vars, Setup Script, status badge color, section order, close (Escape + overlay), custom environment name, snapshotted config |
-| `environments-modal.spec.ts` | 20 | Open/close, pre-created env, create button, form fields (network, Docker, resources), Setup Script, Init Script, Create button |
-| `environments-modal-advanced.spec.ts` | 5 | Advanced environment modal interactions |
+| `environments-modal.spec.ts` | 24 | Open/close, pre-created env, create button, form fields (network, Docker, resources), Setup Script, Init Script, Create button, create-via-form flow, custom env Edit/Delete buttons, edit existing environment, network mode dropdown options |
 | `environment-editor-network.spec.ts` | 11 | Network mode selector, custom domains, package manager toggle |
 | `capabilities-modal.spec.ts` | 10 | Capabilities modal list, view built-in, create/edit/delete custom |
 | `capabilities-modal-crud.spec.ts` | 7 | Capabilities CRUD operations via UI |
@@ -190,8 +185,7 @@ tests/
 | `init-scripts-crud.spec.ts` | 8 | Init scripts CRUD operations via UI |
 | `init-preset-selector.spec.ts` | 6 | Default None, textarea, Custom/None sync |
 | `settings-modal.spec.ts` | 10 | Settings modal content, sections, expand/collapse |
-| `port-mappings-panel.spec.ts` | 11 | Section, button, API-created mappings, type labels (local + ext), delete button, form open/close, form fields (type selector, worker dropdown, port inputs), delete interaction |
-| `port-mappings-create.spec.ts` | 3 | Port mapping creation form |
+| `port-mappings-panel.spec.ts` | 13 | Section, button, API-created mappings, type labels (local + ext), delete button, form open/close, form fields (type selector, worker dropdown, port inputs), delete interaction, create-via-UI form submission flow |
 | `domain-mappings-panel.spec.ts` | 48 | Status API, section visibility, form open/close, protocol selector, basic auth checkbox, TCP protocol hides auth, auth checkbox shows username/password inputs, base domain display, API-created mapping display, protocol badge, path input visibility, TCP hides path, path display in mapping list, wildcard checkbox visibility and enabled state, wildcard live match preview, wildcard mapping list display (`*.host` prefix + `wildcard` badge), wildcard checkbox remains visible/enabled when TCP is selected, TCP wildcard mapping list display (tcp + wildcard badges), TCP form shows explanatory hint in place of Basic auth |
 | `domain-mappings-panel-advanced.spec.ts` | 27 | Advanced domain mapping panel interactions, TCP-to-HTTP restores path input |
 | `selfsigned-ca-cert.spec.ts` | 8 | Self-signed CA certificate download UI |
@@ -205,8 +199,7 @@ tests/
 | `ui-state-persistence.spec.ts` | 25 | UI state persistence across reloads, viewport clamp, drag-to-collapse |
 | `usage-panel.spec.ts` | 24 | Usage panel display, progress bars, auth badges |
 | `update-notification.spec.ts` | 24 | Images section, image names, toggle, update status |
-| `archived-workers.spec.ts` | 6 | Archived section, collapsible, UI archive, worker card (name, Unarchive, Delete buttons) |
-| `archived-workers-actions.spec.ts` | 4 | Archived worker unarchive/delete actions |
+| `archived-workers.spec.ts` | 10 | Archived section, collapsible, UI archive, worker card (name, Unarchive, Delete buttons), Unarchive action flow, Delete action flow, archived section count badge, archived-date text, multi-archived visibility |
 | `log-pane.spec.ts` | 17 | Logs button visibility, open log pane, filter bar, source/level filter buttons, search input, status bar, entries/empty state, entry structure, tab bar, clicking Logs again opens a second independent tab, closing one tab leaves the sibling intact, entry count, source filter toggle, localStorage persistence, scroll-to-top triggers loadMore and prepends older entries, tab close |
 
 ## Design Decisions

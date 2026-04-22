@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { goToDashboard, findButtonByTooltip, hasButtonWithTooltip } from '../helpers/ui-helpers';
+import { goToDashboard, acceptNextConfirm, findButtonByTooltip, hasButtonWithTooltip } from '../helpers/ui-helpers';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
 
@@ -174,5 +174,31 @@ test.describe.serial('Container Card', () => {
     // Close via Escape
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden({ timeout: 10_000 });
+  });
+
+  // ─── 6. Archive Action ──────────────────────────────────────
+
+  test.describe('Archive action', () => {
+    test('archive button removes card from active list', async ({ request, page }) => {
+      // This test consumes the worker; create a dedicated one so it doesn't
+      // interfere with the serial flow above.
+      const archiveDisplayName = `CardArchive-${Date.now()}`;
+      const archiveContainer = await createWorker(request, { displayName: archiveDisplayName });
+      let cleanupId: string | undefined = archiveContainer.id;
+      try {
+        await goToDashboard(page);
+        const card = page.locator('.rounded-lg').filter({ hasText: archiveDisplayName }).first();
+        await expect(card).toBeVisible({ timeout: 15_000 });
+        acceptNextConfirm(page);
+        const archiveBtn = await findButtonByTooltip(card, page, 'Archive');
+        await archiveBtn.click();
+        await expect(page.locator(`h3:has-text("${archiveDisplayName}")`)).toBeHidden({ timeout: 30_000 });
+        cleanupId = undefined; // Archived — no active container to remove
+      } finally {
+        if (cleanupId) {
+          await cleanupWorker(request, cleanupId);
+        }
+      }
+    });
   });
 });
