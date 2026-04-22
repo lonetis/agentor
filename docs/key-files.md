@@ -65,7 +65,7 @@
 - `orchestrator/server/utils/log-store.ts` - LogStore class (NDJSON file storage with size-based rotation, query with filters)
 - `orchestrator/server/utils/log-broadcaster.ts` - LogBroadcaster class (manages WebSocket peers for live log streaming)
 - `orchestrator/server/utils/log-collector.ts` - LogCollector class (attaches to Docker containers via dockerode logs, handles TTY/non-TTY streams, heuristic level detection)
-- `orchestrator/server/utils/log-levels.ts` - Log level utilities (shouldLog, parseLogLevel)
+- `orchestrator/server/utils/log-levels.ts` - Log level utility (`shouldLog`)
 - `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useUserCredentialManager, useUserEnvStore, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility. (GitHubService is per-token via `getGitHubServiceForToken(token)` rather than a singleton, since the token comes from each caller's UserEnvVars.)
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)

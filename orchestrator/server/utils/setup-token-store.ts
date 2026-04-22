@@ -62,8 +62,3 @@ export function consumeSetupToken(token: string | undefined | null): SetupTokenP
     initialAdmin: entry.initialAdmin,
   };
 }
-
-/** For tests: clear all tokens. */
-export function clearSetupTokens(): void {
-  tokens.clear();
-}

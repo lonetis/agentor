@@ -10,8 +10,3 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 export function shouldLog(level: LogLevel, threshold: LogLevel): boolean {
   return LEVEL_ORDER[level] >= LEVEL_ORDER[threshold];
 }
-
-export function parseLogLevel(raw: string): LogLevel {
-  if (raw === 'debug' || raw === 'info' || raw === 'warn' || raw === 'error') return raw;
-  return 'info';
-}
