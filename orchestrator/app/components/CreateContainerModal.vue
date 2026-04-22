@@ -9,6 +9,7 @@ const emit = defineEmits<{
   create: [request: CreateContainerRequest];
   manageEnvironments: [];
   manageInitScripts: [];
+  'after:leave': [];
 }>();
 
 const open = defineModel<boolean>('open', { default: false });
@@ -185,7 +186,7 @@ function reset() {
 </script>
 
 <template>
-  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-3xl' }">
+  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-3xl' }" @after:leave="emit('after:leave')">
     <template #content>
       <div class="p-6 space-y-5 max-h-[90vh] overflow-y-auto">
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">New Worker</h2>

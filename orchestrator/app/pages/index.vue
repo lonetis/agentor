@@ -92,18 +92,27 @@ async function handleDeleteArchived(name: string) {
   await deleteArchivedWorker(name);
 }
 
+// Cross-modal navigation: CreateContainerModal's "Manage" buttons close the
+// current modal and queue a follow-up modal to open once the exit transition
+// finishes (UModal emits `after:leave` when that is safe). Setting the next
+// modal before the transition completes would stack their backdrops.
+const pendingModalAfterCreateClose = ref<'environments' | 'initScripts' | null>(null);
+
 function openEnvironmentsFromModal() {
+  pendingModalAfterCreateClose.value = 'environments';
   showCreateModal.value = false;
-  setTimeout(() => {
-    showEnvironmentsModal.value = true;
-  }, 350);
 }
 
 function openInitScriptsFromModal() {
+  pendingModalAfterCreateClose.value = 'initScripts';
   showCreateModal.value = false;
-  setTimeout(() => {
-    showInitScriptsModal.value = true;
-  }, 350);
+}
+
+function onCreateModalClosed() {
+  const next = pendingModalAfterCreateClose.value;
+  pendingModalAfterCreateClose.value = null;
+  if (next === 'environments') showEnvironmentsModal.value = true;
+  else if (next === 'initScripts') showInitScriptsModal.value = true;
 }
 
 </script>
@@ -194,6 +203,7 @@ function openInitScriptsFromModal() {
       @create="handleCreate"
       @manage-environments="openEnvironmentsFromModal"
       @manage-init-scripts="openInitScriptsFromModal"
+      @after:leave="onCreateModalClosed"
     />
 
     <EnvironmentsModal
