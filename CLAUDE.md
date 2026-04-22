@@ -1,6 +1,6 @@
 # Agent Orchestrator (Agentor)
 
-Docker orchestrator that spawns isolated AI coding agent workers, each in its own container with terminal access via a web dashboard. All agent CLIs (Claude, Codex, Gemini) are pre-installed in a single unified worker image. Includes a modular app system (Chromium, SOCKS5 proxy), a unified Traefik reverse proxy for both TCP port mappings and HTTP/HTTPS/TCP domain routing, a VS Code editor (code-server), VS Code tunnel (native VS Code client connections), and an automatic update mechanism for production deployments.
+Docker orchestrator that spawns isolated AI coding agent workers, each in its own container with terminal access via a web dashboard. All agent CLIs (Claude, Codex, Gemini) are pre-installed in a single unified worker image. Includes a modular app system (Chromium, SOCKS5 proxy, VS Code Tunnel, SSH server), a unified Traefik reverse proxy for both TCP port mappings and HTTP/HTTPS/TCP domain routing, a VS Code editor (code-server), and an automatic update mechanism for production deployments.
 
 ## Architecture
 
@@ -9,15 +9,16 @@ Browser (Vue 3/Nuxt UI) <--HTTP/JSON--> Orchestrator (Nuxt 3/Nitro) <--dockerode
 Browser (xterm.js)       <--WebSocket--> Nitro (crossws)             <--docker stream--> Worker (tmux)
 Browser (noVNC iframe)   <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (websockify <--> x11vnc <--> Xvfb)
 Browser (code-server)    <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (code-server on port 8443)
-Local VS Code            <--tunnel-----> Microsoft Relay              <--tunnel--------> Worker (code tunnel)
-Orchestrator             <--docker exec-> apps/*/manage.sh (start/stop/list/status app instances in worker)
+Local VS Code            <--tunnel-----> Microsoft Relay              <--tunnel--------> Worker (vscode app → code tunnel)
+Local ssh client         <--TCP--------> Traefik (ext :22xxx)         <--TCP-----------> Worker (ssh app → sshd :22)
+Orchestrator             <--docker exec-> apps/*/manage.sh (start/stop/list app instances in worker)
 Orchestrator (TraefikManager) <--dockerode--> Traefik container (unified reverse proxy: port mappings + domain routing, TLS)
 ```
 
 Three managed containers:
 - **Orchestrator**: Nuxt 3 app (SPA mode) with Nitro server, serving dashboard + managing workers and the Traefik container via Docker socket
 - **Traefik**: Unified reverse proxy container handling both TCP port mappings (one dedicated entrypoint per mapping) and HTTP/HTTPS/TCP domain routing with Let's Encrypt or self-signed TLS. Managed by the orchestrator — created when any port/domain mapping or dashboard subdomain is configured, removed when empty. Port mappings work without `BASE_DOMAINS`; domain mappings require it.
-- **Workers**: Single unified Docker image (`agentor-worker`, Ubuntu 24.04) with all agent CLIs pre-installed, running in tmux, plus an integrated display stack (Xvfb + fluxbox + x11vnc + noVNC on port 6080), code-server (VS Code on port 8443), VS Code tunnel (native VS Code client via Microsoft relay), and Chromium. Each worker is a single container with all agents available. Three persistent volumes per worker: workspace (`/workspace`), agent config data (`/home/agent/.agent-data` — symlinked to `~/.claude`, `~/.gemini`, `~/.codex`, `~/.agents`, `~/.claude.json`), and optionally DinD (`/var/lib/docker`). Worker identity has two parts: a per-user short `name` (e.g. `happy-panda` — two users can each have one) and a globally unique `containerName = <containerPrefix>-<userId>-<name>` used as the Docker container name, the prefix for per-worker volume names, and the DNS name Traefik routes to.
+- **Workers**: Single unified Docker image (`agentor-worker`, Ubuntu 24.04) with all agent CLIs pre-installed, running in tmux, plus an integrated display stack (Xvfb + fluxbox + x11vnc + noVNC on port 6080), code-server (VS Code on port 8443), Chromium, and apps — Chromium with CDP, SOCKS5 proxy, VS Code Tunnel (native VS Code client via Microsoft relay), and OpenSSH server (port 22). Each worker is a single container with all agents available. Three persistent volumes per worker: workspace (`/workspace`), agent config data (`/home/agent/.agent-data` — symlinked to `~/.claude`, `~/.gemini`, `~/.codex`, `~/.agents`, `~/.claude.json`), and optionally DinD (`/var/lib/docker`). Worker identity has two parts: a per-user short `name` (e.g. `happy-panda` — two users can each have one) and a globally unique `containerName = <containerPrefix>-<userId>-<name>` used as the Docker container name, the prefix for per-worker volume names, and the DNS name Traefik routes to.
 
 ## Detailed Documentation
 

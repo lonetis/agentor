@@ -31,6 +31,31 @@ export class PortMappingStore extends UserScopedJsonStore<number, PortMapping> {
     return this.findWithOwner((m) => m.externalPort === externalPort);
   }
 
+  /** Finds an existing mapping that belongs to a specific worker + app instance.
+   * Used by auto-port-mapping apps (e.g. ssh) to reuse the same external port
+   * across stop/start so the connection string stays stable. */
+  findByWorkerAndAppType(
+    containerName: string,
+    appType: string,
+    instanceId?: string,
+  ): PortMapping | undefined {
+    return this.list().find(
+      (m) =>
+        m.containerName === containerName &&
+        m.appType === appType &&
+        (instanceId === undefined || m.instanceId === instanceId),
+    );
+  }
+
+  /** Returns the lowest unused external port in `[rangeStart, rangeEnd]`, or null. */
+  findFreeExternalPort(rangeStart: number, rangeEnd: number): number | null {
+    const used = new Set(this.list().map((m) => m.externalPort));
+    for (let p = rangeStart; p <= rangeEnd; p++) {
+      if (!used.has(p)) return p;
+    }
+    return null;
+  }
+
   async add(mapping: PortMapping): Promise<void> {
     const existing = this.findByPort(mapping.externalPort);
     if (existing) {

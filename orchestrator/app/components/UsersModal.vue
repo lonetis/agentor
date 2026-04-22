@@ -23,7 +23,11 @@ async function refresh() {
   loading.value = true;
   error.value = '';
   try {
-    const result = await client.admin.listUsers({ query: { limit: 200 } });
+    // Sort newest-first so a freshly-created user is never pushed off the
+    // first page when the installation accumulates many users over time.
+    const result = await client.admin.listUsers({
+      query: { limit: 500, sortBy: 'createdAt', sortDirection: 'desc' },
+    });
     if ((result as any)?.error) {
       error.value = (result as any).error.message || 'Failed to load users';
       users.value = [];

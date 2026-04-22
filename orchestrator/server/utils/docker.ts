@@ -327,48 +327,65 @@ export class DockerService {
     const trimmed = output.trim();
     if (!trimmed) return [];
 
-    return trimmed
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .map((line) => {
-        const parts = line.split(':');
-        return {
-          id: parts[0] ?? '',
+    const entries: AppInstanceInfo[] = [];
+    for (const line of trimmed.split(/\r?\n/)) {
+      const clean = line.trim();
+      if (!clean) continue;
+      // Tolerate occasional non-JSON stdout lines (e.g. a stray shell warning)
+      // so a single bad line doesn't wipe the whole list.
+      if (clean[0] !== '{') continue;
+      try {
+        const parsed = JSON.parse(clean) as Partial<AppInstanceInfo>;
+        if (!parsed.id) continue;
+        entries.push({
+          id: String(parsed.id),
           appType: appTypeId,
-          port: parseInt(parts[1] ?? '0', 10),
-          status: (parts[2] ?? 'stopped') as 'running' | 'stopped',
-        };
-      });
+          port: typeof parsed.port === 'number' ? parsed.port : parseInt(String(parsed.port ?? 0), 10) || 0,
+          status: (parsed.status as AppInstanceInfo['status']) ?? 'stopped',
+          ...(parsed.machineName ? { machineName: String(parsed.machineName) } : {}),
+          ...(parsed.authUrl ? { authUrl: String(parsed.authUrl) } : {}),
+          ...(parsed.authCode ? { authCode: String(parsed.authCode) } : {}),
+        });
+      } catch {
+        // Malformed JSON line — skip.
+      }
+    }
+    return entries;
   }
 
-  async startAppInstance(containerId: string, appTypeId: string, id: string, port: number): Promise<string> {
-    const output = await this.execAppManage(containerId, appTypeId, ['start', id, String(port)]);
-    const trimmed = output.trim();
-    if (trimmed.startsWith('ERR:')) {
-      throw new Error(trimmed.substring(4));
-    }
-    return trimmed;
+  async startAppInstance(
+    containerId: string,
+    appTypeId: string,
+    id: string,
+    port: number,
+    extraArgs: string[] = [],
+  ): Promise<void> {
+    const output = await this.execAppManage(containerId, appTypeId, ['start', id, String(port), ...extraArgs]);
+    this.assertManageOk(output, `start ${appTypeId}/${id}`);
   }
 
   async stopAppInstance(containerId: string, appTypeId: string, id: string): Promise<void> {
     const output = await this.execAppManage(containerId, appTypeId, ['stop', id]);
-    const trimmed = output.trim();
-    if (trimmed.startsWith('ERR:')) {
-      throw new Error(trimmed.substring(4));
-    }
+    this.assertManageOk(output, `stop ${appTypeId}/${id}`);
   }
 
-  // --- VS Code tunnel management ---
-
-  async execVsCodeTunnel(containerId: string, args: string[]): Promise<string> {
-    const container = this.docker.getContainer(containerId);
-    const exec = await container.exec({
-      Cmd: ['/home/agent/apps/vscode-tunnel/manage.sh', ...args],
-      AttachStdout: true,
-      AttachStderr: true,
-    });
-    const stream = await exec.start({ Detach: false, Tty: true });
-    return this.streamToString(stream);
+  /** Scan NDJSON output from manage.sh and throw if any line signals an error. */
+  private assertManageOk(output: string, context: string): void {
+    const trimmed = output.trim();
+    if (!trimmed) return;
+    for (const line of trimmed.split(/\r?\n/)) {
+      const clean = line.trim();
+      if (!clean || clean[0] !== '{') continue;
+      try {
+        const parsed = JSON.parse(clean) as { status?: string; message?: string };
+        if (parsed.status === 'error') {
+          throw new Error(parsed.message || `app manage failed: ${context}`);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('app manage failed')) throw err;
+        // Non-JSON line or parse error — ignore (likely stderr noise).
+      }
+    }
   }
 
   // --- Workspace archive methods ---

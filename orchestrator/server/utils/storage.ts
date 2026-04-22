@@ -157,6 +157,33 @@ export class StorageManager {
     }
   }
 
+  /** Ensure the per-user SSH directory + `authorized_keys` file exist so the
+   * bind mount target is valid before a worker starts. Idempotent. Writes via
+   * the in-container data path so it works in both volume and directory mode;
+   * the file surfaces on the host at `<dataHostPath>/users/<userId>/ssh/…`,
+   * which is what the Docker bind string references. */
+  async ensureUserSshDir(userId: string): Promise<void> {
+    const sshDir = join(this.dataDir, 'users', userId, 'ssh');
+    const keyFile = join(sshDir, 'authorized_keys');
+    await mkdir(sshDir, { recursive: true });
+    try {
+      await stat(keyFile);
+    } catch {
+      await writeFile(keyFile, '', { mode: 0o644 });
+    }
+  }
+
+  /** Bind string for the user's `authorized_keys` file, mounted read-only at
+   * the path sshd reads from inside the worker. Resolved via the host path so
+   * Docker can find the file regardless of storage mode. */
+  getSshAuthorizedKeysBind(userId: string): string {
+    if (!this.dataHostPath) {
+      throw new Error('[storage] dataHostPath not resolved — cannot build ssh bind');
+    }
+    const hostFile = join(this.dataHostPath, 'users', userId, 'ssh', 'authorized_keys');
+    return `${hostFile}:/home/agent/.ssh/authorized_keys:ro`;
+  }
+
   /** In-container path of a user's private data directory (`/data/users/<userId>/`). */
   getUserDir(userId: string): string {
     return join(this.dataDir, 'users', userId);

@@ -26,10 +26,11 @@ The unified worker image (`worker/`) provides:
 - Utilities: htop, btop, tree, less, openssh-client, rsync, strace, dnsutils, net-tools, iputils-ping, file, man-db
 - Network firewall: dnsmasq, ipset, iptables (for environment network policies)
 - VS Code CLI (tunnel mode — native VS Code client connections via Microsoft relay)
-- App management scripts in `/home/agent/apps/` (chromium/manage.sh, socks5/manage.sh, vscode-tunnel/manage.sh)
+- App management scripts in `/home/agent/apps/` (chromium/manage.sh, socks5/manage.sh, vscode-tunnel/manage.sh, ssh/manage.sh). Every app exposes the same `start <id> <port> [extraArgs…]` / `stop <id>` / `list` interface and emits NDJSON on stdout.
+- OpenSSH server (`openssh-server`, port 22, pubkey-only via `StrictModes no` + bind-mounted `/home/agent/.ssh/authorized_keys`)
 - Shared `agent` user (uid 1000) with passwordless sudo
 - Helper scripts: `memfd-exec.py` (memfd script executor), `setup.sh` (setup script runner), `init.sh` (init script runner)
-- Common entrypoint: tmux session, env var export, agent setups (+ platform files), docker daemon, display stack, code-server, VS Code tunnel, git identity + auth, repo clone, network firewall, setup script (memfd), init script (memfd), launch
+- Common entrypoint: tmux session, env var export, agent setups (+ platform files), docker daemon, display stack, code-server, git identity + auth, repo clone, network firewall, setup script (memfd), init script (memfd), launch. The VS Code tunnel and SSH server are apps (started via the Apps pane) — not auto-started by the entrypoint.
 
 ### Pre-installed Agents
 
@@ -116,7 +117,6 @@ Fully synchronous — every phase runs foreground and completes before the next 
 2. **Docker daemon** — if `ENVIRONMENT.dockerEnabled`: start dockerd, wait for socket (up to 30s); otherwise skipped
 3. **Display stack** — Xvfb + fluxbox + x11vnc + websockify/noVNC, wait for each service
 3b. **Code editor** — code-server on port 8443 (`--auth none --bind-addr 0.0.0.0:8443`), wait for port ready
-3c. **VS Code tunnel** — `code tunnel --accept-server-license-terms --name <worker-name>` in background. First run requires GitHub device code auth (shown in the VS Code Tunnel pane). Auth persists per worker in the agent-data volume (`~/.vscode` symlinked to `.agent-data/.vscode`); subsequent runs of the same worker auto-connect.
 4. **Git identity + auth** — sets `git config --global user.name/email` from `WORKER.gitName`/`WORKER.gitEmail` (creating user's profile); if the worker owner's `GITHUB_TOKEN` is set in their account env vars: configures `gh` credential helper; otherwise skipped
 5. **Repository clone** — if `WORKER.repos`: parallel clone per repo, wait for all; otherwise skipped
 6. **Network firewall** — reads `ENVIRONMENT.networkMode` + `.allowedDomains` via jq; dnsmasq + ipset + iptables; skipped for `full` mode

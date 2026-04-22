@@ -125,7 +125,7 @@ tests/
 | `containers-edge-cases.spec.ts` | 11 | Edge case container operations, port mappings survive stop + restart |
 | `rebuild.spec.ts` | 12 | Rebuild running/stopped container, preserves metadata (name, displayName, createdAt, initScript, environment config), returns new container ID, removes old ID from list, preserves port mappings across rebuild (keyed by the stable `containerName`), non-existent container error, response field completeness |
 | `tmux-panes.spec.ts` | 29 | Window CRUD, name validation, main window protection, duplicates, rename verify, whitespace name, non-existent container, auto-generated name format, rename/delete idempotency, main always present, 50-char name, rename main behavior, missing newName in body |
-| `apps.spec.ts` | 14 | App lifecycle (socks5 start/stop, chromium), error handling (invalid type, non-existent container/instance), response fields (id/port on start, instance fields on list, ok on stop) |
+| `apps.spec.ts` | 23 | App lifecycle (socks5 start/stop, chromium), error handling (invalid type, non-existent container/instance), response fields (id/port on start, instance fields on list, ok on stop), VS Code tunnel singleton (app-type shape, start returns id=`vscode`+port=0, second start returns 409, list status in `{running, auth_required}`), SSH singleton with auto port mapping (app-type shape with `fixedInternalPort: 22` + `autoPortMapping` 22000–22999, start allocates external port + writes store entry with appType='ssh'/instanceId='ssh', second start 409, stop/start reuses the same external port, stop does not remove the mapping) |
 | `environments.spec.ts` | 38 | Full CRUD, all 5 network modes, field validation, partial update, timestamps, dockerEnabled, includePackageManagerDomains, list field completeness, networkMode change (full→custom), non-existent environmentId, name type validation (number/null/boolean), update with same name, delete+re-fetch, list sorting, cpuLimit zero, all fields populated, empty name rejection, negative cpuLimit |
 | `environments-advanced.spec.ts` | 7 | Advanced environment operations |
 | `port-mappings.spec.ts` | 29 | CRUD, response fields, validation (external + internal ports: 0, 65536, NaN, float, string, negative -1), duplicate detection, mapper status invariant, stopped worker rejection, mapper status counts after operations |
@@ -140,7 +140,7 @@ tests/
 | `instructions.spec.ts` | 27 | Instruction entry CRUD, built-in entries, validation |
 | `init-scripts.spec.ts` | 25 | Init script CRUD, built-in scripts, validation |
 | `settings.spec.ts` | 11 | Settings endpoint, categorized sections — verifies the legacy `agent-auth` section is gone and `git-providers` reports clone domains only (no per-user tokens) |
-| `account-env-vars.spec.ts` | 11 | Per-user env vars: GET/PUT auth gating, fresh-user defaults, well-known field upsert + partial PUT, customEnvVars round-trip, validation (lowercase / digit-prefixed / reserved / duplicate keys), per-user isolation, admin cannot see another user's values via the endpoint |
+| `account-env-vars.spec.ts` | 15 | Per-user env vars: GET/PUT auth gating, fresh-user defaults (now including sshPublicKey=''), well-known field upsert + partial PUT, customEnvVars round-trip, validation (lowercase / digit-prefixed / reserved / duplicate keys), per-user isolation, admin cannot see another user's values via the endpoint, sshPublicKey round-trip, sshPublicKey partial update, sshPublicKey per-user isolation |
 | `account-credentials.spec.ts` | 5 | Per-user agent OAuth credential file listing + reset: auth gating, 3-entry shape for a fresh user, idempotent DELETE, unknown agent id rejection, independent listings per user |
 | `user-scoped-worker-env.spec.ts` | 5 | End-to-end propagation: GITHUB_TOKEN, ANTHROPIC_API_KEY, and arbitrary custom env vars from one user's account flow into that user's workers via printenv; user A's worker shows A's token while B's shows B's; an Environment's envVars override the per-user value |
 | `selfsigned-certs.spec.ts` | 10 | Self-signed CA certificate operations |
@@ -169,7 +169,7 @@ tests/
 | `route-guard.spec.ts` | 6 | Unauth user on `/` → `/login`, unauth user on `/login` stays, unauth user on `/setup` (when complete) → `/login`, `/api/setup/status` public, signed-in user visiting `/login` redirected to `/`, signed-in user on `/` loads dashboard |
 | `users-modal.spec.ts` | 6 | Admin opens Users modal from System tab, create user via modal, promote + demote user, delete user, reset password, regular user does not see System tab |
 | `account-modal.spec.ts` | 5 | Opens from sidebar footer, updates name (persists after reload), updates email (new email can sign in), changes password (new password can sign in), Close button dismisses modal |
-| `account-modal-env-vars.spec.ts` | 5 | API keys / Custom env vars / Agent OAuth credentials sections render; GitHub token saves and persists across modal close+reopen; custom env var add+save+reload round-trip; invalid custom key surfaces an inline error; fresh user sees all 3 agents as Not logged in |
+| `account-modal-env-vars.spec.ts` | 6 | API keys / Custom env vars / SSH Access / Agent OAuth credentials sections render; GitHub token saves and persists across modal close+reopen; custom env var add+save+reload round-trip; invalid custom key surfaces an inline error; fresh user sees all 3 agents as Not logged in; SSH public key textarea save+reload round-trip |
 | `dashboard.spec.ts` | 11 | Page load, title, buttons, sections, images, sidebar labels |
 | `sidebar.spec.ts` | 27 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design, Capabilities/Instructions/Init Scripts row stacks vertically on narrow sidebar, tab bar horizontal scroll + overflow dropdown (20% visibility threshold, live updates on scroll, hidden when all tabs fit) |
 | `create-worker-modal.spec.ts` | 29 | Open/close, form fields, name input, add repo/mount, environment dropdown, init preset dropdown, Create action |
@@ -196,7 +196,7 @@ tests/
 | `domain-mappings-panel-advanced.spec.ts` | 27 | Advanced domain mapping panel interactions, TCP-to-HTTP restores path input |
 | `selfsigned-ca-cert.spec.ts` | 8 | Self-signed CA certificate download UI |
 | `service-panes.spec.ts` | 12 | Desktop and editor service panes |
-| `apps-pane.spec.ts` | 8 | Apps pane for container |
+| `apps-pane.spec.ts` | 9 | Apps pane for container, plus VS Code Tunnel and SSH singleton app types render with `Start` buttons and "Not running" empty state |
 | `workspace-upload.spec.ts` | 8 | Upload button, modal, drop zone, close |
 | `terminal-pane.spec.ts` | 9 | Terminal open, tmux tabs, xterm rows, create button, new tab creation, non-default tab has close button, main tab no close button, clicking Terminal twice opens two independent terminal tabs for the same worker and closing one leaves the other intact, keyboard typing produces WebSocket output |
 | `tmux-tabs.spec.ts` | 9 | Tmux tab bar interactions |

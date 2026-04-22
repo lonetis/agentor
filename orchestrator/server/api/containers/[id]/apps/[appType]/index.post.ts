@@ -9,8 +9,24 @@ defineRouteMeta({
       { name: 'appType', in: 'path', required: true, schema: { type: 'string' }, description: 'App type (e.g. chromium, socks5)' },
     ],
     responses: {
-      201: { description: 'Started app instance', content: { 'application/json': { schema: { $ref: '#/components/schemas/AppInstanceInfo' } } } },
+      201: {
+        description: 'Started app instance',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                port: { type: 'integer' },
+                externalPort: { type: 'integer', description: 'Auto-created port mapping (e.g. for ssh)' },
+              },
+              required: ['id', 'port'],
+            },
+          },
+        },
+      },
       400: { description: 'Error starting app', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+      409: { description: 'Singleton app already running', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
     },
   },
 });

@@ -1,49 +1,65 @@
 #!/bin/bash
-# VS Code tunnel manager — called via docker exec
-# Usage: manage.sh start <name>
-#        manage.sh stop
-#        manage.sh status
+# VS Code tunnel app manager — called via docker exec
+# Usage: manage.sh start <id> <port> <tunnelName>
+#        manage.sh stop <id>
+#        manage.sh list
+#
+# Singleton app: id is always "vscode", port is unused (0). The third positional
+# arg on `start` is the Microsoft tunnel machine name.
+#
+# Output is NDJSON (one JSON object per line). `list` emits at most one object
+# with a rich status — `auth_required` with authUrl+authCode while waiting for
+# GitHub device-code auth, `running` with machineName once connected.
 
 PIDS_DIR="/home/agent/pids"
-PID_FILE="$PIDS_DIR/vscode-tunnel.pid"
+PID_FILE="$PIDS_DIR/vscode.pid"
 LOG_FILE="/tmp/vscode-tunnel.log"
-
 mkdir -p "$PIDS_DIR"
+
+emit_err() {
+  printf '{"status":"error","message":%s}\n' "$(printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+  exit 1
+}
 
 case "$1" in
   start)
-    NAME="$2"
+    ID="$2"
+    # PORT=$3 ignored — VS Code tunnel uses the Microsoft relay, no container port.
+    NAME="$4"
 
     if [ -z "$NAME" ]; then
-      echo "ERR:usage: manage.sh start <name>"
-      exit 1
+      emit_err "usage: manage.sh start <id> <port> <tunnelName>"
     fi
 
-    # Check for existing process
     if [ -f "$PID_FILE" ]; then
       PID=$(cat "$PID_FILE")
       if kill -0 "$PID" 2>/dev/null; then
-        echo "ERR:tunnel already running (pid $PID)"
-        exit 1
+        emit_err "tunnel already running (pid $PID)"
       fi
       rm -f "$PID_FILE"
     fi
 
-    # Mirror tunnel output to /tmp/vscode-tunnel.log (used by `status` to
-    # extract the GitHub device code), and also to PID 1's stdout (=
-    # container stdout, captured by the orchestrator's log collector).
-    # Process substitution keeps `$!` pointing at the `code tunnel` process
-    # itself so `stop` can kill it cleanly.
+    # Fresh log per start so `list` never reports stale auth_required state.
+    : > "$LOG_FILE"
+
+    # Mirror tunnel output to /tmp/vscode-tunnel.log (parsed by `list` to extract
+    # the GitHub device code) and to container stdout (captured by the log
+    # collector with the [vscode-tunnel] tag). Process substitution keeps `$!`
+    # pointing at `code tunnel` so `stop` can kill it cleanly.
+    # `stdbuf -oL` on tee forces line-buffering so the device-code prompt lands
+    # in the log file immediately instead of waiting for a full buffer to fill.
     code tunnel --accept-server-license-terms --name "$NAME" \
-      > >(tee -a "$LOG_FILE" | stdbuf -oL -eL sed -u 's/^/[vscode-tunnel] /' >> /proc/1/fd/1) 2>&1 &
+      > >(stdbuf -oL tee -a "$LOG_FILE" | stdbuf -oL -eL sed -u 's/^/[vscode-tunnel] /' >> /proc/1/fd/1) 2>&1 &
 
     echo "$!" > "$PID_FILE"
-    echo "OK:$NAME"
+    printf '{"id":"%s","port":0,"status":"running"}\n' "${ID:-vscode}"
     ;;
 
   stop)
+    ID="${2:-vscode}"
+
     if [ ! -f "$PID_FILE" ]; then
-      echo "OK:not running"
+      printf '{"id":"%s","status":"stopped"}\n' "$ID"
       exit 0
     fi
 
@@ -63,64 +79,69 @@ case "$1" in
     fi
 
     rm -f "$PID_FILE"
-    echo "OK:stopped"
+    printf '{"id":"%s","status":"stopped"}\n' "$ID"
     ;;
 
-  status)
-    # Check if process is alive
-    RUNNING=false
-    if [ -f "$PID_FILE" ]; then
-      PID=$(cat "$PID_FILE")
-      if kill -0 "$PID" 2>/dev/null; then
-        RUNNING=true
-      else
-        rm -f "$PID_FILE"
-      fi
-    fi
-
-    if [ "$RUNNING" = "false" ]; then
-      echo "STATUS:stopped"
+  list)
+    if [ ! -f "$PID_FILE" ]; then
       exit 0
     fi
 
-    # Parse log for state
+    PID=$(cat "$PID_FILE")
+    if ! kill -0 "$PID" 2>/dev/null; then
+      rm -f "$PID_FILE"
+      exit 0
+    fi
+
+    # Pin status by walking the whole log, not the tail — the device-code
+    # prompt is emitted once near the top and may be well past `tail -30` by
+    # the time the user clicks Start, polls, or re-opens the pane.
+    STATUS="auth_required"
+    MACHINE=""
+    AUTH_URL=""
+    AUTH_CODE=""
+
     if [ -f "$LOG_FILE" ]; then
-      LOG_TAIL=$(tail -30 "$LOG_FILE")
+      LAST_CODE_LINE=$(grep -nE '[A-Z0-9]{4}-[A-Z0-9]{4}' "$LOG_FILE" | tail -1 | cut -d: -f1)
+      LAST_CONNECTED_LINE=$(grep -nE 'Connected|tunnel/' "$LOG_FILE" | tail -1 | cut -d: -f1)
+      CODE_MATCH=$(grep -oE '[A-Z0-9]{4}-[A-Z0-9]{4}' "$LOG_FILE" | tail -1)
 
-      # Check for auth required (device code flow)
-      AUTH_LINE=$(echo "$LOG_TAIL" | grep -oE 'https://github\.com/login/device' | tail -1)
-      CODE_LINE=$(echo "$LOG_TAIL" | grep -oE 'use code ([A-Z0-9]{4}-[A-Z0-9]{4})' | tail -1)
-
-      if [ -n "$AUTH_LINE" ] && [ -n "$CODE_LINE" ]; then
-        # Check if auth was completed (connected message after auth prompt)
-        LAST_AUTH_LINE=$(grep -n 'use code' "$LOG_FILE" | tail -1 | cut -d: -f1)
-        LAST_CONNECTED_LINE=$(grep -n -E 'Connected|tunnel/' "$LOG_FILE" | tail -1 | cut -d: -f1)
-
-        if [ -z "$LAST_CONNECTED_LINE" ] || [ "$LAST_AUTH_LINE" -gt "$LAST_CONNECTED_LINE" ] 2>/dev/null; then
-          AUTH_CODE=$(echo "$CODE_LINE" | sed 's/use code //')
-          echo "STATUS:auth_required"
-          echo "AUTH_URL:https://github.com/login/device"
-          echo "AUTH_CODE:$AUTH_CODE"
-          exit 0
+      # `needs_auth`: we're still before the first successful connection, OR a
+      # fresh code was emitted after the last connection (re-auth required).
+      needs_auth=1
+      if [ -n "$LAST_CONNECTED_LINE" ]; then
+        if [ -z "$LAST_CODE_LINE" ] || [ "$LAST_CODE_LINE" -le "$LAST_CONNECTED_LINE" ] 2>/dev/null; then
+          needs_auth=0
         fi
       fi
 
-      # Check for connected state
-      if echo "$LOG_TAIL" | grep -qE 'Connected|tunnel/'; then
-        # Extract machine name from log
-        MACHINE=$(echo "$LOG_TAIL" | grep -oE 'tunnel/[^/]+' | tail -1 | sed 's|tunnel/||')
-        echo "STATUS:running"
-        [ -n "$MACHINE" ] && echo "MACHINE:$MACHINE"
-        exit 0
+      if [ "$needs_auth" = "1" ]; then
+        STATUS="auth_required"
+        if [ -n "$CODE_MATCH" ]; then
+          AUTH_URL="https://github.com/login/device"
+          AUTH_CODE="$CODE_MATCH"
+        fi
+      else
+        STATUS="running"
+        MACHINE=$(grep -oE 'tunnel/[^/ ]+' "$LOG_FILE" | tail -1 | sed 's|tunnel/||')
       fi
     fi
 
-    # Process alive but no clear state — still starting
-    echo "STATUS:running"
+    # Emit a single JSON line with only the fields that have values.
+    python3 - <<PY
+import json
+obj = {"id": "vscode", "port": 0, "status": "$STATUS"}
+if "$MACHINE":
+    obj["machineName"] = "$MACHINE"
+if "$AUTH_URL":
+    obj["authUrl"] = "$AUTH_URL"
+if "$AUTH_CODE":
+    obj["authCode"] = "$AUTH_CODE"
+print(json.dumps(obj))
+PY
     ;;
 
   *)
-    echo "ERR:usage: manage.sh {start|stop|status}"
-    exit 1
+    emit_err "usage: manage.sh {start|stop|list}"
     ;;
 esac

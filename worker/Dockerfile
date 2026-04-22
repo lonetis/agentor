@@ -97,6 +97,13 @@ RUN install -d -m 0755 /etc/apt/keyrings && \
 RUN apt-get update && apt-get install -y --no-install-recommends microsocks && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# OpenSSH server (public-key auth only, launched by the `ssh` app)
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /run/sshd /etc/ssh/sshd_config.d && \
+    printf 'Port 22\nPermitRootLogin no\nPasswordAuthentication no\nChallengeResponseAuthentication no\nKbdInteractiveAuthentication no\nPubkeyAuthentication yes\nStrictModes no\nAllowUsers agent\nAuthorizedKeysFile /home/agent/.ssh/authorized_keys\nUsePAM no\nX11Forwarding yes\nPrintMotd no\nAcceptEnv LANG LC_*\n' > /etc/ssh/sshd_config.d/10-agentor.conf && \
+    systemctl disable ssh.service 2>/dev/null || true
+
 # Network firewall: dnsmasq (DNS filtering + ipset integration) + ipset + iptables
 RUN apt-get update && apt-get install -y --no-install-recommends dnsmasq ipset iptables && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -133,9 +140,14 @@ RUN mkdir -p /etc/fonts/conf.d && \
 # Pre-create X11 socket directory with correct permissions (Xvfb runs as non-root)
 RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
 
-# Create non-root agent user with passwordless sudo
+# Create non-root agent user with passwordless sudo.
+# `useradd` leaves the shadow entry as `!` which sshd reads as "account locked"
+# and rejects even for pubkey auth. Replacing it with `*` marks the account
+# as "no usable password" (still no password login possible) without flagging
+# it as locked — public-key auth then works normally.
 RUN userdel -r ubuntu 2>/dev/null || true && \
     useradd -m -s /bin/bash -u 1000 agent && \
+    usermod -p '*' agent && \
     echo "agent ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
     usermod -aG docker agent
 
@@ -150,8 +162,9 @@ COPY --chmod=755 setup.sh /home/agent/setup.sh
 COPY --chmod=755 init.sh /home/agent/init.sh
 COPY --chmod=755 apps/ /home/agent/apps/
 
-RUN mkdir -p /workspace /home/agent/pids /home/agent/profiles && \
-    chown -R agent:agent /workspace /home/agent/pids /home/agent/profiles
+RUN mkdir -p /workspace /home/agent/pids /home/agent/profiles /home/agent/.ssh && \
+    chown -R agent:agent /workspace /home/agent/pids /home/agent/profiles /home/agent/.ssh && \
+    chmod 700 /home/agent/.ssh
 
 EXPOSE 6080 8443
 

@@ -65,6 +65,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - **Change password section**: current password + new password (min 8 chars) + confirm new password. Server rejects the wrong current password.
 - **API keys & tokens section**: per-user inputs for `GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`. All fields are masked password inputs with a show/hide eye toggle. Values are injected into every worker the user creates.
 - **Custom environment variables section**: list of `{key, value}` rows with Add/Remove. Keys validated to `[A-Z_][A-Z0-9_]*`; reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.) are rejected with an inline error. Saved together with the API keys via a single "Save env vars" button (`PUT /api/account/env-vars`).
+- **SSH Access section**: `sshPublicKey` textarea (4 rows, monospace). On save the key is written to `<DATA_DIR>/users/<userId>/ssh/authorized_keys` (empty string → empty file), which is bind-mounted read-only at `/home/agent/.ssh/authorized_keys` in every one of the user's workers. Used by the **SSH** app (Apps pane → Start).
 - **Agent OAuth credentials section**: per-agent (claude/codex/gemini) status indicator (`Logged in` green / `Not logged in` gray) plus a per-agent **Reset** button (two-step confirm) that overwrites the OAuth file with `{}` so the next CLI login writes fresh tokens. Login itself happens by running the agent CLI inside one of the user's workers — credentials live at `<DATA_DIR>/users/<userId>/credentials/` and are bind-mounted into all of the user's workers.
 - Success and error messages displayed per section
 - Backed by `/api/auth/update-user`, `/api/auth/change-email`, `/api/auth/change-password` (built-in better-auth) and Agentor's per-user `/api/account/env-vars` and `/api/account/agent-credentials` endpoints
@@ -191,8 +192,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Terminal button (tooltip "Terminal") — opens terminal pane
 - Desktop button (tooltip "Desktop") — opens desktop pane
 - Editor button (tooltip "Editor") — opens editor pane
-- VS Code Tunnel button (tooltip "VS Code Tunnel") — opens VS Code tunnel pane
-- Apps button (tooltip "Apps") — opens apps pane
+- Apps button (tooltip "Apps") — opens apps pane (VS Code Tunnel and SSH are managed as apps inside this pane)
 - Upload button (tooltip) — opens upload modal
 - Download button (tooltip) — downloads workspace as .tar.gz
 
@@ -472,11 +472,10 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Terminal (xterm.js)
 - Desktop (noVNC iframe)
 - Editor (code-server iframe)
-- VS Code Tunnel (custom status/control pane)
-- Apps (app instance management)
+- Apps (app instance management — includes VS Code Tunnel and SSH server as singleton app types)
 - Logs (centralized log viewer)
 
-Every pane type supports **multiple simultaneous instances**. Clicking the Terminal, Desktop, Editor, VS Code Tunnel, Apps, or Logs action button opens a brand-new tab each time — the same (container, type) pair can be opened any number of times and arranged side-by-side via the existing drag-to-split interactions. Each tab has its own unique id, independent xterm.js instance, iframe, or component state; backing services (tmux window attach, noVNC, code-server, VS Code tunnel status polling, app instance polling, log stream) already tolerate multiple concurrent clients so no additional reconciliation is required. Closing one tab does not affect sibling tabs of the same type.
+Every pane type supports **multiple simultaneous instances**. Clicking the Terminal, Desktop, Editor, Apps, or Logs action button opens a brand-new tab each time — the same (container, type) pair can be opened any number of times and arranged side-by-side via the existing drag-to-split interactions. Each tab has its own unique id, independent xterm.js instance, iframe, or component state; backing services (tmux window attach, noVNC, code-server, app instance polling, log stream) already tolerate multiple concurrent clients so no additional reconciliation is required. Closing one tab does not affect sibling tabs of the same type.
 
 ### 16.2 Tab Bar (PaneGroupTabBar)
 - Per-tab: type icon + "[Container] - [Type]" label (truncated 140px) + close button (visible on hover, middle-click also closes)
@@ -552,16 +551,6 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - "Open in tab" opens in new browser tab
 - Clipboard permissions enabled on iframe
 
-### 18.3 VS Code Tunnel
-- Custom pane (not iframe-based, tab type `vscode`)
-- Opens via "VS Code Tunnel" button on container card (radio-tower icon)
-- Stopped state: radio-tower icon + "VS Code Tunnel is not running" + "Start Tunnel" button
-- Auth required state: key icon + "GitHub Authentication Required" + clickable auth URL + large monospace device code (copyable) + "Waiting for authentication..." spinner
-- Running state: green pulsing dot + "Tunnel connected" + machine name (monospace) + connection instructions (4 numbered steps) + "Stop Tunnel" button
-- Status polled every 3 seconds via `GET /api/containers/:id/vscode-tunnel/status`
-- Start/stop via POST endpoints
-- Auth persists per worker in agent-data volume (`~/.vscode`) — survives restarts, rebuilds, archive/unarchive
-
 ---
 
 ## 19. Apps Pane
@@ -569,12 +558,25 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 ### 19.1 Content
 - "Apps" heading
 - Empty state: "No app types available"
-- Per app type: name, description, "+ New Instance" button
-- Per instance: status dot (green/gray), instance ID (monospace), port label with tooltip, "Stop" button
+- Per app type: name, description, and either:
+  - **Multi-instance** (chromium, socks5): "+ New Instance" button (always shown, up to `maxInstances`).
+  - **Singleton** (vscode, ssh): "Start" button shown only when no instance is running; hidden once one exists (Stop lives on the row).
+- Empty-state label per app type: "No running instances" (multi-instance) or "Not running" (singleton).
+- Per instance (chromium/socks5): status dot (green/gray), instance ID (monospace), port label with tooltip, "Stop" button.
+- Per instance (vscode — `VsCodeAppRow`): status dot (green=running, amber=auth_required), instance ID `vscode`, status label (`Stopped` / `Waiting for GitHub authentication` / `Connected as <machineName>`), "Stop" button. In `auth_required` the row also shows the clickable `https://github.com/login/device` URL plus the monospace device code with a copy button. In `running` the row shows an instruction to install **Remote - Tunnels** in a local VS Code and connect to the machine name.
+- Per instance (ssh — `SshAppRow`): status dot, instance ID `ssh`, port label `:22 → host :<externalPort>`, "Stop" button. When running with a public key configured the row shows the SSH command `ssh agent@<host> -p <externalPort>` with a copy-to-clipboard button. When the user's `sshPublicKey` is empty the row shows an amber warning pointing to **Account → SSH Access**.
 
 ### 19.2 App Types
-- Chromium (CDP, ports 9222-9322, max 10)
-- SOCKS5 proxy (ports 1080-1180, max 10)
+- **Chromium** — CDP, ports 9222–9322, `maxInstances: 10`
+- **SOCKS5 proxy** — microsocks, ports 1080–1180, `maxInstances: 10`
+- **VS Code Tunnel** — singleton (`maxInstances: 1`), no container port, launches `code tunnel --accept-server-license-terms --name <userId-prefixed-name>`. Auth persists per worker in the agent-data volume (`~/.vscode` symlinked to `.agent-data/.vscode`) — survives restarts, rebuilds, archive/unarchive.
+- **SSH Server** — singleton, OpenSSH on fixed internal port `22`, `PubkeyAuthentication yes` + `PasswordAuthentication no` + `StrictModes no`. Only the `agent` user is allowed. `authorized_keys` is bind-mounted read-only from `<DATA_DIR>/users/<userId>/ssh/authorized_keys` (the per-user key saved in **Account → SSH Access**).
+
+### 19.3 SSH auto port mapping
+- Starting the SSH app creates a port mapping `type: external`, `internalPort: 22`, `externalPort` chosen from the unused ports in `[22000, 22999]`, stamped with `appType: 'ssh'`, `instanceId: 'ssh'`.
+- If a mapping already exists for the same `(containerName, appType='ssh', instanceId='ssh')` it is reused — external port stays stable across stop/start, restart, archive/unarchive, and rebuild.
+- Stopping the SSH app does **not** remove the port mapping. Only permanent worker deletion does (via `cleanupWorkerMappings`).
+- Users can also delete the mapping manually from the Port Mappings panel.
 
 ---
 
@@ -699,9 +701,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `POST /api/containers/:id/workspace` — upload files (multipart, path traversal protection)
 - `GET /api/containers/:id/desktop/status` — desktop service status
 - `GET /api/containers/:id/editor/status` — editor service status
-- `GET /api/containers/:id/vscode-tunnel/status` — VS Code tunnel status (stopped, auth_required, running, machineName, authUrl, authCode)
-- `POST /api/containers/:id/vscode-tunnel/start` — start VS Code tunnel
-- `POST /api/containers/:id/vscode-tunnel/stop` — stop VS Code tunnel
+- VS Code tunnel and SSH are managed through the generic apps endpoints below (`appType='vscode'` / `appType='ssh'`); no dedicated routes exist for them.
 
 ### 24.3 Tmux Panes
 - `GET /api/containers/:id/panes` — list tmux windows
@@ -710,11 +710,11 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `DELETE /api/containers/:id/panes/:windowIndex` — kill window (window 0 protected: 403)
 
 ### 24.4 Apps
-- `GET /api/containers/:id/apps` — list all app instances
+- `GET /api/containers/:id/apps` — list all app instances. Each entry carries `{ id, appType, port, status }` plus optional `externalPort` (ssh) / `machineName` (vscode) / `authUrl` (vscode) / `authCode` (vscode). `status` is `'running' | 'stopped' | 'auth_required'`.
 - `GET /api/containers/:id/apps/:appType` — list by type
-- `POST /api/containers/:id/apps/:appType` — start instance
-- `DELETE /api/containers/:id/apps/:appType/:instanceId` — stop instance
-- `GET /api/app-types` — list app type definitions
+- `POST /api/containers/:id/apps/:appType` — start instance. Returns `{ id, port, externalPort? }`. Returns HTTP **409** when starting a singleton (`vscode` / `ssh`) that already has a running instance. For `vscode` the orchestrator passes the per-user tunnel name as an extra arg to `manage.sh start`; for `ssh` the orchestrator allocates an external port in `22000–22999` (reusing any existing mapping for `(containerName, appType='ssh', instanceId='ssh')`), writes it to the port-mapping store with `appType: 'ssh'`, `instanceId: 'ssh'`, and triggers a Traefik reconcile.
+- `DELETE /api/containers/:id/apps/:appType/:instanceId` — stop instance. Idempotent. Does **not** remove any auto-created port mapping (that only goes away on permanent worker delete or via an explicit `DELETE /api/port-mappings/:port`).
+- `GET /api/app-types` — list app type definitions. Each entry includes `{ id, displayName, description, ports, maxInstances, singleton }` plus optional `fixedInternalPort` and `autoPortMapping: { type, externalPortStart, externalPortEnd }` for apps that declare them (ssh).
 
 ### 24.5 Port Mappings
 - `GET /api/port-mappings` — list all
@@ -792,8 +792,8 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/package-manager-domains` — PM domain list
 
 ### 24.15a Per-user Account env vars and credentials
-- `GET /api/account/env-vars` — returns the current user's `UserEnvVars` `{ githubToken, anthropicApiKey, claudeCodeOauthToken, openaiApiKey, geminiApiKey, customEnvVars[], updatedAt }`. Owner-only — admins do NOT see other users' values via this endpoint.
-- `PUT /api/account/env-vars` — upserts the current user's `UserEnvVars`. Partial updates are allowed (omitted fields keep their previous value). `customEnvVars` keys must match `[A-Z_][A-Z0-9_]*`, must not collide with reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.), and must be unique. Validation failures return 400.
+- `GET /api/account/env-vars` — returns the current user's `UserEnvVars` `{ githubToken, anthropicApiKey, claudeCodeOauthToken, openaiApiKey, geminiApiKey, sshPublicKey, customEnvVars[], updatedAt }`. Owner-only — admins do NOT see other users' values via this endpoint.
+- `PUT /api/account/env-vars` — upserts the current user's `UserEnvVars`. Partial updates are allowed (omitted fields keep their previous value). `sshPublicKey` is trimmed; when supplied, `<DATA_DIR>/users/<userId>/ssh/authorized_keys` is rewritten (empty string → empty file), which all of the user's workers see live through the read-only bind mount. `customEnvVars` keys must match `[A-Z_][A-Z0-9_]*`, must not collide with reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.), and must be unique. Validation failures return 400.
 - `GET /api/account/agent-credentials` — returns `[{ agentId, fileName, configured }]` for the current user. `configured` is true when the per-user OAuth file at `<DATA_DIR>/users/<userId>/credentials/<fileName>` contains more than `{}`.
 - `DELETE /api/account/agent-credentials/:agentId` — overwrites that agent's per-user OAuth file with `{}` so the next CLI login writes a fresh token. Unknown agent ids return 400.
 - **Scoping**: env vars and credentials are strictly per-user. Each user's workers inherit only their own env vars; user A's worker can never read user B's tokens.

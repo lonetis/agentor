@@ -1,13 +1,20 @@
 #!/bin/bash
 # Chromium instance manager — called via docker exec
-# Usage: chromium-manage.sh start <id> <port>
-#        chromium-manage.sh stop <id>
-#        chromium-manage.sh list
+# Usage: manage.sh start <id> <port>
+#        manage.sh stop <id>
+#        manage.sh list
+#
+# Output is NDJSON. Failures exit non-zero and emit
+# `{"status":"error","message":"…"}`.
 
 PIDS_DIR="/home/agent/pids"
 PROFILES_DIR="/home/agent/profiles"
-
 mkdir -p "$PIDS_DIR" "$PROFILES_DIR"
+
+emit_err() {
+  printf '{"status":"error","message":%s}\n' "$(printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+  exit 1
+}
 
 case "$1" in
   start)
@@ -15,17 +22,14 @@ case "$1" in
     PORT="$3"
 
     if [ -z "$ID" ] || [ -z "$PORT" ]; then
-      echo "ERR:usage: chromium-manage.sh start <id> <port>"
-      exit 1
+      emit_err "usage: manage.sh start <id> <port>"
     fi
 
     if [ -f "$PIDS_DIR/$ID.pid" ]; then
       PID=$(cat "$PIDS_DIR/$ID.pid")
       if kill -0 "$PID" 2>/dev/null; then
-        echo "ERR:instance $ID already running (pid $PID)"
-        exit 1
+        emit_err "instance $ID already running (pid $PID)"
       fi
-      # Stale PID file, clean up
       rm -f "$PIDS_DIR/$ID.pid" "$PIDS_DIR/$ID.port"
     fi
 
@@ -45,65 +49,60 @@ case "$1" in
     echo "$CHROMIUM_PID" > "$PIDS_DIR/$ID.pid"
     echo "$PORT" > "$PIDS_DIR/$ID.port"
 
-    echo "OK:$ID:$PORT:$CHROMIUM_PID"
+    printf '{"id":"%s","port":%s,"status":"running"}\n' "$ID" "$PORT"
     ;;
 
   stop)
     ID="$2"
 
     if [ -z "$ID" ]; then
-      echo "ERR:usage: chromium-manage.sh stop <id>"
-      exit 1
+      emit_err "usage: manage.sh stop <id>"
     fi
 
     if [ ! -f "$PIDS_DIR/$ID.pid" ]; then
-      echo "ERR:instance $ID not found"
-      exit 1
+      # Idempotent stop
+      printf '{"id":"%s","status":"stopped"}\n' "$ID"
+      exit 0
     fi
 
     PID=$(cat "$PIDS_DIR/$ID.pid")
 
     if kill -0 "$PID" 2>/dev/null; then
       kill "$PID" 2>/dev/null
-      # Wait up to 5 seconds for graceful shutdown
       for i in $(seq 1 10); do
         if ! kill -0 "$PID" 2>/dev/null; then
           break
         fi
         sleep 0.5
       done
-      # Force kill if still alive
       if kill -0 "$PID" 2>/dev/null; then
         kill -9 "$PID" 2>/dev/null
       fi
     fi
 
     rm -f "$PIDS_DIR/$ID.pid" "$PIDS_DIR/$ID.port"
-    echo "OK:$ID:stopped"
+    printf '{"id":"%s","status":"stopped"}\n' "$ID"
     ;;
 
   list)
     for pidfile in "$PIDS_DIR"/*.pid; do
       [ -f "$pidfile" ] || continue
       ID=$(basename "$pidfile" .pid)
-      # Only list chromium instances (prefixed with chromium-)
       case "$ID" in chromium-*) ;; *) continue ;; esac
       PID=$(cat "$pidfile")
-      PORT=""
+      PORT=0
       if [ -f "$PIDS_DIR/$ID.port" ]; then
         PORT=$(cat "$PIDS_DIR/$ID.port")
       fi
       if kill -0 "$PID" 2>/dev/null; then
-        echo "$ID:$PORT:running"
+        printf '{"id":"%s","port":%s,"status":"running"}\n' "$ID" "$PORT"
       else
-        # Clean up stale entry
         rm -f "$PIDS_DIR/$ID.pid" "$PIDS_DIR/$ID.port"
       fi
     done
     ;;
 
   *)
-    echo "ERR:usage: chromium-manage.sh {start|stop|list}"
-    exit 1
+    emit_err "usage: manage.sh {start|stop|list}"
     ;;
 esac

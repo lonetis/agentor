@@ -92,15 +92,16 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `useTmuxTabs` uses `getTmuxActiveWindow()`/`setTmuxActiveWindow()` instead of a module-level Map
 - `_resetUiState()` export for testing (clears singleton + timers)
 
-## VS Code Tunnel Pane
+## Apps pane row dispatch
 
-Custom pane (not iframe-based) for managing VS Code tunnel connections to workers. Opens via the "VS Code Tunnel" button on container cards (tab type `vscode`).
+`AppsPane.vue` iterates the app-type list and renders a row component per `appType`:
+- `chromium` / `socks5` → `AppInstanceRow.vue` (status dot, port label, Stop button)
+- `vscode` → `VsCodeAppRow.vue` (stopped / auth_required / running states; shows the GitHub device-code URL + code during auth, and the machine name once the tunnel connects; prompts the user to open **Remote - Tunnels** in their local VS Code)
+- `ssh` → `SshAppRow.vue` (stopped / running states; shows the `ssh agent@<host> -p <externalPort>` connect string with a copy-to-clipboard button; warns when the user has not saved an SSH public key in **Account → SSH Access**)
 
-**Architecture** (`VsCodeTunnelPane.vue` + `useVsCodeTunnel` composable):
-- `useVsCodeTunnel(containerId)` polls `GET /api/containers/:id/vscode-tunnel/status` every 3s
-- Status, start, and stop endpoints exec `/home/agent/apps/vscode-tunnel/manage.sh` in the worker container
-- Three states: stopped (start button), auth_required (GitHub device code URL + code), running (connection instructions)
-- Auth persists per worker in the agent-data volume (`~/.vscode` symlinked to `.agent-data/.vscode`) — survives restarts, rebuilds, and archive/unarchive
+For singleton apps (`appType.singleton`) the header row shows a **Start** button when no instance is running, and hides it once one exists (Stop lives on the row itself). Multi-instance apps show **+ New Instance** as before.
+
+VS Code tunnel auth persists per worker in the agent-data volume (`~/.vscode` symlinked to `.agent-data/.vscode`) — survives restarts, rebuilds, and archive/unarchive. Stopping and re-starting the app from the UI does not re-require auth.
 
 ## Log Pane
 

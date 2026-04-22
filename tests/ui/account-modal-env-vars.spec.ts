@@ -22,7 +22,26 @@ test.describe('Account modal — env vars', () => {
 
     await expect(page.getByRole('heading', { name: 'API keys & tokens' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Custom environment variables' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'SSH Access' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Agent OAuth credentials' })).toBeVisible();
+  });
+
+  test('saves the SSH public key and persists across modal reloads', async ({ page, context }) => {
+    await signInBrowserAsUser(context, user.email, user.password);
+    await page.goto('/');
+    await page.waitForSelector('h1:has-text("Agentor")', { timeout: 15_000 });
+    await page.getByRole('button', { name: 'Account settings' }).click();
+
+    const keyValue = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTests-' + Date.now() + ' ui@test';
+    const keyInput = page.locator('[data-testid="env-sshPublicKey"]');
+    await keyInput.fill(keyValue);
+    await page.locator('[data-testid="env-save-ssh"]').click();
+    await expect(page.locator('[data-testid="ssh-success"]')).toBeVisible({ timeout: 10_000 });
+
+    // Close + reopen — the value should be preserved.
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: 'Account settings' }).click();
+    await expect(page.locator('[data-testid="env-sshPublicKey"]')).toHaveValue(keyValue);
   });
 
   test('saves an API key and persists across reload of the modal', async ({ page, context }) => {

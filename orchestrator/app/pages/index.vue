@@ -36,7 +36,7 @@ function handleOpenLogs() {
   openTab('__logs__', 'Logs', 'logs');
 }
 
-function handleOpenTab(containerId: string, type: 'terminal' | 'desktop' | 'apps' | 'editor' | 'vscode') {
+function handleOpenTab(containerId: string, type: 'terminal' | 'desktop' | 'apps' | 'editor') {
   const container = containers.value.find((c) => c.id === containerId);
   const name = container?.displayName || shortName(container?.name || containerId.slice(0, 12));
   openTab(containerId, name, type);
@@ -141,7 +141,6 @@ function openInitScriptsFromModal() {
       @open-desktop="(cid) => handleOpenTab(cid, 'desktop')"
       @open-apps="(cid) => handleOpenTab(cid, 'apps')"
       @open-editor="(cid) => handleOpenTab(cid, 'editor')"
-      @open-vs-code="(cid) => handleOpenTab(cid, 'vscode')"
       @stop-container="stopContainer"
       @restart-container="restartContainer"
       @rebuild-container="handleRebuild"

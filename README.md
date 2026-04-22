@@ -21,10 +21,9 @@ All agents are installed in a single unified worker image. Start any agent via i
 - **User authentication & RBAC** — email/password/passkey login powered by [better-auth](https://www.better-auth.com/) with admin and user roles; admins create and manage other users, each user sees only their own workers/mappings/environments/etc. First-run setup creates the initial admin.
 - **Live terminal** — xterm.js WebSocket terminal with tmux session management
 - **VS Code editor** — code-server (VS Code in the browser) per worker, accessible in a split pane
-- **VS Code tunnel** — connect your local VS Code client to workers via Microsoft's relay (GitHub device code auth per worker, persists across restarts)
 - **Virtual desktop** — Xvfb + fluxbox + noVNC, accessible in-browser
 - **Multi-repo cloning** — clone one or more git repos into each worker at startup
-- **App system** — launch Chromium (with CDP) or SOCKS5 proxy instances inside workers
+- **App system** — launch Chromium (with CDP), SOCKS5 proxy, VS Code Tunnel (native VS Code client via Microsoft's relay, GitHub device-code auth), or OpenSSH server (port 22, public-key auth from each user's Account settings; Start auto-allocates an external `22xxx` port mapping) from the Apps pane
 - **Port & domain mapping** — unified Traefik reverse proxy handling both TCP port forwarding (localhost- or network-bound) and subdomain-based HTTP/HTTPS/TCP routing with TLS (Let's Encrypt HTTP-01/DNS-01 or self-signed CA), optional HTTP basic auth
 - **Auto-updates** — per-image or bulk image updates in production mode with registry-agnostic digest comparison (GHCR + Docker Hub), orchestrator self-replaces
 - **Resource limits** — per-worker CPU and memory constraints

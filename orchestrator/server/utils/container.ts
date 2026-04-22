@@ -16,7 +16,7 @@ import type { UserEnvVarStore } from './user-env-store';
 import type { CapabilityStore } from './capability-store';
 import type { InstructionStore } from './instruction-store';
 import type { StorageManager } from './storage';
-import type { NetworkMode, ExposeApis, ServiceStatus, VsCodeTunnelStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, UserEnvVars } from '../../shared/types';
+import type { NetworkMode, ExposeApis, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, UserEnvVars } from '../../shared/types';
 
 
 interface ResolvedEnvConfig {
@@ -105,10 +105,20 @@ export class ContainerManager {
 
   private async resolveUserEnvAndBinds(userId: string): Promise<{ userEnv: UserEnvVars; credentialBinds: string[] }> {
     const userEnv = this.userEnvStore?.getOrDefault(userId) ?? zeroUserEnvVars(userId);
-    let credentialBinds: string[] = [];
+    const credentialBinds: string[] = [];
     if (this.userCredentialManager && userId) {
       await this.userCredentialManager.ensureUserDir(userId);
-      credentialBinds = this.userCredentialManager.getBindMountsForUser(userId);
+      credentialBinds.push(...this.userCredentialManager.getBindMountsForUser(userId));
+    }
+    if (this.storageManager && userId) {
+      await this.storageManager.ensureUserSshDir(userId);
+      try {
+        credentialBinds.push(this.storageManager.getSshAuthorizedKeysBind(userId));
+      } catch (err) {
+        useLogger().warn(
+          `[container] unable to build ssh authorized_keys bind for user ${userId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
     }
     return { userEnv, credentialBinds };
   }
@@ -838,74 +848,33 @@ export class ContainerManager {
     };
   }
 
-  // --- VS Code tunnel methods ---
-
-  async getVsCodeTunnelStatus(workerId: string): Promise<VsCodeTunnelStatus> {
-    const info = this.containers.get(workerId);
-    if (!info || info.status !== 'running') {
-      return { status: 'stopped' };
-    }
-
-    try {
-      const output = await this.dockerService.execVsCodeTunnel(workerId, ['status']);
-      return this.parseVsCodeTunnelOutput(output);
-    } catch {
-      return { status: 'stopped' };
-    }
-  }
-
-  async startVsCodeTunnel(workerId: string): Promise<void> {
-    this.assertRunning(workerId);
-    const info = this.containers.get(workerId)!;
-    const tunnelName = this.buildTunnelName(info.userId, info.name);
-    const output = await this.dockerService.execVsCodeTunnel(workerId, ['start', tunnelName]);
-    const trimmed = output.trim();
-    if (trimmed.startsWith('ERR:')) {
-      throw new Error(trimmed.substring(4));
-    }
-  }
-
-  async stopVsCodeTunnel(workerId: string): Promise<void> {
-    this.assertRunning(workerId);
-    await this.dockerService.execVsCodeTunnel(workerId, ['stop']);
-  }
-
-  private parseVsCodeTunnelOutput(output: string): VsCodeTunnelStatus {
-    const lines = output.trim().split(/\r?\n/).filter(Boolean);
-    const result: VsCodeTunnelStatus = { status: 'stopped' };
-
-    for (const line of lines) {
-      const [key, ...rest] = line.split(':');
-      const value = rest.join(':');
-      switch (key) {
-        case 'STATUS':
-          result.status = value as VsCodeTunnelStatus['status'];
-          break;
-        case 'MACHINE':
-          result.machineName = value;
-          break;
-        case 'AUTH_URL':
-          result.authUrl = value;
-          break;
-        case 'AUTH_CODE':
-          result.authCode = value;
-          break;
-      }
-    }
-
-    return result;
-  }
-
   // --- Generic app instance methods ---
 
   async listAppInstances(workerId: string, appTypeId: string): Promise<AppInstanceInfo[]> {
     const info = this.containers.get(workerId);
     if (!info || info.status !== 'running') return [];
-    return this.dockerService.listAppInstances(workerId, appTypeId);
+    const instances = await this.dockerService.listAppInstances(workerId, appTypeId);
+
+    // Enrich instances with their externally mapped port (if any) so the UI
+    // can render SSH connection strings etc. without a second round-trip.
+    const appType = getAppType(appTypeId);
+    if (appType?.autoPortMapping) {
+      for (const inst of instances) {
+        const mapping = usePortMappingStore().findByWorkerAndAppType(info.containerName, appTypeId, inst.id);
+        if (mapping) inst.externalPort = mapping.externalPort;
+      }
+    }
+    return instances;
   }
 
-  async createAppInstance(workerId: string, appTypeId: string): Promise<{ id: string; port: number }> {
-    this.assertRunning(workerId);
+  /** AppCreateResult — returned by createAppInstance. `externalPort` is set for
+   * apps with `autoPortMapping` (e.g. ssh) so the UI can render the connect
+   * string immediately. */
+  async createAppInstance(
+    workerId: string,
+    appTypeId: string,
+  ): Promise<{ id: string; port: number; externalPort?: number }> {
+    const info = this.assertRunning(workerId);
 
     const appType = getAppType(appTypeId);
     if (!appType) {
@@ -914,29 +883,95 @@ export class ContainerManager {
 
     const existing = await this.dockerService.listAppInstances(workerId, appTypeId);
 
-    if (existing.length >= appType.maxInstances) {
+    if (appType.singleton) {
+      const alreadyRunning = existing.find((i) => i.status === 'running' || i.status === 'auth_required');
+      if (alreadyRunning) {
+        const err = new Error(`${appType.displayName} is already running`) as Error & { statusCode?: number };
+        err.statusCode = 409;
+        throw err;
+      }
+    } else if (existing.length >= appType.maxInstances) {
       throw new Error(`Maximum ${appType.displayName} instances reached (${appType.maxInstances})`);
     }
 
-    const portDef = appType.ports[0];
-    if (!portDef) throw new Error(`No port range defined for ${appType.displayName}`);
-    const usedPorts = new Set(existing.map((i) => i.port));
-
-    let port: number | null = null;
-    for (let p = portDef.internalPortStart; p <= portDef.internalPortEnd; p++) {
-      if (!usedPorts.has(p)) {
-        port = p;
-        break;
+    // Allocate an internal port. Apps without a port range (`ports: []`) use
+    // port 0 as a sentinel — this fits the VS Code tunnel app, which talks to
+    // Microsoft's relay and does not expose a local listening port.
+    let port: number;
+    if (appType.fixedInternalPort !== undefined) {
+      port = appType.fixedInternalPort;
+    } else if (appType.ports.length === 0) {
+      port = 0;
+    } else {
+      const portDef = appType.ports[0]!;
+      const usedPorts = new Set(existing.map((i) => i.port));
+      let found: number | null = null;
+      for (let p = portDef.internalPortStart; p <= portDef.internalPortEnd; p++) {
+        if (!usedPorts.has(p)) { found = p; break; }
       }
+      if (found === null) throw new Error(`No available ports for ${appType.displayName}`);
+      port = found;
     }
 
-    if (port === null) {
-      throw new Error(`No available ports for ${appType.displayName}`);
+    // Allocate an instance id. For singletons the id is fixed to the app type id
+    // so restarts reuse the same identifier (and the same port mapping).
+    const id = appType.singleton ? appTypeId : `${appTypeId}-${Date.now().toString(36)}`;
+
+    // Compose any app-type-specific extra args for `manage.sh start`.
+    const extraArgs: string[] = [];
+    if (appTypeId === 'vscode') {
+      extraArgs.push(this.buildTunnelName(info.userId, info.name));
     }
 
-    const id = `${appTypeId}-${Date.now().toString(36)}`;
-    await this.dockerService.startAppInstance(workerId, appTypeId, id, port);
-    return { id, port };
+    // Auto port mapping — allocate or reuse BEFORE calling manage.sh, so the
+    // user sees a consistent mapping even if manage.sh later fails (they can
+    // remove it manually if needed).
+    let externalPort: number | undefined;
+    if (appType.autoPortMapping) {
+      externalPort = await this.ensureAutoPortMapping(info, appType, id, port);
+    }
+
+    await this.dockerService.startAppInstance(workerId, appTypeId, id, port, extraArgs);
+
+    return { id, port, ...(externalPort !== undefined ? { externalPort } : {}) };
+  }
+
+  private async ensureAutoPortMapping(
+    info: ContainerInfo,
+    appType: NonNullable<ReturnType<typeof getAppType>>,
+    instanceId: string,
+    internalPort: number,
+  ): Promise<number> {
+    const cfg = appType.autoPortMapping!;
+    const store = usePortMappingStore();
+    const existing = store.findByWorkerAndAppType(info.containerName, appType.id, instanceId);
+    if (existing) {
+      return existing.externalPort;
+    }
+    const externalPort = store.findFreeExternalPort(cfg.externalPortStart, cfg.externalPortEnd);
+    if (externalPort === null) {
+      throw new Error(
+        `No available external ports for ${appType.displayName} in ${cfg.externalPortStart}-${cfg.externalPortEnd}`,
+      );
+    }
+    await store.add({
+      externalPort,
+      type: cfg.type,
+      workerName: info.name,
+      containerName: info.containerName,
+      internalPort,
+      appType: appType.id,
+      instanceId,
+      userId: info.userId,
+    });
+    try {
+      await useTraefikManager().reconcile();
+    } catch (err) {
+      useLogger().error(
+        `[container] traefik reconcile after auto port mapping failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+    return externalPort;
   }
 
   async stopAppInstance(workerId: string, appTypeId: string, instanceId: string): Promise<void> {

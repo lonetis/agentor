@@ -8,7 +8,6 @@ const VALID_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>([
   'desktop',
   'apps',
   'editor',
-  'vscode',
   'logs',
 ]);
 

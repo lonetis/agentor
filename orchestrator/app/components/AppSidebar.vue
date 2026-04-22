@@ -18,7 +18,6 @@ const emit = defineEmits<{
   openDesktop: [containerId: string];
   openApps: [containerId: string];
   openEditor: [containerId: string];
-  openVsCode: [containerId: string];
   stopContainer: [id: string];
   restartContainer: [id: string];
   rebuildContainer: [id: string];
@@ -317,7 +316,6 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             @open-desktop="(cid) => emit('openDesktop', cid)"
             @open-apps="(cid) => emit('openApps', cid)"
             @open-editor="(cid) => emit('openEditor', cid)"
-            @open-vs-code="(cid) => emit('openVsCode', cid)"
             @stop="(id) => emit('stopContainer', id)"
             @restart="(id) => emit('restartContainer', id)"
             @rebuild="(id) => emit('rebuildContainer', id)"

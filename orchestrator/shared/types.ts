@@ -19,8 +19,17 @@ export interface TmuxWindow {
 export interface AppInstanceInfo {
   id: string;
   appType: string;
+  /** Internal container port the app is listening on. `0` when the app does not expose a port (e.g. vscode tunnel). */
   port: number;
-  status: 'running' | 'stopped';
+  status: 'running' | 'stopped' | 'auth_required';
+  /** Externally reachable port from the auto-created port mapping, if any (e.g. ssh). */
+  externalPort?: number;
+  /** VS Code tunnel machine name once the tunnel has connected. */
+  machineName?: string;
+  /** Device-code auth URL (VS Code tunnel) while the app is in `auth_required`. */
+  authUrl?: string;
+  /** Device-code auth code (VS Code tunnel) while the app is in `auth_required`. */
+  authCode?: string;
 }
 
 export type NetworkMode = 'block-all' | 'block' | 'package-managers' | 'full' | 'custom';
@@ -28,13 +37,6 @@ export type NetworkMode = 'block-all' | 'block' | 'package-managers' | 'full' | 
 export interface ServiceStatus {
   running: boolean;
   containerId?: string;
-}
-
-export interface VsCodeTunnelStatus {
-  status: 'stopped' | 'auth_required' | 'running';
-  machineName?: string;
-  authUrl?: string;
-  authCode?: string;
 }
 
 export type ContainerStatus = 'creating' | 'running' | 'stopped' | 'removing' | 'error';
@@ -188,6 +190,10 @@ export interface UserEnvVars {
   claudeCodeOauthToken: string;
   openaiApiKey: string;
   geminiApiKey: string;
+  /** OpenSSH public key(s). Written to `<DATA_DIR>/users/<userId>/ssh/authorized_keys`
+   * and bind-mounted read-only into every worker this user owns. The SSH app uses
+   * this file as `AuthorizedKeysFile`. Empty string means no key is configured. */
+  sshPublicKey: string;
   customEnvVars: UserCustomEnvVar[];
   updatedAt: string;
 }

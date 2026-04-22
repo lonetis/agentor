@@ -22,5 +22,8 @@ export default defineEventHandler(() => {
     description: t.description,
     ports: t.ports.map((p) => ({ id: p.id, name: p.name })),
     maxInstances: t.maxInstances,
+    singleton: t.singleton ?? false,
+    ...(t.fixedInternalPort !== undefined ? { fixedInternalPort: t.fixedInternalPort } : {}),
+    ...(t.autoPortMapping ? { autoPortMapping: t.autoPortMapping } : {}),
   }));
 });

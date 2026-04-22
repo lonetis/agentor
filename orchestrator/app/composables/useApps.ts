@@ -24,7 +24,7 @@ export function useApps(containerId: Ref<string | undefined>) {
 
   async function createInstance(appType: string) {
     if (!containerId.value) return;
-    const result = await $fetch<{ id: string; port: number }>(
+    const result = await $fetch<{ id: string; port: number; externalPort?: number }>(
       `/api/containers/${containerId.value}/apps/${appType}`,
       { method: 'POST' }
     );

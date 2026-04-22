@@ -57,10 +57,6 @@ watch(() => props.group.tabs, (tabs) => {
           icon-name="i-lucide-code"
           :url="`/editor/${tab.containerId}/?folder=/workspace`"
         />
-        <VsCodeTunnelPane
-          v-else-if="tab.type === 'vscode'"
-          :container-id="tab.containerId"
-        />
         <LogPane
           v-else-if="tab.type === 'logs'"
         />

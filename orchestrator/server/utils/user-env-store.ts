@@ -29,6 +29,7 @@ export function zeroUserEnvVars(userId: string): UserEnvVars {
     claudeCodeOauthToken: '',
     openaiApiKey: '',
     geminiApiKey: '',
+    sshPublicKey: '',
     customEnvVars: [],
     updatedAt: new Date(0).toISOString(),
   };
@@ -93,6 +94,10 @@ export class UserEnvVarStore {
       ? sanitizeCustomEnvVars(input.customEnvVars)
       : existing.customEnvVars;
 
+    const sshPublicKey = input.sshPublicKey !== undefined
+      ? (input.sshPublicKey ?? '').trim()
+      : existing.sshPublicKey;
+
     const merged: UserEnvVars = {
       userId,
       githubToken: input.githubToken ?? existing.githubToken,
@@ -100,13 +105,35 @@ export class UserEnvVarStore {
       claudeCodeOauthToken: input.claudeCodeOauthToken ?? existing.claudeCodeOauthToken,
       openaiApiKey: input.openaiApiKey ?? existing.openaiApiKey,
       geminiApiKey: input.geminiApiKey ?? existing.geminiApiKey,
+      sshPublicKey,
       customEnvVars,
       updatedAt: new Date().toISOString(),
     };
     this.items.set(userId, merged);
     await this.persist(userId);
+    if (input.sshPublicKey !== undefined) {
+      await this.writeSshKeyFile(userId, sshPublicKey);
+    }
     useLogger().debug(`[user-env-store] upserted env vars for user ${userId}`);
     return merged;
+  }
+
+  /** Writes `<DATA_DIR>/users/<userId>/ssh/authorized_keys`. File is bind-mounted
+   * into every worker this user owns; sshd uses `StrictModes no` so host ownership
+   * does not matter. Empty key writes an empty file (no logins accepted). */
+  private async writeSshKeyFile(userId: string, publicKey: string): Promise<void> {
+    const dir = join(this.dataDir, 'users', userId, 'ssh');
+    const filePath = join(dir, 'authorized_keys');
+    try {
+      await mkdir(dir, { recursive: true });
+      const body = publicKey ? (publicKey.endsWith('\n') ? publicKey : `${publicKey}\n`) : '';
+      await writeFile(filePath, body, { mode: 0o644 });
+    } catch (err) {
+      useLogger().error(
+        `[user-env-store] failed to write ssh authorized_keys for user ${userId}: ${err instanceof Error ? err.message : err}`,
+      );
+      throw err;
+    }
   }
 
   async delete(userId: string): Promise<void> {

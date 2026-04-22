@@ -151,22 +151,6 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
-  // ─── VS Code Tunnel ──────────────────────────────────────────
-  async getVsCodeTunnelStatus(containerId: string) {
-    const res = await this.request.get(`${BASE_URL}/api/containers/${containerId}/vscode-tunnel/status`);
-    return { status: res.status(), body: await res.json() };
-  }
-
-  async startVsCodeTunnel(containerId: string) {
-    const res = await this.request.post(`${BASE_URL}/api/containers/${containerId}/vscode-tunnel/start`);
-    return { status: res.status(), body: await res.json() };
-  }
-
-  async stopVsCodeTunnel(containerId: string) {
-    const res = await this.request.post(`${BASE_URL}/api/containers/${containerId}/vscode-tunnel/stop`);
-    return { status: res.status(), body: await res.json() };
-  }
-
   // ─── Apps ─────────────────────────────────────────────────────
   async listApps(containerId: string) {
     const res = await this.request.get(`${BASE_URL}/api/containers/${containerId}/apps`);

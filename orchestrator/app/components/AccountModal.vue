@@ -41,6 +41,7 @@ interface EnvVarsForm {
   claudeCodeOauthToken: string;
   openaiApiKey: string;
   geminiApiKey: string;
+  sshPublicKey: string;
   customEnvVars: { key: string; value: string }[];
 }
 const envForm = reactive<EnvVarsForm>({
@@ -49,11 +50,14 @@ const envForm = reactive<EnvVarsForm>({
   claudeCodeOauthToken: '',
   openaiApiKey: '',
   geminiApiKey: '',
+  sshPublicKey: '',
   customEnvVars: [],
 });
 const envLoading = ref(false);
 const envError = ref('');
 const envSuccess = ref('');
+const sshError = ref('');
+const sshSuccess = ref('');
 const envVisible = reactive<Record<string, boolean>>({});
 const { envVars: _envVarsRef, credentials: agentCreds, fetchAll: fetchEnvAndCreds, save: saveEnvVars, resetCredential } = useUserEnvVars();
 const credResetConfirmId = ref<string | null>(null);
@@ -83,6 +87,8 @@ function resetMessages() {
   passkeySuccess.value = '';
   envError.value = '';
   envSuccess.value = '';
+  sshError.value = '';
+  sshSuccess.value = '';
   credResetError.value = '';
   credResetSuccess.value = '';
 }
@@ -130,6 +136,7 @@ async function loadEnvVars() {
       envForm.claudeCodeOauthToken = v.claudeCodeOauthToken;
       envForm.openaiApiKey = v.openaiApiKey;
       envForm.geminiApiKey = v.geminiApiKey;
+      envForm.sshPublicKey = v.sshPublicKey || '';
       envForm.customEnvVars = v.customEnvVars.map((e) => ({ ...e }));
     }
   } catch (err: any) {
@@ -177,7 +184,7 @@ function toggleVisible(field: string) {
   envVisible[field] = !envVisible[field];
 }
 
-async function handleEnvSave() {
+async function handleEnvSave(context: 'env' | 'ssh' = 'env') {
   resetMessages();
   envLoading.value = true;
   try {
@@ -187,13 +194,23 @@ async function handleEnvSave() {
       claudeCodeOauthToken: envForm.claudeCodeOauthToken,
       openaiApiKey: envForm.openaiApiKey,
       geminiApiKey: envForm.geminiApiKey,
+      sshPublicKey: envForm.sshPublicKey,
       customEnvVars: envForm.customEnvVars
         .map((e) => ({ key: e.key.trim(), value: e.value }))
         .filter((e) => e.key.length > 0),
     });
-    envSuccess.value = 'Env vars saved';
+    if (context === 'ssh') {
+      sshSuccess.value = 'SSH public key saved';
+    } else {
+      envSuccess.value = 'Env vars saved';
+    }
   } catch (err: any) {
-    envError.value = err?.data?.statusMessage || err?.message || 'Failed to save env vars';
+    const message = err?.data?.statusMessage || err?.message || 'Failed to save';
+    if (context === 'ssh') {
+      sshError.value = message;
+    } else {
+      envError.value = message;
+    }
   } finally {
     envLoading.value = false;
   }
@@ -697,7 +714,36 @@ async function handleDeletePasskey(p: PasskeyRow) {
           <p v-if="envError" class="text-sm text-red-600 dark:text-red-400" data-testid="env-error">{{ envError }}</p>
           <p v-if="envSuccess" class="text-sm text-emerald-600 dark:text-emerald-400" data-testid="env-success">{{ envSuccess }}</p>
           <div class="flex justify-end">
-            <UButton size="sm" :loading="envLoading" @click="handleEnvSave" data-testid="env-save">Save env vars</UButton>
+            <UButton size="sm" :loading="envLoading" @click="() => handleEnvSave('env')" data-testid="env-save">Save env vars</UButton>
+          </div>
+        </section>
+
+        <div class="border-t border-gray-200 dark:border-gray-800"></div>
+
+        <!-- SSH Access — per-user public key, bind-mounted into every worker
+             the user owns. Used by the `ssh` app (Apps pane → Start). -->
+        <section class="space-y-3" data-testid="account-ssh">
+          <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">SSH Access</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            Paste your OpenSSH public key (e.g. <code class="font-mono">ssh-ed25519 AAAA…</code>).
+            It is bind-mounted into every worker you own and used as
+            <code class="font-mono">authorized_keys</code> when you start the SSH app.
+          </p>
+          <UFormField label="Public key" hint="ssh-ed25519 / ssh-rsa / ecdsa-sha2-*" class="w-full">
+            <UTextarea
+              v-model="envForm.sshPublicKey"
+              :rows="4"
+              autocomplete="off"
+              spellcheck="false"
+              class="w-full font-mono text-xs"
+              :ui="{ base: 'w-full' }"
+              data-testid="env-sshPublicKey"
+            />
+          </UFormField>
+          <p v-if="sshError" class="text-sm text-red-600 dark:text-red-400" data-testid="ssh-error">{{ sshError }}</p>
+          <p v-if="sshSuccess" class="text-sm text-emerald-600 dark:text-emerald-400" data-testid="ssh-success">{{ sshSuccess }}</p>
+          <div class="flex justify-end">
+            <UButton size="sm" :loading="envLoading" @click="() => handleEnvSave('ssh')" data-testid="env-save-ssh">Save SSH key</UButton>
           </div>
         </section>
 

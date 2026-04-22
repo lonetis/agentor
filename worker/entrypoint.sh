@@ -243,23 +243,6 @@ _done editor "Code editor"
 _log "Code-server: ready"
 
 # ==========================================================================
-# Phase 3c: VS Code tunnel (native VS Code client via Microsoft relay)
-# Auto-starts in background. First run requires GitHub device code auth
-# (visible via the VS Code Tunnel pane). Auth persists in agent-data volume
-# (~/.vscode symlinked to .agent-data/.vscode) across restarts/rebuilds.
-# ==========================================================================
-WORKER_NAME=$(echo "$WORKER" | jq -r '.name // ""')
-WORKER_NAME=${WORKER_NAME#agentor-worker-}
-if [ -n "$WORKER_NAME" ]; then
-    _step vscode "VS Code tunnel"
-    /home/agent/apps/vscode-tunnel/manage.sh start "$WORKER_NAME"
-    _done vscode "VS Code tunnel"
-    _log "VS Code tunnel: started (name=$WORKER_NAME)"
-else
-    _skip vscode "VS Code tunnel"
-fi
-
-# ==========================================================================
 # Phase 4: Git identity + auth
 # Sets global git user from the creating user's profile (name/email from
 # the WORKER JSON). Credential helper requires GITHUB_TOKEN.

@@ -24,7 +24,6 @@ export type {
   InstructionInfo,
   CredentialInfo,
   InitScriptInfo,
-  VsCodeTunnelStatus,
   LogLevel,
   LogSource,
   LogEntry,
@@ -53,6 +52,13 @@ export interface AppTypeInfo {
   description: string;
   ports: { id: string; name: string }[];
   maxInstances: number;
+  singleton?: boolean;
+  fixedInternalPort?: number;
+  autoPortMapping?: {
+    type: 'external' | 'localhost';
+    externalPortStart: number;
+    externalPortEnd: number;
+  };
 }
 
 export interface PortMapping {
@@ -152,7 +158,7 @@ export interface ArchivedWorker {
   image: string;
 }
 
-export type TabType = 'terminal' | 'desktop' | 'apps' | 'editor' | 'vscode' | 'logs';
+export type TabType = 'terminal' | 'desktop' | 'apps' | 'editor' | 'logs';
 
 export interface Tab {
   id: string;

@@ -67,7 +67,7 @@ The orchestrator container has no `agentor.managed` label — it is found via `o
 
 **TTY vs non-TTY**: Worker containers use TTY mode (raw stream, `\r\n` line endings — split on `\r?\n` to avoid the trailing `\r` breaking the timestamp regex). Traefik runs non-TTY (8-byte-framed multiplex), demuxed via `docker.modem.demuxStream` into independent stdout/stderr handlers, each with its own line buffer so partial lines never leak across streams. The stderr handler force-tags entries as `error`.
 
-**Worker background services**: `dockerd`, `code-server`, `vscode-tunnel`, `chromium`, and `microsocks` all mirror their stdout/stderr through `tee` (or `>(... >> /proc/1/fd/1)` from the docker-exec entry points) so their output reaches the container's stdout in addition to the in-container debug log file. Each line is prefixed with the service tag (e.g. `[dockerd]`, `[code-server]`, `[vscode-tunnel]`, `[chromium-<id>]`, `[socks5-<id>]`) so the centralized log can tell them apart from entrypoint output.
+**Worker background services**: `dockerd`, `code-server`, and the app processes (`vscode-tunnel`, `sshd`, `chromium`, `microsocks`) all mirror their stdout/stderr through `tee` (or `>(... >> /proc/1/fd/1)` from the docker-exec entry points) so their output reaches the container's stdout in addition to the in-container debug log file. Each line is prefixed with the service tag (e.g. `[dockerd]`, `[code-server]`, `[vscode-tunnel]`, `[sshd]`, `[chromium-<id>]`, `[socks5-<id>]`) so the centralized log can tell them apart from entrypoint output.
 
 **Not captured by design**: tmux pane output inside workers (interactive shell / agent CLI output) is served over the terminal WebSocket, not as Docker logs.
 

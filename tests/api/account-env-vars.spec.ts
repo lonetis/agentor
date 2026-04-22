@@ -98,9 +98,52 @@ test.describe('Account env vars (per-user) API', () => {
       expect(body.claudeCodeOauthToken).toBe('');
       expect(body.openaiApiKey).toBe('');
       expect(body.geminiApiKey).toBe('');
+      expect(body.sshPublicKey).toBe('');
       expect(body.customEnvVars).toEqual([]);
     } finally {
       await cleanupUser(u);
+    }
+  });
+
+  test('sshPublicKey round-trips via PUT + GET', async () => {
+    const u = await createUserAndSignIn('user', 'ssh-key');
+    try {
+      const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTests example@test';
+      const put = await u.api.putAccountEnvVars({ sshPublicKey: key });
+      expect(put.status).toBe(200);
+      const { body } = await u.api.getAccountEnvVars();
+      expect(body.sshPublicKey).toBe(key);
+    } finally {
+      await cleanupUser(u);
+    }
+  });
+
+  test('sshPublicKey partial update keeps other fields', async () => {
+    const u = await createUserAndSignIn('user', 'ssh-key-partial');
+    try {
+      await u.api.putAccountEnvVars({ githubToken: 'gh-keep', sshPublicKey: 'ssh-rsa AAAAB3 test@h' });
+      await u.api.putAccountEnvVars({ sshPublicKey: 'ssh-ed25519 AAAAC3 test@h' });
+      const { body } = await u.api.getAccountEnvVars();
+      expect(body.githubToken).toBe('gh-keep');
+      expect(body.sshPublicKey).toBe('ssh-ed25519 AAAAC3 test@h');
+    } finally {
+      await cleanupUser(u);
+    }
+  });
+
+  test('sshPublicKey is isolated per user', async () => {
+    const a = await createUserAndSignIn('user', 'ssh-iso-a');
+    const b = await createUserAndSignIn('user', 'ssh-iso-b');
+    try {
+      await a.api.putAccountEnvVars({ sshPublicKey: 'ssh-ed25519 AAAA-A' });
+      await b.api.putAccountEnvVars({ sshPublicKey: 'ssh-ed25519 AAAA-B' });
+      const aGet = await a.api.getAccountEnvVars();
+      const bGet = await b.api.getAccountEnvVars();
+      expect(aGet.body.sshPublicKey).toBe('ssh-ed25519 AAAA-A');
+      expect(bGet.body.sshPublicKey).toBe('ssh-ed25519 AAAA-B');
+    } finally {
+      await cleanupUser(a);
+      await cleanupUser(b);
     }
   });
 
