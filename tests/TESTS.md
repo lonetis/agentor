@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1280 tests** across 89 test files (~728 API + ~552 UI)
+- **~1282 tests** across 90 test files (~730 API + ~552 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -104,7 +104,7 @@ tests/
 
 ## Test Categories
 
-### API Tests (~728 tests, 50 files)
+### API Tests (~730 tests, 51 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -157,6 +157,7 @@ tests/
 | `agent-data-persistence.spec.ts` | 22 | Agent config symlinks, config file contents, MCP servers (playwright + chrome-devtools) for Claude/Codex/Gemini, persistence across restart/rebuild/archive, no-overwrite on restart/rebuild |
 | `git-identity.spec.ts` | 10 | Per-user git config (user.name/email from auth profile), WORKER env var contains gitName/gitEmail, no git wrapper at /usr/local/bin/git, persistence across rebuild, persistence across archive/unarchive, ContainerInfo includes gitName/gitEmail |
 | `mcp-servers-loaded.spec.ts` | 6 | MCP server verification: Claude config keys + commands via jq, Codex `mcp list` output + enabled status, Gemini config keys + commands via jq |
+| `worker-hostname.spec.ts` | 2 | In-container hostname equals the per-user `name` — for auto-generated names and custom names. Regression for the client-side `agentor-worker-` prefix double-prepend bug. |
 
 ### UI Tests (~552 tests, 39 files)
 

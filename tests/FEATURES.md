@@ -255,6 +255,10 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Escape key — closes modal
 - Cross-modal navigation: "Manage" buttons close create modal, open target modal (350ms delay)
 
+### 6.5 Name handling
+- A custom name typed into the form is sent to the API as-is (after client-side sanitization to lowercase/alphanumeric/hyphens); the orchestrator alone applies `CONTAINER_PREFIX` + `userId` to build `containerName`. The client must not prepend `agentor-worker-` itself, otherwise the Docker container name and the worker's hostname end up with the prefix duplicated.
+- The worker's in-container `hostname` always equals the per-user short `name` — both for auto-generated slugs (e.g. `judicial-salamander`) and for custom names (e.g. `pocs`). Users see the friendly name in the shell prompt rather than the long `<prefix>-<userId>-<name>` Docker container name.
+
 ---
 
 ## 7. Environments Modal
