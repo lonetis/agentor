@@ -148,7 +148,7 @@ function sanitizeContainerName(input: string): string {
 function submit() {
   const customName = form.displayName.trim();
   const request: CreateContainerRequest = {
-    name: customName ? `agentor-worker-${sanitizeContainerName(customName)}` : generatedName.value,
+    name: customName ? sanitizeContainerName(customName) : generatedName.value,
   };
   if (form.environmentId) request.environmentId = form.environmentId;
   if (customName) request.displayName = customName;
