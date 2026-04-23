@@ -1,4 +1,4 @@
-# Agentor
+# Agentor: Agent Orchestrator
 
 [![Build and Push Docker Images](https://github.com/lonetis/agentor/actions/workflows/docker-build.yml/badge.svg?branch=main)](https://github.com/lonetis/agentor/actions/workflows/docker-build.yml)
 
