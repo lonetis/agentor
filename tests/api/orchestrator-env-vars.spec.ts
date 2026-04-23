@@ -39,4 +39,23 @@ test.describe('Orchestrator Env Vars API', () => {
     const baseDomains = body.find((e: { name: string }) => e.name === 'BASE_DOMAINS');
     expect(baseDomains).toBeTruthy();
   });
+
+  test('includes all better-auth entries', async ({ request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.listOrchestratorEnvVars();
+    const names = body.map((e: { name: string }) => e.name);
+    expect(names).toContain('BETTER_AUTH_SECRET');
+    expect(names).toContain('BETTER_AUTH_URL');
+    expect(names).toContain('BETTER_AUTH_TRUSTED_ORIGINS');
+    expect(names).toContain('BETTER_AUTH_RP_ID');
+  });
+
+  test('includes logging entries', async ({ request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.listOrchestratorEnvVars();
+    const names = body.map((e: { name: string }) => e.name);
+    expect(names).toContain('LOG_LEVEL');
+    expect(names).toContain('LOG_MAX_SIZE');
+    expect(names).toContain('LOG_MAX_FILES');
+  });
 });

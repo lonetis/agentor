@@ -35,6 +35,14 @@ export default defineEventHandler(() => {
 
   // Better-auth
   push('BETTER_AUTH_SECRET', config.betterAuthSecret);
+  push('BETTER_AUTH_URL', config.betterAuthUrl);
+  push('BETTER_AUTH_TRUSTED_ORIGINS', config.betterAuthTrustedOrigins.join(','));
+  push('BETTER_AUTH_RP_ID', config.betterAuthRpId);
+
+  // Logging
+  push('LOG_LEVEL', config.logLevel);
+  push('LOG_MAX_SIZE', config.logMaxSize);
+  push('LOG_MAX_FILES', config.logMaxFiles);
 
   return vars;
 });

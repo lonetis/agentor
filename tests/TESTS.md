@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1276 tests** across 89 test files (~724 API + ~552 UI)
+- **~1280 tests** across 89 test files (~728 API + ~552 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -104,7 +104,7 @@ tests/
 
 ## Test Categories
 
-### API Tests (~724 tests, 50 files)
+### API Tests (~728 tests, 50 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -137,7 +137,7 @@ tests/
 | `capabilities.spec.ts` | 24 | Capabilities CRUD, built-in capabilities, validation |
 | `instructions.spec.ts` | 27 | Instruction entry CRUD, built-in entries, validation |
 | `init-scripts.spec.ts` | 25 | Init script CRUD, built-in scripts, validation |
-| `settings.spec.ts` | 11 | Settings endpoint, categorized sections — verifies the legacy `agent-auth` section is gone and `git-providers` reports clone domains only (no per-user tokens) |
+| `settings.spec.ts` | 13 | Settings endpoint, categorized sections — verifies the legacy `agent-auth` section is gone and `git-providers` reports clone domains only (no per-user tokens), plus the new `logging` (LOG_LEVEL / LOG_MAX_SIZE / LOG_MAX_FILES) and `authentication` (BETTER_AUTH_SECRET status-only, BETTER_AUTH_URL / TRUSTED_ORIGINS / RP_ID) sections |
 | `account-env-vars.spec.ts` | 15 | Per-user env vars: GET/PUT auth gating, fresh-user defaults (now including sshPublicKey=''), well-known field upsert + partial PUT, customEnvVars round-trip, validation (lowercase / digit-prefixed / reserved / duplicate keys), per-user isolation, admin cannot see another user's values via the endpoint, sshPublicKey round-trip, sshPublicKey partial update, sshPublicKey per-user isolation |
 | `account-credentials.spec.ts` | 5 | Per-user agent OAuth credential file listing + reset: auth gating, 3-entry shape for a fresh user, idempotent DELETE, unknown agent id rejection, independent listings per user |
 | `user-scoped-worker-env.spec.ts` | 5 | End-to-end propagation: GITHUB_TOKEN, ANTHROPIC_API_KEY, and arbitrary custom env vars from one user's account flow into that user's workers via printenv; user A's worker shows A's token while B's shows B's; an Environment's envVars override the per-user value |
@@ -146,7 +146,7 @@ tests/
 | `git-providers.spec.ts` | 2 | Provider list, GitHub provider fields |
 | `app-types.spec.ts` | 4 | Type list, chromium/socks5 types, port defs |
 | `package-manager-domains.spec.ts` | 4 | Domain list, npm/pypi, valid domain format |
-| `orchestrator-env-vars.spec.ts` | 4 | Env var list, fields, presence of orchestrator-wide keys (BASE_DOMAINS), explicit absence of per-user secrets (GITHUB_TOKEN / *_API_KEY) |
+| `orchestrator-env-vars.spec.ts` | 6 | Env var list, fields, presence of orchestrator-wide keys (BASE_DOMAINS), explicit absence of per-user secrets (GITHUB_TOKEN / *_API_KEY), full better-auth set (SECRET / URL / TRUSTED_ORIGINS / RP_ID), logging set (LOG_LEVEL / LOG_MAX_SIZE / LOG_MAX_FILES) |
 | `github.spec.ts` | 14 | Repos list, username, orgs, repo field validation, branches, branch field validation, create repo validation (missing owner/name, empty owner/name, no token), response shape validation, non-existent repo branches |
 | `updates.spec.ts` | 11 | Update status, manual check trigger, apply rejection, response structure (3 image keys — orchestrator/worker/traefik, no mapper), check consistency |
 | `traefik-unified.spec.ts` | 8 | Merged-mapper regression tests: `/api/log-sources` never returns `mapper`; `/api/updates` has no `mapper` key; `UpdatableImage` enum is 3 values; port mapping create/delete works while Traefik is up for domain mappings; port + domain mapping can coexist on the same worker; settings expose no `MAPPER_IMAGE` |

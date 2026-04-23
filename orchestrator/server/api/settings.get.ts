@@ -178,6 +178,55 @@ export default defineEventHandler(async (event) => {
     ],
   });
 
+  // --- Logging ---
+  const logMaxSizeMb = Math.round((config.logMaxSize / (1024 * 1024)) * 10) / 10;
+  sections.push({
+    id: 'logging',
+    label: 'Logging',
+    items: [
+      { key: 'LOG_LEVEL', label: 'Log Level', value: config.logLevel, type: 'string' },
+      { key: 'LOG_MAX_SIZE', label: 'Max Log File Size', value: `${logMaxSizeMb}m`, type: 'string' },
+      { key: 'LOG_MAX_FILES', label: 'Rotated Files per Category', value: config.logMaxFiles, type: 'number' },
+    ],
+  });
+
+  // --- Authentication (better-auth) ---
+  sections.push({
+    id: 'authentication',
+    label: 'Authentication',
+    items: [
+      {
+        key: 'BETTER_AUTH_SECRET',
+        label: 'Session Secret',
+        value: statusValue(!!config.betterAuthSecret),
+        type: 'status',
+        sensitive: true,
+      },
+      {
+        key: 'BETTER_AUTH_URL',
+        label: 'Base URL',
+        value: config.betterAuthUrl || 'http://localhost:3000 (default)',
+        type: 'string',
+      },
+      {
+        key: 'BETTER_AUTH_TRUSTED_ORIGINS',
+        label: 'Extra Trusted Origins',
+        value: config.betterAuthTrustedOrigins.length > 0
+          ? config.betterAuthTrustedOrigins
+          : 'none (auto-detected origins only)',
+        type: config.betterAuthTrustedOrigins.length > 0 ? 'list' : 'string',
+      },
+      {
+        key: 'BETTER_AUTH_RP_ID',
+        label: 'Passkey Relying Party ID',
+        value: config.betterAuthRpId || (config.dashboardSubdomain && config.dashboardBaseDomain
+          ? `${config.dashboardSubdomain}.${config.dashboardBaseDomain} (auto)`
+          : 'passkeys disabled (no dashboard domain)'),
+        type: 'string',
+      },
+    ],
+  });
+
   // --- Init Scripts ---
   const scriptItems: SettingItem[] = [];
   for (const script of useInitScriptStore().list()) {

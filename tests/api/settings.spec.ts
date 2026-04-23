@@ -79,6 +79,35 @@ test.describe('Settings API', () => {
     expect(section.items.length).toBeGreaterThan(0);
   });
 
+  test('contains logging section with log config', async ({ request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.getSettings();
+    const section = body.find((s: { id: string }) => s.id === 'logging');
+    expect(section).toBeTruthy();
+    expect(section.label).toBe('Logging');
+    const keys = section.items.map((i: { key: string }) => i.key);
+    expect(keys).toContain('LOG_LEVEL');
+    expect(keys).toContain('LOG_MAX_SIZE');
+    expect(keys).toContain('LOG_MAX_FILES');
+  });
+
+  test('contains authentication section with better-auth config', async ({ request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.getSettings();
+    const section = body.find((s: { id: string }) => s.id === 'authentication');
+    expect(section).toBeTruthy();
+    expect(section.label).toBe('Authentication');
+    const keys = section.items.map((i: { key: string }) => i.key);
+    expect(keys).toContain('BETTER_AUTH_SECRET');
+    expect(keys).toContain('BETTER_AUTH_URL');
+    expect(keys).toContain('BETTER_AUTH_TRUSTED_ORIGINS');
+    expect(keys).toContain('BETTER_AUTH_RP_ID');
+    // The session secret is sensitive and exposed only as a status value.
+    const secret = section.items.find((i: { key: string }) => i.key === 'BETTER_AUTH_SECRET');
+    expect(secret.type).toBe('status');
+    expect(secret.sensitive).toBe(true);
+  });
+
   test('contains app-types section with app definitions', async ({ request }) => {
     const api = new ApiClient(request);
     const { body } = await api.getSettings();

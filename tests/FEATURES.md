@@ -335,7 +335,9 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - "System Settings" title + "Expand all" / "Collapse all" buttons
 - Description: "Read-only view of all system configuration"
 - Loading state: "Loading settings..."
-- Collapsible sections by category: Docker, Worker Defaults, Git Providers (clone domains only; tokens are per-user), Domain Mapping, Network, Init Scripts, App Types. (The legacy Agent Authentication section is removed — agent API keys and OAuth tokens are per-user and managed from the Account modal.)
+- Collapsible sections by category: Docker, Worker Defaults, Git Providers (clone domains only; tokens are per-user), Domain Mapping, Network, Logging, Authentication, Init Scripts, App Types. (The legacy Agent Authentication section is removed — agent API keys and OAuth tokens are per-user and managed from the Account modal.)
+- Logging section exposes `LOG_LEVEL`, `LOG_MAX_SIZE` (human-readable megabytes), `LOG_MAX_FILES`.
+- Authentication section exposes better-auth settings: `BETTER_AUTH_SECRET` (status badge — value is never returned), `BETTER_AUTH_URL`, `BETTER_AUTH_TRUSTED_ORIGINS` (list, or "none" fallback), `BETTER_AUTH_RP_ID` (shows the auto-derived `<subdomain>.<baseDomain>` value when unset and the dashboard domain is configured, or "passkeys disabled" when neither an override nor a dashboard domain is set).
 - Per-item: label + env var key (monospace) + value display
   - Status type: colored badge (configured=success)
   - Boolean type: badge (enabled/disabled)
@@ -785,8 +787,8 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/github/repos/:owner/:repo/branches` — list branches + default
 
 ### 24.15 Configuration
-- `GET /api/settings` — orchestrator-wide settings (Docker, Worker Defaults, Git Providers (clone domains only), Network, Init Scripts, App Types). The old `agent-auth` section is removed — agent API keys live per user under `/api/account/env-vars`.
-- `GET /api/orchestrator-env-vars` — orchestrator-wide env vars (BASE_DOMAINS, DASHBOARD_*, ACME_EMAIL, BETTER_AUTH_*, etc.). Does NOT include `GITHUB_TOKEN` or any `*_API_KEY` — those are per user.
+- `GET /api/settings` — orchestrator-wide settings (Docker, Worker Defaults, Git Providers (clone domains only), Domain Mapping, Network, Logging, Authentication, Init Scripts, App Types). The old `agent-auth` section is removed — agent API keys live per user under `/api/account/env-vars`.
+- `GET /api/orchestrator-env-vars` — orchestrator-wide env vars (BASE_DOMAINS, DASHBOARD_*, ACME_EMAIL, BETTER_AUTH_SECRET / URL / TRUSTED_ORIGINS / RP_ID, LOG_LEVEL / LOG_MAX_SIZE / LOG_MAX_FILES, etc.). Does NOT include `GITHUB_TOKEN` or any `*_API_KEY` — those are per user.
 - `GET /api/git-providers` — provider list with the **current user's** token status (per-user `tokenConfigured` boolean comes from their `UserEnvVars`)
 - `GET /api/agent-api-domains` — firewall allowlist
 - `GET /api/package-manager-domains` — PM domain list

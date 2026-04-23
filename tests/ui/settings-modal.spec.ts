@@ -47,6 +47,8 @@ test.describe('Settings Modal', () => {
       'Worker Defaults',
       'Git Providers',
       'Network',
+      'Logging',
+      'Authentication',
       'Init Scripts',
       'App Types',
     ];

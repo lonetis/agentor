@@ -37,6 +37,9 @@ export interface Config {
   logMaxSize: number;
   logMaxFiles: number;
   betterAuthSecret: string;
+  betterAuthUrl: string;
+  betterAuthTrustedOrigins: string[];
+  betterAuthRpId: string;
 }
 
 function parseLogSize(raw: string): number {
@@ -131,5 +134,10 @@ export function loadConfig(): Config {
     logMaxSize: parseLogSize(process.env.LOG_MAX_SIZE || '50m'),
     logMaxFiles: parseInt(process.env.LOG_MAX_FILES || '5', 10) || 5,
     betterAuthSecret: process.env.BETTER_AUTH_SECRET || '',
+    betterAuthUrl: process.env.BETTER_AUTH_URL || '',
+    betterAuthTrustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS
+      ? process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+      : [],
+    betterAuthRpId: process.env.BETTER_AUTH_RP_ID?.trim() || '',
   };
 }
