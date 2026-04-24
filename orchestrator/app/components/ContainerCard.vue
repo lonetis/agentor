@@ -72,7 +72,7 @@ const isRunning = computed(() => props.container.status === 'running');
     <!-- All buttons in one row -->
     <div class="flex items-center flex-wrap gap-1.5">
       <template v-if="isRunning">
-        <!-- Views: terminal, desktop, apps -->
+        <!-- Views: terminal, editor, desktop, apps -->
         <div class="flex items-center gap-0.5">
           <UTooltip text="Terminal">
             <UButton
@@ -81,6 +81,15 @@ const isRunning = computed(() => props.container.status === 'running');
               variant="subtle"
               icon="i-lucide-terminal"
               @click="emit('openTerminal', container.id)"
+            />
+          </UTooltip>
+          <UTooltip text="Editor">
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-code"
+              @click="emit('openEditor', container.id)"
             />
           </UTooltip>
           <UTooltip text="Desktop">
@@ -99,21 +108,6 @@ const isRunning = computed(() => props.container.status === 'running');
               variant="subtle"
               icon="i-lucide-layout-grid"
               @click="emit('openApps', container.id)"
-            />
-          </UTooltip>
-        </div>
-
-        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
-
-        <!-- Editors -->
-        <div class="flex items-center gap-0.5">
-          <UTooltip text="Editor">
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-code"
-              @click="emit('openEditor', container.id)"
             />
           </UTooltip>
         </div>
