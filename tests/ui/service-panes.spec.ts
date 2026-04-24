@@ -94,9 +94,9 @@ test.describe.serial('Service Panes — UI', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    // Desktop is the second icon button (after Terminal)
+    // Desktop is the third icon button (Terminal, Editor, Desktop, ...)
     const iconButtons = card.locator('button');
-    await iconButtons.nth(1).click();
+    await iconButtons.nth(2).click();
     // Should show the desktop pane content area (starting or running)
     await expect(page.locator('main').getByText(/Desktop (is starting|running)/)).toBeVisible({ timeout: 15_000 });
   });
@@ -106,7 +106,7 @@ test.describe.serial('Service Panes — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
     const iconButtons = card.locator('button');
-    await iconButtons.nth(1).click();
+    await iconButtons.nth(2).click();
     await expect(page.locator('main').getByText(/Desktop (is starting|running)/)).toBeVisible({ timeout: 15_000 });
     // ServicePane shows "is starting..." or "running" indicator
     const startingMsg = page.locator('main').locator('text=is starting...');
@@ -118,9 +118,9 @@ test.describe.serial('Service Panes — UI', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    // Editor is the 4th icon button (Terminal, Desktop, Apps, Editor, ...)
+    // Editor is the second icon button (Terminal, Editor, Desktop, Apps, ...)
     const iconButtons = card.locator('button');
-    await iconButtons.nth(3).click();
+    await iconButtons.nth(1).click();
     await expect(page.locator('main').getByText(/Editor (is starting|running)/)).toBeVisible({ timeout: 15_000 });
   });
 
@@ -129,7 +129,7 @@ test.describe.serial('Service Panes — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
     const iconButtons = card.locator('button');
-    await iconButtons.nth(3).click();
+    await iconButtons.nth(1).click();
     await expect(page.locator('main').getByText(/Editor (is starting|running)/)).toBeVisible({ timeout: 15_000 });
     const startingMsg = page.locator('main').locator('text=is starting...');
     const runningMsg = page.locator('main').locator('text=Editor running');
@@ -142,7 +142,7 @@ test.describe.serial('Service Panes — UI', () => {
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
     // Open desktop pane
     const iconButtons = card.locator('button');
-    await iconButtons.nth(1).click();
+    await iconButtons.nth(2).click();
     await expect(page.locator('main').getByText(/Desktop (is starting|running)/)).toBeVisible({ timeout: 15_000 });
     // Wait for service to start, then check for "Open in tab"
     const openLink = page.locator('main').locator('text=Open in tab');
@@ -155,7 +155,7 @@ test.describe.serial('Service Panes — UI', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
     const iconButtons = card.locator('button');
-    await iconButtons.nth(1).click();
+    await iconButtons.nth(2).click();
     await expect(page.locator('main').getByText(/Desktop (is starting|running)/)).toBeVisible({ timeout: 15_000 });
     // Wait for iframe (service needs to finish starting)
     const iframe = page.locator('main iframe');

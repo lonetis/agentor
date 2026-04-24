@@ -36,10 +36,10 @@ test.describe.serial('Workspace Upload Modal', () => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
-    // The upload button is the 5th icon button (after Terminal, Desktop, Apps, Editor)
+    // The upload button is the 5th icon button (after Terminal, Editor, Desktop, Apps)
     // It has tooltip "Upload to Workspace" and triggers showUpload = true which opens the UploadModal
     const iconButtons = card.locator('button');
-    // Icon buttons order: Terminal(0), Desktop(1), Apps(2), Editor(3), Upload(4), Download(5)
+    // Icon buttons order: Terminal(0), Editor(1), Desktop(2), Apps(3), Upload(4), Download(5)
     await iconButtons.nth(4).click();
     await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 10_000 });
     // Verify it is the upload modal by checking the title
