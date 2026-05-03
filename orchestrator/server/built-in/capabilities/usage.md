@@ -12,15 +12,21 @@ Use this skill when you need to check how much of your usage quota is remaining,
 
 The orchestrator periodically polls usage APIs for all configured agents (Claude, Codex, Gemini) and exposes a unified endpoint. Usage data is only available for agents authenticated via OAuth (subscription accounts). API key-based agents show no usage data.
 
+## Authentication
+
+The endpoints described here live under `$ORCHESTRATOR_URL/api/worker-self/*` and **do not require any session cookie or API key**. The orchestrator identifies your worker automatically by its source IP on the `agentor-net` Docker network and returns the usage state for the user who owns this worker.
+
+`$ORCHESTRATOR_URL` is a pre-set environment variable pointing at the orchestrator's internal URL (e.g. `http://agentor-orchestrator:3000`).
+
 ## API Reference
 
 ### Get usage status
 
 ```bash
-curl "$ORCHESTRATOR_URL/api/usage"
+curl "$ORCHESTRATOR_URL/api/worker-self/usage"
 ```
 
-Returns a JSON object with per-agent usage information:
+Returns a JSON object with per-agent usage information for the user who owns this worker:
 
 ```json
 {
@@ -57,7 +63,7 @@ Returns a JSON object with per-agent usage information:
 ### Trigger an immediate refresh
 
 ```bash
-curl -X POST "$ORCHESTRATOR_URL/api/usage/refresh"
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/usage/refresh"
 ```
 
 Bypasses the normal 5-minute poll interval and fetches fresh usage data from all agents immediately. Returns the same response shape as the GET endpoint.

@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1282 tests** across 90 test files (~730 API + ~552 UI)
+- **~1291 tests** across 91 test files (~739 API + ~552 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -104,7 +104,7 @@ tests/
 
 ## Test Categories
 
-### API Tests (~730 tests, 51 files)
+### API Tests (~739 tests, 52 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -158,6 +158,7 @@ tests/
 | `git-identity.spec.ts` | 10 | Per-user git config (user.name/email from auth profile), WORKER env var contains gitName/gitEmail, no git wrapper at /usr/local/bin/git, persistence across rebuild, persistence across archive/unarchive, ContainerInfo includes gitName/gitEmail |
 | `mcp-servers-loaded.spec.ts` | 6 | MCP server verification: Claude config keys + commands via jq, Codex `mcp list` output + enabled status, Gemini config keys + commands via jq |
 | `worker-hostname.spec.ts` | 2 | In-container hostname equals the per-user `name` — for auto-generated names and custom names. Regression for the client-side `agentor-worker-` prefix double-prepend bug. |
+| `worker-self.spec.ts` | 9 | Worker-self routes (no session, identified by Docker source IP): `/api/worker-self/info` returns the calling worker's identity, hitting it from outside the docker network is 401, port mapping create/list/delete works from inside the worker, `workerName` body field is ignored (caller IP wins), list filters out other workers' mappings, DELETE refuses other workers' mappings (403), port-mapper status shape, domain-mapper status shape, usage status shape |
 
 ### UI Tests (~552 tests, 39 files)
 

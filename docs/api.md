@@ -10,7 +10,9 @@ Auto-generated OpenAPI 3.1.0 docs powered by Nitro's built-in OpenAPI support. Z
 
 **How it works:** Each route file has a top-level `defineRouteMeta()` call (auto-imported Nitro macro) that enriches the generated spec with tags, summaries, schemas, parameters, and request/response bodies. Nitro auto-discovers all file-based routes and merges the metadata into a single OpenAPI spec.
 
-**Tag groups (15):** Containers, Tmux, Apps, Port Mappings, Domain Mappings, Environments, Capabilities, Instructions, Archived Workers, Logs, Updates, GitHub, Usage, Config, Health — plus an "Internal" tag for proxy/WebSocket relay routes.
+**Tag groups (16):** Containers, Tmux, Apps, Port Mappings, Domain Mappings, Environments, Capabilities, Instructions, Archived Workers, Logs, Updates, GitHub, Usage, Config, Health, Worker Self — plus an "Internal" tag for proxy/WebSocket relay routes.
+
+The **Worker Self** group contains the unauthenticated, source-IP-identified routes mounted at `/api/worker-self/*` for use from inside worker containers (port mappings, domain mappings, usage, info). See `docs/environments.md` for details on how `requireWorkerSelf()` resolves the calling worker.
 
 **Shared schemas:** Defined via `$global.components.schemas` in anchor files (typically the "list" endpoint for each group). Other routes in the same group reference these via `$ref`. Schemas: `ContainerInfo`, `RepoConfig`, `MountConfig`, `TmuxWindow`, `AppInstanceInfo`, `PortMapping`, `DomainMapping`, `Environment`, `Capability`, `Instruction`, `ArchivedWorker`, `ImageUpdateInfo`, `ErrorResponse`, `SuccessResponse`.
 

@@ -2,17 +2,21 @@ import { createError, getRequestURL } from 'h3';
 import { resolveAuthFromEvent } from '../utils/auth-helpers';
 
 /**
- * Public API prefixes that bypass auth:
+ * Public API prefixes that bypass session auth:
  * - /api/auth/** — better-auth's own sign-in/sign-out/session endpoints
  * - /api/health — health probe (Docker healthcheck, monitoring)
  * - /api/setup/** — first-run admin creation endpoints
  * - /api/docs/** — OpenAPI spec and Scalar UI
+ * - /api/worker-self/** — endpoints called by workers inside agentor-net.
+ *   These authenticate the caller by source IP via `requireWorkerSelf()`
+ *   instead of session cookies, since worker containers have no session.
  */
 const PUBLIC_API_PREFIXES = [
   '/api/auth/',
   '/api/health',
   '/api/setup/',
   '/api/docs',
+  '/api/worker-self/',
 ];
 
 function isPublicApi(path: string): boolean {

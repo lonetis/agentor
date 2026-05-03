@@ -54,8 +54,9 @@ Application data remains in JSON files (via `JsonStore`) — we only use SQLite 
 |-----------|------|---------|
 | Auth instance | `orchestrator/server/utils/auth.ts` | `betterAuth()` configuration with admin plugin, session config, and migration runner |
 | Auth handler | `orchestrator/server/api/auth/[...all].ts` | Catch-all that forwards `/api/auth/*` to `auth.handler()` |
-| Middleware | `orchestrator/server/middleware/auth.ts` | Global Nitro middleware that extracts the session on every `/api/*` request and populates `event.context.auth`. Skips `/api/auth/**`, `/api/health`, `/api/setup/**`, `/api/docs`. |
+| Middleware | `orchestrator/server/middleware/auth.ts` | Global Nitro middleware that extracts the session on every `/api/*` request and populates `event.context.auth`. Skips `/api/auth/**`, `/api/health`, `/api/setup/**`, `/api/docs`, and `/api/worker-self/**`. |
 | Helpers | `orchestrator/server/utils/auth-helpers.ts` | `requireAuth(event)`, `requireAdmin(event)`, `requireContainerAccess(event, container)`, `canAccessResource(...)`, `authenticateWsPeer(peer)` |
+| Worker auth | `orchestrator/server/utils/worker-auth.ts` | `requireWorkerSelf(event)` — identifies the calling worker by source IP on the `agentor-net` Docker bridge network. Used by every `/api/worker-self/*` route in place of session auth. |
 | Setup endpoints | `orchestrator/server/api/setup/status.get.ts` + `create-admin.post.ts` | First-run detection and initial admin creation |
 
 ### Secret
@@ -93,6 +94,40 @@ Applied to:
 - `WS /ws/logs` — live log stream
 
 All other authenticated endpoints are accessible to both admins and regular users (subject to resource ownership).
+
+## Worker-Self Endpoints (no session needed)
+
+A dedicated set of endpoints under `/api/worker-self/*` is reachable from inside worker containers **without any session cookie or API key**. These are listed in `PUBLIC_API_PREFIXES` in `server/middleware/auth.ts` so they bypass session validation entirely.
+
+Each `/api/worker-self/*` handler instead calls `requireWorkerSelf(event)` from `server/utils/worker-auth.ts`, which:
+
+1. Reads the source IP from `event.node.req.socket.remoteAddress` (stripping any `::ffff:` IPv4-mapped prefix).
+2. Lists managed Docker containers (filtered by `agentor.managed=true`) and matches each container's IP on `dockerNetwork` (`agentor-net`) against the source IP. The IP→containerName map is cached for 3 seconds; a miss forces a refresh.
+3. Resolves the matched containerName back to an in-memory `ContainerInfo` via `containerManager.findByContainerName()`. If the container is not in `running` state, returns 409.
+4. Returns `{ container, userId, containerName, workerName }`.
+
+Every `/api/worker-self/*` mutation is therefore scoped to the calling worker only — `workerId` / `workerName` body fields are ignored, list endpoints filter by the caller's `containerName`, and delete endpoints reject (403) operations that would touch a different worker's mappings.
+
+Routes:
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET`  | `/api/worker-self/info` | `{ workerName, containerName, userId, status, displayName }` for diagnostics |
+| `GET`  | `/api/worker-self/port-mapper/status` | Counts of all port mappings (read-only) |
+| `GET`  | `/api/worker-self/port-mappings` | Only mappings owned by the calling worker |
+| `POST` | `/api/worker-self/port-mappings` | Creates a port mapping for the calling worker |
+| `DELETE` | `/api/worker-self/port-mappings/:port` | 403 if mapping belongs to a different worker |
+| `GET`  | `/api/worker-self/domain-mapper/status` | `enabled`, `baseDomains`, `baseDomainConfigs`, etc. |
+| `GET`  | `/api/worker-self/domain-mappings` | Only mappings owned by the calling worker |
+| `POST` | `/api/worker-self/domain-mappings` | Creates a domain mapping for the calling worker |
+| `POST` | `/api/worker-self/domain-mappings/batch` | Batch create (single Traefik reconcile) |
+| `DELETE` | `/api/worker-self/domain-mappings/:id` | 403 if mapping belongs to a different worker |
+| `GET`  | `/api/worker-self/usage` | Usage status scoped to the worker's owning userId |
+| `POST` | `/api/worker-self/usage/refresh` | Force refresh for the same userId |
+
+This is the only API surface workers should hit — the dashboard-facing `/api/port-mappings`, `/api/domain-mappings`, and `/api/usage` routes still require a session cookie that workers do not have.
+
+The Docker-bridge identification is safe because joining `agentor-net` requires Docker socket access (the orchestrator/operator), and Docker IPAM assigns a unique IP per container. A container removed and replaced with a new one on the same IP cannot impersonate the previous worker — the cache is verified against `containerManager.findByContainerName()`, which only returns running, registered workers.
 
 ## Layered Auth (Basic Auth)
 

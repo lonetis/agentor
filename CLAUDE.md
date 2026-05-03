@@ -5,6 +5,7 @@ Docker orchestrator that spawns isolated AI coding agent workers, each in its ow
 ## Architecture
 
 ```
+Worker (curl)            <--HTTP/JSON--> Orchestrator (/api/worker-self/*, identified by Docker source IP)
 Browser (Vue 3/Nuxt UI) <--HTTP/JSON--> Orchestrator (Nuxt 3/Nitro) <--dockerode exec--> Worker (tmux/agent)
 Browser (xterm.js)       <--WebSocket--> Nitro (crossws)             <--docker stream--> Worker (tmux)
 Browser (noVNC iframe)   <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (websockify <--> x11vnc <--> Xvfb)

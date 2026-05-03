@@ -7,6 +7,7 @@ Browser (Vue 3/Nuxt UI) <--HTTP/JSON--> Orchestrator (Nuxt 3/Nitro) <--dockerode
 Browser (xterm.js)       <--WebSocket--> Nitro (crossws)             <--docker stream--> Worker (tmux)
 Browser (noVNC iframe)   <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (websockify <--> x11vnc <--> Xvfb)
 Browser (code-server)    <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (code-server on port 8443)
+Worker (curl)            <--HTTP/JSON--> Orchestrator /api/worker-self/* (no auth — calls identified by Docker source IP via requireWorkerSelf())
 Orchestrator             <--docker exec-> apps/*/manage.sh (start/stop/list app instances in worker)
 Orchestrator (TraefikManager) <--dockerode--> Traefik container (unified proxy: port mappings + domain routing, TLS)
 ```

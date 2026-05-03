@@ -14,14 +14,18 @@ The orchestrator manages a **Traefik reverse proxy** that routes incoming reques
 
 Domain mapping is only available when the orchestrator has base domains configured. Always check availability first.
 
-## API Reference
+## Authentication
 
-All requests go to the orchestrator at `$ORCHESTRATOR_URL`. Your container is identified by `$WORKER_CONTAINER_NAME`. Both are pre-set environment variables.
+All endpoints described here live under `$ORCHESTRATOR_URL/api/worker-self/*` and **do not require any session cookie or API key**. The orchestrator identifies your worker automatically by its source IP on the `agentor-net` Docker network — every domain mapping you create or delete is scoped to *this* worker.
+
+`$ORCHESTRATOR_URL` is a pre-set environment variable pointing at the orchestrator's internal URL (e.g. `http://agentor-orchestrator:3000`).
+
+## API Reference
 
 ### Check availability and base domain configuration
 
 ```bash
-curl "$ORCHESTRATOR_URL/api/domain-mapper/status"
+curl "$ORCHESTRATOR_URL/api/worker-self/domain-mapper/status"
 ```
 
 Returns:
@@ -45,23 +49,21 @@ The `challengeType` determines what protocols and features are available per bas
 ### Create a domain mapping
 
 ```bash
-curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings" \
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/domain-mappings" \
   -H "Content-Type: application/json" \
   -d '{
     "subdomain": "myapp",
     "baseDomain": "example.com",
     "protocol": "https",
-    "workerName": "'"$WORKER_CONTAINER_NAME"'",
     "internalPort": 3000
   }'
 ```
 
-This makes `https://myapp.example.com` route to port 3000 inside your container.
+This makes `https://myapp.example.com` route to port 3000 inside *this* worker.
 
 **Required fields:**
 - `baseDomain` (string) — Must be one of the domains from the status endpoint
 - `protocol` — `"http"`, `"https"`, or `"tcp"`. HTTPS and TCP require TLS to be configured on the base domain (challenge type `http`, `dns`, or `selfsigned`)
-- `workerName` (string) — Always use `$WORKER_CONTAINER_NAME`
 - `internalPort` (integer) — The port your service listens on inside this container (1-65535)
 
 **Optional fields:**
@@ -70,30 +72,30 @@ This makes `https://myapp.example.com` route to port 3000 inside your container.
 - `wildcard` (boolean) — When `true`, the mapping also matches any single-label prefix of the host. For example, a wildcard on `app.example.com` also matches `anything.app.example.com`. Requires the base domain's challenge type to be `none`, `dns`, or `selfsigned` — HTTP-01 ACME (`http`) cannot issue wildcard certificates. Default: `false`
 - `basicAuth` (object) — `{ "username": "user", "password": "pass" }` to protect with HTTP basic authentication. Not supported for TCP protocol. Requires both username and password
 
+`workerId` / `workerName` are not accepted — the target worker is always the caller.
+
 ### Subdomain routing
 
 Map different subdomains to different services:
 
 ```bash
 # Frontend at app.example.com
-curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings" \
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/domain-mappings" \
   -H "Content-Type: application/json" \
   -d '{
     "subdomain": "app",
     "baseDomain": "example.com",
     "protocol": "https",
-    "workerName": "'"$WORKER_CONTAINER_NAME"'",
     "internalPort": 3000
   }'
 
 # API at api.example.com
-curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings" \
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/domain-mappings" \
   -H "Content-Type: application/json" \
   -d '{
     "subdomain": "api",
     "baseDomain": "example.com",
     "protocol": "https",
-    "workerName": "'"$WORKER_CONTAINER_NAME"'",
     "internalPort": 8080
   }'
 ```
@@ -102,28 +104,26 @@ Leave `subdomain` empty to map the bare base domain itself (`example.com`).
 
 ### Path-based routing
 
-Route different URL paths on the same domain to different ports or workers:
+Route different URL paths on the same domain to different ports inside this worker:
 
 ```bash
 # Route /api/* to backend (port 8080)
-curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings" \
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/domain-mappings" \
   -H "Content-Type: application/json" \
   -d '{
     "baseDomain": "example.com",
     "path": "/api",
     "protocol": "https",
-    "workerName": "'"$WORKER_CONTAINER_NAME"'",
     "internalPort": 8080
   }'
 
 # Route /docs/* to docs server (port 4000)
-curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings" \
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/domain-mappings" \
   -H "Content-Type: application/json" \
   -d '{
     "baseDomain": "example.com",
     "path": "/docs",
     "protocol": "https",
-    "workerName": "'"$WORKER_CONTAINER_NAME"'",
     "internalPort": 4000
   }'
 ```
@@ -136,14 +136,13 @@ Match all single-label subdomains of a host with a single mapping:
 
 ```bash
 # Route *.app.example.com (and app.example.com itself) to port 3000
-curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings" \
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/domain-mappings" \
   -H "Content-Type: application/json" \
   -d '{
     "subdomain": "app",
     "baseDomain": "example.com",
     "protocol": "https",
     "wildcard": true,
-    "workerName": "'"$WORKER_CONTAINER_NAME"'",
     "internalPort": 3000
   }'
 ```
@@ -154,14 +153,13 @@ Use an empty subdomain to route all first-level subdomains of the base domain:
 
 ```bash
 # Route *.example.com to port 3000
-curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings" \
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/domain-mappings" \
   -H "Content-Type: application/json" \
   -d '{
     "subdomain": "",
     "baseDomain": "example.com",
     "protocol": "https",
     "wildcard": true,
-    "workerName": "'"$WORKER_CONTAINER_NAME"'",
     "internalPort": 3000
   }'
 ```
@@ -175,7 +173,7 @@ Wildcard requires the base domain's challenge type to be `none`, `dns`, or `self
 Create multiple domain mappings in a single request (Traefik is reconciled only once):
 
 ```bash
-curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings/batch" \
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/domain-mappings/batch" \
   -H "Content-Type: application/json" \
   -d '{
     "items": [
@@ -183,34 +181,31 @@ curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings/batch" \
         "subdomain": "app",
         "baseDomain": "example.com",
         "protocol": "https",
-        "workerName": "'"$WORKER_CONTAINER_NAME"'",
         "internalPort": 3000
       },
       {
         "subdomain": "api",
         "baseDomain": "example.com",
         "protocol": "https",
-        "workerName": "'"$WORKER_CONTAINER_NAME"'",
         "internalPort": 8080
       }
     ]
   }'
 ```
 
-Each item supports the same fields as the single create endpoint. The batch fails on the first validation error.
+Each item supports the same fields as the single create endpoint and targets *this* worker. The batch fails on the first validation error.
 
 ### Basic auth protection
 
 Protect HTTP or HTTPS mappings with basic authentication:
 
 ```bash
-curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings" \
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/domain-mappings" \
   -H "Content-Type: application/json" \
   -d '{
     "subdomain": "staging",
     "baseDomain": "example.com",
     "protocol": "https",
-    "workerName": "'"$WORKER_CONTAINER_NAME"'",
     "internalPort": 3000,
     "basicAuth": {
       "username": "admin",
@@ -226,34 +221,33 @@ Both `username` and `password` are required when `basicAuth` is provided. Not av
 Route raw TCP traffic via TLS SNI matching (requires TLS on the base domain):
 
 ```bash
-curl -X POST "$ORCHESTRATOR_URL/api/domain-mappings" \
+curl -X POST "$ORCHESTRATOR_URL/api/worker-self/domain-mappings" \
   -H "Content-Type: application/json" \
   -d '{
     "subdomain": "db",
     "baseDomain": "example.com",
     "protocol": "tcp",
-    "workerName": "'"$WORKER_CONTAINER_NAME"'",
     "internalPort": 5432
   }'
 ```
 
 TCP mappings route at the transport layer using TLS SNI — path and basic auth are not available. TCP wildcard requires TLS (`dns` or `selfsigned` challenge type) since SNI is a TLS concept.
 
-### List all domain mappings
+### List your worker's domain mappings
 
 ```bash
-curl "$ORCHESTRATOR_URL/api/domain-mappings"
+curl "$ORCHESTRATOR_URL/api/worker-self/domain-mappings"
 ```
 
-Returns a JSON array of the caller's active domain mappings. Each entry includes `id`, `subdomain`, `baseDomain`, `path`, `protocol`, `wildcard`, `workerName` (your per-user worker name), `containerName` (the globally unique Docker container name), `internalPort`, and optional `basicAuth`.
+Returns a JSON array of domain mappings owned by *this* worker (mappings owned by sibling workers are filtered out). Each entry includes `id`, `subdomain`, `baseDomain`, `path`, `protocol`, `wildcard`, `workerName`, `containerName`, `internalPort`, and optional `basicAuth`.
 
 ### Delete a domain mapping
 
 ```bash
-curl -X DELETE "$ORCHESTRATOR_URL/api/domain-mappings/MAPPING_ID"
+curl -X DELETE "$ORCHESTRATOR_URL/api/worker-self/domain-mappings/MAPPING_ID"
 ```
 
-Replace `MAPPING_ID` with the `id` from the list response. Idempotent — returns success even if the mapping doesn't exist.
+Replace `MAPPING_ID` with the `id` from the list response. Idempotent. Returns `403` if the mapping belongs to a different worker.
 
 ## Common use cases
 

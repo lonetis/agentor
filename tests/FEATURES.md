@@ -437,7 +437,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ## 14. Usage Panel
 
-> Per-user. The panel shows only the signed-in user's usage. `/api/usage` and `/api/usage/refresh` both require an authenticated session (return 401 otherwise) and are scoped to `requireAuth(event).user.id`. The orchestrator polls each user that has OAuth credentials independently.
+> Per-user. The panel shows only the signed-in user's usage. `/api/usage` and `/api/usage/refresh` both require an authenticated session (return 401 otherwise) and are scoped to `requireAuth(event).user.id`. The orchestrator polls each user that has OAuth credentials independently. Workers fetch the same data via `/api/worker-self/usage` (no session needed — the user is identified via the calling worker's owner).
 
 ### 14.1 Content
 - Loading state: "Loading..."
@@ -825,6 +825,29 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `WS /ws/desktop/:containerId` — VNC relay
 - HTTP+WS `/editor/:containerId/**` — code-server proxy
 - HTTP `/desktop/:containerId/**` — noVNC proxy
+
+### 24.18 Worker-self routes (no session needed)
+
+A dedicated set of routes mounted at `/api/worker-self/*` is **public to the auth middleware** (listed in `PUBLIC_API_PREFIXES`) but identifies the calling worker by source IP via `requireWorkerSelf()` (`server/utils/worker-auth.ts`). The orchestrator joins the same `agentor-net` Docker bridge that workers join, so each worker's source IP is unique and can be matched against the `agentor.managed=true` containers. Calls from outside the Docker bridge (e.g. host `localhost:3000`) return 401 because the source IP doesn't resolve to any managed worker.
+
+Every mutation is scoped to the calling worker only — `workerId` / `workerName` body fields are not accepted, list endpoints filter by the caller's `containerName`, and delete endpoints return 403 if the targeted mapping belongs to a different worker.
+
+| Method | Path | Behaviour |
+|--------|------|-----------|
+| `GET`  | `/api/worker-self/info` | `{ workerName, containerName, userId, status, displayName }` |
+| `GET`  | `/api/worker-self/port-mapper/status` | Total port-mapping counts |
+| `GET`  | `/api/worker-self/port-mappings` | Mappings owned by the calling worker only |
+| `POST` | `/api/worker-self/port-mappings` | Body: `{ externalPort, type, internalPort, appType?, instanceId? }`. Returns the created mapping with `containerName` populated from the caller. |
+| `DELETE` | `/api/worker-self/port-mappings/:port` | Idempotent. 403 if the mapping is owned by a different worker. |
+| `GET`  | `/api/worker-self/domain-mapper/status` | `enabled`, `baseDomains`, `baseDomainConfigs`, `totalMappings`, `hasSelfSignedCa`, `dashboardUrl` |
+| `GET`  | `/api/worker-self/domain-mappings` | Mappings owned by the calling worker only |
+| `POST` | `/api/worker-self/domain-mappings` | Body: `{ subdomain?, baseDomain, path?, protocol, wildcard?, internalPort, basicAuth? }`. Same validation as `/api/domain-mappings` minus `workerId`/`workerName`. |
+| `POST` | `/api/worker-self/domain-mappings/batch` | Same per-item shape; single Traefik reconcile |
+| `DELETE` | `/api/worker-self/domain-mappings/:id` | Idempotent. 403 if the mapping is owned by a different worker. |
+| `GET`  | `/api/worker-self/usage` | Usage status scoped to the worker's owning userId |
+| `POST` | `/api/worker-self/usage/refresh` | Force-refresh for the same userId |
+
+The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/api/usage` routes still exist for the dashboard UI but are unreachable from inside a worker (no session cookie). All worker-side built-in capabilities reference the `/api/worker-self/*` form exclusively.
 
 ---
 

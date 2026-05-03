@@ -25,9 +25,9 @@ Architecture: dnsmasq resolves allowed domains and adds IPs to a kernel ipset vi
 Reusable knowledge documents teaching agents how to use specific capabilities, following the [Agent Skills specification](https://agentskills.io/specification). Each capability is a markdown file with YAML frontmatter (`name`, `description`, optional `license`, `compatibility`, `metadata`, `allowed-tools`). Managed via `orchestrator/server/utils/capability-store.ts` (`CapabilityStore`), persisted to `<DATA_DIR>/capabilities.json`. Built-in capability files live in `orchestrator/server/built-in/capabilities/`.
 
 **Built-in capabilities (4):**
-- `port-mapping` — Documents port mapping API (auto-filtered when `exposeApis.portMappings` is false)
-- `domain-mapping` — Documents domain mapping API (auto-filtered when `exposeApis.domainMappings` is false)
-- `usage` — Documents usage monitoring API (auto-filtered when `exposeApis.usage` is false)
+- `port-mapping` — Documents the worker-self port mapping API at `/api/worker-self/port-mappings` (auto-filtered when `exposeApis.portMappings` is false)
+- `domain-mapping` — Documents the worker-self domain mapping API at `/api/worker-self/domain-mappings` (auto-filtered when `exposeApis.domainMappings` is false)
+- `usage` — Documents the worker-self usage monitoring API at `/api/worker-self/usage` (auto-filtered when `exposeApis.usage` is false)
 - `tmux` — Documents tmux session/window/pane management inside workers (always included, no API filter)
 
 Custom capabilities can be created via the Capabilities modal in the sidebar. Built-in capabilities cannot be edited or deleted, but their content is updated on startup.
@@ -60,10 +60,33 @@ Both capabilities and instructions are selected per-environment:
 
 Workers can call orchestrator APIs over the Docker network. The orchestrator passes these env vars to every worker:
 - `ORCHESTRATOR_URL=http://agentor-orchestrator:3000`
-- `WORKER_CONTAINER_NAME=<container-name>`
+- `WORKER_CONTAINER_NAME=<container-name>` (kept for diagnostics — the worker-self routes do not need it)
 - `EXPOSE_PORT_MAPPINGS`, `EXPOSE_DOMAIN_MAPPINGS`, `EXPOSE_USAGE` — exported by the entrypoint from `ENVIRONMENT.exposeApis`
 
-Port mapping and domain mapping create endpoints also accept `workerName` as an alternative to `workerId`, so agents can use `$WORKER_CONTAINER_NAME` directly.
+### Worker-self routes (the canonical worker entry point)
+
+Workers call dedicated `/api/worker-self/*` routes. These are listed in the global `PUBLIC_API_PREFIXES` in `server/middleware/auth.ts`, so they bypass the session-cookie check entirely. Instead, each handler calls `requireWorkerSelf(event)` (`server/utils/worker-auth.ts`), which:
+
+1. Reads the source IP from `event.node.req.socket.remoteAddress` (stripping any `::ffff:` IPv4-mapped prefix).
+2. Lists managed Docker containers (filtered by `agentor.managed=true`) and matches each container's IP on the configured `dockerNetwork` (default `agentor-net`) against the source IP. The IP→containerName map is cached for 3 seconds; misses force a refresh.
+3. Resolves the matched `containerName` back to a `ContainerInfo` via `containerManager.findByContainerName()`. If the container is not in `running` state, returns 409.
+4. Returns `{ container, userId, containerName, workerName }` — the handler uses these to scope the operation to the calling worker.
+
+Available routes:
+- `GET  /api/worker-self/info` — diagnostics (`{ workerName, containerName, userId, status, displayName }`)
+- `GET  /api/worker-self/port-mapper/status`
+- `GET  /api/worker-self/port-mappings` — only mappings owned by the calling worker
+- `POST /api/worker-self/port-mappings` — `workerId` / `workerName` body fields are not accepted; the calling worker is the target
+- `DELETE /api/worker-self/port-mappings/:port` — refuses (403) if the mapping belongs to a different worker
+- `GET  /api/worker-self/domain-mapper/status`
+- `GET  /api/worker-self/domain-mappings` — only mappings owned by the calling worker
+- `POST /api/worker-self/domain-mappings`
+- `POST /api/worker-self/domain-mappings/batch`
+- `DELETE /api/worker-self/domain-mappings/:id`
+- `GET  /api/worker-self/usage` — scoped to the worker's owning userId
+- `POST /api/worker-self/usage/refresh`
+
+The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/api/usage` routes still exist for the dashboard UI but are not reachable from inside a worker (no session cookie). All worker-side capability docs reference the `/api/worker-self/*` form exclusively.
 
 No firewall changes needed — the orchestrator is on the same Docker bridge network (`agentor-net`), and existing firewall rules allow private network ranges.
 

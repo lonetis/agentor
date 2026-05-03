@@ -20,7 +20,14 @@
 - `orchestrator/server/utils/auth.ts` - better-auth singleton + admin plugin + @better-auth/passkey plugin; exports `useAuth()`, `migrateAuth()`, `hasAnyUsers()`, `setUserRoleDirect()`, `getCredentialSummary()`, `removeUserPassword()`. Implements `resolveUser()` for passkey-first registration via the setup-token store.
 - `orchestrator/server/utils/setup-token-store.ts` - In-memory 5-minute one-shot tokens used as opaque `context` for passkey-first registration when no session exists. Consumed by `/api/setup/create-admin-passkey-token` and the `resolveUser` callback.
 - `orchestrator/server/utils/auth-helpers.ts` - `requireAuth`, `requireAdmin`, `requireContainerAccess`, `canAccessResource`, `authenticateWsPeer`
-- `orchestrator/server/middleware/auth.ts` - Global Nitro middleware enforcing auth on `/api/*` (skips auth/setup/health/docs)
+- `orchestrator/server/middleware/auth.ts` - Global Nitro middleware enforcing auth on `/api/*` (skips auth/setup/health/docs/worker-self)
+- `orchestrator/server/utils/worker-auth.ts` - `requireWorkerSelf(event)` — identifies the calling worker by source IP on the agentor-net Docker network (no session needed). Used by every `/api/worker-self/*` route.
+- `orchestrator/server/api/worker-self/info.get.ts` - Worker identity diagnostic endpoint
+- `orchestrator/server/api/worker-self/port-mappings/*.ts` - Worker-self port mapping CRUD (`index.get`, `index.post`, `[port].delete`)
+- `orchestrator/server/api/worker-self/port-mapper/status.get.ts` - Worker-self port mapper status
+- `orchestrator/server/api/worker-self/domain-mappings/*.ts` - Worker-self domain mapping CRUD (`index.get`, `index.post`, `batch.post`, `[id].delete`)
+- `orchestrator/server/api/worker-self/domain-mapper/status.get.ts` - Worker-self domain mapper status
+- `orchestrator/server/api/worker-self/usage/*.ts` - Worker-self usage status scoped to the worker's owning user (`index.get`, `refresh.post`)
 - `orchestrator/server/middleware/passkey-guard.ts` - Intercepts `POST /api/auth/passkey/delete-passkey` and refuses with 409 if it would leave the user with zero credentials.
 - `orchestrator/server/api/auth/[...all].ts` - Catch-all handler delegating to `auth.handler()` (handles all built-in better-auth + admin plugin + passkey plugin endpoints)
 - `orchestrator/server/api/setup/status.get.ts` - First-run detection (returns `{ needsSetup: boolean }`, public)
