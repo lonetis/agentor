@@ -64,14 +64,13 @@ export default defineEventHandler(async (event) => {
   const store = usePortMappingStore();
   const containerManager = useContainerManager();
 
-  // Resolve worker by container ID, container name (worker-facing API shortcut),
-  // or by per-user worker name (UI). All three paths converge on a ContainerInfo.
+  // Resolve worker by container ID (UI dropdown), globally unique container name
+  // (worker-facing API shortcut via `WORKER_CONTAINER_NAME`), or the worker UUID
+  // `name`. All paths converge on a ContainerInfo.
   let containerInfo;
   if (body.workerId) {
     containerInfo = containerManager.get(body.workerId);
   } else if (body.workerName) {
-    // `workerName` accepts either the per-user short name (admin/UI) or the
-    // globally unique Docker container name (worker-facing API shortcut).
     containerInfo = containerManager.findByContainerName(body.workerName)
       ?? containerManager.list().find((c) => c.name === body.workerName);
   }

@@ -12,15 +12,17 @@ Port mappings are persisted to `<DATA_DIR>/port-mappings.json` and survive
 orchestrator restarts. They also survive worker lifecycle events — stop/restart,
 archive/unarchive, and rebuild all preserve the mapping. Mappings are only
 removed when the worker is permanently deleted. Records are keyed by the stable
-worker name (not the Docker container ID), so Traefik continues routing to the
+`containerName` (not the Docker container ID), so Traefik continues routing to the
 worker after it comes back under a new container ID. The `workerId` field is
-updated automatically on rebuild and unarchive via `reassignWorkerMappings`.
+updated automatically on rebuild and unarchive via `reassignWorkerMappings`. A
+mapping's `workerName` field holds the worker UUID (`container.name`) for display,
+while `containerName` is the Traefik DNS backend.
 
 **Architecture:**
 - `PortMappingStore` (`port-mapping-store.ts`): Persists mappings to disk, extends `JsonStore<number, PortMapping>`
 - `TraefikManager` (`traefik-manager.ts`): Handles both port and domain mappings on the same container. For each port mapping it emits:
   - A dedicated TCP entrypoint in `buildCmd()`: `--entrypoints.pm-<port>.address=:<port>` (static config — adding or removing a mapping triggers a container recreate via drift detection)
-  - A catch-all TCP router (`HostSNI(*)`) in `traefik-config.json` pointing at `<workerName>:<internalPort>` via Docker DNS (dynamic config — the file provider watch picks up router changes hot, though entrypoint changes still need a recreate)
+  - A catch-all TCP router (`HostSNI(*)`) in `traefik-config.json` pointing at `<containerName>:<internalPort>` via Docker DNS (dynamic config — the file provider watch picks up router changes hot, though entrypoint changes still need a recreate)
   - A Docker `PortBindings` entry with the appropriate `HostIp` (`127.0.0.1` or `0.0.0.0`) matching the mapping type
 
 **Container recreation triggers:**
@@ -44,7 +46,7 @@ Mappings can also be marked **wildcard**, in which case the router matches any s
 - **`selfsigned`**: a per-host wildcard cert (`*.host` with SAN `host`) is generated lazily the first time a wildcard mapping targets that host, signed by the local CA, and reused for subsequent mappings. The router uses empty `tls: {}` and Traefik picks the cert by SNI from the file provider.
 - **`http` (HTTP-01 ACME)**: rejected with 400 — HTTP-01 cannot issue wildcard certificates, and issuing a new cert per discovered subdomain would leak the subdomain inventory to Certificate Transparency logs.
 
-Like port mappings, domain mappings are keyed by the worker name and persist across worker stop/restart, archive/unarchive, and rebuild — only permanent deletion removes them. Traefik routes to the worker by name via Docker DNS, so a rebuilt/unarchived worker is picked up automatically after its new container joins the network.
+Like port mappings, domain mappings are keyed by the stable `containerName` and persist across worker stop/restart, archive/unarchive, and rebuild — only permanent deletion removes them. Traefik routes to the worker by `containerName` via Docker DNS, so a rebuilt/unarchived worker is picked up automatically after its new container joins the network.
 
 ### TLS Challenge Types
 

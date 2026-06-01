@@ -63,9 +63,10 @@ export class DockerService {
   async createWorkerContainer(opts: {
     /** Owner user id — used for labels, directory paths, and env var injection. */
     userId: string;
-    /** Per-user worker name — used for the hostname and the workspace dir. */
+    /** Worker UUID (immutable internal identity) — used for the hostname, the
+     * `agentor.worker-name` label, and the workspace/agents dir leaf. */
     name: string;
-    /** Globally unique Docker container name (`<prefix>-<userId>-<name>`). */
+    /** Globally unique Docker container name (`<prefix>-<name>`, the worker UUID). */
     containerName: string;
     displayName?: string;
     cpuLimit?: number;
@@ -139,9 +140,9 @@ export class DockerService {
     const container = await this.docker.createContainer({
       Image: image,
       name: opts.containerName,
-      // Hostname is the per-user short name so the shell prompt and tools
-      // inside the worker show the friendly name rather than the long
-      // `<prefix>-<userId>-<name>` Docker container name.
+      // Hostname is the worker's UUID (its immutable internal identity). The
+      // shell prompt shows the UUID; the friendly, editable name lives in the
+      // dashboard as `displayName`.
       Hostname: opts.name,
       Env: env,
       Tty: true,

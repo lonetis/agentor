@@ -182,11 +182,18 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ## 4. Container Cards (Worker Cards in Sidebar)
 
 ### 4.1 Card Content
-- Display name (truncated with title tooltip)
+- Display name (`displayName`, truncated with title tooltip; falls back to `shortName(name)` only if the label were ever empty). The display name is free-form (spaces / mixed case allowed) and is NOT the worker's internal identity — the internal `name` is an opaque immutable UUID.
 - Status badge: running (green), stopped (neutral), creating (warning), error (error), removing (warning)
 - Short image ID in monospace (first 10 chars)
 - Active card: blue-tinted background with blue border and shadow
 - Clicking name/status area opens detail modal
+
+### 4.1a Inline Rename
+- A "Rename" pencil button (icon `i-lucide-pencil`, wrapped in `<UTooltip text="Rename">`) sits in the card's action button row
+- Clicking it swaps the title `<h3>` for an `<input>` pre-filled with the current `displayName`
+- Enter commits the new display name, Escape cancels, blur commits
+- Committing emits a rename that triggers `PATCH /api/containers/:id { displayName }` — the container is NOT recreated; the running worker keeps serving
+- Only `displayName` changes — the internal UUID `name`, `containerName`, volumes, and port/domain mappings are untouched
 
 ### 4.2 View Buttons (only when running)
 - Terminal button (tooltip "Terminal") — opens terminal pane
@@ -215,13 +222,14 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ## 5. Container Detail Modal
 
 ### 5.1 Content
-- Header: container display name + status badge (color-coded)
-- Worker info: Container name, Container ID (first 12 chars), Image, Image ID (first 12 chars), Created timestamp
+- Header: container `displayName` + a "Rename" pencil (UButton icon `i-lucide-pencil`) + status badge (color-coded)
+- Worker info: **Worker ID** (the immutable UUID `container.name`, shown in monospace — this is the first row, previously labeled "Container" and showed `shortName(name)`), Container ID (first 12 chars), Image, Image ID (first 12 chars), Created timestamp
 - Configuration section (conditional): Environment name, CPU limit, Memory limit, Network mode (if non-full), Docker enabled
 - Repositories section (conditional): repo URLs in monospace + optional branch with "@" prefix
 
 ### 5.2 Interactions
 - Opens when clicking container name/status
+- Header Rename pencil turns the displayName into an inline `<input>` (Enter commits, Escape cancels, blur commits); committing triggers `PATCH /api/containers/:id { displayName }` without recreating the container
 - Close via Escape key
 - Close via clicking overlay
 
@@ -230,7 +238,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ## 6. Create Worker Modal
 
 ### 6.1 Form Fields
-- **Name** — text input, auto-generated placeholder (fetched from API), sanitized to lowercase/alphanumeric/hyphens
+- **Display name** — free-form text input (NO keystroke sanitization — spaces and mixed case are preserved), placeholder is a suggested display name fetched from `GET /api/containers/generate-name`. Not required to be unique. The client sends only this value; it does NOT send or choose the internal `name`.
 - **Environment** — dropdown selector with "Default" option + "Manage" button (opens environments modal)
 - **Repositories** — dynamic list with "+ Add repository" link, each row has RepoInput + remove button
 - **Volume Mounts** — dynamic list with "+ Add mount" link, each row has MountInput (source, target, read-only checkbox) + remove button
@@ -255,9 +263,17 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Escape key — closes modal
 - Cross-modal navigation: "Manage" buttons close create modal, open target modal (350ms delay)
 
-### 6.5 Name handling
-- A custom name typed into the form is sent to the API as-is (after client-side sanitization to lowercase/alphanumeric/hyphens); the orchestrator alone applies `CONTAINER_PREFIX` + `userId` to build `containerName`. The client must not prepend `agentor-worker-` itself, otherwise the Docker container name and the worker's hostname end up with the prefix duplicated.
-- The worker's in-container `hostname` always equals the per-user short `name` — both for auto-generated slugs (e.g. `judicial-salamander`) and for custom names (e.g. `pocs`). Users see the friendly name in the shell prompt rather than the long `<prefix>-<userId>-<name>` Docker container name.
+### 6.5 Display name & worker identity handling
+- The client sends only `{ displayName }` on create — either the value the user typed or, when the field is left blank, the suggestion fetched from `GET /api/containers/generate-name`. It NEVER sends a `name`.
+- The orchestrator mints the worker's internal identity itself: an opaque, immutable **UUID v4** (`crypto.randomUUID`) stored as `name`. The client cannot choose or influence it.
+- `containerName = <containerPrefix>-<name>` — the default prefix is `agentor-worker`, so the Docker container name looks like `agentor-worker-<uuid>`. There is NO `userId` segment.
+- The worker's in-container `hostname` equals the UUID `name`, so the `hostname` command (and the shell prompt) returns the UUID — not a friendly label. The friendly, editable label lives only in `displayName` and only ever appears in the dashboard UI.
+- `displayName` is always populated in the API response: the server defaults it to a friendly adjective-animal slug when the client omits it. It is free-form (spaces / mixed case allowed), capped at 100 chars, NOT required to be unique (one user, or two users, can have many workers sharing a displayName), and is renameable post-creation (see §4.1a / §5).
+- Per-user `name` uniqueness no longer exists — UUIDs are globally unique, so two workers (same or different owners) can share any displayName without collision.
+
+### 6.6 Internal identity vs editable label (end to end)
+- **Internal identity (`name`)** — server-minted UUID v4, immutable. It is the WorkerStore key, the Docker container Hostname, the `agentor.worker-name` label, the directory-mode storage leaf, and the basis for `containerName`. Worker volumes (`<containerName>-workspace`, `-agents`, `-docker`) and the directory-mode dirs are keyed by this UUID. Clients never see it in a chooseable form — only displayed read-only as "Worker ID" in the detail modal.
+- **Editable label (`displayName`)** — the only user-facing, mutable name. Set on create (typed or suggested) and changed at any time via `PATCH /api/containers/:id` (see §24.2). A rename touches ONLY `displayName`: the UUID `name`, `containerName`, volumes, and port/domain mappings are unchanged, and the running container is not recreated. `displayName` is preserved across rebuild and archive/unarchive.
 
 ---
 
@@ -373,7 +389,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - "Cancel" button (hides form)
 
 ### 12.3 Mapping List
-- Per-mapping row: type badge (blue "local" / orange "ext") + external port (monospace) + arrow + worker name:internal port + remove (X) button
+- Per-mapping row: type badge (blue "local" / orange "ext") + external port (monospace) + arrow + worker label:internal port + remove (X) button. The worker label is resolved from the live container list by `containerName` to show the worker's `displayName` (fallback `shortName(m.workerName)`); the raw UUID `workerName` is not printed.
 - Delete removes mapping immediately
 
 ---
@@ -405,7 +421,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - "Cancel" and "Add" buttons
 
 ### 13.4 Mapping List
-- Per-mapping row: protocol badge (blue=http, green=https, purple=tcp) + challenge type badge + optional indigo `wildcard` badge + full domain with path (if set) + lock icon (if basic auth) + arrow + worker name:port + remove button
+- Per-mapping row: protocol badge (blue=http, green=https, purple=tcp) + challenge type badge + optional indigo `wildcard` badge + full domain with path (if set) + lock icon (if basic auth) + arrow + worker label:port + remove button. The worker label is resolved from the live container list by `containerName` to show the worker's `displayName` (fallback `shortName(m.workerName)`); the raw UUID `workerName` is not printed.
 - Wildcard mappings display the host with a `*.` prefix in the list
 - Challenge type badges: none (gray), http (emerald), dns (cyan), selfsigned/self (amber)
 
@@ -693,9 +709,10 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/health` — returns `{ status: 'ok', containers: N }`
 
 ### 24.2 Containers
-- `GET /api/containers` — list all workers
-- `POST /api/containers` — create worker (name, displayName, environmentId, initScript, repos, mounts)
-- `GET /api/containers/generate-name` — random name generation
+- `GET /api/containers` — list all workers. Each `ContainerInfo.name` is an immutable UUID v4; `.displayName` is the editable label and is always populated.
+- `POST /api/containers` — create worker. Body NO LONGER accepts `name`. Accepts optional `displayName` (string, trimmed, ≤100 chars else HTTP 400) plus environmentId, initScript, repos, mounts. The orchestrator mints the UUID `name` itself; the response `ContainerInfo.name` is that UUID and `.displayName` is always populated (defaults to an adjective-animal slug when omitted).
+- `PATCH /api/containers/:id` — rename the worker's display name WITHOUT recreating the container (the running worker keeps serving). Body `{ displayName }`. Returns the updated `ContainerInfo`. Only `displayName` changes — `name`, `containerName`, volumes, and mappings are unchanged. Rules: empty/whitespace-only displayName → 400; >100 chars → 400; unknown container id → 404; a regular user renaming another user's worker → 403 (ownership via `requireContainerAccess`).
+- `GET /api/containers/generate-name` — returns `{ displayName: "<friendly slug>" }`, a display-name SUGGESTION (the field is `displayName`, not `name`). The slug matches `/^[a-z]+-[a-z]+$/` (adjective-animal), with a rare fallback of `worker-<6 lowercase alnum>`.
 - `POST /api/containers/:id/stop` — stop worker
 - `POST /api/containers/:id/restart` — restart worker
 - `DELETE /api/containers/:id` — remove worker (cleans up port/domain mappings, volumes, store)
@@ -724,14 +741,14 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 
 ### 24.5 Port Mappings
 - `GET /api/port-mappings` — list all
-- `POST /api/port-mappings` — create (externalPort, internalPort, type, workerId or workerName). `workerName` accepts either the per-user short name (dashboard) or the globally unique Docker `containerName` (worker-API shortcut via `$WORKER_CONTAINER_NAME`). Response includes both `workerName` and `containerName`.
+- `POST /api/port-mappings` — create (externalPort, internalPort, type, workerId or workerName). `workerName` resolves against either the globally unique Docker `containerName` (worker-API shortcut via `$WORKER_CONTAINER_NAME`) or the worker's UUID `name`. Response `workerName` equals the worker UUID (`container.name`) and `containerName` equals `container.containerName`.
 - `DELETE /api/port-mappings/:port` — remove
 - `GET /api/port-mapper/status` — counts by type
 - Validations: port range 1-65535, type localhost/external, worker must exist and be running, duplicate port 409
 
 ### 24.6 Domain Mappings
 - `GET /api/domain-mappings` — list all
-- `POST /api/domain-mappings` — create (subdomain, baseDomain, path, protocol, wildcard, workerId or workerName, internalPort, basicAuth). `workerName` accepts either the per-user short name or the `containerName`. Response includes both `workerName` and `containerName`.
+- `POST /api/domain-mappings` — create (subdomain, baseDomain, path, protocol, wildcard, workerId or workerName, internalPort, basicAuth). `workerName` resolves against either the `containerName` or the worker's UUID `name`. Response `workerName` equals the worker UUID (`container.name`) and `containerName` equals `container.containerName`.
 - `POST /api/domain-mappings/batch` — batch create (single Traefik reconcile). Accepts `wildcard` per item.
 - `DELETE /api/domain-mappings/:id` — remove (idempotent)
 - `GET /api/domain-mapper/status` — enabled flag, baseDomains list, baseDomainConfigs (domain + challengeType + optional dnsProvider), hasSelfSignedCa flag, dashboard URL
@@ -771,9 +788,9 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - Built-in scripts: claude, codex, gemini
 
 ### 24.11 Archived Workers
-- `GET /api/archived` — list
-- `POST /api/archived/:name/unarchive` — restore
-- `DELETE /api/archived/:name` — permanently delete
+- `GET /api/archived` — list. Each entry's `name` is the worker UUID (the WorkerStore key); `displayName` is the editable label.
+- `POST /api/archived/:name/unarchive` — restore. The `:name` segment is the worker UUID. Returns a `ContainerInfo` whose `.name` is that same UUID; `displayName` is preserved.
+- `DELETE /api/archived/:name` — permanently delete (`:name` is the worker UUID)
 
 ### 24.12 Updates
 - `GET /api/updates` — status for 4 images
@@ -834,7 +851,7 @@ Every mutation is scoped to the calling worker only — `workerId` / `workerName
 
 | Method | Path | Behaviour |
 |--------|------|-----------|
-| `GET`  | `/api/worker-self/info` | `{ workerName, containerName, userId, status, displayName }` |
+| `GET`  | `/api/worker-self/info` | `{ workerName, containerName, userId, status, displayName }` — `workerName` is the worker UUID (`container.name`); `displayName` is always a real, editable label |
 | `GET`  | `/api/worker-self/port-mapper/status` | Total port-mapping counts |
 | `GET`  | `/api/worker-self/port-mappings` | Mappings owned by the calling worker only |
 | `POST` | `/api/worker-self/port-mappings` | Body: `{ externalPort, type, internalPort, appType?, instanceId? }`. Returns the created mapping with `containerName` populated from the caller. |

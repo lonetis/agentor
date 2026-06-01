@@ -296,6 +296,17 @@ export function useSplitPanes() {
     }
   }
 
+  /** Refresh the display label of every open tab for a container after a rename.
+   * Tab labels are captured at open time and persisted in UI state, so a rename
+   * must patch them explicitly (the deep watcher then persists the change). */
+  function renameContainerTabs(containerId: string, newName: string) {
+    for (const leaf of paneGroups.value) {
+      for (const tab of leaf.tabs) {
+        if (tab.containerId === containerId) tab.containerName = newName;
+      }
+    }
+  }
+
   function activateTab(tabId: string, nodeId: string) {
     if (!rootNode.value) return;
     const node = findNode(rootNode.value, nodeId);
@@ -551,6 +562,7 @@ export function useSplitPanes() {
     openTab,
     closeTab,
     closeTabsForContainer,
+    renameContainerTabs,
   };
 }
 

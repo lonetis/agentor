@@ -19,17 +19,18 @@ Three managed containers:
 
 ## Worker Identity & Naming
 
-Every worker has two names:
+Every worker has an internal identity, a derived container name, and a user-facing label:
 
-- **`name`** — per-user short name (e.g. `happy-panda`), picked by the user or auto-generated. Two different users can each have a worker named `happy-panda` without collision; uniqueness is enforced per user.
-- **`containerName`** — globally unique Docker container name, derived as `<containerPrefix>-<userId>-<name>`. This is what Docker sees, what Traefik resolves via DNS, and what per-worker Docker volume names are prefixed with (`<containerName>-workspace`, `<containerName>-agents`, `<containerName>-docker`).
+- **`name`** — an immutable, opaque UUID v4 minted server-side (`crypto.randomUUID`). Clients never send or choose it. It is the worker's internal identity: the WorkerStore key, the Docker container `Hostname` (so the in-container `hostname` command — and the shell prompt — returns the UUID), the `agentor.worker-name` label value, and the directory-mode storage leaf. UUIDs are globally unique, so there is no per-user uniqueness constraint.
+- **`containerName`** — the Docker container name, derived as `<containerPrefix>-<name>` (default prefix `agentor-worker`, e.g. `agentor-worker-<uuid>`). This is what Docker sees, what Traefik resolves via DNS, and what per-worker Docker volume names are prefixed with (`<containerName>-workspace`, `<containerName>-agents`, `<containerName>-docker`).
+- **`displayName`** — the editable, user-facing label shown in the dashboard. Free-form (spaces / mixed case allowed) and not required to be unique — two of a user's workers may share a displayName. The client supplies it on create (the server defaults it to a friendly generated slug when omitted), it is capped at 100 chars, and it is renameable post-creation via `PATCH /api/containers/:id` without recreating the container.
 
-The UI and per-user stores key rows by `name` (scoped to a user). Routing (Traefik service backends, log collector attachment, stale-worker cleanup, mapping reassignment on rebuild/unarchive) keys by `containerName` — stable across the worker's entire lifecycle.
+The stores key rows by the UUID `name`. Routing (Traefik service backends, log collector attachment, stale-worker cleanup, mapping reassignment on rebuild/unarchive) keys by `containerName` — stable across the worker's entire lifecycle.
 
 Docker labels set on every worker container make sync from Docker → WorkerStore unambiguous:
 - `agentor.managed=true` — filter key for listing
 - `agentor.user-id=<userId>` — owner
-- `agentor.worker-name=<name>` — per-user short name
+- `agentor.worker-name=<name>` — the worker UUID
 
 ## Storage Modes
 
@@ -125,10 +126,10 @@ The agents volume stores agent CLI configuration directories (`claude/`, `gemini
 
 ### WorkerStore
 
-`WorkerStore` (`server/utils/worker-store.ts`) persists worker metadata per user at `<dataDir>/users/<userId>/workers.json`, keyed by the user-facing `name`. Extends `UserScopedJsonStore<string, WorkerRecord>` (`server/utils/user-scoped-store.ts`) which scans `users/*/workers.json` on init and maintains a `Map<userId, Map<name, WorkerRecord>>` internally. `list()` returns a flat view across all users (sorted by `containerName`); `listForUser(userId)` scopes to one user.
+`WorkerStore` (`server/utils/worker-store.ts`) persists worker metadata per user at `<dataDir>/users/<userId>/workers.json`, keyed by the UUID `name`. Extends `UserScopedJsonStore<string, WorkerRecord>` (`server/utils/user-scoped-store.ts`) which scans `users/*/workers.json` on init and maintains a `Map<userId, Map<name, WorkerRecord>>` internally. `list()` returns a flat view across all users (sorted by `containerName`); `listForUser(userId)` scopes to one user. The editable `displayName` lives on the `WorkerRecord` and is the only field a rename touches — `name`, `containerName`, volumes, and mappings are unaffected.
 
 On startup, `ContainerManager.reconcileWorkers()` syncs the WorkerStore with Docker state:
-- Docker containers not in the store are registered (using `agentor.user-id` and `agentor.worker-name` labels to identify owner + name)
+- Docker containers not in the store are registered (using `agentor.user-id` and `agentor.worker-name` labels to identify owner + UUID name)
 - Active workers whose containers are gone are marked archived
 
 ### Docker Labels
@@ -138,6 +139,6 @@ Docker labels remain the **runtime** source of truth for active containers. `Con
 **Docker labels stored on each worker**:
 - `agentor.managed=true` — filter key for listing
 - `agentor.user-id=<userId>` — owner
-- `agentor.worker-name=<name>` — per-user short name
+- `agentor.worker-name=<name>` — the worker UUID
 
 Configuration data (CPU limit, memory limit, network mode, Docker-in-Docker, environment ID/name, repos, mounts, git identity) lives in `WorkerRecord` on disk — never in Docker labels.

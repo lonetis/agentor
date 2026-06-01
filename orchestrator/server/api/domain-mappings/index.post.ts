@@ -132,8 +132,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const containerManager = useContainerManager();
-  // Resolve worker by container ID, globally unique container name (worker-API
-  // shortcut via `WORKER_CONTAINER_NAME`), or per-user worker name (UI).
+  // Resolve worker by container ID (UI dropdown), globally unique container name
+  // (worker-API shortcut via `WORKER_CONTAINER_NAME`), or the worker UUID `name`.
   let containerInfo;
   if (body.workerId) {
     containerInfo = containerManager.get(body.workerId);

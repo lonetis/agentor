@@ -40,6 +40,15 @@ Web-native tab bar inside the terminal pane — each tab represents a tmux windo
 - Click an already-active tab to inline-rename it (input replaces label, Enter to confirm, Escape to cancel)
 - 10k scrollback per terminal, Alt+scroll for fast scrolling
 
+## Worker Display Name & Inline Rename
+
+A worker's user-facing label is its `displayName` — free-form, not required to be unique, and editable after creation (the internal `name` is an immutable UUID that never surfaces in these UIs except as the monospace "Worker ID").
+
+- **Create Worker modal**: the first field is labeled "Display name" (free-form, no keystroke sanitization). Its placeholder is a friendly suggestion fetched from `GET /api/containers/generate-name` (`{ displayName }`). On submit the client sends only `{ displayName }` (the typed value, or the suggestion when left blank) — never a `name`; the orchestrator mints the UUID.
+- **ContainerCard**: shows `displayName || shortName(name)`. A "Rename" pencil button (`i-lucide-pencil`, in a `<UTooltip text="Rename">`) in the action row swaps the title `<h3>` for an `<input>` (Enter commits, Esc cancels, blur commits), issuing `PATCH /api/containers/:id`.
+- **ContainerDetailModal**: the header `displayName` has the same inline-rename pencil. The Worker section's first row is labeled "Worker ID" and shows the UUID `container.name` in monospace.
+- **Port/Domain mapping panels**: each row resolves the worker's `displayName` from the live container list by `containerName` (fallback `shortName(m.workerName)`), so rows show the friendly label rather than the raw UUID.
+
 ## Theme System
 
 Three-way color mode toggle (Default/White/Dark) in the sidebar header, powered by `@nuxtjs/color-mode` (bundled with Nuxt UI v3). Default preference is `dark` (preserves the original dark-only UI). Persisted to `localStorage` automatically.

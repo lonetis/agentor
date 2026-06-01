@@ -3,13 +3,15 @@ import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 import { TerminalWsClient } from '../helpers/terminal-ws';
 
 /**
- * Regression: the Create Worker UI used to prepend `agentor-worker-` to any
- * custom name, so a worker the user named `pocs` ended up with hostname
- * `agentor-worker-pocs` and a double-prefixed Docker container name. The
- * hostname a user sees in the worker's shell must match the `name` they
- * typed (or the auto-generated slug).
+ * Worker identity: the worker's `name` is now an opaque, server-minted UUID v4
+ * that doubles as the container Hostname. The in-container `hostname` command
+ * therefore returns the UUID — never a friendly slug or the editable
+ * `displayName`. `containerName` is `<containerPrefix>-<name>` (no userId
+ * segment) so it ends with `-<uuid>` and never contains a doubled prefix.
  */
-test.describe('worker hostname matches name', () => {
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+test.describe('worker hostname is the UUID name', () => {
   async function readHostname(containerId: string): Promise<string> {
     const ws = new TerminalWsClient(containerId);
     try {
@@ -37,13 +39,16 @@ test.describe('worker hostname matches name', () => {
     }
   }
 
-  test('auto-generated worker: hostname equals name', async ({ request }) => {
+  test('auto-generated worker: hostname equals the UUID name', async ({ request }) => {
     const worker = await createWorker(request);
     try {
       expect(worker.name).toBeTruthy();
       expect(typeof worker.name).toBe('string');
-      // Auto-generated names are two words joined by a hyphen — no prefix.
-      expect(worker.name).not.toMatch(/^agentor-worker-/);
+      // `name` is a server-minted UUID v4.
+      expect(worker.name).toMatch(UUID_V4);
+      // containerName ends with `-<uuid>` and has no doubled prefix.
+      expect(worker.containerName).toMatch(new RegExp(`-${worker.name}$`));
+      expect(worker.containerName).not.toContain('agentor-worker-agentor-worker');
 
       const hostname = await readHostname(worker.id as string);
       expect(hostname).toBe(worker.name);
@@ -52,21 +57,20 @@ test.describe('worker hostname matches name', () => {
     }
   });
 
-  test('custom worker name: hostname equals the custom name, no prefix added', async ({ request }) => {
-    const shortId = Math.random().toString(36).slice(2, 8);
-    const customName = `pocs-${shortId}`;
-
-    const worker = await createWorker(request, { name: customName });
+  test('custom display name: hostname is still the UUID, displayName is the label', async ({ request }) => {
+    const worker = await createWorker(request, { displayName: 'my-custom-label' });
     try {
-      expect(worker.name).toBe(customName);
-      // Docker container name must be `<prefix>-<userId>-<name>` — i.e. end with
-      // exactly one occurrence of `-<customName>`, with no extra `agentor-worker-`
-      // segment between the userId and the name.
-      expect(worker.containerName).toMatch(new RegExp(`-${customName}$`));
-      expect(worker.containerName).not.toMatch(new RegExp(`-agentor-worker-${customName}$`));
+      // The user-facing label is the displayName...
+      expect(worker.displayName).toBe('my-custom-label');
+      // ...while `name` remains a server-minted UUID, distinct from the label.
+      expect(worker.name).toMatch(UUID_V4);
+      expect(worker.name).not.toBe('my-custom-label');
+      // containerName is still `<prefix>-<uuid>`.
+      expect(worker.containerName).toMatch(new RegExp(`-${worker.name}$`));
+      expect(worker.containerName).not.toContain('agentor-worker-agentor-worker');
 
       const hostname = await readHostname(worker.id as string);
-      expect(hostname).toBe(customName);
+      expect(hostname).toBe(worker.name);
     } finally {
       await cleanupWorker(request, worker.id as string);
     }

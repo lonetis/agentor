@@ -113,11 +113,11 @@ test.describe.serial('Container Card', () => {
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator('text=stopped')).toBeVisible({ timeout: 15_000 });
     // Container is stopped from previous test; view buttons (Terminal, Desktop, etc.)
-    // are hidden (v-if="isRunning") but action buttons (Restart, Archive, Remove) remain
+    // are hidden (v-if="isRunning") but action buttons remain
     const iconButtons = card.locator('button');
     const count = await iconButtons.count();
-    // 4 action buttons remain: Restart, Rebuild, Archive, Remove
-    expect(count).toBe(4);
+    // 5 action buttons remain: Rename, Restart, Rebuild, Archive, Remove
+    expect(count).toBe(5);
   });
 
   test('Restart button appears when stopped', async ({ page }) => {
@@ -165,7 +165,7 @@ test.describe.serial('Container Card', () => {
 
     // Worker section shows key fields
     await expect(dialog.getByText('Worker', { exact: true })).toBeVisible();
-    await expect(dialog.getByText('Container', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Worker ID', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Container ID', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Image', { exact: true }).first()).toBeVisible();
     await expect(dialog.getByText('Image ID', { exact: true })).toBeVisible();
@@ -200,5 +200,53 @@ test.describe.serial('Container Card', () => {
         }
       }
     });
+  });
+});
+
+// ─── 7. Inline Rename ──────────────────────────────────────────
+// Renaming is exercised on a dedicated worker so it never interferes with the
+// serial flow above (which locates the shared card by its original displayName).
+
+test.describe.serial('Container Card — inline rename', () => {
+  let containerId: string;
+  let displayName: string;
+
+  test.beforeAll(async ({ request }) => {
+    displayName = `CardRename-${Date.now()}`;
+    const container = await createWorker(request, { displayName });
+    containerId = container.id;
+  });
+
+  test.afterAll(async ({ request }) => {
+    if (containerId) {
+      await cleanupWorker(request, containerId);
+    }
+  });
+
+  test('Rename pencil turns the title into an input and updates the displayed name', async ({ page }) => {
+    const newDisplayName = `CardRenamed-${Date.now()}`;
+
+    await goToDashboard(page);
+    const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+
+    // Click the Rename (i-lucide-pencil) button in the card action row
+    const renameBtn = await findButtonByTooltip(card, page, 'Rename');
+    await renameBtn.click();
+
+    // Renaming swaps the title <h3> for an <input>, which removes the displayName
+    // TEXT from the card — so the `hasText`-filtered `card` locator no longer
+    // matches it. Locate the rename input at the page level instead (it is the
+    // only worker-card input visible on the Workers tab).
+    const renameInput = page.locator('.rounded-lg input').first();
+    await expect(renameInput).toBeVisible({ timeout: 10_000 });
+    await renameInput.fill(newDisplayName);
+    await renameInput.press('Enter');
+
+    // The displayed name updates to the new label
+    await expect(page.locator(`h3:has-text("${newDisplayName}")`).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(`h3:has-text("${displayName}")`)).toHaveCount(0);
+
+    displayName = newDisplayName;
   });
 });

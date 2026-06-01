@@ -15,17 +15,20 @@ export function uniquePort(): number {
 /**
  * Creates a worker container and waits for it to reach 'running' status.
  * Returns the container info. Use `cleanupWorker` in afterEach/afterAll.
+ *
+ * The worker's `name` is a server-minted UUID (immutable internal identity);
+ * the editable, user-facing label is `displayName`. We pass a unique default
+ * `displayName` unless the caller supplies one via `overrides.displayName`.
  */
 export async function createWorker(
   request: APIRequestContext,
   overrides: Record<string, unknown> = {},
 ): Promise<{ id: string; name: string; [key: string]: unknown }> {
   const api = new ApiClient(request);
-  const { body: nameData } = await api.generateName();
-  const name = nameData.name;
+  const displayName = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const { status, body } = await api.createContainer({
-    name,
+    displayName,
     ...overrides,
   });
   expect(status).toBe(201);

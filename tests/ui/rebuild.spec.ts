@@ -63,6 +63,8 @@ test.describe.serial('Rebuild Worker UI — state transition', () => {
     displayName = `Rebuild-ST-${Date.now()}`;
     const container = await createWorker(request, { displayName });
     containerId = container.id;
+    // `name` is the worker's immutable UUID identity key (stable across rebuild),
+    // used here only to re-find the worker after a rebuild and for archived cleanup.
     containerName = container.name;
   });
 

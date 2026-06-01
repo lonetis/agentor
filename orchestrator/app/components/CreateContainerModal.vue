@@ -36,8 +36,8 @@ const generatedName = ref('');
 watch(open, async (isOpen) => {
   if (isOpen) {
     fetchRepos();
-    const { name } = await $fetch<{ name: string }>('/api/containers/generate-name');
-    generatedName.value = name;
+    const { displayName } = await $fetch<{ displayName: string }>('/api/containers/generate-name');
+    generatedName.value = displayName;
   }
 });
 
@@ -141,17 +141,16 @@ function removeMount(idx: number) {
   form.mounts.splice(idx, 1);
 }
 
-function sanitizeContainerName(input: string): string {
-  return input.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-}
-
 function submit() {
+  // The internal worker identity is a UUID minted server-side; the form only
+  // collects the editable, free-form display name. Send the suggested name when
+  // the user leaves the field blank so the worker keeps the friendly label they
+  // saw in the placeholder.
   const customName = form.displayName.trim();
   const request: CreateContainerRequest = {
-    name: customName ? sanitizeContainerName(customName) : generatedName.value,
+    displayName: customName || generatedName.value,
   };
   if (form.environmentId) request.environmentId = form.environmentId;
-  if (customName) request.displayName = customName;
   const validRepos = form.repos.filter((r) => r.url);
   if (validRepos.length > 0) {
     request.repos = validRepos.map((r) => ({
@@ -191,12 +190,11 @@ function reset() {
       <div class="p-6 space-y-5 max-h-[90vh] overflow-y-auto">
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">New Worker</h2>
 
-        <UFormField label="Name">
+        <UFormField label="Display name" hint="Shown in the dashboard — editable later">
           <UInput
-            :model-value="form.displayName"
-            :placeholder="shortName(generatedName)"
+            v-model="form.displayName"
+            :placeholder="generatedName"
             class="w-full"
-            @update:model-value="form.displayName = sanitizeContainerName($event)"
           />
         </UFormField>
 

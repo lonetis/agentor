@@ -39,33 +39,32 @@ test.describe('Containers API', () => {
     });
   });
 
-  test.describe('GET /api/containers/generate-name', () => {
-    test('returns a generated name', async ({ request }) => {
+  test.describe('GET /api/containers/generate-name (suggest display name)', () => {
+    test('returns a suggested display name', async ({ request }) => {
       const api = new ApiClient(request);
       const { status, body } = await api.generateName();
       expect(status).toBe(200);
-      expect(typeof body.name).toBe('string');
-      expect(body.name.length).toBeGreaterThan(0);
+      expect(typeof body.displayName).toBe('string');
+      expect(body.displayName.length).toBeGreaterThan(0);
     });
 
-    test('generates unique names', async ({ request }) => {
+    test('suggests unique display names', async ({ request }) => {
       const api = new ApiClient(request);
       const names = new Set<string>();
       for (let i = 0; i < 5; i++) {
         const { body } = await api.generateName();
-        names.add(body.name);
+        names.add(body.displayName);
       }
-      // All 5 names should be unique
+      // All 5 suggestions should be unique
       expect(names.size).toBe(5);
     });
 
-    test('generated names are valid per-user worker names', async ({ request }) => {
+    test('suggested display name is an adjective-animal slug', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.generateName();
-      // Per-user names: adjective-animal (lowercase, dashes). The
-      // containerPrefix + userId segment is added server-side when building the
-      // Docker container name.
-      expect(body.name).toMatch(/^[a-z]+-[a-z]+$/);
+      // Suggestion is a friendly adjective-animal slug (lowercase, dashes).
+      // It is only a default — users may type any free-form display name.
+      expect(body.displayName).toMatch(/^[a-z]+-[a-z]+$/);
     });
   });
 
@@ -82,6 +81,8 @@ test.describe('Containers API', () => {
       const container = await createWorker(request, { displayName: 'Test Worker' });
       createdContainerIds.push(container.id);
       expect(container.displayName).toBe('Test Worker');
+      // `name` is always a server-minted UUID regardless of the display name.
+      expect(container.name).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     });
 
     test('creates a container with dockerEnabled', async ({ request }) => {
@@ -170,13 +171,98 @@ test.describe('Containers API', () => {
       }
     });
 
-    test('accepts explicit name', async ({ request }) => {
+    test('accepts explicit displayName; name is a server-minted UUID', async ({ request }) => {
       const api = new ApiClient(request);
-      const customName = `custom-name-${Date.now()}`;
-      const { status, body } = await api.createContainer({ name: customName });
+      const customLabel = `custom-label-${Date.now()}`;
+      const { status, body } = await api.createContainer({ displayName: customLabel });
       expect(status).toBe(201);
-      expect(body.name).toContain(customName);
+      // The user value lands in displayName...
+      expect(body.displayName).toBe(customLabel);
+      // ...while `name` is an opaque UUID v4 that never contains the label.
+      expect(body.name).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      expect(body.name).not.toContain(customLabel);
       createdContainerIds.push(body.id);
+    });
+  });
+
+  test.describe('PATCH /api/containers/:id (rename)', () => {
+    const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const renameContainerIds: string[] = [];
+
+    test.afterAll(async ({ request }) => {
+      for (const id of renameContainerIds) {
+        await cleanupWorker(request, id);
+      }
+      renameContainerIds.length = 0;
+    });
+
+    test('rename updates displayName and leaves name unchanged', async ({ request }) => {
+      const api = new ApiClient(request);
+      const worker = await createWorker(request, { displayName: 'before-rename' });
+      renameContainerIds.push(worker.id);
+
+      const originalName = worker.name;
+      const newLabel = `renamed-${Date.now()}`;
+      const { status, body } = await api.renameContainer(worker.id, newLabel);
+      expect(status).toBe(200);
+      expect(body.displayName).toBe(newLabel);
+      // The UUID `name` is immutable across a rename.
+      expect(body.name).toBe(originalName);
+      expect(body.name).toMatch(UUID_V4);
+    });
+
+    test('rename persists in the container list', async ({ request }) => {
+      const api = new ApiClient(request);
+      const worker = await createWorker(request, { displayName: 'list-before' });
+      renameContainerIds.push(worker.id);
+
+      const newLabel = `list-after-${Date.now()}`;
+      const { status } = await api.renameContainer(worker.id, newLabel);
+      expect(status).toBe(200);
+
+      const { body: containers } = await api.listContainers();
+      const found = containers.find((c: { id: string }) => c.id === worker.id);
+      expect(found).toBeTruthy();
+      expect(found.displayName).toBe(newLabel);
+    });
+
+    test('rename does not change name or containerName', async ({ request }) => {
+      const api = new ApiClient(request);
+      const worker = await createWorker(request, { displayName: 'identity-before' });
+      renameContainerIds.push(worker.id);
+
+      const { status, body } = await api.renameContainer(worker.id, `identity-after-${Date.now()}`);
+      expect(status).toBe(200);
+      expect(body.name).toBe(worker.name);
+      expect(body.containerName).toBe(worker.containerName);
+    });
+
+    test('rejects empty/whitespace displayName with 400', async ({ request }) => {
+      const api = new ApiClient(request);
+      const worker = await createWorker(request, { displayName: 'keep-me' });
+      renameContainerIds.push(worker.id);
+
+      const empty = await api.renameContainer(worker.id, '');
+      expect(empty.status).toBe(400);
+
+      const whitespace = await api.renameContainer(worker.id, '   ');
+      expect(whitespace.status).toBe(400);
+    });
+
+    test('rejects displayName longer than 100 chars with 400', async ({ request }) => {
+      const api = new ApiClient(request);
+      const worker = await createWorker(request, { displayName: 'keep-me-too' });
+      renameContainerIds.push(worker.id);
+
+      const tooLong = 'x'.repeat(101);
+      const { status } = await api.renameContainer(worker.id, tooLong);
+      expect(status).toBe(400);
+    });
+
+    test('rename on non-existent container returns 404', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status } = await api.renameContainer('non-existent-id', 'whatever');
+      expect(status).toBe(404);
     });
   });
 
@@ -404,6 +490,8 @@ test.describe('Containers API', () => {
       const found = body.find((c: { id: string }) => c.id === container.id);
       expect(found).toBeTruthy();
       expect(found.displayName).toBe(name);
+      // The internal `name` stays a UUID; the editable label is displayName.
+      expect(found.name).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     });
 
     test('container list excludes archived containers', async ({ request }) => {
@@ -435,6 +523,7 @@ test.describe('Containers API', () => {
 
       expect(typeof container.id).toBe('string');
       expect(typeof container.name).toBe('string');
+      expect(container.name).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
       expect(container.status).toBe('running');
       expect(container.displayName).toBe('FieldsCheck');
       expect(typeof container.image).toBe('string');

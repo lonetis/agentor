@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { goToDashboard } from '../helpers/ui-helpers';
+import { goToDashboard, findButtonByTooltip } from '../helpers/ui-helpers';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
 
@@ -43,18 +43,19 @@ test.describe.serial('Container Detail Modal', () => {
     await expect(dialog.locator('h2')).toContainText(displayName);
   });
 
-  test('shows Worker section with Container ID', async ({ page }) => {
+  test('shows Worker section with Worker ID and Container ID', async ({ page }) => {
     const dialog = await openDetailModal(page);
     // The modal shows a "Worker" section header
     await expect(dialog.getByText('Worker', { exact: true })).toBeVisible();
-    // Should show Container ID label
+    // Should show Worker ID label (the UUID) and Container ID label
+    await expect(dialog.getByText('Worker ID', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Container ID', { exact: true })).toBeVisible();
   });
 
-  test('shows container name in Worker section', async ({ page }) => {
+  test('shows Worker ID label in Worker section', async ({ page }) => {
     const dialog = await openDetailModal(page);
-    // Should show "Container" label with the container name value
-    await expect(dialog.getByText('Container', { exact: true })).toBeVisible();
+    // The first Worker-section row is now "Worker ID" (the UUID), not "Container"
+    await expect(dialog.getByText('Worker ID', { exact: true })).toBeVisible();
   });
 
   test('shows Image and Image ID fields', async ({ page }) => {
@@ -148,18 +149,18 @@ test.describe.serial('Container Detail Modal', () => {
     expect(title).toBe(containerId);
   });
 
-  test('Container name value is displayed in Worker section', async ({ page }) => {
+  test('Worker ID value shows the worker UUID in monospace', async ({ page }) => {
     const dialog = await openDetailModal(page);
-    // The modal shows shortName(container.name) which strips the "agentor-worker-" prefix.
-    // The container name (with or without prefix) should appear in the dialog.
-    // shortName strips "agentor-worker-" prefix
-    const prefix = 'agentor-worker-';
-    const shortName = containerName.startsWith(prefix)
-      ? containerName.slice(prefix.length)
-      : containerName;
-    // The dd next to "Container" dt should contain the short name
-    const nameValue = dialog.locator('dd').filter({ hasText: shortName });
-    await expect(nameValue.first()).toBeVisible();
+    // The Worker section's first row shows container.name verbatim — a UUID v4.
+    // (No prefix-stripping shortName anymore.)
+    expect(containerName).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    // The dd next to "Worker ID" dt should contain the full UUID and a matching title.
+    const idValue = dialog.locator('dd').filter({ hasText: containerName });
+    await expect(idValue.first()).toBeVisible();
+    const title = await idValue.first().getAttribute('title');
+    expect(title).toBe(containerName);
   });
 
   test('Image value shows the worker image name', async ({ page }) => {
@@ -221,12 +222,12 @@ test.describe.serial('Container Detail Modal', () => {
   test('Worker section displays all five key-value pairs', async ({ page }) => {
     const dialog = await openDetailModal(page);
     // The Worker section dl should have exactly 5 dt/dd pairs:
-    // Container, Container ID, Image, Image ID, Created
+    // Worker ID, Container ID, Image, Image ID, Created
     const workerSection = dialog.locator('section').first();
     const dtElements = workerSection.locator('dt');
     await expect(dtElements).toHaveCount(5);
     // Verify each label
-    await expect(dtElements.nth(0)).toHaveText('Container');
+    await expect(dtElements.nth(0)).toHaveText('Worker ID');
     await expect(dtElements.nth(1)).toHaveText('Container ID');
     await expect(dtElements.nth(2)).toHaveText('Image');
     await expect(dtElements.nth(3)).toHaveText('Image ID');
@@ -439,5 +440,62 @@ test.describe.serial('Container Detail Modal — Custom Environment', () => {
     await expect(dialog.getByText('Environment', { exact: true })).toBeVisible();
     // The value next to Environment should be the custom environment name
     await expect(dialog.getByText(envName)).toBeVisible();
+  });
+});
+
+test.describe.serial('Container Detail Modal — Rename', () => {
+  let containerId: string;
+  let displayName: string;
+
+  test.beforeAll(async ({ request }) => {
+    displayName = `RenameDetail-${Date.now()}`;
+    const container = await createWorker(request, { displayName });
+    containerId = container.id;
+  });
+
+  test.afterAll(async ({ request }) => {
+    if (containerId) {
+      await cleanupWorker(request, containerId);
+    }
+  });
+
+  test('renames the display name from the detail modal and persists after reload', async ({ page }) => {
+    const newDisplayName = `Renamed-${Date.now()}`;
+
+    await goToDashboard(page);
+    await page.waitForSelector(`h3:has-text("${displayName}")`, { timeout: 15_000 });
+    await page.locator(`h3:has-text("${displayName}")`).first().click();
+    const dialog = page.locator('[role="dialog"]');
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+
+    // Header shows the original display name
+    await expect(dialog.locator('h2')).toContainText(displayName);
+
+    // Click the Rename pencil — it reveals an inline input in the header
+    const renameBtn = await findButtonByTooltip(dialog, page, 'Rename');
+    await renameBtn.click();
+
+    const renameInput = dialog.locator('input').first();
+    await expect(renameInput).toBeVisible({ timeout: 10_000 });
+    await renameInput.fill(newDisplayName);
+    await renameInput.press('Enter');
+
+    // The modal header reflects the new label immediately
+    await expect(dialog.locator('h2')).toContainText(newDisplayName, { timeout: 15_000 });
+
+    // Close the modal so the sidebar cards are no longer obscured by the overlay
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+    // The card title in the sidebar should update to the new label
+    await expect(page.locator(`h3:has-text("${newDisplayName}")`).first()).toBeVisible({ timeout: 15_000 });
+
+    // Persists across a page reload (server-side PATCH took effect)
+    await goToDashboard(page);
+    await expect(page.locator(`h3:has-text("${newDisplayName}")`).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(`h3:has-text("${displayName}")`)).toHaveCount(0);
+
+    // Keep displayName in sync so other state (if any) is consistent
+    displayName = newDisplayName;
   });
 });

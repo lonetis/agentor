@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1291 tests** across 91 test files (~739 API + ~552 UI)
+- **~1299 tests** across 91 test files (~745 API + ~554 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -98,13 +98,13 @@ tests/
     worker-lifecycle.ts    # Container create/cleanup utilities
     ui-helpers.ts          # Page navigation and interaction helpers
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
-  api/                     # API endpoint tests (~719 tests across 51 files)
-  ui/                      # UI interaction tests (~563 tests across 44 files)
+  api/                     # API endpoint tests (~745 tests across 52 files)
+  ui/                      # UI interaction tests (~554 tests across 39 files)
 ```
 
 ## Test Categories
 
-### API Tests (~739 tests, 52 files)
+### API Tests (~745 tests, 52 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -121,9 +121,9 @@ tests/
 | `ownership.spec.ts` | 10 | Per-user ownership filtering for environments, capabilities, instructions, init-scripts, port mappings, domain mappings, archived workers — built-in resources shared, built-in cannot be modified by non-admin, admin sees all users' resources |
 | `ws-auth.spec.ts` | 4 | Terminal WS rejects unauth, logs WS rejects unauth, logs WS accepts admin, logs WS rejects regular user (admin-only stream) |
 | `health.spec.ts` | 4 | Health check endpoint, container count validation, exact status 'ok', no sensitive info exposure |
-| `containers.spec.ts` | 47 | CRUD, validation, field completeness, name format, stop/restart/archive/delete on non-existent, logs (running/stopped/non-empty/non-numeric tail graceful default), memoryLimit, initScript, environmentId, dockerEnabled, displayName persistence, state transitions (double-stop, restart running, archive stopped), list exclusion, response fields, snapshotted environment data fields, no labels |
+| `containers.spec.ts` | 53 | CRUD, validation, field completeness, `generate-name` returns a `{ displayName }` adjective-animal SUGGESTION (not `name`), POST mints an immutable UUID v4 `name` and always populates `displayName` (defaults to a slug when omitted, ≤100-char displayName cap → 400), POST no longer honours a client-sent `name`, stop/restart/archive/delete on non-existent, logs (running/stopped/non-empty/non-numeric tail graceful default), memoryLimit, initScript, environmentId, dockerEnabled, displayName persistence, **rename via `PATCH /api/containers/:id` (updates displayName without recreating the container, leaves UUID `name`/containerName/volumes/mappings unchanged; empty/whitespace → 400, >100 chars → 400, unknown id → 404, cross-user 403)**, state transitions (double-stop, restart running, archive stopped), list exclusion, response fields, snapshotted environment data fields, no labels |
 | `containers-edge-cases.spec.ts` | 11 | Edge case container operations, port mappings survive stop + restart |
-| `rebuild.spec.ts` | 12 | Rebuild running/stopped container, preserves metadata (name, displayName, createdAt, initScript, environment config), returns new container ID, removes old ID from list, preserves port mappings across rebuild (keyed by the stable `containerName`), non-existent container error, response field completeness |
+| `rebuild.spec.ts` | 12 | Rebuild running/stopped container, preserves metadata (UUID `name`, editable `displayName`, createdAt, initScript, environment config), returns new container ID, removes old ID from list, preserves port mappings across rebuild (keyed by the stable `containerName = <prefix>-<uuid>`), non-existent container error, response field completeness |
 | `tmux-panes.spec.ts` | 29 | Window CRUD, name validation, main window protection, duplicates, rename verify, whitespace name, non-existent container, auto-generated name format, rename/delete idempotency, main always present, 50-char name, rename main behavior, missing newName in body |
 | `apps.spec.ts` | 23 | App lifecycle (socks5 start/stop, chromium), error handling (invalid type, non-existent container/instance), response fields (id/port on start, instance fields on list, ok on stop), VS Code tunnel singleton (app-type shape, start returns id=`vscode`+port=0, second start returns 409, list status in `{running, auth_required}`), SSH singleton with auto port mapping (app-type shape with `fixedInternalPort: 22` + `autoPortMapping` 22000–22999, start allocates external port + writes store entry with appType='ssh'/instanceId='ssh', second start 409, stop/start reuses the same external port, stop does not remove the mapping) |
 | `environments.spec.ts` | 41 | Full CRUD, all 5 network modes, field validation, partial update, timestamps, dockerEnabled, includePackageManagerDomains, list field completeness, networkMode change (full→custom), non-existent environmentId, name type validation (number/null/boolean), update with same name, delete+re-fetch, list sorting, cpuLimit zero, all fields populated, empty name rejection, negative cpuLimit, multi-line env vars, partial update preserves unchanged fields, deleted environment filtered from list |
@@ -131,7 +131,7 @@ tests/
 | `domain-mappings.spec.ts` | 75 | Status, list, CRUD (HTTPS/HTTP/TCP), validation (protocol, subdomain, port, baseDomain, worker), response fields, basicAuth CRUD, basicAuth validation (username-only, password-only), subdomain edge cases (leading/trailing hyphens, underscores, consecutive dots, single-char, numeric, multi-level, 64-char), port edge cases (0, 65536, negative, float, min/max valid, string coercion), protocol conflict detection (duplicate, HTTP+HTTPS allowed, HTTPS+TCP conflict, HTTP+TCP allowed), stopped worker rejection, path validation (leading slash, invalid chars, TCP rejection, root normalization, trailing slash strip, valid path, different paths on same domain, duplicate path+protocol, default empty), mapper status fields (totalMappings, baseDomains, dashboardUrl, baseDomainConfigs with challengeType), wildcard routing (default false, HTTP/HTTPS/TCP wildcards, bare-domain wildcard, HTTP-01 ACME rejection, non-strict truthy coercion, wildcard field on list, duplicate detection with wildcard, mixing wildcard/non-wildcard on same key, coexistence with deeper explicit subdomain), multi-base-domain routing (same subdomain on two different base domains) |
 | `domain-mappings-batch.spec.ts` | 23 | Batch domain mapping creation, batch path support (create with path, TCP path rejection, default empty path) |
 | `traefik-integration.spec.ts` | 34 | HTTPS routing (traffic via subdomain, TLS certificate), HTTP routing, BasicAuth (401 without credentials, 200 with credentials), Traefik lifecycle (container existence, mapping count updates, list verification), multi-domain support (baseDomains list, same subdomain on different domains), dashboard subdomain URL, wildcard routing (HTTPS + HTTP wildcard matches a child subdomain, exact host mapping beats wildcard priority, TCP wildcard terminates TLS on child SNI with wildcard cert, TCP wildcard stored mapping round-trip) |
-| `archived-workers.spec.ts` | 15 | Archive/unarchive/delete flow, error handling, response fields (name/createdAt/archivedAt/displayName), unarchive returns new id, unarchive preserves displayName, unarchive and verify running, double archive error, image/environmentId fields, port mappings survive archive and unarchive (keyed by `containerName`), port mappings removed on permanent delete of archived worker |
+| `archived-workers.spec.ts` | 15 | Archive/unarchive/delete flow (`:name` path segment is the worker UUID), error handling, response fields (UUID `name`/createdAt/archivedAt/editable `displayName`), unarchive returns new id with the same UUID `name`, unarchive preserves displayName, unarchive and verify running, double archive error, image/environmentId fields, port mappings survive archive and unarchive (keyed by `containerName`), port mappings removed on permanent delete of archived worker |
 | `workspace.spec.ts` | 9 | Upload (single/multi/subdirectory/empty), path traversal (basic + encoded), non-existent container, download |
 | `service-status.spec.ts` | 8 | Desktop/editor status, non-existent container handling, response field validation, stopped container returns not running |
 | `capabilities.spec.ts` | 24 | Capabilities CRUD, built-in capabilities, validation |
@@ -157,10 +157,10 @@ tests/
 | `agent-data-persistence.spec.ts` | 22 | Agent config symlinks, config file contents, MCP servers (playwright + chrome-devtools) for Claude/Codex/Gemini, persistence across restart/rebuild/archive, no-overwrite on restart/rebuild |
 | `git-identity.spec.ts` | 10 | Per-user git config (user.name/email from auth profile), WORKER env var contains gitName/gitEmail, no git wrapper at /usr/local/bin/git, persistence across rebuild, persistence across archive/unarchive, ContainerInfo includes gitName/gitEmail |
 | `mcp-servers-loaded.spec.ts` | 6 | MCP server verification: Claude config keys + commands via jq, Codex `mcp list` output + enabled status, Gemini config keys + commands via jq |
-| `worker-hostname.spec.ts` | 2 | In-container hostname equals the per-user `name` — for auto-generated names and custom names. Regression for the client-side `agentor-worker-` prefix double-prepend bug. |
-| `worker-self.spec.ts` | 9 | Worker-self routes (no session, identified by Docker source IP): `/api/worker-self/info` returns the calling worker's identity, hitting it from outside the docker network is 401, port mapping create/list/delete works from inside the worker, `workerName` body field is ignored (caller IP wins), list filters out other workers' mappings, DELETE refuses other workers' mappings (403), port-mapper status shape, domain-mapper status shape, usage status shape |
+| `worker-hostname.spec.ts` | 2 | In-container `hostname` equals the worker's immutable UUID `name` (not a friendly label); `containerName = <prefix>-<uuid>` with no `userId` segment and no double `agentor-worker-` prefix. Regression for the prefix-construction logic now that `name` is a server-minted UUID. |
+| `worker-self.spec.ts` | 9 | Worker-self routes (no session, identified by Docker source IP): `/api/worker-self/info` returns the calling worker's identity (`workerName` = the worker UUID, `containerName`, `displayName` = the editable label), hitting it from outside the docker network is 401, port mapping create/list/delete works from inside the worker, `workerName` body field is ignored (caller IP wins), list filters out other workers' mappings, DELETE refuses other workers' mappings (403), port-mapper status shape, domain-mapper status shape, usage status shape |
 
-### UI Tests (~552 tests, 39 files)
+### UI Tests (~554 tests, 39 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -172,11 +172,11 @@ tests/
 | `account-modal-env-vars.spec.ts` | 6 | API keys / Custom env vars / SSH Access / Agent OAuth credentials sections render; GitHub token saves and persists across modal close+reopen; custom env var add+save+reload round-trip; invalid custom key surfaces an inline error; fresh user sees all 3 agents as Not logged in; SSH public key textarea save+reload round-trip |
 | `dashboard.spec.ts` | 11 | Page load, title, buttons, sections, images, sidebar labels |
 | `sidebar.spec.ts` | 27 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design, Capabilities/Instructions/Init Scripts row stacks vertically on narrow sidebar, tab bar horizontal scroll + overflow dropdown (20% visibility threshold, live updates on scroll, hidden when all tabs fit) |
-| `create-worker-modal.spec.ts` | 31 | Open/close, form fields, name input, add repo/mount, environment dropdown, init preset dropdown, Create action, dropdown populates newly created environments, selecting a preset populates init-script textarea |
+| `create-worker-modal.spec.ts` | 31 | Open/close, form fields, free-form **Display name** input (placeholder is the `generate-name` suggestion; no keystroke sanitization; client sends only `{ displayName }`, never `name`), add repo/mount, environment dropdown, init preset dropdown, Create action, dropdown populates newly created environments, selecting a preset populates init-script textarea |
 | `cross-modal-navigation.spec.ts` | 6 | Manage button navigation between modals |
-| `container-card.spec.ts` | 15 | Name, status, buttons, icons, stop/restart/archive, Restart hidden when running, archive action hides card after confirmation, icon-only action buttons, compact card design |
+| `container-card.spec.ts` | 16 | Display name, status, buttons, icons, stop/restart/archive, Restart hidden when running, archive action hides card after confirmation, icon-only action buttons, compact card design, **inline Rename (pencil button swaps title `<h3>` for an input; Enter commits via `PATCH /api/containers/:id`, Escape cancels, new displayName persists; rename does not recreate the container)** |
 | `rebuild.spec.ts` | 6 | Rebuild button visibility (running + stopped), confirm dialog dismiss cancels, rebuild state transition, display name preserved, new container ID after rebuild |
-| `container-detail-modal.spec.ts` | 43 | Modal content, Worker section (Container/ID/Image/ImageID/Created), Configuration section (Environment/CPU/Memory/Docker), Network (Mode/Allowed Domains/Package Managers), Repositories, Mounts, Init Script, Exposed Worker APIs (badges), Capabilities (badges), Instructions (badges), Env Vars, Setup Script, status badge color, section order, close (Escape + overlay), custom environment name, snapshotted config |
+| `container-detail-modal.spec.ts` | 44 | Modal content, header shows `displayName` + Rename pencil, Worker section (**Worker ID** = the UUID `container.name` in monospace, Container/ID/Image/ImageID/Created), Configuration section (Environment/CPU/Memory/Docker), Network (Mode/Allowed Domains/Package Managers), Repositories, Mounts, Init Script, Exposed Worker APIs (badges), Capabilities (badges), Instructions (badges), Env Vars, Setup Script, status badge color, section order, close (Escape + overlay), custom environment name, snapshotted config, **header Rename pencil turns displayName into an inline input and `PATCH`es the new label without recreating the container** |
 | `environments-modal.spec.ts` | 24 | Open/close, pre-created env, create button, form fields (network, Docker, resources), Setup Script, Init Script, Create button, create-via-form flow, custom env Edit/Delete buttons, edit existing environment, network mode dropdown options |
 | `environment-editor-network.spec.ts` | 11 | Network mode selector, custom domains, package manager toggle |
 | `capabilities-modal.spec.ts` | 10 | Capabilities modal list, view built-in, create/edit/delete custom |

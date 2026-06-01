@@ -23,6 +23,7 @@ const emit = defineEmits<{
   rebuildContainer: [id: string];
   removeContainer: [id: string];
   archiveContainer: [id: string];
+  renameContainer: [id: string, displayName: string];
   downloadWorkspace: [id: string];
   unarchiveWorker: [name: string];
   deleteArchivedWorker: [name: string];
@@ -321,6 +322,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             @rebuild="(id) => emit('rebuildContainer', id)"
             @remove="(id) => emit('removeContainer', id)"
             @archive="(id) => emit('archiveContainer', id)"
+            @rename="(id, dn) => emit('renameContainer', id, dn)"
             @download-workspace="(id) => emit('downloadWorkspace', id)"
           />
         </div>
@@ -344,12 +346,12 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
 
       <!-- Port Mappings -->
       <div v-if="activeTab === 'ports'" class="p-3">
-        <PortMappingsPanel :containers="containers" />
+        <PortMappingsPanel :containers="containers" :archived-workers="archivedWorkers" />
       </div>
 
       <!-- Domain Mappings -->
       <div v-if="activeTab === 'domains'" class="p-3">
-        <DomainMappingsPanel :containers="containers" />
+        <DomainMappingsPanel :containers="containers" :archived-workers="archivedWorkers" />
       </div>
 
       <!-- Usage -->

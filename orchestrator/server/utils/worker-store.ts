@@ -3,12 +3,13 @@ import type { RepoConfig, MountConfig, NetworkMode, ExposeApis } from '../../sha
 
 export interface WorkerRecord {
   id: string;
-  /** Globally unique Docker container name — `<prefix>-<userId>-<name>`. */
+  /** Globally unique Docker container name — `<prefix>-<name>` (the worker UUID). */
   containerName: string;
-  /** Per-user worker name. Two users may both have a worker named 'alpha' — the
-   * combination of `userId + name` is unique, and `containerName` is derived
-   * from both at creation time. */
+  /** Immutable per-worker UUID — the worker's internal identity and this store's
+   * key. Globally unique by construction; `containerName` is derived from it at
+   * creation time. Opaque to users (surface `displayName`). */
   name: string;
+  /** Editable, user-facing label. Free-form and not required to be unique. */
   displayName?: string;
   environmentId?: string;
   environmentName?: string;
@@ -48,7 +49,10 @@ export class WorkerStore extends UserScopedJsonStore<string, WorkerRecord> {
   }
 
   override listForUser(userId: string): WorkerRecord[] {
-    return super.listForUser(userId).sort((a, b) => a.name.localeCompare(b.name));
+    // Sort by the user-facing label (the UUID `name` is meaningless to sort on).
+    return super.listForUser(userId).sort((a, b) =>
+      (a.displayName || a.name).localeCompare(b.displayName || b.name),
+    );
   }
 
   listArchived(): WorkerRecord[] {

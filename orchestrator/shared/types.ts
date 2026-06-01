@@ -43,13 +43,19 @@ export type ContainerStatus = 'creating' | 'running' | 'stopped' | 'removing' | 
 
 export interface ContainerInfo {
   id: string;
-  /** Per-user worker name (e.g. the short auto-generated `happy-panda` or a
-   * user-provided slug). Two users can have workers with the same `name`. */
+  /** Immutable per-worker UUID — the worker's internal identity. Used as the
+   * WorkerStore key, the in-container hostname, the directory-mode storage leaf,
+   * the `agentor.worker-name` label, and the basis for `containerName`. Opaque;
+   * never shown to users — surface `displayName` instead. */
   name: string;
-  /** Globally unique Docker container name — `<containerPrefix>-<userId>-<name>`.
-   * Used as the stable DNS identifier for routing (Traefik services point here)
-   * and as the prefix for per-worker volume names. */
+  /** Globally unique Docker container name — `<containerPrefix>-<name>` (the
+   * worker UUID). The stable DNS identifier Traefik routes to and the prefix for
+   * per-worker volume names. */
   containerName: string;
+  /** Editable, user-facing label shown throughout the dashboard. Free-form (may
+   * contain spaces/mixed case, need not be unique). Defaults to a friendly
+   * generated slug when the user provides none. Renameable without recreating
+   * the container — see `PATCH /api/containers/:id`. */
   displayName?: string;
   repos?: RepoConfig[];
   mounts?: MountConfig[];
@@ -77,7 +83,9 @@ export interface ContainerInfo {
 }
 
 export interface CreateContainerRequest {
-  name?: string;
+  /** Editable, user-facing label. Free-form; defaults to a generated friendly
+   * slug server-side when omitted. The internal worker identity is a UUID minted
+   * by the orchestrator and is never client-supplied. */
   displayName?: string;
   repos?: RepoConfig[];
   cpuLimit?: number;

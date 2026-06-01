@@ -16,11 +16,40 @@ const emit = defineEmits<{
   rebuild: [id: string];
   remove: [id: string];
   archive: [id: string];
+  rename: [id: string, displayName: string];
   downloadWorkspace: [id: string];
 }>();
 
 const showDetail = ref(false);
 const showUpload = ref(false);
+
+const displayLabel = computed(() => props.container.displayName || shortName(props.container.name));
+
+// Inline rename (mirrors the tmux tab rename interaction).
+const renaming = ref(false);
+const renameValue = ref('');
+const renameInput = ref<HTMLInputElement | null>(null);
+
+async function startRename() {
+  renameValue.value = displayLabel.value;
+  renaming.value = true;
+  await nextTick();
+  renameInput.value?.focus();
+  renameInput.value?.select();
+}
+
+function cancelRename() {
+  renaming.value = false;
+}
+
+function commitRename() {
+  if (!renaming.value) return;
+  renaming.value = false;
+  const next = renameValue.value.trim();
+  if (next && next !== displayLabel.value) {
+    emit('rename', props.container.id, next);
+  }
+}
 
 type BadgeColor = 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral';
 
@@ -53,10 +82,25 @@ const isRunning = computed(() => props.container.status === 'running');
     ]"
   >
     <!-- Name + status + image ID (clickable for details) -->
-    <div class="cursor-pointer hover:opacity-80 transition-opacity mb-2" @click="showDetail = true">
-      <div class="flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-gray-900 dark:text-white truncate" :title="container.displayName || shortName(container.name)">
-          {{ container.displayName || shortName(container.name) }}
+    <div class="mb-2">
+      <div class="flex items-center justify-between gap-2">
+        <input
+          v-if="renaming"
+          ref="renameInput"
+          v-model="renameValue"
+          class="min-w-0 flex-1 text-sm font-semibold bg-white dark:bg-gray-900 text-gray-900 dark:text-white border border-blue-500/60 rounded px-1.5 py-0.5 focus:outline-none"
+          @keydown.enter.prevent="commitRename"
+          @keydown.esc.prevent="cancelRename"
+          @blur="commitRename"
+          @click.stop
+        />
+        <h3
+          v-else
+          class="text-sm font-semibold text-gray-900 dark:text-white truncate cursor-pointer hover:opacity-80 transition-opacity"
+          :title="displayLabel"
+          @click="showDetail = true"
+        >
+          {{ displayLabel }}
         </h3>
         <div class="flex items-center gap-1.5 shrink-0 ml-2">
           <span v-if="shortImageId" class="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
@@ -139,6 +183,15 @@ const isRunning = computed(() => props.container.status === 'running');
 
       <div class="flex-1" />
 
+      <UTooltip text="Rename">
+        <UButton
+          size="xs"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-pencil"
+          @click="startRename"
+        />
+      </UTooltip>
       <UTooltip v-if="container.status === 'stopped'" text="Restart">
         <UButton
           size="xs"
@@ -189,13 +242,14 @@ const isRunning = computed(() => props.container.status === 'running');
     <UploadModal
       v-model:open="showUpload"
       :container-id="container.id"
-      :container-name="container.displayName || shortName(container.name)"
+      :container-name="displayLabel"
     />
 
     <ContainerDetailModal
       v-model:open="showDetail"
       :container="container"
       :status-color="statusColor"
+      @rename="(id, dn) => emit('rename', id, dn)"
     />
   </div>
 </template>

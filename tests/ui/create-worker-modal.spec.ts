@@ -11,12 +11,12 @@ test.describe('Create Worker Modal', () => {
     await expect(page.locator('[role="dialog"] h2:has-text("New Worker")')).toBeVisible();
   });
 
-  test('has a name input with generated placeholder', async ({ page }) => {
+  test('has a Display name input with generated placeholder', async ({ page }) => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
-    const nameInput = page.locator('[role="dialog"] input').first();
+    const displayNameInput = page.locator('[role="dialog"] input').first();
     await page.waitForTimeout(1000);
-    const placeholder = await nameInput.getAttribute('placeholder');
+    const placeholder = await displayNameInput.getAttribute('placeholder');
     expect(placeholder).toBeTruthy();
     expect(placeholder!.length).toBeGreaterThan(0);
   });
@@ -42,12 +42,12 @@ test.describe('Create Worker Modal', () => {
     await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10_000 });
   });
 
-  test('shows form sections: Name, Environment, Repositories, Volume Mounts, Init Script', async ({ page }) => {
+  test('shows form sections: Display name, Environment, Repositories, Volume Mounts, Init Script', async ({ page }) => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
     // Check all form field labels are present (using getByText for exact matching)
-    await expect(dialog.getByText('Name', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Display name', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Environment', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Repositories', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Volume Mounts', { exact: true })).toBeVisible();
@@ -92,17 +92,22 @@ test.describe('Create Worker Modal', () => {
     await expect(page.locator('[role="dialog"]').getByText('None')).toBeVisible();
   });
 
-  test('name input binds to displayName', async ({ page }) => {
+  test('Display name input is free-form and uses the suggested slug as placeholder', async ({ page }) => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
     const dialog = page.locator('[role="dialog"]');
-    // The Name field is the display name input (UInput wraps a native input)
-    const nameInput = dialog.getByRole('textbox', { name: 'Name' });
-    await expect(nameInput).toBeVisible();
-    // Wait for the async name generation to populate the placeholder
+    // The Display name field is the editable, user-facing label (UInput wraps a native input)
+    const displayNameInput = dialog.getByRole('textbox', { name: 'Display name' });
+    await expect(displayNameInput).toBeVisible();
+    // Wait for the async generate-name suggestion to populate the placeholder
     await page.waitForTimeout(1000);
-    const placeholder = await nameInput.getAttribute('placeholder');
+    const placeholder = await displayNameInput.getAttribute('placeholder');
     expect(placeholder).toBeTruthy();
+
+    // The input is free-form: spaces and mixed case are preserved (no keystroke sanitization)
+    const typed = 'My Worker Name';
+    await displayNameInput.fill(typed);
+    await expect(displayNameInput).toHaveValue(typed);
   });
 
   test('+ Add repository button adds a repo row', async ({ page }) => {

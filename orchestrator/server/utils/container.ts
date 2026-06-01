@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
 import type { Config } from './config';
@@ -33,18 +34,6 @@ interface ResolvedEnvConfig {
 const WORKER_MANAGED_LABEL = 'agentor.managed';
 const WORKER_USER_ID_LABEL = 'agentor.user-id';
 const WORKER_NAME_LABEL = 'agentor.worker-name';
-
-/** Sanitize a user-provided worker name: lowercase, hyphen-safe, <=48 chars.
- * Matches the Docker container name charset when combined with
- * `<containerPrefix>-<userId>-<name>`. */
-function sanitizeWorkerName(raw: string): string {
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 48);
-}
 
 export class ContainerManager {
   private containers: Map<string, ContainerInfo> = new Map();
@@ -90,14 +79,16 @@ export class ContainerManager {
     this.storageManager = manager;
   }
 
-  /** Build a Docker-safe globally unique container name from userId + worker name. */
-  buildContainerName(userId: string, name: string): string {
-    return `${this.config.containerPrefix}-${userId}-${name}`;
+  /** Build the globally unique Docker container name from the worker's UUID
+   * `name`. The UUID is already globally unique and DNS-label-safe, so the
+   * container name is simply `<containerPrefix>-<uuid>`. */
+  buildContainerName(name: string): string {
+    return `${this.config.containerPrefix}-${name}`;
   }
 
-  /** VS Code tunnel name — must be 3-20 alphanumeric + hyphens. Combine a short
-   * userId prefix with the worker name so two users with the same short name
-   * do not collide. */
+  /** VS Code tunnel name — must be 3-20 alphanumeric + hyphens. The worker UUID
+   * already guarantees global uniqueness; take a userId-prefixed slice so it
+   * fits the length cap. */
   private buildTunnelName(userId: string, name: string): string {
     const shortId = userId.slice(0, 8);
     return `${shortId}-${name}`.slice(0, 20);
@@ -307,27 +298,26 @@ export class ContainerManager {
     return undefined;
   }
 
-  /** Find an active container owned by `userId` with user-facing name `name`. */
-  findByUserAndName(userId: string, name: string): ContainerInfo | undefined {
+  /** Suggest a friendly display-name slug (e.g. `happy-panda`) for a new worker,
+   * avoiding collisions with the user's existing display names where possible.
+   * Display names are free-form and not required to be unique — this is only a
+   * convenience default for the create form. */
+  suggestDisplayName(userId: string): string {
+    const taken = new Set<string>();
     for (const c of this.containers.values()) {
-      if (c.userId === userId && c.name === name) return c;
+      if (c.userId === userId && c.displayName) taken.add(c.displayName.toLowerCase());
     }
-    return undefined;
-  }
-
-  /** Generate a short, per-user-unique worker name. */
-  generateName(userId: string): string {
-    for (let attempt = 0; attempt < 6; attempt++) {
+    for (const w of this.workerStore?.listForUser(userId) ?? []) {
+      if (w.displayName) taken.add(w.displayName.toLowerCase());
+    }
+    for (let attempt = 0; attempt < 8; attempt++) {
       const candidate = uniqueNamesGenerator({
         dictionaries: [adjectives, animals],
         separator: '-',
         style: 'lowerCase',
       });
-      if (!this.workerStore?.has(userId, candidate) && !this.findByUserAndName(userId, candidate)) {
-        return candidate;
-      }
+      if (!taken.has(candidate)) return candidate;
     }
-    // Fallback: guarantee uniqueness with a short suffix.
     return `worker-${nanoid(6).toLowerCase()}`;
   }
 
@@ -337,13 +327,12 @@ export class ContainerManager {
 
     const envConfig = this.resolveEnvironmentConfig(request.environmentId);
 
-    const rawName = request.name || this.generateName(userId);
-    const name = sanitizeWorkerName(rawName);
-    if (!name) throw new Error('Worker name must contain at least one alphanumeric character');
-    if (this.workerStore?.has(userId, name) || this.findByUserAndName(userId, name)) {
-      throw new Error(`You already have a worker named '${name}'`);
-    }
-    const containerName = this.buildContainerName(userId, name);
+    // Internal identity is an immutable UUID; the user-facing label is the
+    // free-form, editable `displayName` (defaulted to a friendly slug when the
+    // user provides none).
+    const name = randomUUID();
+    const displayName = request.displayName?.trim() || this.suggestDisplayName(userId);
+    const containerName = this.buildContainerName(name);
 
     const repos = request.repos?.filter((r) => r.url) || [];
 
@@ -356,7 +345,7 @@ export class ContainerManager {
 
     const workerJson: WorkerJsonPayload = {
       name,
-      displayName: request.displayName || '',
+      displayName,
       repos,
       initScript: request.initScript?.trim() || '',
       gitName,
@@ -369,7 +358,7 @@ export class ContainerManager {
       userId,
       name,
       containerName,
-      displayName: request.displayName || undefined,
+      displayName,
       cpuLimit,
       memoryLimit,
       mounts: request.mounts,
@@ -400,7 +389,7 @@ export class ContainerManager {
       id: container.id,
       name,
       containerName,
-      displayName: request.displayName || undefined,
+      displayName,
       repos: repos.length > 0 ? repos : undefined,
       mounts,
       initScript,
@@ -433,7 +422,7 @@ export class ContainerManager {
     }
 
     // Attach log collector to the new container
-    useLogCollector().attach(containerName, container.id, 'worker', request.displayName || undefined).catch(() => {});
+    useLogCollector().attach(containerName, container.id, 'worker', displayName).catch(() => {});
 
     useLogger().info(`[container] created worker ${containerName} (${container.id.slice(0, 12)})`);
 
@@ -477,6 +466,33 @@ export class ContainerManager {
       useLogCollector().attach(info.containerName, id, 'worker', info.displayName).catch(() => {});
       useLogger().info(`[container] restarted ${info.containerName}`);
     }
+  }
+
+  /** Rename a worker's user-facing display name. The internal identity (UUID
+   * `name`, `containerName`, volumes, routing) is immutable, so this only
+   * updates the WorkerStore record and the in-memory ContainerInfo — no
+   * container recreation. The running worker's `WORKER` env keeps the old value
+   * until its next rebuild, which is harmless (the worker does not surface it).
+   * The LogCollector's cached source label likewise refreshes on the next
+   * lifecycle event (re-attaching here would replay the container's whole log
+   * history into the live stream), so log entries may show the prior label
+   * until then — cosmetic only. */
+  async rename(id: string, displayName: string): Promise<ContainerInfo> {
+    const info = this.containers.get(id);
+    if (!info) throw new Error('Container not found');
+
+    info.displayName = displayName;
+
+    if (this.workerStore) {
+      const worker = this.workerStore.get(info.userId, info.name);
+      if (worker) {
+        worker.displayName = displayName;
+        await this.workerStore.upsert(worker);
+      }
+    }
+
+    useLogger().info(`[container] renamed ${info.containerName} display name to '${displayName}'`);
+    return info;
   }
 
   async remove(id: string): Promise<void> {

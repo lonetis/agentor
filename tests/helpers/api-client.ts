@@ -59,6 +59,7 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
+  // Returns a display-name suggestion. Body is now `{ displayName }`.
   async generateName() {
     const res = await this.request.get(`${BASE_URL}/api/containers/generate-name`);
     return { status: res.status(), body: await res.json() };
@@ -87,6 +88,13 @@ export class ApiClient {
   async archiveContainer(id: string) {
     const res = await this.request.post(`${BASE_URL}/api/containers/${id}/archive`);
     return { status: res.status(), body: await res.json() };
+  }
+
+  async renameContainer(id: string, displayName: string) {
+    const res = await this.request.patch(`${BASE_URL}/api/containers/${id}`, {
+      data: { displayName },
+    });
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
   }
 
   async getContainerLogs(id: string, tail?: number) {

@@ -11,8 +11,7 @@ defineRouteMeta({
           schema: {
             type: 'object',
             properties: {
-              name: { type: 'string', description: 'Container name (auto-generated if omitted)' },
-              displayName: { type: 'string', description: 'Friendly display name' },
+              displayName: { type: 'string', description: 'Editable user-facing label (free-form; auto-generated friendly slug if omitted). The internal worker identity is a server-minted UUID.' },
               repos: { type: 'array', items: { $ref: '#/components/schemas/RepoConfig' } },
               cpuLimit: { type: 'number', description: 'CPU core limit' },
               memoryLimit: { type: 'string', description: 'Memory limit (e.g. "2g")' },
@@ -32,15 +31,18 @@ defineRouteMeta({
 });
 
 import { useContainerManager } from '../../utils/services';
-import { CONTAINER_NAME_RE } from '../../utils/validation';
+import { MAX_DISPLAY_NAME_LENGTH } from '../../utils/validation';
 import { requireAuth } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const { user } = requireAuth(event);
   const body = await readBody(event);
 
-  if (body.name && !CONTAINER_NAME_RE.test(body.name)) {
-    throw createError({ statusCode: 400, statusMessage: 'Worker name must contain only lowercase letters (a-z), digits (0-9), and hyphens' });
+  if (body.displayName != null && typeof body.displayName !== 'string') {
+    throw createError({ statusCode: 400, statusMessage: 'displayName must be a string' });
+  }
+  if (typeof body.displayName === 'string' && body.displayName.trim().length > MAX_DISPLAY_NAME_LENGTH) {
+    throw createError({ statusCode: 400, statusMessage: `displayName must be at most ${MAX_DISPLAY_NAME_LENGTH} characters` });
   }
 
   let parsedMounts;
@@ -76,7 +78,6 @@ export default defineEventHandler(async (event) => {
 
   const containerManager = useContainerManager();
   const container = await containerManager.create({
-    name: body.name || undefined,
     displayName: body.displayName || undefined,
     repos: parsedRepos,
     cpuLimit,

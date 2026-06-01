@@ -23,16 +23,23 @@ test.describe('Containers API — Edge Cases', () => {
   });
 
   test.describe('Container name constraints', () => {
-    test('handles very long display name', async ({ request }) => {
-      const longName = 'a'.repeat(200);
-      const container = await createWorker(request, { displayName: longName });
+    test('handles a long display name (at the cap) and rejects an over-cap one', async ({ request }) => {
+      const api = new ApiClient(request);
+
+      // Over the 100-char cap → 400.
+      const tooLong = 'a'.repeat(200);
+      const rejected = await api.createContainer({ displayName: tooLong });
+      expect(rejected.status).toBe(400);
+
+      // Exactly at the cap → accepted and stored verbatim.
+      const maxName = 'a'.repeat(100);
+      const container = await createWorker(request, { displayName: maxName });
       createdContainerIds.push(container.id);
 
-      const api = new ApiClient(request);
       const { body: containers } = await api.listContainers();
       const found = containers.find((c: { id: string }) => c.id === container.id);
       expect(found).toBeTruthy();
-      expect(found.displayName).toBe(longName);
+      expect(found.displayName).toBe(maxName);
     });
 
     test('auto-generates name when none provided', async ({ request }) => {

@@ -7,7 +7,42 @@ const props = defineProps<{
   statusColor: 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral';
 }>();
 
+const emit = defineEmits<{
+  rename: [id: string, displayName: string];
+}>();
+
 const open = defineModel<boolean>('open', { default: false });
+
+const displayLabel = computed(() => props.container.displayName || shortName(props.container.name));
+
+// Inline rename of the display name.
+const renaming = ref(false);
+const renameValue = ref('');
+const renameInput = ref<HTMLInputElement | null>(null);
+
+async function startRename() {
+  renameValue.value = displayLabel.value;
+  renaming.value = true;
+  await nextTick();
+  renameInput.value?.focus();
+  renameInput.value?.select();
+}
+
+function cancelRename() {
+  renaming.value = false;
+}
+
+function commitRename() {
+  if (!renaming.value) return;
+  renaming.value = false;
+  const next = renameValue.value.trim();
+  if (next && next !== displayLabel.value) {
+    emit('rename', props.container.id, next);
+  }
+}
+
+// Reset the rename UI whenever a different worker is shown.
+watch(() => props.container.id, () => { renaming.value = false; });
 
 const portMappings = ref<PortMapping[]>([]);
 const domainMappings = ref<DomainMapping[]>([]);
@@ -92,10 +127,26 @@ const exposeApisLabels = computed(() => {
     <template #content>
       <div class="p-5 max-h-[90vh] overflow-y-auto">
         <!-- Header -->
-        <div class="flex items-center justify-between mb-5">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white truncate mr-3">
-            {{ container.displayName || shortName(container.name) }}
-          </h2>
+        <div class="flex items-center justify-between mb-5 gap-3">
+          <div class="flex items-center gap-2 min-w-0">
+            <input
+              v-if="renaming"
+              ref="renameInput"
+              v-model="renameValue"
+              class="min-w-0 flex-1 text-lg font-semibold bg-white dark:bg-gray-900 text-gray-900 dark:text-white border border-blue-500/60 rounded px-2 py-0.5 focus:outline-none"
+              @keydown.enter.prevent="commitRename"
+              @keydown.esc.prevent="cancelRename"
+              @blur="commitRename"
+            />
+            <template v-else>
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white truncate" :title="displayLabel">
+                {{ displayLabel }}
+              </h2>
+              <UTooltip text="Rename">
+                <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-pencil" @click="startRename" />
+              </UTooltip>
+            </template>
+          </div>
           <UBadge :color="statusColor" variant="subtle" size="sm" class="shrink-0">
             {{ container.status }}
           </UBadge>
@@ -106,8 +157,8 @@ const exposeApisLabels = computed(() => {
           <section>
             <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Worker</h3>
             <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-              <dt class="text-gray-500 dark:text-gray-400">Container</dt>
-              <dd class="text-gray-900 dark:text-white font-mono text-xs">{{ shortName(container.name) }}</dd>
+              <dt class="text-gray-500 dark:text-gray-400">Worker ID</dt>
+              <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.name">{{ container.name }}</dd>
 
               <dt class="text-gray-500 dark:text-gray-400">Container ID</dt>
               <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.id">{{ container.id.slice(0, 12) }}</dd>

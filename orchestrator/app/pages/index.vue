@@ -4,7 +4,7 @@ import type { CreateContainerRequest } from '~/types';
 useHead({ title: 'Agentor' });
 
 const { gitProviders } = useGitProviders();
-const { containers, refresh: refreshContainers, createContainer, stopContainer, restartContainer, rebuildContainer, removeContainer } = useContainers();
+const { containers, refresh: refreshContainers, createContainer, stopContainer, restartContainer, rebuildContainer, removeContainer, renameContainer } = useContainers();
 const { archivedWorkers, refresh: refreshArchived, archiveWorker, unarchiveWorker, deleteArchivedWorker } = useArchivedWorkers();
 const {
   rootNode,
@@ -14,6 +14,7 @@ const {
   openTab,
   closeTab,
   closeTabsForContainer,
+  renameContainerTabs,
   focusGroup,
   moveTab,
   splitWithTab,
@@ -80,6 +81,12 @@ async function handleArchive(id: string) {
   closeTabsForContainer(id);
   await archiveWorker(id);
   await refreshContainers();
+}
+
+async function handleRename(id: string, displayName: string) {
+  await renameContainer(id, displayName);
+  // Open tab labels are captured at open time — refresh them in place.
+  renameContainerTabs(id, displayName);
 }
 
 async function handleUnarchive(name: string) {
@@ -155,6 +162,7 @@ function onCreateModalClosed() {
       @rebuild-container="handleRebuild"
       @remove-container="handleRemove"
       @archive-container="handleArchive"
+      @rename-container="handleRename"
       @download-workspace="handleDownloadWorkspace"
       @unarchive-worker="handleUnarchive"
       @delete-archived-worker="handleDeleteArchived"

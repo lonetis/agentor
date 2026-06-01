@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { ContainerInfo, ChallengeType } from '~/types';
+import type { ContainerInfo, ArchivedWorker, ChallengeType } from '~/types';
 
 const props = defineProps<{
   containers: ContainerInfo[];
+  archivedWorkers?: ArchivedWorker[];
 }>();
 
 const { mappings, status, createMappings, removeMapping } = useDomainMappings();
@@ -30,6 +31,17 @@ watch(() => status.value.baseDomains, (domains) => {
 const runningContainers = computed(() =>
   props.containers.filter((c) => c.status === 'running')
 );
+
+// Mappings store the worker UUID in `workerName`; resolve the friendly display
+// name from it. Keyed by the UUID `name` so it covers active (running/stopped)
+// AND archived workers — mappings persist across archive, and an archived
+// worker would otherwise render its raw UUID.
+const workerLabelByName = computed(() => {
+  const map = new Map<string, string>();
+  for (const c of props.containers) map.set(c.name, c.displayName || shortName(c.name));
+  for (const w of props.archivedWorkers ?? []) map.set(w.name, w.displayName || shortName(w.name));
+  return map;
+});
 
 function getChallengeType(baseDomain: string): ChallengeType {
   const dc = status.value.baseDomainConfigs.find((c) => c.domain === baseDomain);
@@ -378,7 +390,7 @@ function downloadCaCert() {
         class="size-3 text-amber-500 shrink-0"
       />
       <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>
-      <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ shortName(m.workerName) }}:{{ m.internalPort }}</span>
+      <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ workerLabelByName.get(m.workerName) || shortName(m.workerName) }}:{{ m.internalPort }}</span>
       <button
         class="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5"
         title="Remove mapping"

@@ -354,7 +354,7 @@ test.describe('Port Mappings API', () => {
 
       // Create a temporary worker, wait for running, then stop it
       const { body: nameData } = await api.generateName();
-      const { body: worker } = await api.createContainer({ name: nameData.name });
+      const { body: worker } = await api.createContainer({ displayName: nameData.displayName });
       const stoppedWorkerId = worker.id;
 
       try {
