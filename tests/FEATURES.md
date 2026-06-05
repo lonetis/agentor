@@ -211,10 +211,10 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Apps button (tooltip "Apps") — opens apps pane (VS Code Tunnel and SSH are managed as apps inside this pane)
 - Upload button (tooltip) — opens upload modal
 - Download button (tooltip) — downloads workspace as .tar.gz
-- Export button (tooltip "Export worker", icon `i-lucide-package`) — visible when running or stopped; downloads a full worker export bundle (see §28)
+- Export button (tooltip "Export worker", icon `i-lucide-package`) — sits in the **workspace** group right next to Download Workspace (so running-only). While the bundle is being prepared it shows a spinner and is disabled (tooltip reads "Preparing export…"), then downloads a full worker export bundle (see §28)
 
 ### 4.2a Action row layout
-- All action buttons are **left-aligned** (no right-side spacer) and organised into logical groups separated by thin vertical divider lines: **views** (terminal/editor/desktop/apps) | **workspace** (upload/download) | **data** (export) | **lifecycle** (settings/restart-or-stop/rebuild) | **destructive** (archive/remove). Views + workspace groups appear only when running; export appears when running or stopped; lifecycle + destructive are always present (no dangling leading/trailing dividers).
+- All action buttons are **left-aligned** (no right-side spacer) and organised into logical groups separated by thin vertical divider lines: **views** (terminal/editor/desktop/apps) | **workspace** (upload/download/export) | **lifecycle** (settings/restart-or-stop/rebuild) | **destructive** (archive/remove). The views + workspace groups appear only when running; lifecycle + destructive are always present (no dangling leading/trailing dividers).
 - The row (`.card-actions`) is a single non-wrapping flex strip with `overflow-x: auto` and a hidden scrollbar; when the sidebar/card is too narrow it scrolls horizontally. A vertical mouse-wheel over the row scrolls it horizontally.
 
 ### 4.3 Action Buttons
@@ -973,7 +973,7 @@ The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/ap
 ## 28. Worker Export / Import
 
 ### 28.1 Export
-- The worker card's **Export** button (running or stopped) downloads a single `.tar` bundle (`<displayName>-worker-export.tar`) via `GET /api/containers/:id/export`.
+- The worker card's **Export** button (in the workspace group, running-only) downloads a single `.tar` bundle (`<displayName>-worker-export.tar`) via `GET /api/containers/:id/export`. The button uses `fetch` (not a bare anchor) so it can show a spinner + disable while the server materialises the bundle (which is slow when the `docker export` rootfs is included), then saves the response via a blob URL.
 - Bundle layout (outer uncompressed tar): `manifest.json` + `workspace.tar.gz` + `agents.tar.gz`, and (when `includeRootfs` is true — the default) `rootfs.tar.gz` (a `docker export` of the container filesystem, gzipped).
 - The manifest embeds the worker's own config (displayName, repos, mounts, initScript), the **full environment definition** (so it restores on another machine), and the worker's port + domain mappings (stripped of identity).
 - Per-user OAuth credential files (`.claude/.credentials.json`, `.codex/auth.json`, `.gemini/oauth_creds.json`) are **stripped** from `agents.tar.gz` — an export never carries another user's tokens.

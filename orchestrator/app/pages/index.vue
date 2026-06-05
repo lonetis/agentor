@@ -61,17 +61,6 @@ function handleDownloadWorkspace(id: string) {
   document.body.removeChild(link);
 }
 
-function handleExportWorker(id: string) {
-  // Full export (manifest + volumes + docker-export rootfs) streams as a .tar
-  // download with a Content-Disposition filename; let the browser save it.
-  const link = document.createElement('a');
-  link.href = `/api/containers/${id}/export`;
-  link.download = '';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
 async function onWorkerImported(container: ContainerInfo) {
   await refreshContainers();
   if (container) handleOpenTab(container.id, 'terminal');
@@ -190,7 +179,6 @@ function onCreateModalClosed() {
       @rebuild-container="handleRebuild"
       @remove-container="handleRemove"
       @archive-container="handleArchive"
-      @export-container="handleExportWorker"
       @update-container="handleUpdate"
       @download-workspace="handleDownloadWorkspace"
       @unarchive-worker="handleUnarchive"

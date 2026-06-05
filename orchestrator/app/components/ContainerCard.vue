@@ -18,13 +18,41 @@ const emit = defineEmits<{
   rebuild: [id: string];
   remove: [id: string];
   archive: [id: string];
-  export: [id: string];
   update: [id: string, patch: UpdateContainerSettingsRequest, rebuild: boolean];
   downloadWorkspace: [id: string];
 }>();
 
 const showDetail = ref(false);
 const showUpload = ref(false);
+
+// Export is slow (the server materialises the bundle — incl. a docker export of
+// the filesystem — before the download starts), so drive it with fetch and show
+// a spinner on the button until the bundle is ready, then save it. Handled here
+// (not via an anchor) precisely so the button can reflect the in-progress state.
+const exporting = ref(false);
+async function doExport() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const res = await fetch(`/api/containers/${props.container.id}/export`);
+    if (!res.ok) throw new Error(`Export failed (${res.status})`);
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const filename = cd.match(/filename="?([^"]+)"?/)?.[1] || `${displayLabel.value}-worker-export.tar`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  } catch (err) {
+    console.error('[export] failed', err);
+  } finally {
+    exporting.value = false;
+  }
+}
 
 const displayLabel = computed(() => props.container.displayName || shortName(props.container.id));
 
@@ -151,7 +179,7 @@ function onActionsWheel(e: WheelEvent) {
 
         <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
 
-        <!-- Workspace (running only) -->
+        <!-- Workspace (running only): upload, download, export -->
         <div class="flex items-center gap-0.5 flex-shrink-0">
           <UTooltip text="Upload to Workspace">
             <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-upload" @click="showUpload = true" />
@@ -159,16 +187,8 @@ function onActionsWheel(e: WheelEvent) {
           <UTooltip text="Download Workspace">
             <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-download" @click="emit('downloadWorkspace', container.id)" />
           </UTooltip>
-        </div>
-
-        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
-      </template>
-
-      <!-- Export (running or stopped) -->
-      <template v-if="isRunning || isStopped">
-        <div class="flex items-center gap-0.5 flex-shrink-0">
-          <UTooltip text="Export worker">
-            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-package" @click="emit('export', container.id)" />
+          <UTooltip :text="exporting ? 'Preparing export…' : 'Export worker'">
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-package" :loading="exporting" :disabled="exporting" @click="doExport" />
           </UTooltip>
         </div>
 
@@ -187,7 +207,7 @@ function onActionsWheel(e: WheelEvent) {
           <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-square" @click="emit('stop', container.id)" />
         </UTooltip>
         <UTooltip text="Rebuild">
-          <UButton size="xs" color="info" variant="subtle" icon="i-lucide-hammer" @click="emit('rebuild', container.id)" />
+          <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-hammer" @click="emit('rebuild', container.id)" />
         </UTooltip>
       </div>
 

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
-import { goToDashboard, hasButtonWithTooltip } from '../helpers/ui-helpers';
+import { goToDashboard, hasButtonWithTooltip, findButtonByTooltip } from '../helpers/ui-helpers';
 
 test.describe('Worker card actions', () => {
   let workerId: string;
@@ -16,11 +16,41 @@ test.describe('Worker card actions', () => {
     if (workerId) await cleanupWorker(request, workerId);
   });
 
-  test('a running card exposes the Export button', async ({ page }) => {
+  test('a running card exposes the Export button (in the workspace group)', async ({ page }) => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     expect(await hasButtonWithTooltip(card, page, 'Export worker')).toBe(true);
+  });
+
+  test('Export shows a loading state while preparing, then downloads', async ({ page }) => {
+    // Simulate the slow server-side bundle materialisation so the button's
+    // in-progress state is observable before the download triggers.
+    await page.route('**/api/containers/*/export*', async (route) => {
+      await new Promise((r) => setTimeout(r, 1200));
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'content-type': 'application/x-tar',
+          'content-disposition': 'attachment; filename="card-worker-export.tar"',
+        },
+        body: 'dummy-tar-bundle',
+      });
+    });
+
+    await goToDashboard(page);
+    const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    const exportBtn = await findButtonByTooltip(card, page, 'Export worker');
+
+    const downloadPromise = page.waitForEvent('download');
+    await exportBtn.click();
+    // While the bundle is being prepared the button is disabled (spinner shown).
+    await expect(exportBtn).toBeDisabled();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toContain('worker-export.tar');
+    // Re-enabled once the download has been triggered.
+    await expect(exportBtn).toBeEnabled({ timeout: 5_000 });
   });
 
   test('the action row is horizontally scrollable (no wrap)', async ({ page }) => {

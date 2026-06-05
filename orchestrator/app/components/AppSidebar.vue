@@ -24,7 +24,6 @@ const emit = defineEmits<{
   rebuildContainer: [id: string];
   removeContainer: [id: string];
   archiveContainer: [id: string];
-  exportContainer: [id: string];
   updateContainer: [id: string, patch: UpdateContainerSettingsRequest, rebuild: boolean];
   downloadWorkspace: [id: string];
   unarchiveWorker: [name: string];
@@ -341,7 +340,6 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             @rebuild="(id) => emit('rebuildContainer', id)"
             @remove="(id) => emit('removeContainer', id)"
             @archive="(id) => emit('archiveContainer', id)"
-            @export="(id) => emit('exportContainer', id)"
             @update="(id, patch, rebuild) => emit('updateContainer', id, patch, rebuild)"
             @download-workspace="(id) => emit('downloadWorkspace', id)"
           />
