@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CreateContainerRequest, UpdateContainerSettingsRequest } from '~/types';
+import type { ContainerInfo, CreateContainerRequest, UpdateContainerSettingsRequest } from '~/types';
 
 useHead({ title: 'Agentor' });
 
@@ -23,6 +23,7 @@ const {
 } = useSplitPanes();
 
 const showCreateModal = ref(false);
+const showImportModal = ref(false);
 const showEnvironmentsModal = ref(false);
 const showCapabilitiesModal = ref(false);
 const showInstructionsModal = ref(false);
@@ -58,6 +59,22 @@ function handleDownloadWorkspace(id: string) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+function handleExportWorker(id: string) {
+  // Full export (manifest + volumes + docker-export rootfs) streams as a .tar
+  // download with a Content-Disposition filename; let the browser save it.
+  const link = document.createElement('a');
+  link.href = `/api/containers/${id}/export`;
+  link.download = '';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+async function onWorkerImported(container: ContainerInfo) {
+  await refreshContainers();
+  if (container) handleOpenTab(container.id, 'terminal');
 }
 
 async function handleRebuild(id: string) {
@@ -159,6 +176,7 @@ function onCreateModalClosed() {
       :active-tab-id="activeTabId"
       :archived-workers="archivedWorkers"
       @new-worker="showCreateModal = true"
+      @import-worker="showImportModal = true"
       @manage-environments="showEnvironmentsModal = true"
       @manage-capabilities="showCapabilitiesModal = true"
       @manage-instructions="showInstructionsModal = true"
@@ -172,6 +190,7 @@ function onCreateModalClosed() {
       @rebuild-container="handleRebuild"
       @remove-container="handleRemove"
       @archive-container="handleArchive"
+      @export-container="handleExportWorker"
       @update-container="handleUpdate"
       @download-workspace="handleDownloadWorkspace"
       @unarchive-worker="handleUnarchive"
@@ -222,6 +241,11 @@ function onCreateModalClosed() {
       @manage-environments="openEnvironmentsFromModal"
       @manage-init-scripts="openInitScriptsFromModal"
       @after:leave="onCreateModalClosed"
+    />
+
+    <ImportWorkerModal
+      v-model:open="showImportModal"
+      @imported="onWorkerImported"
     />
 
     <EnvironmentsModal

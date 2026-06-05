@@ -33,6 +33,11 @@ export interface WorkerRecord extends UserOwnedResource {
    * script) were edited after the container was last (re)created and have not
    * yet been applied. Cleared on create/rebuild/unarchive. */
   pendingRebuild?: boolean;
+  /** Set on workers restored via import that captured the source container's
+   * filesystem (`docker import`). The per-worker image reference the worker runs
+   * — reused across rebuild/unarchive so the captured rootfs survives. Unset for
+   * normal workers (which run the shared standard worker image). */
+  importedImage?: string;
 }
 
 export class WorkerStore extends UserScopedJsonStore<string, WorkerRecord> {

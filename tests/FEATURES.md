@@ -119,6 +119,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ### 1.3 Sidebar Action Buttons
 - "+ New Worker" button opens create worker modal
+- "Import worker" icon button (`aria-label="Import worker"`, icon `i-lucide-import`, next to New Worker) opens the Import Worker modal (§28)
 - "Environments" button opens environments modal
 - "Capabilities" button opens capabilities modal
 - "Instructions" button opens instructions modal
@@ -192,6 +193,12 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Active card: blue-tinted background with blue border and shadow
 - Clicking name/status area opens detail modal
 
+### 4.1b Per-worker live metrics
+- All per-worker metrics are derived **entirely through the Docker API** (no host `/proc`/`statfs`), so they behave identically across OSes and runtimes (Docker Desktop, Linux, etc.).
+- When the worker is running, a compact metrics row (`data-testid="worker-metrics"`) shows live **CPU %** (of total host, from `docker stats`), **RAM** used bytes (limit in the tooltip — no percentage), **Disk** used bytes (the container's writable filesystem layer + its `/workspace` + agent data), and network throughput (↓ down / ↑ up). CPU/RAM colorize green/amber/red by threshold (<50 / 50-79 / ≥80).
+- Sampled once in the sidebar via `useWorkerMetrics()` (one 10s poll → `GET /api/worker-metrics`) and passed to each card as a `metric` prop (no per-card polling). cpu/mem/net come from `container.stats` on a 3s server cadence. Disk is sampled server-side on a slower (60s) cadence — the container's writable-layer size (Docker `SizeRw`, which excludes the base image) plus a `du` of its `/workspace` + agent-data volumes (so it works in both volume and directory storage modes; the DinD image store is excluded). 0 until first sampled; `POST /api/worker-metrics/refresh` forces an immediate sample.
+- Hidden when the worker is not running or has not been sampled yet.
+
 ### 4.1a Settings Pencil
 - A "Settings" pencil button (icon `i-lucide-pencil`, wrapped in `<UTooltip text="Settings">`) sits in the card's action button row
 - Clicking it (or clicking the card title) opens the editable **Worker Settings modal** (§5) — there is no inline-on-card rename input anymore; renaming and all other editable settings live in the modal
@@ -204,6 +211,11 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Apps button (tooltip "Apps") — opens apps pane (VS Code Tunnel and SSH are managed as apps inside this pane)
 - Upload button (tooltip) — opens upload modal
 - Download button (tooltip) — downloads workspace as .tar.gz
+- Export button (tooltip "Export worker", icon `i-lucide-package`) — visible when running or stopped; downloads a full worker export bundle (see §28)
+
+### 4.2a Action row layout
+- All action buttons are **left-aligned** (no right-side spacer) and organised into logical groups separated by thin vertical divider lines: **views** (terminal/editor/desktop/apps) | **workspace** (upload/download) | **data** (export) | **lifecycle** (settings/restart-or-stop/rebuild) | **destructive** (archive/remove). Views + workspace groups appear only when running; export appears when running or stopped; lifecycle + destructive are always present (no dangling leading/trailing dividers).
+- The row (`.card-actions`) is a single non-wrapping flex strip with `overflow-x: auto` and a hidden scrollbar; when the sidebar/card is too narrow it scrolls horizontally. A vertical mouse-wheel over the row scrolls it horizontally.
 
 ### 4.3 Action Buttons
 - "Stop" — visible when running, stops the container
@@ -275,6 +287,8 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 - Create new repo from dropdown (public or private)
 - Branch selector (auto-loaded from GitHub API, shows default branch as placeholder)
 - Without token: plain text URL input + plain branch input
+- The searchable dropdown lights up **immediately** after a GitHub token is saved in the Account modal — `useGitProviders()` is a refreshable singleton whose `refresh()` is called on a successful env-vars save, so the `tokenConfigured` gate no longer stays stale until a full page reload (regression fix).
+- When a token is set but the GitHub request fails (bad token, missing scopes, rate limit), the dropdown surfaces the error inline (red row with an alert icon) via `githubReposError`, instead of showing a silently-empty list.
 
 ### 6.4 Actions
 - "Create" button — validates, creates container, auto-opens terminal tab, closes modal, resets form
@@ -489,6 +503,8 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 - Refresh button (spinning icon while refreshing, disabled during refresh)
 - Section collapse/expand
 - Timestamps update every 30 seconds
+
+> There is no whole-host/system metrics card — host CPU/RAM/disk are inherently OS- and runtime-dependent, so only per-worker metrics are surfaced (see §4.1b), computed entirely through the Docker API.
 
 ---
 
@@ -748,6 +764,9 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/containers/:id/logs` — logs with optional ?tail=N (default 200, max 10000)
 - `GET /api/containers/:id/workspace` — download workspace .tar.gz
 - `POST /api/containers/:id/workspace` — upload files (multipart, path traversal protection)
+- `GET /api/containers/:id/metrics` — single worker's live resource metrics (zeroed snapshot when not running / not yet sampled). Ownership-checked (`requireContainerAccess`): 401 unauth, 403 cross-user, 404 unknown id.
+- `GET /api/containers/:id/export` — stream a worker export bundle (`.tar`). `?includeRootfs=` (default `true`) toggles the `docker export` filesystem snapshot. 401/403/404 as above; the worker must be running or stopped. See §28.
+- `POST /api/containers/import` — restore a worker from an export bundle (raw `.tar` request body, `Content-Type: application/x-tar`). `?displayName=` overrides the restored label. Returns 201 + the new `ContainerInfo` (fresh UUID id). 400 on an invalid bundle, 401 unauth. See §28.
 - `GET /api/containers/:id/desktop/status` — desktop service status
 - `GET /api/containers/:id/editor/status` — editor service status
 - VS Code tunnel and SSH are managed through the generic apps endpoints below (`appType='vscode'` / `appType='ssh'`); no dedicated routes exist for them.
@@ -830,8 +849,14 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/usage` — agent usage status (per-agent auth type, windows, timestamps)
 - `POST /api/usage/refresh` — trigger immediate refresh
 
+### 24.13a Resource Metrics (per-worker, via the Docker API)
+- There are NO system/host metrics endpoints — host metrics are OS/runtime-dependent and were removed deliberately. Only per-worker metrics exist, all sourced from the Docker API.
+- `GET /api/worker-metrics` — `{ workers: WorkerMetrics[] }` for every running worker the caller owns (admins see all). A worker appears after the next ~3s sample tick. Auth-gated (401 unauth).
+- `POST /api/worker-metrics/refresh` — force an immediate re-sample (cpu/mem/net + disk) and return the same shape. Auth-gated.
+- `GET /api/containers/:id/metrics` — a single worker's `WorkerMetrics` (see §24.2). `WorkerMetrics` = `{ workerId, containerName, displayName, status, cpuUtilization (0-100 of host, from docker stats), memoryUsedBytes, memoryLimitBytes, memoryUtilization, diskUsedBytes (writable layer SizeRw + du of /workspace + agent data; 60s cadence), netRx/TxBytesPerSec, blkRead/WriteBytesPerSec, lastChecked, error? }`.
+
 ### 24.14 GitHub
-- `GET /api/github/repos` — list repos + orgs
+- `GET /api/github/repos` — list repos + orgs. `{ repos, tokenConfigured, username, orgs, error? }`. No token → `tokenConfigured:false`, empty repos. A configured-but-failing token (bad/missing scopes/rate-limited/network) → `tokenConfigured:true` **with** an `error` string (no longer masquerades as no-token, which previously hid the cause and left the autocomplete silently empty).
 - `POST /api/github/repos` — create repo (name, owner, private)
 - `GET /api/github/repos/:owner/:repo/branches` — list branches + default
 
@@ -942,3 +967,21 @@ The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/ap
 - Git identity survives rebuild and archive/unarchive automatically (re-resolved from `userId` and re-passed in WORKER JSON), and always reflects the user's current profile
 - No per-agent git wrapper — agent CLIs add `Co-authored-by` trailers to their commits for attribution
 - No `/usr/local/bin/git` wrapper installed — `git` resolves to `/usr/bin/git` directly
+
+---
+
+## 28. Worker Export / Import
+
+### 28.1 Export
+- The worker card's **Export** button (running or stopped) downloads a single `.tar` bundle (`<displayName>-worker-export.tar`) via `GET /api/containers/:id/export`.
+- Bundle layout (outer uncompressed tar): `manifest.json` + `workspace.tar.gz` + `agents.tar.gz`, and (when `includeRootfs` is true — the default) `rootfs.tar.gz` (a `docker export` of the container filesystem, gzipped).
+- The manifest embeds the worker's own config (displayName, repos, mounts, initScript), the **full environment definition** (so it restores on another machine), and the worker's port + domain mappings (stripped of identity).
+- Per-user OAuth credential files (`.claude/.credentials.json`, `.codex/auth.json`, `.gemini/oauth_creds.json`) are **stripped** from `agents.tar.gz` — an export never carries another user's tokens.
+- Validation: 401 unauth, 403 cross-user, 404 unknown worker; the worker must be running or stopped (archived workers have no container to export).
+
+### 28.2 Import
+- The sidebar **Import worker** button opens the Import Worker modal: a file picker for the `.tar` bundle (`data-testid="import-file"`), an optional Display name (`data-testid="import-name"`), and an **Import** button (`data-testid="import-submit"`, disabled until a file is chosen).
+- Import streams the bundle as the raw request body to `POST /api/containers/import` (no multipart buffering — bundles can be multi-GB), creates a **brand-new worker** (fresh UUID, `containerName = agentor-worker-<id>`), and on success opens a terminal tab for it.
+- Restore steps: resolve/create the environment (built-in reused by id; a user's same-named env reused; otherwise the embedded definition is recreated as a new custom env) → import `rootfs.tar.gz` into a per-worker image (`agentor-import-<id>`) when present, replicating the standard image's entrypoint/env so it boots — **falls back to the standard worker image if the rootfs import fails** → create the container stopped → restore the workspace + agent-data volumes via `putArchive` → start → recreate port/domain mappings (skipping conflicts and base domains not configured on this machine).
+- A worker restored with a captured filesystem persists its per-worker image link (`importedImage` on the WorkerRecord) so the rootfs survives rebuild/unarchive; the image is removed on permanent delete.
+- Validation: 400 on an invalid/garbage bundle, 401 unauth. The displayName override (`?displayName=`) sets the restored worker's label.

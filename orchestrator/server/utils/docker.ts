@@ -34,6 +34,37 @@ export interface WorkerJsonPayload {
   gitEmail: string;
 }
 
+/** Runtime image config replicated onto a container created from an *imported*
+ * image (`docker import` strips all config), so it boots like the standard
+ * worker image. Sourced from the standard image's own config at import time. */
+export interface ImageConfigOverride {
+  Entrypoint?: string[];
+  Cmd?: string[];
+  WorkingDir?: string;
+  User?: string;
+  Env?: string[];
+}
+
+/** Subset of the Docker container stats payload the resource monitor reads. */
+export interface RawContainerStats {
+  cpu_stats: {
+    cpu_usage: { total_usage: number; percpu_usage?: number[] };
+    system_cpu_usage?: number;
+    online_cpus?: number;
+  };
+  precpu_stats: {
+    cpu_usage: { total_usage: number };
+    system_cpu_usage?: number;
+  };
+  memory_stats: {
+    usage?: number;
+    limit?: number;
+    stats?: { inactive_file?: number; cache?: number };
+  };
+  networks?: Record<string, { rx_bytes: number; tx_bytes: number }>;
+  blkio_stats?: { io_service_bytes_recursive?: { op: string; value: number }[] };
+}
+
 const MANAGED_LABEL = 'agentor.managed';
 /** The worker's UUID `id` — the only identifying label on a worker container.
  * Owner + config live in the WorkerStore record, not in labels. */
@@ -83,8 +114,21 @@ export class DockerService {
     /** Per-user env vars (agent API keys, GitHub token, custom). Already
      * resolved against the worker owner's account by the container manager. */
     userEnv: UserEnvVars;
+    /** Image to run. Defaults to the standard worker image; set to a per-worker
+     * imported image (from `docker import`) for restored workers. */
+    image?: string;
+    /** When false, the container is created but not started (used by import so
+     * the volumes can be populated before the entrypoint runs). Defaults to true. */
+    start?: boolean;
+    /** Runtime config to apply when running an imported image (which has no
+     * baked entrypoint/env). Ignored for the standard image. */
+    imageConfig?: ImageConfigOverride;
   }): Promise<Docker.Container> {
     const env: string[] = [];
+
+    // When running an imported image (no baked config), seed the base env
+    // (PATH, LANG, …) from the original image so binaries resolve.
+    if (opts.imageConfig?.Env?.length) env.push(...opts.imageConfig.Env);
 
     // 4 structured JSON env vars
     env.push(`ENVIRONMENT=${JSON.stringify(opts.environmentJson)}`);
@@ -129,7 +173,7 @@ export class DockerService {
       binds.push(...opts.credentialBinds);
     }
 
-    const image = this.config.workerImagePrefix + this.config.workerImage;
+    const image = opts.image || this.config.workerImagePrefix + this.config.workerImage;
     await this.ensureImage(image);
 
     // Add CAP_NET_ADMIN when network restrictions are needed (for iptables)
@@ -138,6 +182,7 @@ export class DockerService {
     const needsNetAdmin = networkMode && networkMode !== 'full';
     const capAdd = needsNetAdmin && !opts.dockerEnabled ? ['NET_ADMIN'] : [];
 
+    const cfg = opts.imageConfig;
     const container = await this.docker.createContainer({
       Image: image,
       name: opts.containerName,
@@ -147,6 +192,12 @@ export class DockerService {
       Env: env,
       Tty: true,
       OpenStdin: true,
+      // Imported images carry no config — replicate the standard image's
+      // entrypoint/cmd/workdir/user so the restored worker boots identically.
+      ...(cfg?.Entrypoint ? { Entrypoint: cfg.Entrypoint } : {}),
+      ...(cfg?.Cmd ? { Cmd: cfg.Cmd } : {}),
+      ...(cfg?.WorkingDir ? { WorkingDir: cfg.WorkingDir } : {}),
+      ...(cfg?.User ? { User: cfg.User } : {}),
       Labels: {
         [MANAGED_LABEL]: 'true',
         [ID_LABEL]: opts.id,
@@ -164,8 +215,8 @@ export class DockerService {
       },
     });
 
-    await container.start();
-    useLogger().info(`[docker] created container ${opts.containerName}`);
+    if (opts.start !== false) await container.start();
+    useLogger().info(`[docker] created container ${opts.containerName}${opts.image ? ` (image ${opts.image})` : ''}`);
     return container;
   }
 
@@ -398,6 +449,125 @@ export class DockerService {
   async getWorkspaceArchive(containerId: string): Promise<NodeJS.ReadableStream> {
     const container = this.docker.getContainer(containerId);
     return container.getArchive({ path: '/workspace' });
+  }
+
+  // --- Generic archive + export/import (worker export/import) ---
+
+  /** Stream a tar of an arbitrary path inside a container. Entries are prefixed
+   * with the basename of `path` (e.g. `/workspace` → `workspace/...`). */
+  async getArchive(containerId: string, path: string): Promise<NodeJS.ReadableStream> {
+    return this.docker.getContainer(containerId).getArchive({ path });
+  }
+
+  /** Extract a tar (buffer or stream; gzip auto-detected) into `path` inside a
+   * container. `path` is the directory the tar entries are written under. */
+  async putArchive(containerId: string, src: Buffer | NodeJS.ReadableStream, path: string): Promise<void> {
+    await this.docker.getContainer(containerId).putArchive(src, { path });
+  }
+
+  /** Stream the full container filesystem as a tar (`docker export`). Excludes
+   * mounted volumes — those are exported separately via `getArchive`. */
+  async exportContainer(containerId: string): Promise<NodeJS.ReadableStream> {
+    return this.docker.getContainer(containerId).export();
+  }
+
+  /** Create a local image from a filesystem tar (`docker import`; gzip auto-
+   * detected). Returns once the import progress stream completes. */
+  async importImage(src: Buffer | NodeJS.ReadableStream, repo: string, tag: string): Promise<string> {
+    const stream = (await this.docker.importImage(src as never, { repo, tag })) as NodeJS.ReadableStream;
+    await new Promise<void>((resolve, reject) => {
+      this.docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()));
+    });
+    return `${repo}:${tag}`;
+  }
+
+  /** Read the runtime config (entrypoint/cmd/workdir/user/env) of an image. */
+  async inspectImageConfig(image: string): Promise<ImageConfigOverride> {
+    const info = await this.docker.getImage(image).inspect();
+    const c = info.Config ?? {};
+    return {
+      Entrypoint: c.Entrypoint as string[] | undefined,
+      Cmd: c.Cmd as string[] | undefined,
+      WorkingDir: c.WorkingDir,
+      User: c.User,
+      Env: c.Env as string[] | undefined,
+    };
+  }
+
+  async imageExists(image: string): Promise<boolean> {
+    try {
+      await this.docker.getImage(image).inspect();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async removeImage(image: string): Promise<void> {
+    try {
+      await this.docker.getImage(image).remove({ force: true });
+      useLogger().debug(`[docker] removed image ${image}`);
+    } catch {
+      // Image may not exist or still be in use — ignore.
+    }
+  }
+
+  // --- Resource metrics ---
+
+  /** One-shot container stats snapshot (cpu/memory/network/blkio). The Docker
+   * engine includes `precpu_stats` so an instantaneous CPU% can be derived from
+   * a single call; network/disk rates still need two samples. */
+  async getContainerStats(containerId: string): Promise<RawContainerStats> {
+    const container = this.docker.getContainer(containerId);
+    // dockerode types `stats` as a stream; with `{ stream: false }` it resolves
+    // with the parsed JSON object instead.
+    return (await container.stats({ stream: false })) as unknown as RawContainerStats;
+  }
+
+  /** Total disk (bytes) a worker consumes: the container's writable layer (files
+   * written anywhere in the container fs outside volumes — apt installs, /tmp,
+   * the home dir outside .agent-data, etc.) plus its `/workspace` and agent-data
+   * volumes. The writable layer comes from Docker's computed `SizeRw` (excludes
+   * the read-only base image); the volumes are `du`'d inside the container so it
+   * works regardless of storage mode. Excludes the Docker-in-Docker volume
+   * (the inner image store — a separate concern). Any failure yields 0. */
+  async getWorkerDiskUsageBytes(containerId: string): Promise<number> {
+    const container = this.docker.getContainer(containerId);
+
+    // Writable layer (the worker's changes to its own filesystem, outside the
+    // base image and outside the mounted volumes).
+    let writableLayer = 0;
+    try {
+      // @types/dockerode omits the `size` inspect option (the Docker API supports
+      // `?size=true`). Cast the ARGUMENT (not the method — storing the method in a
+      // variable would detach its `this` binding and make the call throw) so
+      // `container.inspect(...)` still runs as a method and returns SizeRw.
+      const info = (await container.inspect({ size: true } as unknown as Docker.ContainerInspectOptions)) as unknown as { SizeRw?: number };
+      if (typeof info.SizeRw === 'number' && info.SizeRw > 0) writableLayer = info.SizeRw;
+    } catch {
+      // size may be unavailable on some drivers — fall back to volumes-only.
+    }
+
+    // Worker data volumes (mode-agnostic — du runs at the mount points).
+    let volumes = 0;
+    try {
+      const dirExec = await container.exec({
+        // No shell: `timeout` runs `du` directly; the `-c` total line is parsed in JS.
+        Cmd: ['timeout', '20', 'du', '-skc', '/workspace', '/home/agent/.agent-data'],
+        AttachStdout: true,
+        AttachStderr: true,
+      });
+      const stream = await dirExec.start({ Detach: false, Tty: true });
+      const out = await this.streamToString(stream);
+      const lines = out.trim().split(/\r?\n/).filter(Boolean);
+      const totalLine = [...lines].reverse().find((l) => /\btotal\b/.test(l)) ?? lines[lines.length - 1] ?? '';
+      const kb = parseInt(totalLine.trim().split(/\s+/)[0] || '0', 10);
+      if (Number.isFinite(kb) && kb > 0) volumes = kb * 1024;
+    } catch {
+      // keep volumes at 0
+    }
+
+    return writableLayer + volumes;
   }
 
   // --- Helpers ---

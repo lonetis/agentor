@@ -506,4 +506,42 @@ export class ApiClient {
     const res = await this.request.post(`${BASE_URL}/api/domain-mappings/batch`, { data });
     return { status: res.status(), body: await res.json() };
   }
+
+  // ─── Resource Metrics (per-worker, via the Docker API) ─────────
+  async getWorkerMetrics() {
+    const res = await this.request.get(`${BASE_URL}/api/worker-metrics`);
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  async refreshWorkerMetrics() {
+    const res = await this.request.post(`${BASE_URL}/api/worker-metrics/refresh`);
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  async getContainerMetrics(id: string) {
+    const res = await this.request.get(`${BASE_URL}/api/containers/${id}/metrics`);
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  // ─── Worker Export / Import ────────────────────────────────────
+  /** Download a worker export bundle. Returns the raw `.tar` body + headers.
+   * `includeRootfs` defaults to false in tests to keep bundles small/fast. */
+  async exportWorker(id: string, includeRootfs = false) {
+    const res = await this.request.get(
+      `${BASE_URL}/api/containers/${id}/export?includeRootfs=${includeRootfs ? 'true' : 'false'}`,
+    );
+    return { status: res.status(), headers: res.headers(), body: await res.body() };
+  }
+
+  /** Restore a worker from an export bundle (raw `.tar` body). */
+  async importWorker(bundle: Buffer, displayName?: string) {
+    const url = displayName
+      ? `${BASE_URL}/api/containers/import?displayName=${encodeURIComponent(displayName)}`
+      : `${BASE_URL}/api/containers/import`;
+    const res = await this.request.post(url, {
+      headers: { 'Content-Type': 'application/x-tar' },
+      data: bundle,
+    });
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
 }

@@ -9,6 +9,7 @@ import { EnvironmentStore } from './environments';
 import { WorkerStore } from './worker-store';
 import { UpdateChecker } from './update-checker';
 import { UsageChecker } from './usage-checker';
+import { ResourceMonitor } from './resource-monitor';
 import { UserCredentialManager } from './user-credentials';
 import { UserEnvVarStore } from './user-env-store';
 import { OrphanSweeper } from './orphan-sweeper';
@@ -50,6 +51,9 @@ export const useEnvironmentStore = singleton(() => new EnvironmentStore(useConfi
 export const useWorkerStore = singleton(() => new WorkerStore(useConfig().dataDir));
 export const useUpdateChecker = singleton(() => new UpdateChecker(useConfig()));
 export const useUsageChecker = singleton(() => new UsageChecker(useConfig()));
+export const useResourceMonitor = singleton(
+  () => new ResourceMonitor(useDockerService(), useContainerManager())
+);
 export const useUserCredentialManager = singleton(
   () => new UserCredentialManager(useStorageManager())
 );

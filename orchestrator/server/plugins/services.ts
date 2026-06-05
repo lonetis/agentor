@@ -1,4 +1,4 @@
-import { useDockerService, useContainerManager, usePortMappingStore, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useUserCredentialManager, useUserEnvStore, useOrphanSweeper, useStorageManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
+import { useDockerService, useContainerManager, usePortMappingStore, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useResourceMonitor, useUserCredentialManager, useUserEnvStore, useOrphanSweeper, useStorageManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
 import { loadBuiltInCapabilities, loadBuiltInInstructions, loadBuiltInInitScripts, loadBuiltInEnvironments } from '../utils/built-in-content';
 import { useAuth, migrateAuth } from '../utils/auth';
 
@@ -101,7 +101,9 @@ export default defineNitroPlugin(async () => {
   const usageChecker = useUsageChecker();
   usageChecker.setUserEnvStore(userEnvStore);
   usageChecker.setCredentialManager(userCredentialManager);
-  await Promise.all([updateChecker.init(), usageChecker.init()]);
+  // ResourceMonitor enumerates running workers, so init it after reconcile.
+  const resourceMonitor = useResourceMonitor();
+  await Promise.all([updateChecker.init(), usageChecker.init(), resourceMonitor.init()]);
 
   // Start the orphan sweeper — on a 10-minute interval, prunes per-user
   // data for users that no longer exist in the auth DB. Uses a timer rather

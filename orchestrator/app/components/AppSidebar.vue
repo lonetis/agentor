@@ -10,6 +10,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   newWorker: [];
+  importWorker: [];
   manageEnvironments: [];
   manageCapabilities: [];
   manageInstructions: [];
@@ -23,6 +24,7 @@ const emit = defineEmits<{
   rebuildContainer: [id: string];
   removeContainer: [id: string];
   archiveContainer: [id: string];
+  exportContainer: [id: string];
   updateContainer: [id: string, patch: UpdateContainerSettingsRequest, rebuild: boolean];
   downloadWorkspace: [id: string];
   unarchiveWorker: [name: string];
@@ -38,8 +40,13 @@ const { user: currentUser, isAdmin, signOut } = useAuth();
 
 const { state: uiState, setActiveTab } = useUiState();
 const { refreshing: usageRefreshing, refresh: usageRefresh } = useUsage();
+const { workers: workerMetrics } = useWorkerMetrics();
 const { mappings: portMappings } = usePortMappings();
 const { mappings: domainMappings } = useDomainMappings();
+
+function metricFor(containerId: string) {
+  return workerMetrics.value.find((m) => m.workerId === containerId);
+}
 
 const { data: domainMapperStatus } = useFetch<{ enabled: boolean }>('/api/domain-mapper/status', {
   default: () => ({ enabled: false }),
@@ -229,9 +236,20 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         </div>
       </div>
       <p class="text-xs text-gray-500 mt-0.5">Orchestrator</p>
-      <UButton class="w-full mt-3" @click="emit('newWorker')">
-        + New Worker
-      </UButton>
+      <div class="flex gap-2 mt-3">
+        <UButton class="flex-1" @click="emit('newWorker')">
+          + New Worker
+        </UButton>
+        <UTooltip text="Import worker">
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-import"
+            aria-label="Import worker"
+            @click="emit('importWorker')"
+          />
+        </UTooltip>
+      </div>
       <UButton class="w-full mt-2" color="neutral" variant="outline" size="sm" @click="emit('manageEnvironments')">
         Environments
       </UButton>
@@ -313,6 +331,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             :key="c.id"
             :container="c"
             :is-active="isContainerActive(c.id, tabs, activeTabId)"
+            :metric="metricFor(c.id)"
             @open-terminal="(cid) => emit('openTerminal', cid)"
             @open-desktop="(cid) => emit('openDesktop', cid)"
             @open-apps="(cid) => emit('openApps', cid)"
@@ -322,6 +341,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             @rebuild="(id) => emit('rebuildContainer', id)"
             @remove="(id) => emit('removeContainer', id)"
             @archive="(id) => emit('archiveContainer', id)"
+            @export="(id) => emit('exportContainer', id)"
             @update="(id, patch, rebuild) => emit('updateContainer', id, patch, rebuild)"
             @download-workspace="(id) => emit('downloadWorkspace', id)"
           />

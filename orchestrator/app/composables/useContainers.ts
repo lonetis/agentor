@@ -53,6 +53,19 @@ export function useContainers() {
     return result;
   }
 
+  /** Restore a worker from an exported bundle. The bundle is streamed as the raw
+   * request body (`application/x-tar`) so multi-GB imports never buffer. */
+  async function importContainer(file: File, displayName?: string): Promise<ContainerInfo> {
+    const query = displayName ? `?displayName=${encodeURIComponent(displayName)}` : '';
+    const result = await $fetch<ContainerInfo>(`/api/containers/import${query}`, {
+      method: 'POST',
+      body: file,
+      headers: { 'Content-Type': 'application/x-tar' },
+    });
+    await refresh();
+    return result;
+  }
+
   return {
     containers,
     refresh,
@@ -63,5 +76,6 @@ export function useContainers() {
     removeContainer,
     renameContainer,
     updateContainerSettings,
+    importContainer,
   };
 }

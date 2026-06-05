@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import type { ContainerInfo, UpdateContainerSettingsRequest } from '~/types';
+import type { ContainerInfo, UpdateContainerSettingsRequest, WorkerMetrics } from '~/types';
 
 const props = defineProps<{
   container: ContainerInfo;
   isActive: boolean;
+  /** Live resource metrics for this worker (polled once in the sidebar). */
+  metric?: WorkerMetrics | null;
 }>();
 
 const emit = defineEmits<{
@@ -16,6 +18,7 @@ const emit = defineEmits<{
   rebuild: [id: string];
   remove: [id: string];
   archive: [id: string];
+  export: [id: string];
   update: [id: string, patch: UpdateContainerSettingsRequest, rebuild: boolean];
   downloadWorkspace: [id: string];
 }>();
@@ -45,7 +48,26 @@ const shortImageId = computed(() => {
 });
 
 const isRunning = computed(() => props.container.status === 'running');
+const isStopped = computed(() => props.container.status === 'stopped');
 
+function metricColor(p: number) {
+  return p >= 80
+    ? 'text-red-500 dark:text-red-400'
+    : p >= 50
+      ? 'text-amber-500 dark:text-amber-400'
+      : 'text-gray-500 dark:text-gray-400';
+}
+
+// Convert vertical wheel to horizontal scroll on the action row so mouse users
+// can reach buttons that overflow when the card/sidebar is narrow.
+const actionsRef = ref<HTMLElement>();
+function onActionsWheel(e: WheelEvent) {
+  const el = actionsRef.value;
+  if (!el || el.scrollWidth <= el.clientWidth) return;
+  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+  el.scrollLeft += e.deltaY;
+  e.preventDefault();
+}
 </script>
 
 <template>
@@ -79,130 +101,107 @@ const isRunning = computed(() => props.container.status === 'running');
       </div>
     </div>
 
-    <!-- All buttons in one row -->
-    <div class="flex items-center flex-wrap gap-1.5">
+    <!-- Per-worker live metrics -->
+    <div
+      v-if="isRunning && metric"
+      class="flex items-center gap-3 mb-2 text-[10px] font-mono"
+      data-testid="worker-metrics"
+    >
+      <span
+        class="flex items-center gap-1"
+        :class="metricColor(metric.cpuUtilization)"
+        :title="`CPU ${metric.cpuUtilization.toFixed(1)}% of host`"
+      >
+        <UIcon name="i-lucide-cpu" class="size-3" />{{ Math.round(metric.cpuUtilization) }}%
+      </span>
+      <span
+        class="flex items-center gap-1"
+        :class="metricColor(metric.memoryUtilization)"
+        :title="`Memory used${metric.memoryLimitBytes ? ` of ${formatBytes(metric.memoryLimitBytes)}` : ''}`"
+      >
+        <UIcon name="i-lucide-memory-stick" class="size-3" />{{ formatBytes(metric.memoryUsedBytes) }}
+      </span>
+      <span class="flex items-center gap-1 text-gray-500 dark:text-gray-400" title="Disk used (container filesystem + /workspace + agent data)">
+        <UIcon name="i-lucide-hard-drive" class="size-3" />{{ formatBytes(metric.diskUsedBytes) }}
+      </span>
+      <span class="flex items-center gap-1 text-gray-400 dark:text-gray-500" title="Network throughput (down / up)">
+        <UIcon name="i-lucide-arrow-down" class="size-3" />{{ formatRate(metric.netRxBytesPerSec) }}
+        <UIcon name="i-lucide-arrow-up" class="size-3 ml-0.5" />{{ formatRate(metric.netTxBytesPerSec) }}
+      </span>
+    </div>
+
+    <!-- Actions: all left-aligned, grouped with dividers, scrollable when narrow -->
+    <div ref="actionsRef" class="card-actions flex items-center gap-1.5" @wheel="onActionsWheel">
+      <!-- Views (running only) -->
       <template v-if="isRunning">
-        <!-- Views: terminal, editor, desktop, apps -->
-        <div class="flex items-center gap-0.5">
+        <div class="flex items-center gap-0.5 flex-shrink-0">
           <UTooltip text="Terminal">
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-terminal"
-              @click="emit('openTerminal', container.id)"
-            />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-terminal" @click="emit('openTerminal', container.id)" />
           </UTooltip>
           <UTooltip text="Editor">
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-code"
-              @click="emit('openEditor', container.id)"
-            />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-code" @click="emit('openEditor', container.id)" />
           </UTooltip>
           <UTooltip text="Desktop">
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-monitor"
-              @click="emit('openDesktop', container.id)"
-            />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-monitor" @click="emit('openDesktop', container.id)" />
           </UTooltip>
           <UTooltip text="Apps">
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-layout-grid"
-              @click="emit('openApps', container.id)"
-            />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-layout-grid" @click="emit('openApps', container.id)" />
           </UTooltip>
         </div>
 
-        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
+        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
 
-        <!-- Workspace -->
-        <div class="flex items-center gap-0.5">
+        <!-- Workspace (running only) -->
+        <div class="flex items-center gap-0.5 flex-shrink-0">
           <UTooltip text="Upload to Workspace">
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-upload"
-              @click="showUpload = true"
-            />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-upload" @click="showUpload = true" />
           </UTooltip>
           <UTooltip text="Download Workspace">
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-download"
-              @click="emit('downloadWorkspace', container.id)"
-            />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-download" @click="emit('downloadWorkspace', container.id)" />
           </UTooltip>
         </div>
+
+        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
       </template>
 
-      <div class="flex-1" />
+      <!-- Export (running or stopped) -->
+      <template v-if="isRunning || isStopped">
+        <div class="flex items-center gap-0.5 flex-shrink-0">
+          <UTooltip text="Export worker">
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-package" @click="emit('export', container.id)" />
+          </UTooltip>
+        </div>
 
-      <UTooltip text="Settings">
-        <UButton
-          size="xs"
-          color="neutral"
-          variant="subtle"
-          icon="i-lucide-pencil"
-          @click="showDetail = true"
-        />
-      </UTooltip>
-      <UTooltip v-if="container.status === 'stopped'" text="Restart">
-        <UButton
-          size="xs"
-          color="success"
-          variant="subtle"
-          icon="i-lucide-refresh-cw"
-          @click="emit('restart', container.id)"
-        />
-      </UTooltip>
-      <UTooltip v-if="isRunning" text="Stop">
-        <UButton
-          size="xs"
-          color="neutral"
-          variant="subtle"
-          icon="i-lucide-square"
-          @click="emit('stop', container.id)"
-        />
-      </UTooltip>
-      <UTooltip text="Rebuild">
-        <UButton
-          size="xs"
-          color="info"
-          variant="subtle"
-          icon="i-lucide-hammer"
-          @click="emit('rebuild', container.id)"
-        />
-      </UTooltip>
-      <UTooltip text="Archive">
-        <UButton
-          size="xs"
-          color="warning"
-          variant="subtle"
-          icon="i-lucide-archive"
-          @click="emit('archive', container.id)"
-        />
-      </UTooltip>
-      <UTooltip text="Remove">
-        <UButton
-          size="xs"
-          color="error"
-          variant="subtle"
-          icon="i-lucide-trash-2"
-          @click="emit('remove', container.id)"
-        />
-      </UTooltip>
+        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
+      </template>
+
+      <!-- Lifecycle -->
+      <div class="flex items-center gap-0.5 flex-shrink-0">
+        <UTooltip text="Settings">
+          <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-pencil" @click="showDetail = true" />
+        </UTooltip>
+        <UTooltip v-if="isStopped" text="Restart">
+          <UButton size="xs" color="success" variant="subtle" icon="i-lucide-refresh-cw" @click="emit('restart', container.id)" />
+        </UTooltip>
+        <UTooltip v-if="isRunning" text="Stop">
+          <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-square" @click="emit('stop', container.id)" />
+        </UTooltip>
+        <UTooltip text="Rebuild">
+          <UButton size="xs" color="info" variant="subtle" icon="i-lucide-hammer" @click="emit('rebuild', container.id)" />
+        </UTooltip>
+      </div>
+
+      <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
+
+      <!-- Destructive -->
+      <div class="flex items-center gap-0.5 flex-shrink-0">
+        <UTooltip text="Archive">
+          <UButton size="xs" color="warning" variant="subtle" icon="i-lucide-archive" @click="emit('archive', container.id)" />
+        </UTooltip>
+        <UTooltip text="Remove">
+          <UButton size="xs" color="error" variant="subtle" icon="i-lucide-trash-2" @click="emit('remove', container.id)" />
+        </UTooltip>
+      </div>
     </div>
 
     <UploadModal
@@ -220,3 +219,15 @@ const isRunning = computed(() => props.container.status === 'running');
     />
   </div>
 </template>
+
+<style scoped>
+/* Horizontal scroll for the action row when it overflows a narrow card, with
+   the scrollbar hidden (scroll via trackpad or wheel — see onActionsWheel). */
+.card-actions {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.card-actions::-webkit-scrollbar {
+  display: none;
+}
+</style>
