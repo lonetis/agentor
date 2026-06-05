@@ -83,7 +83,8 @@ export default defineNitroPlugin(async () => {
   // includes BOTH active containers and archived workers (matched by containerName).
   const knownContainerNames = new Set<string>();
   for (const c of containerManager.list()) knownContainerNames.add(c.containerName);
-  for (const w of workerStore.list()) knownContainerNames.add(w.containerName);
+  // Archived workers have no live container — derive their stable name from the id.
+  for (const w of workerStore.list()) knownContainerNames.add(containerManager.buildContainerName(w.id));
 
   const [staleCount, staleDomainCount] = await Promise.all([
     portMappingStore.cleanupStaleContainers(knownContainerNames),

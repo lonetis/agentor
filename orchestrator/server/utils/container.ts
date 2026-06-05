@@ -248,9 +248,7 @@ export class ContainerManager {
       // The worker UUID `id` is the only identifying label; resolve the
       // authoritative record (with userId + config) from the WorkerStore.
       const labelId = labels[WORKER_ID_LABEL] ?? '';
-      const worker = labelId
-        ? this.workerStore?.findById(labelId)
-        : this.workerStore?.findByContainerName(containerName);
+      const worker = labelId ? this.workerStore?.findById(labelId) : undefined;
 
       const id = worker?.id ?? labelId ?? dc.Id;
       const now = new Date().toISOString();
@@ -703,6 +701,9 @@ export class ContainerManager {
       throw new Error('Archived worker not found');
     }
 
+    // containerName is derived from the stable UUID `id`, not stored on the record.
+    const containerName = this.buildContainerName(worker.id);
+
     // Re-resolve the environment config LIVE from the FK. If the referenced
     // environment was deleted, fall back to the built-in default.
     let envConfig: ResolvedEnvConfig;
@@ -732,7 +733,7 @@ export class ContainerManager {
     const container = await this.dockerService.createWorkerContainer({
       userId: worker.userId,
       id: worker.id,
-      containerName: worker.containerName,
+      containerName,
       cpuLimit,
       memoryLimit,
       mounts: worker.mounts,
@@ -746,7 +747,7 @@ export class ContainerManager {
       userEnv,
     });
 
-    await this.workerStore.unarchive(worker.userId, worker.id, container.id);
+    await this.workerStore.unarchive(worker.userId, worker.id);
 
     const imageName = this.config.workerImagePrefix + this.config.workerImage;
     const containerInfo: ContainerInfo = {
@@ -755,7 +756,7 @@ export class ContainerManager {
       createdAt: worker.createdAt,
       updatedAt: new Date().toISOString(),
       containerId: container.id,
-      containerName: worker.containerName,
+      containerName,
       displayName: worker.displayName,
       imageName,
       imageId: '',
@@ -771,11 +772,11 @@ export class ContainerManager {
 
     this.containers.set(worker.id, containerInfo);
 
-    await reassignWorkerMappings(worker.containerName);
+    await reassignWorkerMappings(containerName);
 
-    useLogCollector().attach(worker.containerName, container.id, 'worker', worker.displayName).catch(() => {});
+    useLogCollector().attach(containerName, container.id, 'worker', worker.displayName).catch(() => {});
 
-    useLogger().info(`[container] unarchived ${worker.containerName} (${container.id.slice(0, 12)})`);
+    useLogger().info(`[container] unarchived ${containerName} (${container.id.slice(0, 12)})`);
 
     return containerInfo;
   }
@@ -788,12 +789,15 @@ export class ContainerManager {
       throw new Error('Archived worker not found');
     }
 
-    await cleanupWorkerMappings(worker.containerName);
+    // containerName is derived from the stable UUID `id`, not stored on the record.
+    const containerName = this.buildContainerName(worker.id);
+
+    await cleanupWorkerMappings(containerName);
 
     if (this.storageManager) {
-      await this.storageManager.removeWorkerWorkspace(worker.userId, worker.id, worker.containerName);
-      await this.storageManager.removeWorkerDocker(worker.containerName);
-      await this.storageManager.removeWorkerAgents(worker.userId, worker.id, worker.containerName);
+      await this.storageManager.removeWorkerWorkspace(worker.userId, worker.id, containerName);
+      await this.storageManager.removeWorkerDocker(containerName);
+      await this.storageManager.removeWorkerAgents(worker.userId, worker.id, containerName);
     }
     await this.workerStore.delete(worker.userId, worker.id);
   }
@@ -815,23 +819,22 @@ export class ContainerManager {
     }
 
     for (const worker of this.workerStore.listActive()) {
-      if (!activeContainerNames.has(worker.containerName)) {
+      if (!activeContainerNames.has(this.buildContainerName(worker.id))) {
         await this.workerStore.archive(worker.userId, worker.id);
       }
     }
   }
 
+  /** Project the runtime ContainerInfo down to the minimal persisted record —
+   * dropping everything Docker can re-discover (containerId, containerName,
+   * imageName, imageId) and keeping only the worker's identity + config. */
   private containerInfoToWorkerRecord(info: ContainerInfo): WorkerRecord {
     return {
       id: info.id,
       userId: info.userId,
       createdAt: info.createdAt,
       updatedAt: info.updatedAt,
-      containerId: info.containerId,
-      containerName: info.containerName,
       displayName: info.displayName,
-      imageName: info.imageName,
-      imageId: info.imageId,
       status: 'active',
       environmentId: info.environmentId,
       repos: info.repos,
