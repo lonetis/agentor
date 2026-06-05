@@ -144,18 +144,24 @@ test.describe('Archived Workers API', () => {
       await api.deleteArchivedWorker(container.id);
     });
 
-    test('archived worker has imageName or environmentId field', async ({ request }) => {
-      const container = await createWorker(request, { displayName: `ImageField-${Date.now()}` });
+    test('archived worker omits Docker-derived fields (discovered at runtime, not stored)', async ({ request }) => {
+      const container = await createWorker(request, { displayName: `Normalized-${Date.now()}` });
       const api = new ApiClient(request);
       await api.archiveContainer(container.id);
 
       const { body: archived } = await api.listArchived();
       const found = archived.find((w: { id: string }) => w.id === container.id);
       expect(found).toBeTruthy();
-      // Worker should have at least one of imageName or environmentId
-      const hasImage = typeof found.imageName === 'string';
-      const hasEnvId = typeof found.environmentId === 'string';
-      expect(hasImage || hasEnvId).toBe(true);
+      // The slim record keeps the worker's identity, label, and lifecycle state...
+      expect(typeof found.id).toBe('string');
+      expect(typeof found.displayName).toBe('string');
+      expect(found.status).toBe('archived');
+      // ...and omits everything Docker re-discovers at runtime via the agentor.id
+      // label (containerId, containerName, imageName, imageId).
+      expect(found.containerId).toBeUndefined();
+      expect(found.containerName).toBeUndefined();
+      expect(found.imageName).toBeUndefined();
+      expect(found.imageId).toBeUndefined();
 
       await api.deleteArchivedWorker(container.id);
     });

@@ -1,21 +1,23 @@
 import { UserScopedJsonStore } from './user-scoped-store';
 import type { RepoConfig, MountConfig, UserOwnedResource } from '../../shared/types';
 
-/** Persisted worker metadata. `id` (from `UserOwnedResource`) is the worker's
- * stable UUID identity — the store key and the `agentor.id` Docker label. The
- * Docker container is described by `containerId` (changes on rebuild) and
- * `containerName` (`<prefix>-<id>`, stable). Extends `UserOwnedResource`, so it
+/** Persisted worker metadata — intentionally minimal. It stores ONLY what cannot
+ * be discovered from Docker at runtime: the worker's identity, owner, editable
+ * label, lifecycle marker, and the config used to (re)build its container.
+ *
+ * `id` (from `UserOwnedResource`) is the worker's stable UUID identity — the store
+ * key and the `agentor.id` Docker label. Everything describing the live container
+ * (its Docker id, `<prefix>-<id>` name, image name + image id, running/stopped
+ * state) is resolved at runtime in `ContainerManager.sync()` by matching the
+ * `agentor.id` label, never persisted here. Extends `UserOwnedResource`, so it
  * also carries `userId`/`createdAt`/`updatedAt`. */
 export interface WorkerRecord extends UserOwnedResource {
-  /** Current Docker container ID (empty while archived). Changes on every
-   * rebuild/unarchive — never the worker's identity. */
-  containerId: string;
-  /** Globally unique Docker container name — `<prefix>-<id>` (stable). */
-  containerName: string;
   /** Editable, user-facing label. Free-form and not required to be unique. */
   displayName: string;
-  imageName: string;
-  imageId: string;
+  /** Lifecycle marker. `active` = a Docker container exists for this worker;
+   * `archived` = the container was removed but the worker's volumes + config are
+   * kept for unarchiving. (For archived workers the record is the only evidence
+   * the worker exists, since no container remains to discover it from.) */
   status: 'active' | 'archived';
   archivedAt?: string;
   /** Foreign key to the assigned environment — the only environment data stored
@@ -38,10 +40,11 @@ export class WorkerStore extends UserScopedJsonStore<string, WorkerRecord> {
     super(dataDir, 'workers.json', (w) => w.id);
   }
 
-  /** Flat list of every worker across every user, sorted by containerName
-   * (stable global ordering). */
+  /** Flat list of every worker across every user, sorted by the immutable UUID
+   * `id` (stable global ordering — the old containerName sort was equivalent
+   * since containerName is just `<prefix>-<id>`). */
   override list(): WorkerRecord[] {
-    return super.list().sort((a, b) => a.containerName.localeCompare(b.containerName));
+    return super.list().sort((a, b) => a.id.localeCompare(b.id));
   }
 
   override listForUser(userId: string): WorkerRecord[] {
@@ -59,26 +62,21 @@ export class WorkerStore extends UserScopedJsonStore<string, WorkerRecord> {
     return this.list().filter((w) => w.status === 'active');
   }
 
-  /** Find a worker by its UUID `id` across all users. Used when only the worker
-   * id is known (e.g. resolving the `agentor.id` Docker label during reconcile). */
+  /** Find a worker by its UUID `id` across all users. Used to resolve the
+   * `agentor.id` Docker label back to its record (and, since `containerName` is
+   * just `<prefix>-<id>`, to resolve a container name once the prefix is stripped). */
   findById(id: string): WorkerRecord | undefined {
     return this.findWithOwner((w) => w.id === id)?.item;
-  }
-
-  /** Find a worker by its globally unique Docker container name. Used when the
-   * caller only knows the container name (e.g. worker-self API shortcuts or
-   * mapping reassignment). */
-  findByContainerName(containerName: string): WorkerRecord | undefined {
-    return this.findWithOwner((w) => w.containerName === containerName)?.item;
   }
 
   async upsert(worker: WorkerRecord): Promise<void> {
     const isNew = !this.has(worker.userId, worker.id);
     await this.setItem(worker.userId, worker);
+    const label = worker.displayName || worker.id;
     if (isNew) {
-      useLogger().info(`[worker-store] registered worker ${worker.containerName} (status=${worker.status})`);
+      useLogger().info(`[worker-store] registered worker ${label} (status=${worker.status})`);
     } else {
-      useLogger().debug(`[worker-store] updated worker ${worker.containerName}`);
+      useLogger().debug(`[worker-store] updated worker ${label}`);
     }
   }
 
@@ -91,23 +89,21 @@ export class WorkerStore extends UserScopedJsonStore<string, WorkerRecord> {
     worker.status = 'archived';
     worker.archivedAt = new Date().toISOString();
     worker.updatedAt = worker.archivedAt;
-    worker.containerId = '';
     await this.setItem(userId, worker);
-    useLogger().info(`[worker-store] archived worker ${worker.containerName}`);
+    useLogger().info(`[worker-store] archived worker ${worker.displayName || worker.id}`);
   }
 
-  async unarchive(userId: string, id: string, newContainerId: string): Promise<void> {
+  async unarchive(userId: string, id: string): Promise<void> {
     const worker = this.get(userId, id);
     if (!worker) {
       useLogger().warn(`[worker-store] unarchive failed — worker not found: ${userId}/${id}`);
       throw new Error(`Worker not found: ${id}`);
     }
     worker.status = 'active';
-    worker.containerId = newContainerId;
     worker.archivedAt = undefined;
     worker.updatedAt = new Date().toISOString();
     await this.setItem(userId, worker);
-    useLogger().info(`[worker-store] unarchived worker ${worker.containerName} (new container=${newContainerId.slice(0, 12)})`);
+    useLogger().info(`[worker-store] unarchived worker ${worker.displayName || worker.id}`);
   }
 
   async delete(userId: string, id: string): Promise<void> {

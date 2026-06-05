@@ -22,17 +22,19 @@ defineRouteMeta({
         schemas: {
           ArchivedWorker: {
             type: 'object',
+            description:
+              'Minimal persisted worker record. Fields describing the live Docker container (containerId, containerName, imageName, imageId) are NOT stored — they are discovered at runtime via the agentor.id label and only present on the live ContainerInfo.',
             properties: {
               id: { type: 'string', description: 'Worker UUID — used to unarchive / delete' },
               userId: { type: 'string' },
-              containerName: { type: 'string' },
               displayName: { type: 'string' },
-              imageName: { type: 'string' },
-              imageId: { type: 'string' },
+              status: { type: 'string', enum: ['active', 'archived'] },
               createdAt: { type: 'string', format: 'date-time' },
               updatedAt: { type: 'string', format: 'date-time' },
               archivedAt: { type: 'string', format: 'date-time' },
               repos: { type: 'array', items: { $ref: '#/components/schemas/RepoConfig' } },
+              mounts: { type: 'array', items: { $ref: '#/components/schemas/MountConfig' } },
+              initScript: { type: 'string' },
               environmentId: { type: 'string' },
             },
           },

@@ -141,14 +141,15 @@ export interface OrchestratorEnvVar {
   configured: boolean;
 }
 
+/** Mirrors the server's slim `WorkerRecord`. Fields describing the live Docker
+ * container (containerId, containerName, imageName, imageId) are NOT persisted —
+ * they are discovered at runtime and only appear on `ContainerInfo`. */
 export interface ArchivedWorker {
   /** Worker UUID `id` — used to unarchive / delete. */
   id: string;
   userId: string;
-  containerName: string;
   displayName: string;
-  imageName: string;
-  imageId: string;
+  status: 'active' | 'archived';
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
