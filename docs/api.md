@@ -10,7 +10,7 @@ Auto-generated OpenAPI 3.1.0 docs powered by Nitro's built-in OpenAPI support. Z
 
 **How it works:** Each route file has a top-level `defineRouteMeta()` call (auto-imported Nitro macro) that enriches the generated spec with tags, summaries, schemas, parameters, and request/response bodies. Nitro auto-discovers all file-based routes and merges the metadata into a single OpenAPI spec.
 
-**Tag groups (16):** Containers, Tmux, Apps, Port Mappings, Domain Mappings, Environments, Capabilities, Instructions, Archived Workers, Logs, Updates, GitHub, Usage, Config, Health, Worker Self — plus an "Internal" tag for proxy/WebSocket relay routes.
+**Tag groups (17):** Containers (incl. worker export/import + per-worker metrics), Tmux, Apps, Port Mappings, Domain Mappings, Environments, Capabilities, Instructions, Archived Workers, Logs, Updates, GitHub, Usage, Metrics (per-worker resource metrics, via the Docker API — no host metrics), Config, Health, Worker Self — plus an "Internal" tag for proxy/WebSocket relay routes.
 
 The **Worker Self** group contains the unauthenticated, source-IP-identified routes mounted at `/api/worker-self/*` for use from inside worker containers (port mappings, domain mappings, usage, info). See `docs/environments.md` for details on how `requireWorkerSelf()` resolves the calling worker.
 

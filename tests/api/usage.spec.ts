@@ -111,8 +111,9 @@ test.describe('Usage API (per-user)', () => {
           expect(signIn.status).toBe(200);
 
           // User B sets a Claude OAuth token. The usage checker should track
-          // B's claim independently of A's (admin's) state.
-          await userApi.putAccountEnvVars({ claudeCodeOauthToken: 'fake-token-for-usage-isolation' });
+          // B's claim independently of A's (admin's) state. Env vars are a
+          // uniform { key, value } list keyed by the env var NAME.
+          await userApi.putAccountEnvVars({ envVars: [{ key: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'fake-token-for-usage-isolation' }] });
 
           await userApi.refreshUsage();
           const userStatus = await userApi.getUsageStatus();

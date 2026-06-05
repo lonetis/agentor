@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1288 tests** across 93 test files (~759 API + ~529 UI)
+- **~1314 tests** across 99 test files (~779 API + ~535 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -98,13 +98,13 @@ tests/
     worker-lifecycle.ts    # Container create/cleanup utilities
     ui-helpers.ts          # Page navigation and interaction helpers
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
-  api/                     # API endpoint tests (~759 tests across 53 files)
-  ui/                      # UI interaction tests (~529 tests across 40 files)
+  api/                     # API endpoint tests (~779 tests across 56 files)
+  ui/                      # UI interaction tests (~535 tests across 43 files)
 ```
 
 ## Test Categories
 
-### API Tests (~759 tests, 53 files)
+### API Tests (~779 tests, 56 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -160,8 +160,11 @@ tests/
 | `mcp-servers-loaded.spec.ts` | 6 | MCP server verification: Claude config keys + commands via jq, Codex `mcp list` output + enabled status, Gemini config keys + commands via jq |
 | `worker-hostname.spec.ts` | 2 | In-container `hostname` equals the Docker short container id (no custom `Hostname` is set — NOT the worker UUID and NOT a friendly label); `containerName = agentor-worker-<id>` with no `userId` segment and no double `agentor-worker-` prefix. Regression for the container-name construction now that `id` is a server-minted UUID v4. |
 | `worker-self.spec.ts` | 9 | Worker-self routes (no session, identified by Docker source IP): `/api/worker-self/info` returns the calling worker's identity (`workerId` = the worker UUID, `containerName`, `displayName` = the editable label), hitting it from outside the docker network is 401, port mapping create/list/delete works from inside the worker, a `workerId` body field is ignored (caller IP wins), list filters out other workers' mappings, DELETE refuses other workers' mappings (403), port-mapper status shape, domain-mapper status shape, usage status shape |
+| `worker-metrics.spec.ts` | 10 | Per-worker resource metrics (all via the Docker API; no host metrics): `GET /api/worker-metrics` returns a workers array + auth gating; `POST /api/worker-metrics/refresh` forces a sample + auth; per-worker `GET /api/containers/:id/metrics` snapshot shape, 404 unknown, 401 unauth; a poll confirming a running worker appears once sampled; disk is non-zero after a forced sample; and a deep check that writing 40 MB to a NON-volume path (`/home/agent/.disktest`) grows `diskUsedBytes` — proving the writable-layer (`SizeRw`) is counted, not just the volume `du` |
+| `worker-export-import.spec.ts` | 7 | Export streams a `.tar` bundle (content-type/disposition; manifest + workspace.tar.gz + agents.tar.gz present, rootfs.tar.gz absent with `includeRootfs=false`), export 404/401; import rejects a garbage bundle (400) + 401 unauth; **round-trip**: upload a marker file → export → import (fresh UUID id, `agentor-worker-<id>` name, displayName override) → boot → download workspace and confirm the marker file restored; and port-mapping recreation for the imported worker (export with a mapping, remove source, import, assert mapping re-created on the new containerName). Round-trip uses `includeRootfs=false` for speed — the docker-export rootfs path is exercised via the default-on UI export, not in CI. |
+| `github-repos.spec.ts` | 3 | `GET /api/github/repos`: requires auth; a fresh user with no token → `tokenConfigured:false` + empty repos; a configured-but-bogus token → `tokenConfigured:true` with a surfaced `error` (regression for the old "any failure looks like no token" masking). Uses isolated test users. |
 
-### UI Tests (~529 tests, 40 files)
+### UI Tests (~535 tests, 43 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -205,6 +208,9 @@ tests/
 | `update-notification.spec.ts` | 24 | Images section, image names, toggle, update status |
 | `archived-workers.spec.ts` | 10 | Archived section, collapsible, UI archive, worker card (name, Unarchive, Delete buttons), Unarchive action flow, Delete action flow, archived section count badge, archived-date text, multi-archived visibility |
 | `log-pane.spec.ts` | 17 | Logs button visibility, open log pane, filter bar, source/level filter buttons, search input, status bar, entries/empty state, entry structure, tab bar, clicking Logs again opens a second independent tab, closing one tab leaves the sibling intact, entry count, source filter toggle, localStorage persistence, scroll-to-top triggers loadMore and prepends older entries, tab close |
+| `worker-card-actions.spec.ts` | 3 | Refactored worker card: the running card exposes the Export button (tooltip), the action row is a horizontally-scrollable strip (`overflow-x: auto`), and per-worker live metrics (`data-testid="worker-metrics"`) render CPU%/RAM% from a stubbed `/api/worker-metrics` |
+| `import-worker-modal.spec.ts` | 2 | Import Worker modal opens from the sidebar Import button with file + name inputs and a disabled Import button; choosing a `.tar` file enables Import and shows the file name |
+| `github-autocomplete-refresh.spec.ts` | 1 | Regression: saving env vars in the Account modal refetches `/api/git-providers` (so the repo autocomplete gate updates without a page reload); env-vars PUT is stubbed so no real account state is mutated |
 
 ## Design Decisions
 

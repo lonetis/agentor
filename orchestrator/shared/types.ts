@@ -97,6 +97,10 @@ export interface ContainerInfo extends UserOwnedResource {
    * to the running container. Live edits (display name) never set this. Cleared
    * whenever the container is (re)created — create, rebuild, or unarchive. */
   pendingRebuild?: boolean;
+  /** Set on workers restored from an export that captured the source container's
+   * filesystem. The per-worker imported image the worker runs (reused across
+   * rebuild/unarchive). Unset for normal workers running the standard image. */
+  importedImage?: string;
 }
 
 export interface CreateContainerRequest {
@@ -262,6 +266,38 @@ export interface InitScriptInfo {
   userId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Live resource metrics for a single worker container, sampled via the Docker
+ * stats API. CPU is expressed as a percentage of the whole host (0-100 across
+ * all cores); network/disk are live byte rates. */
+export interface WorkerMetrics {
+  /** The worker's UUID `id`. */
+  workerId: string;
+  /** Stable Docker container name (`<prefix>-<id>`). */
+  containerName: string;
+  displayName: string;
+  status: ContainerStatus;
+  /** 0-100 — fraction of total host CPU capacity used by this worker. */
+  cpuUtilization: number;
+  memoryUsedBytes: number;
+  /** The worker's memory limit (cgroup limit; equals host memory when uncapped). */
+  memoryLimitBytes: number;
+  /** 0-100. */
+  memoryUtilization: number;
+  /** Disk space used by the worker's `/workspace` + agent-data (sampled on a
+   * slower cadence than cpu/mem; 0 until first sampled). */
+  diskUsedBytes: number;
+  netRxBytesPerSec: number;
+  netTxBytesPerSec: number;
+  blkReadBytesPerSec: number;
+  blkWriteBytesPerSec: number;
+  lastChecked: string;
+  error?: string;
+}
+
+export interface WorkerMetricsStatus {
+  workers: WorkerMetrics[];
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

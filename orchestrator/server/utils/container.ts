@@ -3,15 +3,25 @@ import { nanoid } from 'nanoid';
 import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
 import type { Config } from './config';
 import { getAppType } from './apps';
+import { createReadStream } from 'node:fs';
+import { mkdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { Readable } from 'node:stream';
 import { DockerService } from './docker';
-import type { EnvironmentJsonPayload, CapabilityJsonEntry, InstructionJsonEntry, WorkerJsonPayload } from './docker';
+import type { EnvironmentJsonPayload, CapabilityJsonEntry, InstructionJsonEntry, WorkerJsonPayload, ImageConfigOverride } from './docker';
 import { zeroUserEnvVars } from './user-env-store';
+import {
+  WORKER_EXPORT_VERSION, BUNDLE_FILES,
+  EXPORT_WORKSPACE_PATH, EXPORT_AGENTS_PATH, RESTORE_WORKSPACE_PARENT, RESTORE_AGENTS_PARENT,
+  CREDENTIAL_EXCLUDE_SUFFIXES, writeManifest, writeGzipFile, writeFilteredAgentsGz, packBundle, extractBundle,
+} from './worker-export';
+import type { WorkerExportManifest } from './worker-export';
 import type { AppInstanceInfo, TmuxWindow } from '../../shared/types';
 import { getAllGitCloneDomains } from './git-providers';
 import { getAllAgentApiDomains } from './agent-config';
 import { getPackageManagerDomains, DEFAULT_ENVIRONMENT_ID } from './environments';
 import { getUserById } from './auth';
-import type { EnvironmentStore } from './environments';
+import type { EnvironmentStore, Environment } from './environments';
 import type { WorkerStore, WorkerRecord } from './worker-store';
 import type { UserCredentialManager } from './user-credentials';
 import type { UserEnvVarStore } from './user-env-store';
@@ -34,6 +44,8 @@ const WORKER_MANAGED_LABEL = 'agentor.managed';
 /** The worker's UUID `id` — the only identifying label on a worker container.
  * Everything else (userId, config) lives in the WorkerStore record. */
 const WORKER_ID_LABEL = 'agentor.id';
+/** Repo prefix for per-worker images created by `docker import` on restore. */
+const IMPORT_IMAGE_PREFIX = 'agentor-import-';
 
 export class ContainerManager {
   /** Keyed by the worker's UUID `id` (stable across rebuild/unarchive). */
@@ -269,6 +281,7 @@ export class ContainerManager {
         initScript: worker?.initScript,
         environmentId: worker?.environmentId,
         pendingRebuild: worker?.pendingRebuild,
+        importedImage: worker?.importedImage,
       });
     }
 
@@ -567,6 +580,10 @@ export class ContainerManager {
         await this.storageManager.removeWorkerWorkspace(info.userId, info.id, info.containerName);
         await this.storageManager.removeWorkerAgents(info.userId, info.id, info.containerName);
       }
+      // Per-worker imported image (from restore) is owned by this worker — drop it.
+      if (info.importedImage?.startsWith(IMPORT_IMAGE_PREFIX)) {
+        await this.dockerService.removeImage(info.importedImage);
+      }
       if (this.workerStore) {
         await this.workerStore.delete(info.userId, info.id).catch((err) => {
           useLogger().error(`[container] failed to delete worker record '${info.containerName}': ${err instanceof Error ? err.message : err}`);
@@ -640,6 +657,10 @@ export class ContainerManager {
 
     const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(info.userId);
 
+    // Imported workers reuse their per-worker image (captured rootfs) across
+    // rebuilds; falls back to the standard image if that image is gone.
+    const imageOpts = await this.resolveImageOpts(info.importedImage);
+
     const container = await this.dockerService.createWorkerContainer({
       userId: info.userId,
       id: info.id,
@@ -655,9 +676,11 @@ export class ContainerManager {
       workerJson,
       storageManager: this.storageManager,
       userEnv,
+      image: imageOpts.image,
+      imageConfig: imageOpts.imageConfig,
     });
 
-    const imageName = this.config.workerImagePrefix + this.config.workerImage;
+    const imageName = imageOpts.image || this.config.workerImagePrefix + this.config.workerImage;
     const containerInfo: ContainerInfo = {
       id: info.id,
       userId: info.userId,
@@ -675,6 +698,8 @@ export class ContainerManager {
       environmentId: info.environmentId,
       // Rebuild applies any pending settings edits, so the flag is cleared.
       pendingRebuild: false,
+      // Keep the imported-image link only while that image still exists.
+      importedImage: imageOpts.image ? info.importedImage : undefined,
     };
 
     this.containers.set(info.id, containerInfo);
@@ -730,6 +755,8 @@ export class ContainerManager {
 
     const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(worker.userId);
 
+    const imageOpts = await this.resolveImageOpts(worker.importedImage);
+
     const container = await this.dockerService.createWorkerContainer({
       userId: worker.userId,
       id: worker.id,
@@ -745,11 +772,13 @@ export class ContainerManager {
       workerJson,
       storageManager: this.storageManager,
       userEnv,
+      image: imageOpts.image,
+      imageConfig: imageOpts.imageConfig,
     });
 
     await this.workerStore.unarchive(worker.userId, worker.id);
 
-    const imageName = this.config.workerImagePrefix + this.config.workerImage;
+    const imageName = imageOpts.image || this.config.workerImagePrefix + this.config.workerImage;
     const containerInfo: ContainerInfo = {
       id: worker.id,
       userId: worker.userId,
@@ -768,6 +797,7 @@ export class ContainerManager {
       // Unarchive recreates the container from the stored config, applying any
       // pending settings edits, so the flag is cleared.
       pendingRebuild: false,
+      importedImage: imageOpts.image ? worker.importedImage : undefined,
     };
 
     this.containers.set(worker.id, containerInfo);
@@ -799,7 +829,355 @@ export class ContainerManager {
       await this.storageManager.removeWorkerDocker(containerName);
       await this.storageManager.removeWorkerAgents(worker.userId, worker.id, containerName);
     }
+    if (worker.importedImage?.startsWith(IMPORT_IMAGE_PREFIX)) {
+      await this.dockerService.removeImage(worker.importedImage);
+    }
     await this.workerStore.delete(worker.userId, worker.id);
+  }
+
+  // --- Worker export / import ---
+
+  /** Resolve the image + replicated config a worker should run. For normal
+   * workers (`importedImage` unset) returns `{}` so the standard image is used.
+   * For imported workers, returns the per-worker image plus the standard image's
+   * runtime config (entrypoint/env), falling back to the standard image if the
+   * imported image no longer exists. */
+  private async resolveImageOpts(importedImage?: string): Promise<{ image?: string; imageConfig?: ImageConfigOverride }> {
+    if (!importedImage) return {};
+    if (!(await this.dockerService.imageExists(importedImage))) {
+      useLogger().warn(`[container] imported image ${importedImage} missing — using standard worker image`);
+      return {};
+    }
+    const standard = this.config.workerImagePrefix + this.config.workerImage;
+    let imageConfig: ImageConfigOverride | undefined;
+    try {
+      await this.dockerService.ensureImage(standard);
+      imageConfig = await this.dockerService.inspectImageConfig(standard);
+    } catch (err) {
+      useLogger().warn(`[container] could not read standard image config: ${err instanceof Error ? err.message : err}`);
+    }
+    return { image: importedImage, imageConfig };
+  }
+
+  /** Stream a complete worker export bundle (manifest + workspace + agents, and
+   * optionally a `docker export` of the container filesystem). The worker must
+   * have a container (running or stopped). Returns a tar stream + filename. */
+  async exportWorker(id: string, opts: { includeRootfs: boolean }): Promise<{ stream: Readable; filename: string }> {
+    const info = this.containers.get(id);
+    if (!info) throw new Error('Container not found');
+    if (info.status !== 'running' && info.status !== 'stopped') {
+      throw new Error('Worker must be running or stopped to export');
+    }
+
+    const env = this.environmentStore?.getById(info.environmentId || DEFAULT_ENVIRONMENT_ID)
+      || this.environmentStore?.getById(DEFAULT_ENVIRONMENT_ID);
+    if (!env) throw new Error('Environment not found for export');
+
+    const portMappings = usePortMappingStore().list()
+      .filter((m) => m.containerName === info.containerName)
+      .map((m) => ({
+        externalPort: m.externalPort,
+        type: m.type,
+        internalPort: m.internalPort,
+        ...(m.appType ? { appType: m.appType } : {}),
+        ...(m.instanceId ? { instanceId: m.instanceId } : {}),
+      }));
+    const domainMappings = useDomainMappingStore().list()
+      .filter((m) => m.containerName === info.containerName)
+      .map((m) => ({
+        subdomain: m.subdomain,
+        baseDomain: m.baseDomain,
+        path: m.path,
+        protocol: m.protocol,
+        wildcard: m.wildcard,
+        internalPort: m.internalPort,
+        ...(m.basicAuth ? { basicAuth: m.basicAuth } : {}),
+      }));
+
+    const tmpDir = join(this.config.dataDir, 'tmp', `export-${randomUUID()}`);
+    await mkdir(tmpDir, { recursive: true });
+
+    // Single-shot temp-dir cleanup — fires on stream end/close/error, and runs
+    // immediately if materialising the bundle throws before streaming starts
+    // (otherwise a multi-GB rootfs.tar.gz would leak in `<dataDir>/tmp`).
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    };
+
+    try {
+      const manifest: WorkerExportManifest = {
+        version: WORKER_EXPORT_VERSION,
+        exportedAt: new Date().toISOString(),
+        source: { id: info.id, displayName: info.displayName, containerName: info.containerName, imageName: info.imageName },
+        worker: {
+          displayName: info.displayName,
+          repos: info.repos ?? [],
+          mounts: info.mounts ?? [],
+          initScript: info.initScript ?? '',
+        },
+        environment: env,
+        portMappings,
+        domainMappings,
+        contents: { rootfs: opts.includeRootfs, workspace: true, agents: true },
+      };
+      await writeManifest(manifest, join(tmpDir, BUNDLE_FILES.manifest));
+
+      const files: { name: string; path: string }[] = [
+        { name: BUNDLE_FILES.manifest, path: join(tmpDir, BUNDLE_FILES.manifest) },
+      ];
+
+      const wsSrc = await this.dockerService.getArchive(info.containerId, EXPORT_WORKSPACE_PATH);
+      await writeGzipFile(wsSrc, join(tmpDir, BUNDLE_FILES.workspace));
+      files.push({ name: BUNDLE_FILES.workspace, path: join(tmpDir, BUNDLE_FILES.workspace) });
+
+      const agSrc = await this.dockerService.getArchive(info.containerId, EXPORT_AGENTS_PATH);
+      await writeFilteredAgentsGz(agSrc, join(tmpDir, BUNDLE_FILES.agents), CREDENTIAL_EXCLUDE_SUFFIXES);
+      files.push({ name: BUNDLE_FILES.agents, path: join(tmpDir, BUNDLE_FILES.agents) });
+
+      if (opts.includeRootfs) {
+        const rootfsSrc = await this.dockerService.exportContainer(info.containerId);
+        await writeGzipFile(rootfsSrc, join(tmpDir, BUNDLE_FILES.rootfs));
+        files.push({ name: BUNDLE_FILES.rootfs, path: join(tmpDir, BUNDLE_FILES.rootfs) });
+      }
+
+      const stream = packBundle(files);
+      stream.on('end', cleanup);
+      stream.on('close', cleanup);
+      stream.on('error', cleanup);
+
+      const safe = (info.displayName || info.id.slice(0, 12)).replace(/[^a-zA-Z0-9_-]/g, '_');
+      useLogger().info(`[container] exporting worker ${info.containerName}${opts.includeRootfs ? ' (with rootfs)' : ''}`);
+      return { stream, filename: `${safe}-worker-export.tar` };
+    } catch (err) {
+      cleanup();
+      throw err;
+    }
+  }
+
+  /** Restore a worker from an export bundle as a brand-new worker (fresh UUID).
+   * Recreates the environment, restores the workspace + agent-data volumes, and
+   * recreates port/domain mappings. When the bundle carries a captured rootfs it
+   * is imported into a per-worker image; on any failure there it falls back to
+   * the standard worker image (config + volumes are still restored). */
+  async importWorker(userId: string, bundlePath: string, opts: { displayName?: string }): Promise<ContainerInfo> {
+    if (!userId) throw new Error('import: userId is required');
+
+    const workDir = join(this.config.dataDir, 'tmp', `import-${randomUUID()}`);
+    try {
+      const { manifest, rootfsPath, workspacePath, agentsPath } = await extractBundle(bundlePath, workDir);
+      if (!manifest || typeof manifest.version !== 'number') {
+        throw new Error('Invalid worker export bundle');
+      }
+
+      const environmentId = await this.resolveImportEnvironment(userId, manifest.environment);
+
+      const id = randomUUID();
+      const displayName = (opts.displayName?.trim() || manifest.worker?.displayName || 'imported worker').slice(0, 100);
+      const containerName = this.buildContainerName(id);
+      const repos = (manifest.worker?.repos ?? []).filter((r) => r.url);
+      const mounts = manifest.worker?.mounts ?? [];
+      const initScript = manifest.worker?.initScript || '';
+
+      const envConfig = this.resolveEnvironmentConfig(environmentId);
+      const cpuLimit = envConfig.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
+      const memoryLimit = envConfig.memoryLimit || this.config.defaultMemoryLimit || undefined;
+      const dockerEnabled = envConfig.dockerEnabled ?? true;
+      const { gitName, gitEmail } = this.resolveGitIdentity(userId);
+      const workerJson: WorkerJsonPayload = { id, displayName, repos, initScript, gitName, gitEmail };
+      const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(userId);
+
+      // Import the captured rootfs into a per-worker image (best-effort).
+      let importedImage: string | undefined;
+      let imageConfig: ImageConfigOverride | undefined;
+      if (rootfsPath && manifest.contents?.rootfs) {
+        try {
+          const repo = `${IMPORT_IMAGE_PREFIX}${id}`;
+          importedImage = await this.dockerService.importImage(createReadStream(rootfsPath), repo, 'latest');
+          const standard = this.config.workerImagePrefix + this.config.workerImage;
+          await this.dockerService.ensureImage(standard);
+          imageConfig = await this.dockerService.inspectImageConfig(standard);
+        } catch (err) {
+          useLogger().warn(`[container] import: rootfs import failed, using standard image: ${err instanceof Error ? err.message : err}`);
+          importedImage = undefined;
+          imageConfig = undefined;
+        }
+      }
+
+      // Create the container stopped so volumes can be populated before the
+      // entrypoint runs, then restore the volume tars, then start.
+      const container = await this.dockerService.createWorkerContainer({
+        userId,
+        id,
+        containerName,
+        cpuLimit,
+        memoryLimit,
+        mounts,
+        dockerEnabled,
+        credentialBinds,
+        environmentJson: envConfig.environmentJson,
+        capabilitiesJson: envConfig.capabilitiesJson,
+        instructionsJson: envConfig.instructionsJson,
+        workerJson,
+        storageManager: this.storageManager,
+        userEnv,
+        image: importedImage,
+        imageConfig,
+        start: false,
+      });
+
+      // Restore the volumes and start. If anything here fails, the container was
+      // created but never registered — roll it back (and the per-worker image)
+      // so a failed import doesn't leak an orphan container/image/volumes.
+      try {
+        if (workspacePath) {
+          await this.dockerService.putArchive(container.id, createReadStream(workspacePath), RESTORE_WORKSPACE_PARENT);
+        }
+        if (agentsPath) {
+          await this.dockerService.putArchive(container.id, createReadStream(agentsPath), RESTORE_AGENTS_PARENT);
+        }
+        await container.start();
+      } catch (err) {
+        await this.dockerService.removeContainer(container.id).catch(() => {});
+        if (this.storageManager) {
+          await this.storageManager.removeWorkerWorkspace(userId, id, containerName).catch(() => {});
+          await this.storageManager.removeWorkerAgents(userId, id, containerName).catch(() => {});
+          if (dockerEnabled) await this.storageManager.removeWorkerDocker(containerName).catch(() => {});
+        }
+        if (importedImage) await this.dockerService.removeImage(importedImage).catch(() => {});
+        throw err;
+      }
+
+      const imageName = importedImage || this.config.workerImagePrefix + this.config.workerImage;
+      const now = new Date().toISOString();
+      const containerInfo: ContainerInfo = {
+        id,
+        userId,
+        createdAt: now,
+        updatedAt: now,
+        containerId: container.id,
+        containerName,
+        displayName,
+        imageName,
+        imageId: '',
+        status: 'running',
+        repos: repos.length > 0 ? repos : undefined,
+        mounts: mounts.length > 0 ? mounts : undefined,
+        initScript: initScript || undefined,
+        environmentId,
+        pendingRebuild: false,
+        ...(importedImage ? { importedImage } : {}),
+      };
+      this.containers.set(id, containerInfo);
+
+      if (this.workerStore) {
+        await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
+      }
+
+      await this.recreateImportedMappings(userId, id, containerName, manifest);
+
+      useLogCollector().attach(containerName, container.id, 'worker', displayName).catch(() => {});
+      useLogger().info(`[container] imported worker ${containerName} (${container.id.slice(0, 12)})${importedImage ? ' with captured rootfs' : ''}`);
+
+      return containerInfo;
+    } finally {
+      await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  /** Resolve the environment to assign an imported worker. Built-in envs are
+   * reused by id; a user's own env with a matching name is reused; otherwise the
+   * embedded definition is recreated as a new custom env for the importer. */
+  private async resolveImportEnvironment(userId: string, env: Environment | undefined): Promise<string> {
+    if (!this.environmentStore || !env) return DEFAULT_ENVIRONMENT_ID;
+    if (env.builtIn) {
+      return this.environmentStore.getById(env.id) ? env.id : DEFAULT_ENVIRONMENT_ID;
+    }
+    const existing = this.environmentStore.list().find((e) => e.userId === userId && e.name === env.name);
+    if (existing) return existing.id;
+    try {
+      const created = await this.environmentStore.create({
+        name: env.name,
+        cpuLimit: env.cpuLimit,
+        memoryLimit: env.memoryLimit,
+        networkMode: env.networkMode,
+        allowedDomains: env.allowedDomains,
+        includePackageManagerDomains: env.includePackageManagerDomains,
+        dockerEnabled: env.dockerEnabled,
+        envVars: env.envVars,
+        setupScript: env.setupScript,
+        exposeApis: env.exposeApis,
+        enabledCapabilityIds: env.enabledCapabilityIds,
+        enabledInstructionIds: env.enabledInstructionIds,
+        userId,
+      });
+      return created.id;
+    } catch (err) {
+      useLogger().warn(`[container] import: could not recreate environment '${env.name}', using default: ${err instanceof Error ? err.message : err}`);
+      return DEFAULT_ENVIRONMENT_ID;
+    }
+  }
+
+  /** Recreate the bundle's port + domain mappings for the new worker, rewriting
+   * identity (new owner, container name, worker id). Conflicting or
+   * non-applicable mappings are skipped, not fatal. */
+  private async recreateImportedMappings(
+    userId: string,
+    workerId: string,
+    containerName: string,
+    manifest: WorkerExportManifest,
+  ): Promise<void> {
+    let changed = false;
+    for (const m of manifest.portMappings ?? []) {
+      try {
+        await usePortMappingStore().add({
+          externalPort: m.externalPort,
+          type: m.type,
+          internalPort: m.internalPort,
+          workerId,
+          containerName,
+          userId,
+          ...(m.appType ? { appType: m.appType } : {}),
+          ...(m.instanceId ? { instanceId: m.instanceId } : {}),
+        });
+        changed = true;
+      } catch (err) {
+        useLogger().warn(`[container] import: skipped port mapping :${m.externalPort} (${err instanceof Error ? err.message : err})`);
+      }
+    }
+    const baseDomains = new Set(this.config.baseDomains);
+    for (const m of manifest.domainMappings ?? []) {
+      if (!baseDomains.has(m.baseDomain)) {
+        useLogger().warn(`[container] import: skipped domain mapping ${m.subdomain ? `${m.subdomain}.` : ''}${m.baseDomain} (base domain not configured here)`);
+        continue;
+      }
+      try {
+        await useDomainMappingStore().add({
+          subdomain: m.subdomain,
+          baseDomain: m.baseDomain,
+          path: m.path,
+          protocol: m.protocol,
+          wildcard: m.wildcard,
+          internalPort: m.internalPort,
+          workerId,
+          containerName,
+          userId,
+          ...(m.basicAuth ? { basicAuth: m.basicAuth } : {}),
+        });
+        changed = true;
+      } catch (err) {
+        useLogger().warn(`[container] import: skipped domain mapping ${m.baseDomain} (${err instanceof Error ? err.message : err})`);
+      }
+    }
+    if (changed) {
+      try {
+        await useTraefikManager().reconcile();
+      } catch (err) {
+        useLogger().error(`[container] import: traefik reconcile failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
   }
 
   listArchived(): WorkerRecord[] {
@@ -841,6 +1219,7 @@ export class ContainerManager {
       mounts: info.mounts,
       initScript: info.initScript,
       pendingRebuild: info.pendingRebuild,
+      importedImage: info.importedImage,
     };
   }
 

@@ -206,6 +206,9 @@ async function handleEnvSave() {
     ];
     await saveEnvVars({ envVars });
     envSuccess.value = 'Env vars saved';
+    // Refresh git-provider token status so the repo autocomplete picks up a
+    // newly-saved (or removed) GITHUB_TOKEN without requiring a page reload.
+    await useGitProviders().refresh();
   } catch (err: any) {
     envError.value = err?.data?.statusMessage || err?.message || 'Failed to save';
   } finally {

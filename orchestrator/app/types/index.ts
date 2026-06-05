@@ -20,6 +20,8 @@ export type {
   UsageWindow,
   AgentUsageInfo,
   AgentUsageStatus,
+  WorkerMetrics,
+  WorkerMetricsStatus,
   ExposeApis,
   CapabilityInfo,
   InstructionInfo,

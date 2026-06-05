@@ -211,7 +211,7 @@ test.describe.serial('SSH auth end-to-end', () => {
     // Upload public key to the user's account. The orchestrator writes it to
     // `<DATA_DIR>/users/<userId>/ssh/authorized_keys` which is bind-mounted
     // into every worker this user owns.
-    const putKey = await user.api.putAccountEnvVars({ sshPublicKey: keys.publicKey });
+    const putKey = await user.api.putAccountSshKey({ sshPublicKey: keys.publicKey });
     expect(putKey.status).toBe(200);
 
     // Create a worker owned by this user. 90s timeout because the worker
@@ -328,7 +328,7 @@ test.describe.serial('SSH auth end-to-end', () => {
     // be rejected because the bind-mounted authorized_keys file only holds
     // the new pubkey.
     const rotated = await generateEd25519KeypairAsync();
-    const putKey = await user.api.putAccountEnvVars({ sshPublicKey: rotated.publicKey });
+    const putKey = await user.api.putAccountSshKey({ sshPublicKey: rotated.publicKey });
     expect(putKey.status).toBe(200);
 
     // Give the file writer a moment to land (fs write is synchronous but the

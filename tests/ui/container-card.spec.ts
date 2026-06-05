@@ -112,12 +112,12 @@ test.describe.serial('Container Card', () => {
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator('text=stopped')).toBeVisible({ timeout: 15_000 });
-    // Container is stopped from previous test; view buttons (Terminal, Desktop, etc.)
-    // are hidden (v-if="isRunning") but action buttons remain
+    // Container is stopped from previous test; view + workspace buttons (Terminal,
+    // Desktop, Upload, etc.) are hidden (v-if="isRunning") but action buttons remain
     const iconButtons = card.locator('button');
     const count = await iconButtons.count();
-    // 5 action buttons remain: Settings, Restart, Rebuild, Archive, Remove
-    expect(count).toBe(5);
+    // 6 buttons remain: Export (running or stopped) + Settings, Restart, Rebuild, Archive, Remove
+    expect(count).toBe(6);
   });
 
   test('Restart button appears when stopped', async ({ page }) => {

@@ -10,7 +10,7 @@
 - `orchestrator/app.config.ts` - App-level configuration
 
 ## Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UserEnvVar, UserEnvVars, UserEnvVarsInput, UserSshKey, PREDEFINED_ENV_VAR_KEYS, UpdatableImage, LogLevel, LogSource, LogEntry). `UserEnvVars` is `{ userId, createdAt, updatedAt, envVars: UserEnvVar[] }` (`UserEnvVar = { key, value }` — a uniform list, no hardcoded fields); `UserEnvVarsInput = { envVars? }`; `UserSshKey = { sshPublicKey }`; `PREDEFINED_ENV_VAR_KEYS` is the predefined-key UI affordance list (`GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) — extend it to add a predefined input. All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, WorkerMetrics, WorkerMetricsStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UserEnvVar, UserEnvVars, UserEnvVarsInput, UserSshKey, PREDEFINED_ENV_VAR_KEYS, UpdatableImage, LogLevel, LogSource, LogEntry). `UserEnvVars` is `{ userId, createdAt, updatedAt, envVars: UserEnvVar[] }` (`UserEnvVar = { key, value }` — a uniform list, no hardcoded fields); `UserEnvVarsInput = { envVars? }`; `UserSshKey = { sshPublicKey }`; `PREDEFINED_ENV_VAR_KEYS` is the predefined-key UI affordance list (`GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) — extend it to add a predefined input. All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
 
 ## Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build (includes python3/make/g++ for better-sqlite3 native build)
@@ -55,6 +55,8 @@
 - `orchestrator/server/utils/traefik-manager.ts` - TraefikManager class (Traefik container lifecycle, dynamic config generation)
 - `orchestrator/server/utils/update-checker.ts` - UpdateChecker class (GHCR digest polling, image pull, orchestrator self-replacement)
 - `orchestrator/server/utils/usage-checker.ts` - UsageChecker class (agent usage API polling, OAuth token refresh for Codex)
+- `orchestrator/server/utils/resource-monitor.ts` - ResourceMonitor class (in-memory singleton poller; PER-WORKER ONLY, all via the Docker API — cpu/mem/net from dockerode `container.stats` at 3s, disk = writable layer `SizeRw` + `du` of volumes at 60s; no host metrics, no persistence)
+- `orchestrator/server/utils/worker-export.ts` - Worker export/import helpers (WorkerExportManifest type, tar bundle pack/extract, credential-stripping agents-tar filter)
 - `orchestrator/server/utils/environments.ts` - EnvironmentStore class, network mode types, package manager domains list
 - `orchestrator/server/utils/worker-store.ts` - WorkerStore class (persistent worker metadata for archive/unarchive)
 - `orchestrator/server/utils/user-credentials.ts` - UserCredentialManager class (per-user OAuth credential files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json`, ensures dirs/files, generates per-user bind strings, statusList + reset) + AGENT_CREDENTIAL_MAPPINGS registry
@@ -75,7 +77,7 @@
 - `orchestrator/server/utils/log-broadcaster.ts` - LogBroadcaster class (manages WebSocket peers for live log streaming)
 - `orchestrator/server/utils/log-collector.ts` - LogCollector class (attaches to Docker containers via dockerode logs, handles TTY/non-TTY streams, heuristic level detection)
 - `orchestrator/server/utils/log-levels.ts` - Log level utility (`shouldLog`)
-- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useUserCredentialManager, useUserEnvStore, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility. (GitHubService is per-token via `getGitHubServiceForToken(token)` rather than a singleton, since the token comes from each caller's UserEnvVars.)
+- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useResourceMonitor, useUserCredentialManager, useUserEnvStore, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility. (GitHubService is per-token via `getGitHubServiceForToken(token)` rather than a singleton, since the token comes from each caller's UserEnvVars.)
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)
 - `orchestrator/server/utils/terminal-handler.ts` - Docker stream WebSocket terminal logic (uses ws-utils, exports terminalWsHandler)
@@ -83,6 +85,10 @@
 - `orchestrator/server/api/logs.get.ts` - Query log entries with filters (sources, levels, search, since, until, limit)
 - `orchestrator/server/api/logs.delete.ts` - Clear all log files
 - `orchestrator/server/api/log-sources.get.ts` - List known container log sources
+- `orchestrator/server/api/worker-metrics/index.get.ts` + `refresh.post.ts` - Per-worker metrics list + forced re-sample (caller-owned; admins see all; defines the WorkerMetrics/WorkerMetricsStatus OpenAPI schemas)
+- `orchestrator/server/api/containers/[id]/metrics.get.ts` - Single worker's metrics (ownership-checked)
+- `orchestrator/server/api/containers/[id]/export.get.ts` - Worker export (streams the `.tar` bundle; `?includeRootfs=`)
+- `orchestrator/server/api/containers/import.post.ts` - Worker import (raw `.tar` body streamed to disk → `importWorker`)
 - `orchestrator/server/api/` - REST API routes (file-based, JSON only)
 - `orchestrator/server/routes/desktop/` - HTTP reverse proxy for noVNC static files (per-container)
 - `orchestrator/server/routes/editor/` - Combined HTTP+WS proxy for code-server (per-container, h3 combined handler + ws-utils relay)
@@ -135,6 +141,7 @@
 - `orchestrator/app/components/VsCodeAppRow.vue` - Apps-pane row for the `vscode` app type (auth flow, machine name, Stop button)
 - `orchestrator/app/components/SshAppRow.vue` - Apps-pane row for the `ssh` app type (ssh command with external port, missing-public-key warning, Stop button)
 - `orchestrator/app/components/UsagePanel.vue` - Agent usage monitoring panel (progress bars, auth badges, reset times)
+- `orchestrator/app/components/ImportWorkerModal.vue` - Import a worker from an export bundle (file picker + optional display name)
 - `orchestrator/app/components/UploadModal.vue` - Modal for workspace file uploads
 - `orchestrator/app/composables/useApps.ts` - App CRUD + polling
 - `orchestrator/app/composables/useArchivedWorkers.ts` - Archived workers list + polling
@@ -159,7 +166,9 @@
 - `orchestrator/app/composables/useLogs.ts` - Log entry state, WebSocket connection, history fetch, client-side filtering
 - `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only)
 - `orchestrator/app/composables/useUsage.ts` - Agent usage status polling (60s)
+- `orchestrator/app/composables/useWorkerMetrics.ts` - Per-worker metrics polling (10s singleton; sidebar feeds each card a `metric` prop)
 - `orchestrator/app/utils/container-name.ts` - Utility for container name display (shortName helper)
+- `orchestrator/app/utils/format.ts` - `formatBytes` / `formatRate` helpers (metrics panels + worker cards)
 - `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, LogLevel, LogSource, LogEntry) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, OrchestratorEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone, ChallengeType, BaseDomainConfig
 
 ## Worker
@@ -185,7 +194,7 @@
 - `tests/helpers/ui-helpers.ts` - Page navigation and interaction helpers
 - `tests/helpers/test-users.ts` - Create/sign-in/delete test users via the admin API (used by passkey + authorization tests)
 - `tests/helpers/webauthn.ts` - Install/dispose Chrome DevTools virtual WebAuthn authenticator for end-to-end passkey tests (`installVirtualAuthenticator(page)`)
-- `tests/api/*.spec.ts` - API integration tests (48 files)
-- `tests/ui/*.spec.ts` - UI integration tests (43 files)
+- `tests/api/*.spec.ts` - API integration tests (56 files; incl. worker-metrics, worker-export-import, github-repos)
+- `tests/ui/*.spec.ts` - UI integration tests (43 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh)
 - `tests/FEATURES.md` - Feature inventory driving test coverage
 - `tests/TESTS.md` - Test suite documentation with counts per file

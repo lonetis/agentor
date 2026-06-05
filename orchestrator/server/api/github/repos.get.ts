@@ -34,7 +34,16 @@ export default defineEventHandler(async (event) => {
       github.listOrgs(),
     ]);
     return { repos, tokenConfigured: true, username: ghUser.login, orgs };
-  } catch {
-    return { repos: [], tokenConfigured: false, username: '', orgs: [] as string[] };
+  } catch (err) {
+    // A token IS configured — surface the failure (bad token, missing scopes,
+    // rate limit) instead of masquerading as "no token", so the UI can show a
+    // real error rather than a silently-empty dropdown.
+    return {
+      repos: [] as never[],
+      tokenConfigured: true,
+      username: '',
+      orgs: [] as string[],
+      error: err instanceof Error ? err.message : 'GitHub request failed',
+    };
   }
 });
