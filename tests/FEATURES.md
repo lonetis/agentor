@@ -332,7 +332,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 - **Expose APIs** — 3 checkboxes: Port Mappings, Domain Mappings, Usage Monitoring
 - **Capabilities** — "Select All" toggle + per-capability checkbox with name and "Built-in" badge
 - **Instructions** — "Select All" toggle + per-entry checkbox with name and "Built-in" badge
-- **Environment Variables** — system vars (read-only with lock icon) + custom textarea (KEY=VALUE format)
+- **Environment Variables** — a read-only "Provided to the worker by the orchestrator" list (lock icon, name + description, from `GET /api/worker-env-vars`) + custom textarea (KEY=VALUE format). The read-only list shows ONLY the env vars a worker actually receives from the orchestrator (`ENVIRONMENT`, `CAPABILITIES`, `INSTRUCTIONS`, `WORKER`, `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`, `EXPOSE_PORT_MAPPINGS`, `EXPOSE_DOMAIN_MAPPINGS`, `EXPOSE_USAGE`). Orchestrator-wide settings (BETTER_AUTH_*, DASHBOARD_*, ACME_*, BASE_DOMAINS, LOG_*) are intentionally NOT shown here because they are never passed to workers.
 - **Setup Script** — textarea (4 rows, monospace)
 - **Actions** — "Create"/"Update" + "Cancel"/"Close"
 
@@ -862,7 +862,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 
 ### 24.15 Configuration
 - `GET /api/settings` — orchestrator-wide settings (Docker, Worker Defaults, Git Providers (clone domains only), Domain Mapping, Network, Logging, Authentication, Init Scripts, App Types). The old `agent-auth` section is removed — agent API keys live per user under `/api/account/env-vars`.
-- `GET /api/orchestrator-env-vars` — orchestrator-wide env vars (BASE_DOMAINS, DASHBOARD_*, ACME_EMAIL, BETTER_AUTH_SECRET / URL / TRUSTED_ORIGINS / RP_ID, LOG_LEVEL / LOG_MAX_SIZE / LOG_MAX_FILES, etc.). Does NOT include `GITHUB_TOKEN` or any `*_API_KEY` — those are per user.
+- `GET /api/worker-env-vars` — the system env vars the orchestrator injects into every worker (the complete set a worker actually receives): `ENVIRONMENT`, `CAPABILITIES`, `INSTRUCTIONS`, `WORKER` (structured JSON payloads), `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`, and the `EXPOSE_PORT_MAPPINGS` / `EXPOSE_DOMAIN_MAPPINGS` / `EXPOSE_USAGE` flags. Each entry is `{ name, description }`. Intentionally does NOT include orchestrator-wide settings (BETTER_AUTH_*, DASHBOARD_*, ACME_*, BASE_DOMAINS, LOG_*) — those are never passed to workers and are admin-only via `/api/settings` — nor per-user secrets (`GITHUB_TOKEN`, `*_API_KEY`), which live under `/api/account/env-vars`. (Replaces the former `/api/orchestrator-env-vars`, which mislabeled orchestrator config as worker env and leaked config-status to non-admins.)
 - `GET /api/git-providers` — provider list with the **current user's** token status (per-user `tokenConfigured` boolean comes from their `UserEnvVars`)
 - `GET /api/agent-api-domains` — firewall allowlist
 - `GET /api/package-manager-domains` — PM domain list

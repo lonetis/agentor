@@ -4,18 +4,32 @@ import type { UserEnvVars, UserEnvVarsInput, UserEnvVar } from '../../shared/typ
 
 export const USER_ENV_KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
 
-/** Reserved env var names that must not appear in user customEnvVars (they are
- * injected by the orchestrator or the entrypoint and would collide). */
-const RESERVED_KEYS = new Set([
-  'ENVIRONMENT',
-  'CAPABILITIES',
-  'INSTRUCTIONS',
-  'WORKER',
-  'ORCHESTRATOR_URL',
-  'WORKER_CONTAINER_NAME',
-  'EXPOSE_PORT_MAPPINGS',
-  'EXPOSE_DOMAIN_MAPPINGS',
-  'EXPOSE_USAGE',
+/** The env vars the orchestrator (or the worker entrypoint) injects into every
+ * worker container. This is the *complete* set of orchestrator-provided env a
+ * worker actually receives — nothing else from the orchestrator's own process
+ * env (BETTER_AUTH_*, DASHBOARD_*, ACME_*, BASE_DOMAINS, LOG_*, …) is ever passed
+ * to a worker. It is the single source of truth behind both the reserved-key
+ * guard (users may not override these) and the read-only "provided by the
+ * orchestrator" list surfaced in the worker Environment editor
+ * (`GET /api/worker-env-vars`). */
+export const WORKER_SYSTEM_ENV_VARS: { name: string; description: string }[] = [
+  { name: 'ENVIRONMENT', description: 'Environment config JSON — network mode, allowed domains, Docker, setup script, exposed APIs' },
+  { name: 'CAPABILITIES', description: 'Enabled capability documents (JSON array)' },
+  { name: 'INSTRUCTIONS', description: 'Enabled instruction documents (JSON array)' },
+  { name: 'WORKER', description: 'Worker identity & config JSON — id, display name, repos, init script, git identity' },
+  { name: 'ORCHESTRATOR_URL', description: 'Base URL of the orchestrator API (used by worker-self calls)' },
+  { name: 'WORKER_CONTAINER_NAME', description: "This worker's Docker container name" },
+  { name: 'EXPOSE_PORT_MAPPINGS', description: 'Whether the worker-self port-mapping API is exposed (from Expose APIs)' },
+  { name: 'EXPOSE_DOMAIN_MAPPINGS', description: 'Whether the worker-self domain-mapping API is exposed (from Expose APIs)' },
+  { name: 'EXPOSE_USAGE', description: 'Whether the worker-self usage API is exposed (from Expose APIs)' },
+];
+
+/** Reserved env var names that must not appear in a user's env vars (they are
+ * injected by the orchestrator or the entrypoint and would collide). The
+ * orchestrator-injected names come straight from `WORKER_SYSTEM_ENV_VARS`; the
+ * remaining three are OS-level vars the entrypoint relies on. */
+const RESERVED_KEYS = new Set<string>([
+  ...WORKER_SYSTEM_ENV_VARS.map((v) => v.name),
   'HOME',
   'PATH',
   'USER',

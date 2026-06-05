@@ -138,9 +138,12 @@ export interface EnvironmentInfo {
   updatedAt: string;
 }
 
-export interface OrchestratorEnvVar {
+/** A system environment variable the orchestrator/entrypoint injects into every
+ * worker (from `GET /api/worker-env-vars`). Always present and non-secret, so it
+ * carries a human-readable description instead of a configured/not-set flag. */
+export interface WorkerSystemEnvVar {
   name: string;
-  configured: boolean;
+  description: string;
 }
 
 /** Mirrors the server's slim `WorkerRecord`. Fields describing the live Docker

@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1314 tests** across 99 test files (~779 API + ~535 UI)
+- **~1313 tests** across 99 test files (~778 API + ~535 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -98,13 +98,13 @@ tests/
     worker-lifecycle.ts    # Container create/cleanup utilities
     ui-helpers.ts          # Page navigation and interaction helpers
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
-  api/                     # API endpoint tests (~779 tests across 56 files)
+  api/                     # API endpoint tests (~778 tests across 56 files)
   ui/                      # UI interaction tests (~535 tests across 43 files)
 ```
 
 ## Test Categories
 
-### API Tests (~779 tests, 56 files)
+### API Tests (~778 tests, 56 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -147,7 +147,7 @@ tests/
 | `git-providers.spec.ts` | 2 | Provider list, GitHub provider fields |
 | `app-types.spec.ts` | 4 | Type list, chromium/socks5 types, port defs |
 | `package-manager-domains.spec.ts` | 4 | Domain list, npm/pypi, valid domain format |
-| `orchestrator-env-vars.spec.ts` | 6 | Env var list, fields, presence of orchestrator-wide keys (BASE_DOMAINS), explicit absence of per-user secrets (GITHUB_TOKEN / *_API_KEY), full better-auth set (SECRET / URL / TRUSTED_ORIGINS / RP_ID), logging set (LOG_LEVEL / LOG_MAX_SIZE / LOG_MAX_FILES) |
+| `worker-env-vars.spec.ts` | 5 | `GET /api/worker-env-vars` — list + `{name, description}` fields, presence of the env vars a worker actually receives (ENVIRONMENT/CAPABILITIES/INSTRUCTIONS/WORKER/ORCHESTRATOR_URL/WORKER_CONTAINER_NAME/EXPOSE_*), and the key regression: orchestrator-wide settings (BETTER_AUTH_* / DASHBOARD_* / ACME_EMAIL / BASE_DOMAINS / LOG_*) and per-user secrets (GITHUB_TOKEN / *_API_KEY) are NEVER listed (they are not passed to workers) |
 | `github.spec.ts` | 14 | Repos list, username, orgs, repo field validation, branches, branch field validation, create repo validation (missing owner/name, empty owner/name, no token), response shape validation, non-existent repo branches |
 | `updates.spec.ts` | 11 | Update status, manual check trigger, apply rejection, response structure (3 image keys — orchestrator/worker/traefik, no mapper), check consistency |
 | `traefik-unified.spec.ts` | 8 | Merged-mapper regression tests: `/api/log-sources` never returns `mapper`; `/api/updates` has no `mapper` key; `UpdatableImage` enum is 3 values; port mapping create/delete works while Traefik is up for domain mappings; port + domain mapping can coexist on the same worker; settings expose no `MAPPER_IMAGE` |
@@ -245,7 +245,7 @@ tests/
 - Network-level failures (DNS resolution) accepted gracefully via `catch {}`
 
 ### Agent prompting tests
-- Skipped automatically when agent credentials are not configured (checks `/api/orchestrator-env-vars` for API keys and `.cred/` files)
+- Skipped automatically when agent credentials are not configured (checks `/api/account/env-vars` for API keys and `/api/account/agent-credentials` for OAuth file status)
 - Each agent gets its own worker with the agent's init script preset
 - Serial tests: first test verifies CLI starts, second sends a prompt and checks response
 - 300s per-test timeout (agent startup + LLM inference can be slow)

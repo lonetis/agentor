@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { EnvironmentInfo, NetworkMode, OrchestratorEnvVar, ExposeApis, CapabilityInfo, InstructionInfo, CredentialInfo } from '~/types';
+import type { EnvironmentInfo, NetworkMode, WorkerSystemEnvVar, ExposeApis, CapabilityInfo, InstructionInfo, CredentialInfo } from '~/types';
 
 const props = defineProps<{
   environment?: EnvironmentInfo;
@@ -26,7 +26,7 @@ const form = reactive({
   enabledInstructionIds: null as string[] | null,
 });
 
-const systemEnvVars = ref<OrchestratorEnvVar[]>([]);
+const systemEnvVars = ref<WorkerSystemEnvVar[]>([]);
 const { data: credentials } = useFetch<CredentialInfo[]>('/api/account/agent-credentials', { default: () => [] });
 
 const { data: allCapabilities } = useFetch<CapabilityInfo[]>('/api/capabilities', { default: () => [] });
@@ -93,7 +93,7 @@ const showAgentDomains = ref(false);
 
 async function fetchSystemEnvVars() {
   try {
-    systemEnvVars.value = await $fetch<OrchestratorEnvVar[]>('/api/orchestrator-env-vars');
+    systemEnvVars.value = await $fetch<WorkerSystemEnvVar[]>('/api/worker-env-vars');
   } catch {
     systemEnvVars.value = [];
   }
@@ -387,21 +387,20 @@ function handleSave() {
     <fieldset>
       <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Environment Variables</legend>
 
-      <!-- System env vars (read-only) -->
+      <!-- Worker system env vars (read-only) — what the orchestrator injects into
+           every worker. These are infrastructural only; orchestrator-wide settings
+           (auth, dashboard, ACME, logging) are NOT passed to workers. -->
       <div v-if="systemEnvVars.length > 0" class="mb-3">
-        <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">System (read-only, set by orchestrator)</div>
+        <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">Provided to the worker by the orchestrator (read-only)</div>
         <div class="space-y-1">
           <div
             v-for="v in systemEnvVars"
             :key="v.name"
-            class="flex items-center gap-2 text-xs font-mono px-2 py-1 bg-gray-100/60 dark:bg-gray-800/50 rounded"
+            class="flex items-start gap-2 text-xs px-2 py-1 bg-gray-100/60 dark:bg-gray-800/50 rounded"
           >
-            <UIcon name="i-heroicons-lock-closed" class="text-gray-400 dark:text-gray-500 w-3 h-3 shrink-0" />
-            <span class="text-gray-500 dark:text-gray-400">{{ v.name }}</span>
-            <span class="text-gray-400 dark:text-gray-600">=</span>
-            <span :class="v.configured ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-600'">
-              {{ v.configured ? 'configured' : 'not set' }}
-            </span>
+            <UIcon name="i-heroicons-lock-closed" class="text-gray-400 dark:text-gray-500 w-3 h-3 shrink-0 mt-0.5" />
+            <span class="font-mono text-gray-500 dark:text-gray-400 shrink-0">{{ v.name }}</span>
+            <span class="text-gray-400 dark:text-gray-500">{{ v.description }}</span>
           </div>
         </div>
       </div>

@@ -308,9 +308,9 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
-  // ─── Orchestrator Env Vars ────────────────────────────────────
-  async listOrchestratorEnvVars() {
-    const res = await this.request.get(`${BASE_URL}/api/orchestrator-env-vars`);
+  // ─── Worker System Env Vars ───────────────────────────────────
+  async listWorkerEnvVars() {
+    const res = await this.request.get(`${BASE_URL}/api/worker-env-vars`);
     return { status: res.status(), body: await res.json() };
   }
 
