@@ -10,6 +10,7 @@ export type {
   ContainerInfo,
   ContainerStatus,
   CreateContainerRequest,
+  UpdateContainerSettingsRequest,
   ImageUpdateInfo,
   UpdatableImage,
   UpdateStatus,
@@ -62,10 +63,14 @@ export interface AppTypeInfo {
 }
 
 export interface PortMapping {
+  id: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
   externalPort: number;
   type: 'localhost' | 'external';
-  /** Per-user worker name. */
-  workerName: string;
+  /** The owning worker's UUID `id`. */
+  workerId: string;
   /** Globally unique Docker container name. */
   containerName: string;
   internalPort: number;
@@ -75,14 +80,17 @@ export interface PortMapping {
 
 export interface DomainMapping {
   id: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
   subdomain: string;
   baseDomain: string;
   path: string;
   protocol: 'http' | 'https' | 'tcp';
   /** When true, also matches any single-label prefix (e.g. `*.sub.domain.com`). */
   wildcard: boolean;
-  /** Per-user worker name. */
-  workerName: string;
+  /** The owning worker's UUID `id`. */
+  workerId: string;
   /** Globally unique Docker container name. */
   containerName: string;
   internalPort: number;
@@ -134,28 +142,22 @@ export interface OrchestratorEnvVar {
 }
 
 export interface ArchivedWorker {
+  /** Worker UUID `id` — used to unarchive / delete. */
   id: string;
-  name: string;
-  displayName?: string;
-  environmentId?: string;
-  environmentName?: string;
+  userId: string;
+  containerName: string;
+  displayName: string;
+  imageName: string;
+  imageId: string;
   createdAt: string;
+  updatedAt: string;
   archivedAt?: string;
+  // Normalized: only the environment FK is stored; env config + git identity are
+  // resolved live at build time, never snapshotted onto the worker.
+  environmentId?: string;
   repos?: RepoConfig[];
   mounts?: MountConfig[];
   initScript?: string;
-  cpuLimit?: number;
-  memoryLimit?: string;
-  networkMode?: string;
-  dockerEnabled?: boolean;
-  allowedDomains?: string[];
-  includePackageManagerDomains?: boolean;
-  setupScript?: string;
-  envVars?: string;
-  exposeApis?: ExposeApisType;
-  capabilityNames?: string[];
-  instructionNames?: string[];
-  image: string;
 }
 
 export type TabType = 'terminal' | 'desktop' | 'apps' | 'editor' | 'logs';

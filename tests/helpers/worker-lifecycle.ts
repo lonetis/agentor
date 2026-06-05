@@ -16,14 +16,15 @@ export function uniquePort(): number {
  * Creates a worker container and waits for it to reach 'running' status.
  * Returns the container info. Use `cleanupWorker` in afterEach/afterAll.
  *
- * The worker's `name` is a server-minted UUID (immutable internal identity);
- * the editable, user-facing label is `displayName`. We pass a unique default
+ * The worker's `id` is a server-minted UUID v4 (its immutable identity, used in
+ * every `/api/containers/:id` route); `containerId` is the Docker container id
+ * and `displayName` is the editable, user-facing label. We pass a unique default
  * `displayName` unless the caller supplies one via `overrides.displayName`.
  */
 export async function createWorker(
   request: APIRequestContext,
   overrides: Record<string, unknown> = {},
-): Promise<{ id: string; name: string; [key: string]: unknown }> {
+): Promise<{ id: string; containerId: string; containerName: string; [key: string]: unknown }> {
   const api = new ApiClient(request);
   const displayName = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 

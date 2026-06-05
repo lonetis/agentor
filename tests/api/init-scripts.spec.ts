@@ -21,15 +21,19 @@ test.describe('Init Scripts API', () => {
       expect(body.length).toBeGreaterThanOrEqual(3);
     });
 
-    test('built-in scripts have builtIn: true and expected IDs', async ({ request }) => {
+    test('built-in scripts have builtIn: true, expected names, and UUID ids', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.listInitScripts();
-      const builtInIds = body
-        .filter((s: { builtIn: boolean }) => s.builtIn)
-        .map((s: { id: string }) => s.id);
-      expect(builtInIds).toContain('claude');
-      expect(builtInIds).toContain('codex');
-      expect(builtInIds).toContain('gemini');
+      const builtIns = body.filter((s: { builtIn: boolean }) => s.builtIn);
+      const builtInNames = builtIns.map((s: { name: string }) => s.name);
+      expect(builtInNames).toContain('claude');
+      expect(builtInNames).toContain('codex');
+      expect(builtInNames).toContain('gemini');
+      // Built-in ids are stable derived UUIDs — the slug is the name, not the id.
+      for (const s of builtIns) {
+        expect(s.id).not.toBe(s.name);
+        expect(s.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      }
     });
 
     test('built-in scripts have non-empty content', async ({ request }) => {
@@ -127,11 +131,18 @@ test.describe('Init Scripts API', () => {
       expect(body.content).toBe('#!/bin/bash\necho get-test');
     });
 
-    test('returns built-in script by ID', async ({ request }) => {
+    test('returns built-in script by ID (UUID id, slug is the name)', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status, body } = await api.getInitScript('claude');
+      const { body: list } = await api.listInitScripts();
+      const claude = list.find((s: { name: string }) => s.name === 'claude');
+      expect(claude).toBeTruthy();
+      expect(claude.id).not.toBe('claude');
+      expect(claude.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+      const { status, body } = await api.getInitScript(claude.id);
       expect(status).toBe(200);
-      expect(body.id).toBe('claude');
+      expect(body.id).toBe(claude.id);
+      expect(body.name).toBe('claude');
       expect(body.builtIn).toBe(true);
       expect(body.content.length).toBeGreaterThan(0);
     });
@@ -163,7 +174,9 @@ test.describe('Init Scripts API', () => {
 
     test('returns 400 when updating built-in script', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.updateInitScript('claude', {
+      const { body: list } = await api.listInitScripts();
+      const claudeId = list.find((s: { name: string; builtIn: boolean }) => s.builtIn && s.name === 'claude').id;
+      const { status } = await api.updateInitScript(claudeId, {
         name: 'Hacked Claude',
         content: '#!/bin/bash\necho hacked',
       });
@@ -221,7 +234,9 @@ test.describe('Init Scripts API', () => {
 
     test('returns 400 when deleting built-in script', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.deleteInitScript('claude');
+      const { body: list } = await api.listInitScripts();
+      const claudeId = list.find((s: { name: string; builtIn: boolean }) => s.builtIn && s.name === 'claude').id;
+      const { status } = await api.deleteInitScript(claudeId);
       expect(status).toBe(400);
     });
 

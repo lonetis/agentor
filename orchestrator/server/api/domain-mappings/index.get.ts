@@ -23,13 +23,16 @@ defineRouteMeta({
           DomainMapping: {
             type: 'object',
             properties: {
-              id: { type: 'string' },
+              id: { type: 'string', description: 'Mapping UUID' },
+              userId: { type: 'string' },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
               subdomain: { type: 'string' },
               baseDomain: { type: 'string' },
               path: { type: 'string', description: 'URL path prefix (empty string = all paths)' },
               protocol: { type: 'string', enum: ['http', 'https', 'tcp'] },
               wildcard: { type: 'boolean', description: 'Also match any single-label prefix (e.g. *.sub.domain.com). Requires base domain challenge type of none, dns, or selfsigned.' },
-              workerName: { type: 'string', description: 'Per-user worker name' },
+              workerId: { type: 'string', description: "Owning worker's UUID id" },
               containerName: { type: 'string', description: 'Globally unique Docker container name' },
               internalPort: { type: 'integer' },
               authUser: { type: 'string' },

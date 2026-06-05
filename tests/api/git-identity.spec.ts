@@ -92,12 +92,12 @@ test.describe.serial('Git identity — persists across rebuild', () => {
 
 test.describe.serial('Git identity — persists across archive/unarchive', () => {
   let containerId: string;
-  let containerName: string;
+  let workerId: string;
 
   test.beforeAll(async ({ request }) => {
     const container = await createWorker(request, { displayName: `GitArchive-${Date.now()}` });
     containerId = container.id;
-    containerName = container.name;
+    workerId = container.id;
   });
 
   test.afterAll(async ({ request }) => {
@@ -113,7 +113,7 @@ test.describe.serial('Git identity — persists across archive/unarchive', () =>
     const api = new ApiClient(request);
     await api.archiveContainer(containerId);
 
-    const { status, body } = await api.unarchiveWorker(containerName);
+    const { status, body } = await api.unarchiveWorker(workerId);
     expect(status).toBe(200);
     containerId = body.id;
     await waitForWorkerRunning(request, containerId, 90_000);
@@ -136,23 +136,21 @@ test.describe('Git identity — container API response', () => {
     createdContainerIds.length = 0;
   });
 
-  test('created container includes gitName and gitEmail', async ({ request }) => {
+  test('ContainerInfo does not expose gitName/gitEmail — resolved live from the owner', async ({ request }) => {
     const container = await createWorker(request, { displayName: `GitFields-${Date.now()}` });
     createdContainerIds.push(container.id);
 
-    expect(container.gitName).toBe('Test Admin');
-    expect(container.gitEmail).toBe('admin@agentor.test');
-  });
-
-  test('container list includes gitName and gitEmail', async ({ request }) => {
-    const container = await createWorker(request, { displayName: `GitList-${Date.now()}` });
-    createdContainerIds.push(container.id);
+    // Git identity is the owner's profile, resolved at build time and passed to
+    // the worker via the WORKER env var (verified above) — it is NOT snapshotted
+    // onto the worker record / API response.
+    expect(container.gitName).toBeUndefined();
+    expect(container.gitEmail).toBeUndefined();
 
     const api = new ApiClient(request);
     const { body } = await api.listContainers();
     const found = body.find((c: { id: string }) => c.id === container.id);
     expect(found).toBeTruthy();
-    expect(found.gitName).toBe('Test Admin');
-    expect(found.gitEmail).toBe('admin@agentor.test');
+    expect(found.gitName).toBeUndefined();
+    expect(found.gitEmail).toBeUndefined();
   });
 });

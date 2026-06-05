@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Container not found' });
   }
 
-  const safeName = (info.displayName || info.name || id.slice(0, 12)).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safeName = (info.displayName || id.slice(0, 12)).replace(/[^a-zA-Z0-9_-]/g, '_');
   const tarStream = await containerManager.downloadWorkspace(id);
   const gzip = createGzip();
 

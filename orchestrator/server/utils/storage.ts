@@ -1,5 +1,5 @@
 import Docker from 'dockerode';
-import { mkdir, rm, chown, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rm, chown, stat, writeFile, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { Config } from './config';
 
@@ -171,6 +171,30 @@ export class StorageManager {
     } catch {
       await writeFile(keyFile, '', { mode: 0o644 });
     }
+  }
+
+  /** Read the user's `authorized_keys` content for the Account UI (the field is
+   * 1:1 with this file). Returns '' if not configured. Trailing whitespace is
+   * trimmed so the value round-trips with what the UI submitted. */
+  async readSshAuthorizedKeys(userId: string): Promise<string> {
+    const keyFile = join(this.dataDir, 'users', userId, 'ssh', 'authorized_keys');
+    try {
+      return (await readFile(keyFile, 'utf-8')).trimEnd();
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
+      throw err;
+    }
+  }
+
+  /** Write the user's `authorized_keys` file (the SSH key's only home). The
+   * content is the Account UI field 1:1; a trailing newline is added for sshd.
+   * Empty → empty file (no logins accepted). Bind-mounted into every worker the
+   * user owns, so updates are visible live. */
+  async writeSshAuthorizedKeys(userId: string, content: string): Promise<void> {
+    const sshDir = join(this.dataDir, 'users', userId, 'ssh');
+    await mkdir(sshDir, { recursive: true });
+    const trimmed = (content ?? '').trimEnd();
+    await writeFile(join(sshDir, 'authorized_keys'), trimmed ? `${trimmed}\n` : '', { mode: 0o644 });
   }
 
   /** Bind string for the user's `authorized_keys` file, mounted read-only at

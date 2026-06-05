@@ -65,6 +65,11 @@ async function cleanupUser(u: { ctx: import('@playwright/test').APIRequestContex
   }
 }
 
+/** Find an env var's value by key in the `{ envVars: [{key,value}] }` payload. */
+function envVal(body: { envVars?: { key: string; value: string }[] }, key: string): string | undefined {
+  return body.envVars?.find((e) => e.key === key)?.value;
+}
+
 test.describe('Account env vars (per-user) API', () => {
   test('GET /api/account/env-vars requires authentication', async () => {
     const ctx = await playwrightRequest.newContext(UNAUTH_OPTS);
@@ -81,173 +86,105 @@ test.describe('Account env vars (per-user) API', () => {
     const ctx = await playwrightRequest.newContext(UNAUTH_OPTS);
     try {
       const api = new ApiClient(ctx);
-      const { status } = await api.putAccountEnvVars({ githubToken: 'x' });
+      const { status } = await api.putAccountEnvVars({ envVars: [{ key: 'GITHUB_TOKEN', value: 'x' }] });
       expect(status).toBe(401);
     } finally {
       await ctx.dispose();
     }
   });
 
-  test('a fresh user starts with all env vars empty', async () => {
+  test('a fresh user starts with an empty envVars list (no hardcoded fields, no sshPublicKey)', async () => {
     const u = await createUserAndSignIn('user', 'fresh');
     try {
       const { status, body } = await u.api.getAccountEnvVars();
       expect(status).toBe(200);
-      expect(body.githubToken).toBe('');
-      expect(body.anthropicApiKey).toBe('');
-      expect(body.claudeCodeOauthToken).toBe('');
-      expect(body.openaiApiKey).toBe('');
-      expect(body.geminiApiKey).toBe('');
-      expect(body.sshPublicKey).toBe('');
-      expect(body.customEnvVars).toEqual([]);
+      expect(body.envVars).toEqual([]);
+      // Carries the owner userId like every user-scoped resource (also persisted in the file).
+      expect(body.userId).toBe(u.id);
+      // The old hardcoded fields and sshPublicKey are gone from this endpoint.
+      expect(body.githubToken).toBeUndefined();
+      expect(body.anthropicApiKey).toBeUndefined();
+      expect(body.sshPublicKey).toBeUndefined();
+      expect(body.customEnvVars).toBeUndefined();
     } finally {
       await cleanupUser(u);
     }
   });
 
-  test('sshPublicKey round-trips via PUT + GET', async () => {
-    const u = await createUserAndSignIn('user', 'ssh-key');
-    try {
-      const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTests example@test';
-      const put = await u.api.putAccountEnvVars({ sshPublicKey: key });
-      expect(put.status).toBe(200);
-      const { body } = await u.api.getAccountEnvVars();
-      expect(body.sshPublicKey).toBe(key);
-    } finally {
-      await cleanupUser(u);
-    }
-  });
-
-  test('sshPublicKey partial update keeps other fields', async () => {
-    const u = await createUserAndSignIn('user', 'ssh-key-partial');
-    try {
-      await u.api.putAccountEnvVars({ githubToken: 'gh-keep', sshPublicKey: 'ssh-rsa AAAAB3 test@h' });
-      await u.api.putAccountEnvVars({ sshPublicKey: 'ssh-ed25519 AAAAC3 test@h' });
-      const { body } = await u.api.getAccountEnvVars();
-      expect(body.githubToken).toBe('gh-keep');
-      expect(body.sshPublicKey).toBe('ssh-ed25519 AAAAC3 test@h');
-    } finally {
-      await cleanupUser(u);
-    }
-  });
-
-  test('sshPublicKey is isolated per user', async () => {
-    const a = await createUserAndSignIn('user', 'ssh-iso-a');
-    const b = await createUserAndSignIn('user', 'ssh-iso-b');
-    try {
-      await a.api.putAccountEnvVars({ sshPublicKey: 'ssh-ed25519 AAAA-A' });
-      await b.api.putAccountEnvVars({ sshPublicKey: 'ssh-ed25519 AAAA-B' });
-      const aGet = await a.api.getAccountEnvVars();
-      const bGet = await b.api.getAccountEnvVars();
-      expect(aGet.body.sshPublicKey).toBe('ssh-ed25519 AAAA-A');
-      expect(bGet.body.sshPublicKey).toBe('ssh-ed25519 AAAA-B');
-    } finally {
-      await cleanupUser(a);
-      await cleanupUser(b);
-    }
-  });
-
-  test('PUT upserts well-known fields and GET reflects', async () => {
-    const u = await createUserAndSignIn('user', 'upsert');
+  test('predefined and custom env vars are stored uniformly, keyed by env var name', async () => {
+    const u = await createUserAndSignIn('user', 'uniform');
     try {
       const put = await u.api.putAccountEnvVars({
-        githubToken: 'gh-aaa',
-        anthropicApiKey: 'sk-ant-bbb',
-        openaiApiKey: 'sk-ccc',
-      });
-      expect(put.status).toBe(200);
-
-      const get = await u.api.getAccountEnvVars();
-      expect(get.status).toBe(200);
-      expect(get.body.githubToken).toBe('gh-aaa');
-      expect(get.body.anthropicApiKey).toBe('sk-ant-bbb');
-      expect(get.body.openaiApiKey).toBe('sk-ccc');
-      // Unset fields stay empty
-      expect(get.body.geminiApiKey).toBe('');
-      expect(get.body.claudeCodeOauthToken).toBe('');
-    } finally {
-      await cleanupUser(u);
-    }
-  });
-
-  test('partial PUT only changes the supplied fields', async () => {
-    const u = await createUserAndSignIn('user', 'partial');
-    try {
-      await u.api.putAccountEnvVars({ githubToken: 'gh-1', anthropicApiKey: 'sk-1' });
-      // Only update one field
-      await u.api.putAccountEnvVars({ githubToken: 'gh-2' });
-      const { body } = await u.api.getAccountEnvVars();
-      expect(body.githubToken).toBe('gh-2');
-      expect(body.anthropicApiKey).toBe('sk-1');
-    } finally {
-      await cleanupUser(u);
-    }
-  });
-
-  test('customEnvVars round-trip', async () => {
-    const u = await createUserAndSignIn('user', 'custom');
-    try {
-      const put = await u.api.putAccountEnvVars({
-        customEnvVars: [
-          { key: 'FOO', value: 'bar' },
-          { key: 'API_BASE', value: 'https://example.test' },
+        envVars: [
+          { key: 'GITHUB_TOKEN', value: 'gh-aaa' },
+          { key: 'ANTHROPIC_API_KEY', value: 'sk-ant-bbb' },
+          { key: 'MY_CUSTOM', value: 'custom-val' },
         ],
       });
       expect(put.status).toBe(200);
 
-      const { body } = await u.api.getAccountEnvVars();
-      expect(body.customEnvVars).toHaveLength(2);
-      expect(body.customEnvVars).toContainEqual({ key: 'FOO', value: 'bar' });
-      expect(body.customEnvVars).toContainEqual({ key: 'API_BASE', value: 'https://example.test' });
+      const { status, body } = await u.api.getAccountEnvVars();
+      expect(status).toBe(200);
+      expect(envVal(body, 'GITHUB_TOKEN')).toBe('gh-aaa');
+      expect(envVal(body, 'ANTHROPIC_API_KEY')).toBe('sk-ant-bbb');
+      expect(envVal(body, 'MY_CUSTOM')).toBe('custom-val');
+      // Unset predefined keys simply do not appear in the list.
+      expect(envVal(body, 'GEMINI_API_KEY')).toBeUndefined();
     } finally {
       await cleanupUser(u);
     }
   });
 
-  test('rejects invalid customEnvVars key (lowercase)', async () => {
+  test('PUT replaces the whole envVars list', async () => {
+    const u = await createUserAndSignIn('user', 'replace');
+    try {
+      await u.api.putAccountEnvVars({ envVars: [{ key: 'GITHUB_TOKEN', value: 'gh-1' }, { key: 'FOO', value: 'a' }] });
+      // A second PUT with a different list replaces the first entirely.
+      await u.api.putAccountEnvVars({ envVars: [{ key: 'GITHUB_TOKEN', value: 'gh-2' }] });
+      const { body } = await u.api.getAccountEnvVars();
+      expect(body.envVars).toHaveLength(1);
+      expect(envVal(body, 'GITHUB_TOKEN')).toBe('gh-2');
+      expect(envVal(body, 'FOO')).toBeUndefined();
+    } finally {
+      await cleanupUser(u);
+    }
+  });
+
+  test('rejects an invalid env var name (lowercase)', async () => {
     const u = await createUserAndSignIn('user', 'invalid-lc');
     try {
-      const { status } = await u.api.putAccountEnvVars({
-        customEnvVars: [{ key: 'badKey', value: 'x' }],
-      });
+      const { status } = await u.api.putAccountEnvVars({ envVars: [{ key: 'badKey', value: 'x' }] });
       expect(status).toBe(400);
     } finally {
       await cleanupUser(u);
     }
   });
 
-  test('rejects invalid customEnvVars key (starts with digit)', async () => {
+  test('rejects an invalid env var name (starts with digit)', async () => {
     const u = await createUserAndSignIn('user', 'invalid-digit');
     try {
-      const { status } = await u.api.putAccountEnvVars({
-        customEnvVars: [{ key: '1FOO', value: 'x' }],
-      });
+      const { status } = await u.api.putAccountEnvVars({ envVars: [{ key: '1FOO', value: 'x' }] });
       expect(status).toBe(400);
     } finally {
       await cleanupUser(u);
     }
   });
 
-  test('rejects reserved env var name', async () => {
+  test('rejects a reserved env var name', async () => {
     const u = await createUserAndSignIn('user', 'invalid-reserved');
     try {
-      const { status } = await u.api.putAccountEnvVars({
-        customEnvVars: [{ key: 'WORKER', value: 'x' }],
-      });
+      const { status } = await u.api.putAccountEnvVars({ envVars: [{ key: 'WORKER', value: 'x' }] });
       expect(status).toBe(400);
     } finally {
       await cleanupUser(u);
     }
   });
 
-  test('rejects duplicate custom env var keys', async () => {
+  test('rejects duplicate env var keys', async () => {
     const u = await createUserAndSignIn('user', 'invalid-dup');
     try {
       const { status } = await u.api.putAccountEnvVars({
-        customEnvVars: [
-          { key: 'FOO', value: 'a' },
-          { key: 'FOO', value: 'b' },
-        ],
+        envVars: [{ key: 'FOO', value: 'a' }, { key: 'FOO', value: 'b' }],
       });
       expect(status).toBe(400);
     } finally {
@@ -259,15 +196,15 @@ test.describe('Account env vars (per-user) API', () => {
     const a = await createUserAndSignIn('user', 'iso-a');
     const b = await createUserAndSignIn('user', 'iso-b');
     try {
-      await a.api.putAccountEnvVars({ githubToken: 'gh-A', anthropicApiKey: 'sk-A' });
-      await b.api.putAccountEnvVars({ githubToken: 'gh-B' });
+      await a.api.putAccountEnvVars({ envVars: [{ key: 'GITHUB_TOKEN', value: 'gh-A' }, { key: 'ANTHROPIC_API_KEY', value: 'sk-A' }] });
+      await b.api.putAccountEnvVars({ envVars: [{ key: 'GITHUB_TOKEN', value: 'gh-B' }] });
 
       const aGet = await a.api.getAccountEnvVars();
       const bGet = await b.api.getAccountEnvVars();
-      expect(aGet.body.githubToken).toBe('gh-A');
-      expect(aGet.body.anthropicApiKey).toBe('sk-A');
-      expect(bGet.body.githubToken).toBe('gh-B');
-      expect(bGet.body.anthropicApiKey).toBe('');
+      expect(envVal(aGet.body, 'GITHUB_TOKEN')).toBe('gh-A');
+      expect(envVal(aGet.body, 'ANTHROPIC_API_KEY')).toBe('sk-A');
+      expect(envVal(bGet.body, 'GITHUB_TOKEN')).toBe('gh-B');
+      expect(envVal(bGet.body, 'ANTHROPIC_API_KEY')).toBeUndefined();
     } finally {
       await cleanupUser(a);
       await cleanupUser(b);
@@ -275,27 +212,94 @@ test.describe('Account env vars (per-user) API', () => {
   });
 
   test("admin cannot view another user's env vars", async () => {
-    // Even admins do not have a way to read another user's env vars — the
-    // endpoint is scoped to event.context.auth.user.id with no userId query.
     const u = await createUserAndSignIn('user', 'admin-view');
     try {
-      await u.api.putAccountEnvVars({ githubToken: 'gh-private' });
+      await u.api.putAccountEnvVars({ envVars: [{ key: 'GITHUB_TOKEN', value: 'gh-private' }] });
 
-      const adminCtx = await playwrightRequest.newContext({
-        ...UNAUTH_OPTS,
-        storageState: ADMIN_STORAGE,
-      });
+      const adminCtx = await playwrightRequest.newContext({ ...UNAUTH_OPTS, storageState: ADMIN_STORAGE });
       try {
         const adminApi = new ApiClient(adminCtx);
         const { body } = await adminApi.getAccountEnvVars();
-        // Admin sees ONLY their own env vars (which are unset, since the
-        // tests have not configured the admin user).
-        expect(body.githubToken).not.toBe('gh-private');
+        expect(envVal(body, 'GITHUB_TOKEN')).not.toBe('gh-private');
       } finally {
         await adminCtx.dispose();
       }
     } finally {
       await cleanupUser(u);
+    }
+  });
+});
+
+test.describe('Account SSH key (per-user) API', () => {
+  test('GET /api/account/ssh-key requires authentication', async () => {
+    const ctx = await playwrightRequest.newContext(UNAUTH_OPTS);
+    try {
+      const { status } = await new ApiClient(ctx).getAccountSshKey();
+      expect(status).toBe(401);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test('PUT /api/account/ssh-key requires authentication', async () => {
+    const ctx = await playwrightRequest.newContext(UNAUTH_OPTS);
+    try {
+      const { status } = await new ApiClient(ctx).putAccountSshKey({ sshPublicKey: 'ssh-ed25519 AAAA x@h' });
+      expect(status).toBe(401);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test('a fresh user has an empty SSH key', async () => {
+    const u = await createUserAndSignIn('user', 'ssh-fresh');
+    try {
+      const { status, body } = await u.api.getAccountSshKey();
+      expect(status).toBe(200);
+      expect(body.sshPublicKey).toBe('');
+    } finally {
+      await cleanupUser(u);
+    }
+  });
+
+  test('SSH key round-trips via PUT + GET', async () => {
+    const u = await createUserAndSignIn('user', 'ssh-rt');
+    try {
+      const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTests example@test';
+      const put = await u.api.putAccountSshKey({ sshPublicKey: key });
+      expect(put.status).toBe(200);
+      expect(put.body.sshPublicKey).toBe(key);
+      const { body } = await u.api.getAccountSshKey();
+      expect(body.sshPublicKey).toBe(key);
+    } finally {
+      await cleanupUser(u);
+    }
+  });
+
+  test('SSH key is NOT stored in env-vars.json', async () => {
+    const u = await createUserAndSignIn('user', 'ssh-notenv');
+    try {
+      await u.api.putAccountSshKey({ sshPublicKey: 'ssh-ed25519 AAAA-only-in-file x@h' });
+      // It must not leak into the env-vars list under any key.
+      const { body } = await u.api.getAccountEnvVars();
+      expect(body.sshPublicKey).toBeUndefined();
+      expect((body.envVars ?? []).some((e: { value: string }) => e.value.includes('only-in-file'))).toBe(false);
+    } finally {
+      await cleanupUser(u);
+    }
+  });
+
+  test('SSH key is isolated per user', async () => {
+    const a = await createUserAndSignIn('user', 'ssh-iso-a');
+    const b = await createUserAndSignIn('user', 'ssh-iso-b');
+    try {
+      await a.api.putAccountSshKey({ sshPublicKey: 'ssh-ed25519 AAAA-A x@h' });
+      await b.api.putAccountSshKey({ sshPublicKey: 'ssh-ed25519 AAAA-B x@h' });
+      expect((await a.api.getAccountSshKey()).body.sshPublicKey).toBe('ssh-ed25519 AAAA-A x@h');
+      expect((await b.api.getAccountSshKey()).body.sshPublicKey).toBe('ssh-ed25519 AAAA-B x@h');
+    } finally {
+      await cleanupUser(a);
+      await cleanupUser(b);
     }
   });
 });

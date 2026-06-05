@@ -21,6 +21,7 @@ defineRouteMeta({
 import { getGitHubServiceForToken } from '../../../../../utils/github';
 import { requireAuth } from '../../../../../utils/auth-helpers';
 import { useUserEnvStore } from '../../../../../utils/services';
+import { getUserEnvVar } from '../../../../../utils/user-env-store';
 
 export default defineEventHandler(async (event) => {
   const { user } = requireAuth(event);
@@ -31,7 +32,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing owner or repo' });
   }
 
-  const token = useUserEnvStore().getOrDefault(user.id).githubToken;
+  const token = getUserEnvVar(useUserEnvStore().getOrDefault(user.id), 'GITHUB_TOKEN');
   if (!token) {
     throw createError({ statusCode: 400, statusMessage: 'GitHub token not configured — set one in Account → API keys' });
   }

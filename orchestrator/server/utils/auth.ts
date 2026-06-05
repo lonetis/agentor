@@ -149,6 +149,12 @@ function buildAuth(): any {
     },
     advanced: {
       cookiePrefix: 'agentor',
+      database: {
+        // Mint UUID v4 ids for all auth models (user, session, account, …) so
+        // userIds are UUIDs — matching every other resource in the system.
+        // Existing rows keep their previous ids; only new records get UUIDs.
+        generateId: 'uuid',
+      },
     },
     plugins: [
       admin(),
@@ -248,6 +254,20 @@ export function hasAnyUsers(): boolean {
 export function setUserRoleDirect(userId: string, role: string): void {
   const db = getAuthDb();
   db.prepare('UPDATE user SET role = ? WHERE id = ?').run(role, userId);
+}
+
+/** Look up a user's display name + email by id (the worker owner's git identity).
+ * Resolved live at container build time rather than snapshotted onto the worker —
+ * the worker references the owner by `userId` only. Returns `null` if the user
+ * no longer exists. */
+export function getUserById(userId: string): { name: string; email: string } | null {
+  if (!userId) return null;
+  const db = getAuthDb();
+  const row = db.prepare('SELECT name, email FROM user WHERE id = ?').get(userId) as
+    | { name?: string; email?: string }
+    | undefined;
+  if (!row) return null;
+  return { name: row.name ?? '', email: row.email ?? '' };
 }
 
 export interface CredentialSummary {

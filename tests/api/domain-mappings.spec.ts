@@ -203,7 +203,7 @@ test.describe('Domain Mappings API', () => {
           expect(body.path).toBe('');
           expect(body.protocol).toBe('https');
           expect(body.wildcard).toBe(false);
-          expect(typeof body.workerName).toBe('string');
+          expect(body.workerId).toBe(container.id);
           expect(body.internalPort).toBe(8080);
 
           await api.deleteDomainMapping(body.id);
@@ -1506,7 +1506,6 @@ test.describe('Domain Mappings API', () => {
           baseDomain: status.baseDomains[0],
           protocol: 'https',
           workerId: container.id,
-          workerName: container.name,
           internalPort: 8080,
         });
         expect(first).toBe(201);
@@ -1516,7 +1515,6 @@ test.describe('Domain Mappings API', () => {
           baseDomain: status.baseDomains[1],
           protocol: 'https',
           workerId: container.id,
-          workerName: container.name,
           internalPort: 8080,
         });
         expect(second).toBe(201);

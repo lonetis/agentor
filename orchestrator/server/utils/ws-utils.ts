@@ -78,7 +78,7 @@ export function createWsRelayHandlers(
           return;
         }
 
-        const ws = new WebSocket(getTargetWsUrl(info.name, containerId, peer));
+        const ws = new WebSocket(getTargetWsUrl(info.containerName, containerId, peer));
         ctx.containerWs = ws;
 
         ws.on('open', () => {

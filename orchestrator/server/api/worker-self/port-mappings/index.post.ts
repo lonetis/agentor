@@ -61,20 +61,18 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const mapping = {
+  const created = await usePortMappingStore().add({
     externalPort: extPort,
     type: body.type as 'localhost' | 'external',
-    workerName: ctx.container.name,
+    workerId: ctx.container.id,
     containerName: ctx.containerName,
     internalPort: intPort,
     appType: body.appType as string | undefined,
     instanceId: body.instanceId as string | undefined,
     userId: ctx.userId,
-  };
-
-  await usePortMappingStore().add(mapping);
+  });
   await useTraefikManager().reconcile();
 
   setResponseStatus(event, 201);
-  return mapping;
+  return created;
 });

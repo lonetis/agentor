@@ -18,7 +18,8 @@ import { createWsRelayHandlers } from '../../../utils/ws-utils';
 import { requireAuthFromEvent } from '../../../utils/auth-helpers';
 
 const wsHandlers = createWsRelayHandlers(
-  /\/editor\/([a-f0-9]+)/,
+  // The worker id is a UUID (with hyphens) — match the whole segment, not just hex.
+  /\/editor\/([^/?]+)/,
   (containerName) => `ws://${containerName}:8443/`,
 );
 
@@ -43,7 +44,7 @@ export default defineEventHandler({
       throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
     }
 
-    const target = `http://${info.name}:8443/${url.search}`;
+    const target = `http://${info.containerName}:8443/${url.search}`;
     return proxyRequest(event, target);
   },
 

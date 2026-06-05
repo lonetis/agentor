@@ -19,18 +19,21 @@ Three managed containers:
 
 ## Worker Identity & Naming
 
-Every worker has an internal identity, a derived container name, and a user-facing label:
+Every worker has a consistent base resource shape — `id`, `createdAt`, `updatedAt`, plus the owning `userId` — and on top of that a Docker container id, a derived container name, and a user-facing label:
 
-- **`name`** — an immutable, opaque UUID v4 minted server-side (`crypto.randomUUID`). Clients never send or choose it. It is the worker's internal identity: the WorkerStore key, the Docker container `Hostname` (so the in-container `hostname` command — and the shell prompt — returns the UUID), the `agentor.worker-name` label value, and the directory-mode storage leaf. UUIDs are globally unique, so there is no per-user uniqueness constraint.
-- **`containerName`** — the Docker container name, derived as `<containerPrefix>-<name>` (default prefix `agentor-worker`, e.g. `agentor-worker-<uuid>`). This is what Docker sees, what Traefik resolves via DNS, and what per-worker Docker volume names are prefixed with (`<containerName>-workspace`, `<containerName>-agents`, `<containerName>-docker`).
+- **`id`** — an immutable UUID v4 minted server-side (`crypto.randomUUID`). Clients never send or choose it. It is the worker's stable internal identity: the WorkerStore key, the `agentor.id` label value, the basis for `containerName`, and the directory-mode storage leaf. It is **stable across rebuild and unarchive** (the worker keeps the same `id` even though the underlying container is destroyed and recreated). The API identifies workers by this `id` everywhere — `/api/containers/:id`, `/api/archived/:id`. There is no `name` field on a worker.
+- **`containerId`** — the Docker container id assigned by Docker. Unlike `id`, this **changes on every rebuild/unarchive** because a fresh container is created. The orchestrator resolves the UUID `id` → current `containerId` when it needs to talk to Docker.
+- **`containerName`** — the Docker container name, derived as `agentor-worker-<id>`. This is what Docker sees, what Traefik resolves via DNS, and what per-worker Docker volume names are prefixed with (`<containerName>-workspace`, `<containerName>-agents`, `<containerName>-docker`). Stable across the worker's whole lifecycle.
+- **`imageName`** / **`imageId`** — the image reference the container runs and its resolved digest id.
 - **`displayName`** — the editable, user-facing label shown in the dashboard. Free-form (spaces / mixed case allowed) and not required to be unique — two of a user's workers may share a displayName. The client supplies it on create (the server defaults it to a friendly generated slug when omitted), it is capped at 100 chars, and it is renameable post-creation via `PATCH /api/containers/:id` without recreating the container.
 
-The stores key rows by the UUID `name`. Routing (Traefik service backends, log collector attachment, stale-worker cleanup, mapping reassignment on rebuild/unarchive) keys by `containerName` — stable across the worker's entire lifecycle.
+No custom `Hostname` is set on the container, so Docker defaults it to the short container id (e.g. `16b082a7681b`) — the in-container `hostname` command and the shell prompt show that docker short id, not the worker UUID or any friendly label.
 
-Docker labels set on every worker container make sync from Docker → WorkerStore unambiguous:
+The stores key rows by the UUID `id`. Routing (Traefik service backends, log collector attachment, stale-worker cleanup, mapping reassignment on rebuild/unarchive) keys by `containerName` — stable across the worker's entire lifecycle.
+
+Docker labels set on every worker container make sync from Docker → WorkerStore unambiguous and minimal:
 - `agentor.managed=true` — filter key for listing
-- `agentor.user-id=<userId>` — owner
-- `agentor.worker-name=<name>` — the worker UUID
+- `agentor.id=<worker uuid>` — resolves the container back to its `WorkerRecord` (which holds the owner `userId` and all config)
 
 ## Storage Modes
 
@@ -67,17 +70,18 @@ Switch modes by changing one line in the compose file — no env vars needed. `S
     ├── capabilities.json           ← this user's custom capabilities
     ├── instructions.json           ← this user's custom instructions
     ├── init-scripts.json           ← this user's custom init scripts
-    ├── env-vars.json               ← this user's API keys + custom env vars
+    ├── env-vars.json               ← this user's uniform key/value env var list ({ envVars: [{ key, value }] })
+    ├── ssh/authorized_keys         ← this user's SSH public key (the key's only home — not an env var)
     ├── usage.json                  ← this user's polled agent usage state
     ├── credentials/
     │   ├── claude.json             ← bind-mounted into every worker this user owns
     │   ├── codex.json
     │   └── gemini.json
-    ├── workspaces/<name>/          ← per-worker workspace (directory mode)
-    └── agents/<name>/               ← per-worker agent config (`.claude`, `.gemini`, `.codex`, `.agents`, `.claude.json`)
+    ├── workspaces/<id>/            ← per-worker workspace (directory mode, keyed by the worker UUID)
+    └── agents/<id>/                 ← per-worker agent config (`.claude`, `.gemini`, `.codex`, `.agents`, `.claude.json`)
 ```
 
-Every user-scoped store writes to `users/<userId>/<file>.json`. Built-in, platform-seeded entries (default environment, built-in capabilities / instructions / init scripts) are re-seeded to `defaults/<file>.json` on every startup from `orchestrator/server/built-in/`. User customs carry the owner's `userId`; built-ins carry `userId: null`. The public `list()` on each store merges both views.
+Every user-scoped store writes to `users/<userId>/<file>.json`. Built-in, platform-seeded entries (default environment, built-in capabilities / instructions / init scripts) are re-seeded to `defaults/<file>.json` on every startup from `orchestrator/server/built-in/`. The source filename (without extension) is the entry's `name`; its `id` is a **stable UUID deterministically derived from that slug** (RFC 4122 v5, via `builtInId()` in `built-in-content.ts`) — constant across the every-startup re-seed, so stored references (a worker's `environmentId`, an environment's `enabledCapabilityIds`) survive. User customs carry the owner's `userId` and a random UUID id; built-ins carry `userId: null`. The public `list()` on each store merges both views.
 
 DinD data always uses Docker named volumes (`<containerName>-docker`) regardless of storage mode — overlay2 requires a native filesystem and cannot run on a bind-mounted host directory.
 
@@ -86,8 +90,8 @@ DinD data always uses Docker named volumes (`<containerName>-docker`) regardless
 | Resource | Volume mode | Directory mode |
 |----------|------------|----------------|
 | Data (Traefik) | `<volumeName>:/data:ro` | `<hostPath>:/data:ro` |
-| Worker workspace | `<containerName>-workspace:/workspace` | `<hostPath>/users/<userId>/workspaces/<name>:/workspace` |
-| Worker agents | `<containerName>-agents:/home/agent/.agent-data` | `<hostPath>/users/<userId>/agents/<name>:/home/agent/.agent-data` |
+| Worker workspace | `<containerName>-workspace:/workspace` | `<hostPath>/users/<userId>/workspaces/<id>:/workspace` |
+| Worker agents | `<containerName>-agents:/home/agent/.agent-data` | `<hostPath>/users/<userId>/agents/<id>:/home/agent/.agent-data` |
 | Worker per-user creds (×3) | `<dataHostPath>/users/<userId>/credentials/{claude,codex,gemini}.json:/home/agent/.agent-data/{.claude/.credentials.json,.codex/auth.json,.gemini/oauth_creds.json}` | same, with `<hostPath>` in front of `/users/...`. Directory mode pre-creates these mountpoints on the host so Docker Desktop's virtiofs accepts the nested file bind. |
 | Worker DinD | `<containerName>-docker:/var/lib/docker` | `<containerName>-docker:/var/lib/docker` (always named volume) |
 | Traefik certs | `agentor-traefik-certs:/letsencrypt` | `<hostPath>/traefik-certs:/letsencrypt` |
@@ -98,8 +102,8 @@ DinD data always uses Docker named volumes (`<containerName>-docker`) regardless
 
 | Operation | Volume mode | Directory mode |
 |-----------|------------|----------------|
-| Remove workspace | `docker volume rm <containerName>-workspace` | `rm -rf /data/users/<userId>/workspaces/<name>/` |
-| Remove agents | `docker volume rm <containerName>-agents` | `rm -rf /data/users/<userId>/agents/<name>/` |
+| Remove workspace | `docker volume rm <containerName>-workspace` | `rm -rf /data/users/<userId>/workspaces/<id>/` |
+| Remove agents | `docker volume rm <containerName>-agents` | `rm -rf /data/users/<userId>/agents/<id>/` |
 | Remove DinD | `docker volume rm <containerName>-docker` | `docker volume rm <containerName>-docker` (same) |
 | Remove user data (on user delete) | `rm -rf /data/users/<userId>/` | same |
 
@@ -120,25 +124,26 @@ Port and domain mappings are keyed by the stable `containerName`, so they surviv
 
 ### Workspace, Agents & DinD Storage
 
-Each worker gets persistent storage mounted at `/workspace`, `/home/agent/.agent-data`, and (when DinD is enabled) `/var/lib/docker`. In **volume mode**, these are Docker named volumes (`<containerName>-workspace`, `<containerName>-agents`, `<containerName>-docker`). In **directory mode**, workspace and agents live under the owner's user directory (`<dataDir>/users/<userId>/workspaces/<name>/`, `<dataDir>/users/<userId>/agents/<name>/`). All survive container stops, restarts, and archiving. On archive, only the container is removed — workspace, agents, and DinD data persist for unarchiving. On permanent delete, all are removed.
+Each worker gets persistent storage mounted at `/workspace`, `/home/agent/.agent-data`, and (when DinD is enabled) `/var/lib/docker`. In **volume mode**, these are Docker named volumes (`<containerName>-workspace`, `<containerName>-agents`, `<containerName>-docker`). In **directory mode**, workspace and agents live under the owner's user directory keyed by the worker UUID (`<dataDir>/users/<userId>/workspaces/<id>/`, `<dataDir>/users/<userId>/agents/<id>/`). All survive container stops, restarts, and archiving. On archive, only the container is removed — workspace, agents, and DinD data persist for unarchiving. On permanent delete, all are removed.
 
 The agents volume stores agent CLI configuration directories (`claude/`, `gemini/`, `codex/`, `agents/`, `claude.json`). The entrypoint symlinks these to their expected home directory paths (`~/.claude`, `~/.gemini`, `~/.codex`, `~/.agents`, `~/.claude.json`). This preserves MCP server configs, conversation history, auto-memory, installed plugins/extensions, custom commands, and other agent state across container lifecycle events. Credential files (OAuth tokens) are bind-mounted on top of the agents volume — Docker processes the volume mount first, then overlays the individual file bind mounts.
 
 ### WorkerStore
 
-`WorkerStore` (`server/utils/worker-store.ts`) persists worker metadata per user at `<dataDir>/users/<userId>/workers.json`, keyed by the UUID `name`. Extends `UserScopedJsonStore<string, WorkerRecord>` (`server/utils/user-scoped-store.ts`) which scans `users/*/workers.json` on init and maintains a `Map<userId, Map<name, WorkerRecord>>` internally. `list()` returns a flat view across all users (sorted by `containerName`); `listForUser(userId)` scopes to one user. The editable `displayName` lives on the `WorkerRecord` and is the only field a rename touches — `name`, `containerName`, volumes, and mappings are unaffected.
+`WorkerStore` (`server/utils/worker-store.ts`) persists worker metadata per user at `<dataDir>/users/<userId>/workers.json`, keyed by the UUID `id`. Each `WorkerRecord` carries the standard base-resource fields (`id`, `userId`, `createdAt`, `updatedAt`). Extends `UserScopedJsonStore<string, WorkerRecord>` (`server/utils/user-scoped-store.ts`) which scans `users/*/workers.json` on init and maintains a `Map<userId, Map<id, WorkerRecord>>` internally. `list()` returns a flat view across all users (sorted by `containerName`); `listForUser(userId)` scopes to one user; `findById(id)` resolves a single worker. The editable `displayName` lives on the `WorkerRecord` and is the only field a rename touches — `id`, `containerName`, volumes, and mappings are unaffected.
 
 On startup, `ContainerManager.reconcileWorkers()` syncs the WorkerStore with Docker state:
-- Docker containers not in the store are registered (using `agentor.user-id` and `agentor.worker-name` labels to identify owner + UUID name)
+- Docker containers carrying `agentor.id` are matched back to their `WorkerRecord` via `WorkerStore.findById` (the record holds the owner `userId` and all config); the record's `containerId` is refreshed to the live container
 - Active workers whose containers are gone are marked archived
 
 ### Docker Labels
 
-Docker labels remain the **runtime** source of truth for active containers. `ContainerManager.sync()` queries Docker and reconstructs `(userId, name)` pairs from labels, then looks up the authoritative `WorkerRecord` in the store. The WorkerStore is the **persistent** source of truth for archived workers (whose containers no longer exist).
+Docker labels remain the **runtime** source of truth for active containers. `ContainerManager.sync()` queries Docker, reads each container's `agentor.id` label, and looks up the authoritative `WorkerRecord` in the store (owner + config live there, not on the container). The WorkerStore is the **persistent** source of truth for archived workers (whose containers no longer exist).
 
-**Docker labels stored on each worker**:
+**Docker labels stored on each worker** (deliberately minimal):
 - `agentor.managed=true` — filter key for listing
-- `agentor.user-id=<userId>` — owner
-- `agentor.worker-name=<name>` — the worker UUID
+- `agentor.id=<worker uuid>` — resolves the container to its `WorkerRecord`
 
-Configuration data (CPU limit, memory limit, network mode, Docker-in-Docker, environment ID/name, repos, mounts, git identity) lives in `WorkerRecord` on disk — never in Docker labels.
+The old `agentor.user-id` and `agentor.worker-name` labels are gone — the owner `userId` and the worker's own config live in `WorkerRecord` on disk, keyed by `agentor.id`.
+
+The `WorkerRecord` is **normalized**: it stores only the worker's own settings (`displayName`, `repos`, `mounts`, `initScript`) plus foreign-key references — `userId` (owner) and `environmentId` (assigned environment). The environment's config (CPU/memory limits, network mode, Docker-in-Docker, setup script, env vars, exposed APIs, capabilities, instructions) is **resolved live from the `EnvironmentStore` by `environmentId`** when the container is built — never copied onto the worker. Likewise the git identity (name/email) is **resolved live from the owning `userId`** at build time, not snapshotted. This means editing an environment (or a user's profile) is automatically picked up on the next rebuild, and there is exactly one source of truth for each piece of config.

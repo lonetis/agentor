@@ -14,7 +14,7 @@ const emit = defineEmits<{
 
 const open = defineModel<boolean>('open', { default: false });
 
-const { environments } = useEnvironments();
+const { environments, defaultEnvironmentId } = useEnvironments();
 
 const {
   repos: githubRepos,
@@ -33,6 +33,12 @@ const repoRowIds = reactive(new Map<number, number>());
 
 const generatedName = ref('');
 
+// Pre-select the built-in default environment once the list resolves — its id
+// is a derived UUID, not known until the environments load.
+watch(defaultEnvironmentId, (id) => {
+  if (id && !form.environmentId) form.environmentId = id;
+}, { immediate: true });
+
 watch(open, async (isOpen) => {
   if (isOpen) {
     fetchRepos();
@@ -43,7 +49,7 @@ watch(open, async (isOpen) => {
 
 const form = reactive({
   displayName: '',
-  environmentId: 'default',
+  environmentId: '',
   repos: [] as RepoConfig[],
   mounts: [] as MountConfig[],
   initScript: '',
@@ -142,7 +148,7 @@ function removeMount(idx: number) {
 }
 
 function submit() {
-  // The internal worker identity is a UUID minted server-side; the form only
+  // The internal worker identity is a Docker-style hex id minted server-side; the form only
   // collects the editable, free-form display name. Send the suggested name when
   // the user leaves the field blank so the worker keeps the friendly label they
   // saw in the placeholder.
@@ -172,7 +178,7 @@ function submit() {
 
 function reset() {
   form.displayName = '';
-  form.environmentId = 'default';
+  form.environmentId = defaultEnvironmentId.value;
   form.repos = [];
   form.mounts = [];
   form.initScript = '';
@@ -190,7 +196,7 @@ function reset() {
       <div class="p-6 space-y-5 max-h-[90vh] overflow-y-auto">
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">New Worker</h2>
 
-        <UFormField label="Display name" hint="Shown in the dashboard — editable later">
+        <UFormField label="Display name">
           <UInput
             v-model="form.displayName"
             :placeholder="generatedName"

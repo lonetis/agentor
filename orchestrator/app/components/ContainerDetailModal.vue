@@ -1,49 +1,117 @@
 <script setup lang="ts">
-import type { ContainerInfo, PortMapping, DomainMapping } from '~/types';
+import type { ContainerInfo, PortMapping, DomainMapping, RepoConfig, MountConfig, UpdateContainerSettingsRequest } from '~/types';
 import type { AppInstanceInfo } from '../../shared/types';
+
+type BadgeColor = 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral';
 
 const props = defineProps<{
   container: ContainerInfo;
-  statusColor: 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral';
+  statusColor: BadgeColor;
 }>();
 
 const emit = defineEmits<{
-  rename: [id: string, displayName: string];
+  update: [id: string, patch: UpdateContainerSettingsRequest, rebuild: boolean];
+  rebuild: [id: string];
 }>();
 
 const open = defineModel<boolean>('open', { default: false });
 
-const displayLabel = computed(() => props.container.displayName || shortName(props.container.name));
+const { gitProviders } = useGitProviders();
+const { environments, defaultEnvironmentId } = useEnvironments();
+const { initScripts } = useInitScripts();
 
-// Inline rename of the display name.
-const renaming = ref(false);
-const renameValue = ref('');
-const renameInput = ref<HTMLInputElement | null>(null);
+const displayLabel = computed(() => props.container.displayName || shortName(props.container.id));
 
-async function startRename() {
-  renameValue.value = displayLabel.value;
-  renaming.value = true;
-  await nextTick();
-  renameInput.value?.focus();
-  renameInput.value?.select();
+// ─── Editable settings form ──────────────────────────────────────────────
+// `displayName` is a live edit (applied without rebuild). `environmentId`,
+// `repos`, `mounts`, and `initScript` are baked into the container at create
+// time, so editing them flags the worker `pendingRebuild` until the next
+// rebuild — surfaced via the per-field "requires rebuild" badges below.
+const form = reactive({
+  displayName: '',
+  environmentId: '',
+  repos: [] as RepoConfig[],
+  mounts: [] as MountConfig[],
+  initScript: '',
+});
+
+const { selectedPreset, presetOptions } = useInitScriptSync(initScripts, toRef(form, 'initScript'));
+
+const environmentOptions = computed(() => environments.value.map((e) => ({ label: e.name, value: e.id })));
+const defaultProvider = computed(() => gitProviders.value[0]?.id || 'github');
+
+function resetFormFromContainer() {
+  form.displayName = props.container.displayName || '';
+  form.environmentId = props.container.environmentId || defaultEnvironmentId.value;
+  form.repos = (props.container.repos || []).map((r) => ({ ...r }));
+  form.mounts = (props.container.mounts || []).map((m) => ({ ...m }));
+  form.initScript = props.container.initScript || '';
 }
 
-function cancelRename() {
-  renaming.value = false;
+function addRepo() {
+  form.repos.push({ provider: defaultProvider.value, url: '', branch: '' });
+}
+function removeRepo(idx: number) {
+  form.repos.splice(idx, 1);
+}
+function addMount() {
+  form.mounts.push({ source: '', target: '', readOnly: false });
+}
+function removeMount(idx: number) {
+  form.mounts.splice(idx, 1);
 }
 
-function commitRename() {
-  if (!renaming.value) return;
-  renaming.value = false;
-  const next = renameValue.value.trim();
-  if (next && next !== displayLabel.value) {
-    emit('rename', props.container.id, next);
-  }
+// ─── Dirty / validity tracking ───────────────────────────────────────────
+function normRepos(repos: RepoConfig[] | undefined): string {
+  return JSON.stringify((repos ?? []).filter((r) => r.url).map((r) => ({ provider: r.provider, url: r.url, branch: r.branch || '' })));
+}
+function normMounts(mounts: MountConfig[] | undefined): string {
+  return JSON.stringify((mounts ?? []).filter((m) => m.source && m.target).map((m) => ({ source: m.source, target: m.target, readOnly: !!m.readOnly })));
 }
 
-// Reset the rename UI whenever a different worker is shown.
-watch(() => props.container.id, () => { renaming.value = false; });
+const liveDirty = computed(() => {
+  const next = form.displayName.trim();
+  return !!next && next !== (props.container.displayName || '');
+});
+const envDirty = computed(() => form.environmentId !== (props.container.environmentId || defaultEnvironmentId.value));
+const initDirty = computed(() => (form.initScript.trim() || '') !== (props.container.initScript || ''));
+const reposDirty = computed(() => normRepos(form.repos) !== normRepos(props.container.repos));
+const mountsDirty = computed(() => normMounts(form.mounts) !== normMounts(props.container.mounts));
+const rebuildDirty = computed(() => envDirty.value || initDirty.value || reposDirty.value || mountsDirty.value);
+const anyDirty = computed(() => liveDirty.value || rebuildDirty.value);
 
+const nameValid = computed(() => {
+  const n = form.displayName.trim();
+  return n.length > 0 && n.length <= 100;
+});
+const canSave = computed(() => anyDirty.value && nameValid.value);
+
+function buildPatch(): UpdateContainerSettingsRequest {
+  return {
+    displayName: form.displayName.trim(),
+    environmentId: form.environmentId,
+    initScript: form.initScript,
+    repos: form.repos
+      .filter((r) => r.url)
+      .map((r) => ({ provider: r.provider, url: r.url, ...(r.branch ? { branch: r.branch } : {}) })),
+    mounts: form.mounts
+      .filter((m) => m.source && m.target)
+      .map((m) => ({ source: m.source, target: m.target, ...(m.readOnly ? { readOnly: true } : {}) })),
+  };
+}
+
+function save(rebuild: boolean) {
+  if (!canSave.value) return;
+  emit('update', props.container.id, buildPatch(), rebuild);
+  open.value = false;
+}
+
+function rebuildNow() {
+  emit('rebuild', props.container.id);
+  open.value = false;
+}
+
+// ─── Read-only info sections ─────────────────────────────────────────────
 const portMappings = ref<PortMapping[]>([]);
 const domainMappings = ref<DomainMapping[]>([]);
 const appInstances = ref<AppInstanceInfo[]>([]);
@@ -79,7 +147,10 @@ async function loadDetails() {
 }
 
 watch(open, (isOpen) => {
-  if (isOpen) loadDetails();
+  if (isOpen) {
+    resetFormFromContainer();
+    loadDetails();
+  }
 });
 
 watch(() => props.container.id, () => {
@@ -87,6 +158,10 @@ watch(() => props.container.id, () => {
   domainMappings.value = [];
   appInstances.value = [];
   loaded.value = false;
+  if (open.value) {
+    resetFormFromContainer();
+    loadDetails();
+  }
 });
 
 const shortImageId = computed(() => {
@@ -95,168 +170,165 @@ const shortImageId = computed(() => {
 });
 
 const formattedCreatedAt = computed(() => {
-  if (!props.container.createdAt) return '\u2014';
+  if (!props.container.createdAt) return '—';
   return new Date(props.container.createdAt).toLocaleString();
-});
-
-const networkModeLabel = computed(() => {
-  const labels: Record<string, string> = {
-    'full': 'Full access',
-    'block-all': 'Block all',
-    'block': 'Block (custom allowlist)',
-    'package-managers': 'Package managers only',
-    'custom': 'Custom',
-  };
-  const mode = props.container.networkMode;
-  return mode ? labels[mode] || mode : null;
-});
-
-const exposeApisLabels = computed(() => {
-  const apis = props.container.exposeApis;
-  if (!apis) return [];
-  const result: string[] = [];
-  if (apis.portMappings) result.push('Port Mappings');
-  if (apis.domainMappings) result.push('Domain Mappings');
-  if (apis.usage) result.push('Usage');
-  return result;
 });
 </script>
 
 <template>
-  <UModal v-model:open="open">
+  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-2xl' }">
     <template #content>
       <div class="p-5 max-h-[90vh] overflow-y-auto">
         <!-- Header -->
         <div class="flex items-center justify-between mb-5 gap-3">
-          <div class="flex items-center gap-2 min-w-0">
-            <input
-              v-if="renaming"
-              ref="renameInput"
-              v-model="renameValue"
-              class="min-w-0 flex-1 text-lg font-semibold bg-white dark:bg-gray-900 text-gray-900 dark:text-white border border-blue-500/60 rounded px-2 py-0.5 focus:outline-none"
-              @keydown.enter.prevent="commitRename"
-              @keydown.esc.prevent="cancelRename"
-              @blur="commitRename"
-            />
-            <template v-else>
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white truncate" :title="displayLabel">
-                {{ displayLabel }}
-              </h2>
-              <UTooltip text="Rename">
-                <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-pencil" @click="startRename" />
-              </UTooltip>
-            </template>
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white truncate" :title="displayLabel">
+            {{ displayLabel }}
+            <span class="text-gray-400 dark:text-gray-500 font-normal">— Settings</span>
+          </h2>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <UBadge v-if="container.pendingRebuild" color="warning" variant="subtle" size="sm">
+              Rebuild pending
+            </UBadge>
+            <UBadge :color="statusColor" variant="subtle" size="sm">
+              {{ container.status }}
+            </UBadge>
           </div>
-          <UBadge :color="statusColor" variant="subtle" size="sm" class="shrink-0">
-            {{ container.status }}
-          </UBadge>
+        </div>
+
+        <!-- Pending rebuild banner -->
+        <div
+          v-if="container.pendingRebuild"
+          class="mb-5 flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3 py-2"
+        >
+          <span class="text-xs text-amber-700 dark:text-amber-300">
+            Settings changes are saved but not yet applied. Rebuild to apply them to the running worker.
+          </span>
+          <UButton size="xs" color="warning" variant="solid" icon="i-lucide-hammer" @click="rebuildNow">
+            Rebuild now
+          </UButton>
         </div>
 
         <div class="space-y-5">
-          <!-- Worker info -->
+          <!-- Worker identity (read-only) -->
           <section>
             <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Worker</h3>
             <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
               <dt class="text-gray-500 dark:text-gray-400">Worker ID</dt>
-              <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.name">{{ container.name }}</dd>
+              <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.id">{{ container.id }}</dd>
 
               <dt class="text-gray-500 dark:text-gray-400">Container ID</dt>
-              <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.id">{{ container.id.slice(0, 12) }}</dd>
+              <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.containerId">{{ container.containerId.slice(0, 12) }}</dd>
 
               <dt class="text-gray-500 dark:text-gray-400">Image</dt>
-              <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.image">{{ container.image }}</dd>
+              <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.imageName">{{ container.imageName }}</dd>
 
               <dt class="text-gray-500 dark:text-gray-400">Image ID</dt>
-              <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.imageId">{{ shortImageId || '\u2014' }}</dd>
+              <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.imageId">{{ shortImageId || '—' }}</dd>
 
               <dt class="text-gray-500 dark:text-gray-400">Created</dt>
               <dd class="text-gray-900 dark:text-white text-xs">{{ formattedCreatedAt }}</dd>
             </dl>
           </section>
 
-          <!-- Configuration -->
-          <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Configuration</h3>
-            <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-              <dt class="text-gray-500 dark:text-gray-400">Environment</dt>
-              <dd class="text-gray-900 dark:text-white">{{ container.environmentName || '\u2014' }}</dd>
+          <!-- Editable settings -->
+          <section class="space-y-4">
+            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Settings</h3>
 
-              <dt class="text-gray-500 dark:text-gray-400">CPU Limit</dt>
-              <dd class="text-gray-900 dark:text-white">{{ container.cpuLimit ? `${container.cpuLimit} cores` : 'Unlimited' }}</dd>
-
-              <dt class="text-gray-500 dark:text-gray-400">Memory Limit</dt>
-              <dd class="text-gray-900 dark:text-white">{{ container.memoryLimit || 'Unlimited' }}</dd>
-
-              <dt class="text-gray-500 dark:text-gray-400">Docker</dt>
-              <dd class="text-gray-900 dark:text-white">{{ container.dockerEnabled ? 'Enabled' : 'Disabled' }}</dd>
-            </dl>
-          </section>
-
-          <!-- Network -->
-          <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Network</h3>
-            <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-              <dt class="text-gray-500 dark:text-gray-400">Mode</dt>
-              <dd class="text-gray-900 dark:text-white">{{ networkModeLabel || '\u2014' }}</dd>
-
-              <template v-if="container.allowedDomains?.length">
-                <dt class="text-gray-500 dark:text-gray-400">Allowed Domains</dt>
-                <dd class="text-gray-900 dark:text-white">
-                  <div v-for="domain in container.allowedDomains" :key="domain" class="font-mono text-xs">{{ domain }}</div>
-                </dd>
-              </template>
-
-              <dt class="text-gray-500 dark:text-gray-400">Package Managers</dt>
-              <dd class="text-gray-900 dark:text-white">{{ container.includePackageManagerDomains ? 'Allowed' : 'Blocked' }}</dd>
-            </dl>
-          </section>
-
-          <!-- Repositories -->
-          <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Repositories</h3>
-            <template v-if="container.repos?.length">
-              <div class="space-y-1">
-                <div v-for="(repo, idx) in container.repos" :key="idx" class="text-sm">
-                  <span class="text-gray-900 dark:text-white font-mono text-xs">{{ repo.url }}</span>
-                  <span v-if="repo.branch" class="text-gray-400 ml-1.5 text-xs">@ {{ repo.branch }}</span>
-                </div>
+            <!-- Display name (live) -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Display name</label>
+                <UBadge color="success" variant="subtle" size="xs">no rebuild needed</UBadge>
               </div>
-            </template>
-            <template v-else>
-              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
-            </template>
-          </section>
+              <UInput v-model="form.displayName" class="w-full" placeholder="Worker label" />
+              <p v-if="!nameValid" class="text-xs text-red-500 mt-1">Name must be 1–100 characters.</p>
+            </div>
 
-          <!-- Mounts -->
-          <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Mounts</h3>
-            <template v-if="container.mounts?.length">
-              <div class="space-y-1">
-                <div v-for="(mount, idx) in container.mounts" :key="idx" class="flex items-center gap-2 text-sm">
-                  <span class="font-mono text-xs text-gray-900 dark:text-white truncate">{{ mount.source }}</span>
-                  <span class="text-gray-400">&rarr;</span>
-                  <span class="font-mono text-xs text-gray-900 dark:text-white truncate">{{ mount.target }}</span>
-                  <UBadge v-if="mount.readOnly" color="neutral" variant="subtle" size="xs">ro</UBadge>
-                </div>
+            <!-- Environment (rebuild) -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Environment</label>
+                <UBadge color="warning" variant="subtle" size="xs">requires rebuild</UBadge>
               </div>
-            </template>
-            <template v-else>
-              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
-            </template>
+              <USelect v-model="form.environmentId" :items="environmentOptions" class="w-full" />
+            </div>
+
+            <!-- Repositories (rebuild) -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Repositories</label>
+                <UBadge color="warning" variant="subtle" size="xs">requires rebuild</UBadge>
+              </div>
+              <div class="space-y-2">
+                <RepoInput
+                  v-for="(repo, idx) in form.repos"
+                  :key="idx"
+                  :model-value="repo"
+                  :providers="gitProviders"
+                  @update:model-value="form.repos[idx] = $event"
+                  @remove="removeRepo(idx)"
+                />
+              </div>
+              <UButton size="xs" variant="link" class="mt-1" @click="addRepo">+ Add repository</UButton>
+            </div>
+
+            <!-- Volume mounts (rebuild) -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Volume Mounts</label>
+                <UBadge color="warning" variant="subtle" size="xs">requires rebuild</UBadge>
+              </div>
+              <div class="space-y-2">
+                <MountInput
+                  v-for="(mount, idx) in form.mounts"
+                  :key="idx"
+                  :model-value="mount"
+                  @update:model-value="form.mounts[idx] = $event"
+                  @remove="removeMount(idx)"
+                />
+              </div>
+              <UButton size="xs" variant="link" class="mt-1" @click="addMount">+ Add mount</UButton>
+            </div>
+
+            <!-- Init script (rebuild) -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Init Script</label>
+                <UBadge color="warning" variant="subtle" size="xs">requires rebuild</UBadge>
+              </div>
+              <div class="space-y-2">
+                <USelect v-model="selectedPreset" :items="presetOptions" class="w-full" />
+                <UTextarea
+                  v-model="form.initScript"
+                  :rows="3"
+                  placeholder="#!/bin/bash&#10;# Script to run in tmux on startup"
+                  class="w-full font-mono text-xs"
+                />
+              </div>
+            </div>
+
+            <!-- Save actions -->
+            <div class="flex items-center gap-2 pt-1">
+              <UButton :disabled="!canSave" @click="save(false)">Save</UButton>
+              <UButton
+                v-if="rebuildDirty"
+                color="warning"
+                variant="solid"
+                icon="i-lucide-hammer"
+                :disabled="!canSave"
+                @click="save(true)"
+              >
+                Save &amp; Rebuild
+              </UButton>
+              <span v-if="rebuildDirty" class="text-xs text-amber-600 dark:text-amber-400">
+                Changes require a rebuild to take effect.
+              </span>
+              <div class="flex-1" />
+              <UButton color="neutral" variant="outline" @click="open = false">Close</UButton>
+            </div>
           </section>
 
-          <!-- Init Script -->
-          <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Init Script</h3>
-            <template v-if="container.initScript">
-              <pre class="text-xs font-mono text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto whitespace-pre-wrap">{{ container.initScript }}</pre>
-            </template>
-            <template v-else>
-              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
-            </template>
-          </section>
-
-          <!-- Port Mappings -->
+          <!-- Port Mappings (read-only) -->
           <section v-if="portMappings.length > 0">
             <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Port Mappings</h3>
             <div class="space-y-1.5">
@@ -272,7 +344,7 @@ const exposeApisLabels = computed(() => {
             </div>
           </section>
 
-          <!-- Domain Mappings -->
+          <!-- Domain Mappings (read-only) -->
           <section v-if="domainMappings.length > 0">
             <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Domain Mappings</h3>
             <div class="space-y-1.5">
@@ -286,7 +358,7 @@ const exposeApisLabels = computed(() => {
             </div>
           </section>
 
-          <!-- App Instances -->
+          <!-- App Instances (read-only) -->
           <section v-if="appInstances.length > 0">
             <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">App Instances</h3>
             <div class="space-y-1.5">
@@ -298,73 +370,6 @@ const exposeApisLabels = computed(() => {
                 </UBadge>
               </div>
             </div>
-          </section>
-
-          <!-- Exposed Worker APIs -->
-          <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Exposed Worker APIs</h3>
-            <template v-if="exposeApisLabels.length > 0">
-              <div class="flex flex-wrap gap-1.5">
-                <UBadge v-for="label in exposeApisLabels" :key="label" color="neutral" variant="subtle" size="xs">
-                  {{ label }}
-                </UBadge>
-              </div>
-            </template>
-            <template v-else>
-              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
-            </template>
-          </section>
-
-          <!-- Capabilities -->
-          <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Capabilities</h3>
-            <template v-if="container.capabilityNames?.length">
-              <div class="flex flex-wrap gap-1.5">
-                <UBadge v-for="name in container.capabilityNames" :key="name" color="neutral" variant="subtle" size="xs">
-                  {{ name }}
-                </UBadge>
-              </div>
-            </template>
-            <template v-else>
-              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
-            </template>
-          </section>
-
-          <!-- Instructions -->
-          <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Instructions</h3>
-            <template v-if="container.instructionNames?.length">
-              <div class="flex flex-wrap gap-1.5">
-                <UBadge v-for="name in container.instructionNames" :key="name" color="neutral" variant="subtle" size="xs">
-                  {{ name }}
-                </UBadge>
-              </div>
-            </template>
-            <template v-else>
-              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
-            </template>
-          </section>
-
-          <!-- Environment Variables -->
-          <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Environment Variables</h3>
-            <template v-if="container.envVars">
-              <pre class="text-xs font-mono text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto whitespace-pre-wrap">{{ container.envVars }}</pre>
-            </template>
-            <template v-else>
-              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
-            </template>
-          </section>
-
-          <!-- Setup Script -->
-          <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Setup Script</h3>
-            <template v-if="container.setupScript">
-              <pre class="text-xs font-mono text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto whitespace-pre-wrap">{{ container.setupScript }}</pre>
-            </template>
-            <template v-else>
-              <span class="text-xs text-gray-500 dark:text-gray-400 italic">None</span>
-            </template>
           </section>
         </div>
       </div>

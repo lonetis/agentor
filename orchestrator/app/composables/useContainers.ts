@@ -1,4 +1,4 @@
-import type { ContainerInfo, CreateContainerRequest } from '~/types';
+import type { ContainerInfo, CreateContainerRequest, UpdateContainerSettingsRequest } from '~/types';
 
 export function useContainers() {
   const { data: containers, refresh } = useFetch<ContainerInfo[]>('/api/containers', {
@@ -38,9 +38,16 @@ export function useContainers() {
   }
 
   async function renameContainer(id: string, displayName: string): Promise<ContainerInfo> {
+    return updateContainerSettings(id, { displayName });
+  }
+
+  async function updateContainerSettings(
+    id: string,
+    patch: UpdateContainerSettingsRequest,
+  ): Promise<ContainerInfo> {
     const result = await $fetch<ContainerInfo>(`/api/containers/${id}`, {
       method: 'PATCH',
-      body: { displayName },
+      body: patch,
     });
     await refresh();
     return result;
@@ -55,5 +62,6 @@ export function useContainers() {
     rebuildContainer,
     removeContainer,
     renameContainer,
+    updateContainerSettings,
   };
 }

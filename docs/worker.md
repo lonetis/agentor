@@ -2,17 +2,17 @@
 
 ## Unified Worker Image
 
-A single Docker image (`agentor-worker`, built from `worker/`) contains all agent CLIs and their setup scripts. **Credentials are scoped per user**: OAuth/subscription tokens live as JSON files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json` and are bind-mounted directly into every worker that user owns at the exact path each CLI reads and writes — `/home/agent/.agent-data/.claude/.credentials.json`, `/home/agent/.agent-data/.codex/auth.json`, `/home/agent/.agent-data/.gemini/oauth_creds.json`. Since `~/.<agent>` is symlinked to `.agent-data/.<agent>/` by `worker/entrypoint.sh`, CLI writes land on the host file immediately and every other worker the same user owns sees the update without any restart. In directory mode the orchestrator pre-creates the three mountpoint files under `<DATA_DIR>/users/<userId>/agents/<name>/.<agent>/` before starting the worker so Docker Desktop's virtiofs accepts the nested bind. Different users have completely isolated credentials. API keys, the GitHub token, and arbitrary custom env vars are also per-user — managed from the dashboard's Account modal and persisted in `<DATA_DIR>/users/<userId>/env-vars.json`. Copying OAuth tokens from a local machine is not supported because refresh token rotation would cause the local and worker tokens to go out of sync — always log in inside a worker.
+A single Docker image (`agentor-worker`, built from `worker/`) contains all agent CLIs and their setup scripts. **Credentials are scoped per user**: OAuth/subscription tokens live as JSON files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json` and are bind-mounted directly into every worker that user owns at the exact path each CLI reads and writes — `/home/agent/.agent-data/.claude/.credentials.json`, `/home/agent/.agent-data/.codex/auth.json`, `/home/agent/.agent-data/.gemini/oauth_creds.json`. Since `~/.<agent>` is symlinked to `.agent-data/.<agent>/` by `worker/entrypoint.sh`, CLI writes land on the host file immediately and every other worker the same user owns sees the update without any restart. In directory mode the orchestrator pre-creates the three mountpoint files under `<DATA_DIR>/users/<userId>/agents/<id>/.<agent>/` before starting the worker so Docker Desktop's virtiofs accepts the nested bind. Different users have completely isolated credentials. Env vars (API keys, the GitHub token, and any custom keys) are also per-user — managed from the dashboard's Account modal and persisted as a uniform key/value list in `<DATA_DIR>/users/<userId>/env-vars.json` (`{ envVars: [{ key, value }] }`, keyed by the env var NAME, no hardcoded fields). The SSH public key is kept separately at `<DATA_DIR>/users/<userId>/ssh/authorized_keys` (managed via `/api/account/ssh-key`, not part of env-vars.json). Copying OAuth tokens from a local machine is not supported because refresh token rotation would cause the local and worker tokens to go out of sync — always log in inside a worker.
 
-**Worker identity**: every worker has an immutable opaque `name` (a server-minted UUID v4 — clients never choose it) and a derived `containerName = <containerPrefix>-<name>` (default prefix `agentor-worker`, e.g. `agentor-worker-<uuid>`). `name` is the worker's internal identity: the container's `Hostname` is set to it, so the in-container `hostname` command and the shell prompt show the UUID. `containerName` is the Docker container name, the prefix for per-worker volumes (`<containerName>-workspace`, `-agents`, `-docker`), and the DNS name Traefik routes to. The user-facing label is a separate editable `displayName` (free-form, not required to be unique, renameable via `PATCH /api/containers/:id`) — that is what the dashboard shows. Inside the worker, `$WORKER_CONTAINER_NAME` is the globally unique `containerName`, so worker-facing API shortcuts (port/domain mapping creation) can resolve back to the owning user + worker without ambiguity.
+**Worker identity**: every worker has an immutable UUID `id` (a server-minted UUID v4 — clients never choose it) and a derived `containerName = agentor-worker-<id>`. `id` is the worker's stable internal identity — the WorkerStore key, the `agentor.id` label, the basis for `containerName`, and stable across rebuild/unarchive. The Docker container id (`containerId`) changes on every rebuild; the orchestrator resolves `id` → current `containerId` when it needs to talk to Docker. No custom `Hostname` is set on the container, so Docker defaults it to the short container id — the in-container `hostname` command and the shell prompt show that docker short id (e.g. `16b082a7681b`), not the worker UUID. `containerName` is the Docker container name, the prefix for per-worker volumes (`<containerName>-workspace`, `-agents`, `-docker`), and the DNS name Traefik routes to. The user-facing label is a separate editable `displayName` (free-form, not required to be unique, renameable via `PATCH /api/containers/:id`) — that is what the dashboard shows. Inside the worker, `$WORKER_CONTAINER_NAME` is the globally unique `containerName`, so worker-facing API shortcuts (port/domain mapping creation) can resolve back to the owning user + worker without ambiguity.
 
 **Structured JSON env vars** — the orchestrator passes 4 JSON env vars to workers instead of 20+ individual variables:
 - `ENVIRONMENT` — network mode, allowed domains, dockerEnabled, setupScript, envVars, exposeApis
 - `CAPABILITIES` — array of `{ name, content }` entries
 - `INSTRUCTIONS` — array of `{ name, content }` entries
-- `WORKER` — name, displayName, repos, initScript, gitName, gitEmail
+- `WORKER` — id, displayName, repos, initScript, gitName, gitEmail
 
-Individual env vars that CLIs read directly are populated **from the worker owner's per-user `UserEnvVars` record**: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, plus any custom keys the user added. Two infrastructural env vars are added by the orchestrator regardless of user: `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`.
+Individual env vars that CLIs read directly are populated **from the worker owner's per-user `UserEnvVars` record** via `renderUserEnvVars` — the record's uniform `envVars` list (`[{ key, value }]`, keyed by the env var NAME) is rendered verbatim, so `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, and any custom keys the user added all flow through the same path with no special-casing. Two infrastructural env vars are added by the orchestrator regardless of user: `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`.
 
 ### Worker Image Contents
 
@@ -51,7 +51,7 @@ No entrypoint changes needed — agent setup scripts handle all agent-specific l
 
 ## Init Script System
 
-Init scripts are managed via `InitScriptStore` (`orchestrator/server/utils/init-script-store.ts`), stored as JSON in `<DATA_DIR>/init-scripts.json`. Built-in init script files live in `orchestrator/server/built-in/init-scripts/` as plain `.sh` files — the filename (without extension) is both the ID and the name. Custom scripts can be created via the Init Scripts modal in the sidebar. Init scripts are just bash scripts — they are not tied to any specific agent.
+Init scripts are managed via `InitScriptStore` (`orchestrator/server/utils/init-script-store.ts`), stored as JSON in `<DATA_DIR>/init-scripts.json`. Built-in init script files live in `orchestrator/server/built-in/init-scripts/` as plain `.sh` files — the filename (without extension) is the name; the id is a stable UUID derived from it. Custom scripts can be created via the Init Scripts modal in the sidebar. Init scripts are just bash scripts — they are not tied to any specific agent.
 
 Agent-specific configuration (API domains) lives separately in `orchestrator/server/utils/agent-config.ts` as a static registry (`AGENT_CONFIGS`). This provides `getAllAgentApiDomains()` (firewall allowlist). Worker env vars come from the worker owner's `UserEnvVars` record via `renderUserEnvVars()`.
 
@@ -66,22 +66,21 @@ The UI provides a dropdown to select a script, which populates an editable init 
 
 Git providers are defined in `orchestrator/server/utils/git-providers.ts` via `GIT_PROVIDER_REGISTRY`. Each provider specifies:
 - Display metadata (name, URL placeholder)
-- Token config key and env var name
+- `tokenEnvVar` — the env var NAME the provider's token is stored under in the user's per-user env vars (e.g. `GITHUB_TOKEN`). There is no separate config key — the token is looked up per-user via `getUserEnvVar(env, '<tokenEnvVar>')`.
 - Clone domains (injected into restricted firewall modes so `git clone` works)
 
 **Adding a new git provider:**
-1. Add a registry entry in `orchestrator/server/utils/git-providers.ts`
-2. Add the token config key to `orchestrator/server/utils/config.ts` (`Config` interface + `loadConfig`)
-3. Add an auth block and clone case in `worker/entrypoint.sh`
-4. Add the token env var to `.env.example`
+1. Add a registry entry in `orchestrator/server/utils/git-providers.ts` (set its `tokenEnvVar`)
+2. Add an auth block and clone case in `worker/entrypoint.sh`
+3. (Optional) Document the token env var so users know which key to set in their Account env vars
 
-The orchestrator automatically passes configured tokens to workers and the UI shows a provider selector per-repo.
+The token comes from the owning user's per-user env vars (keyed by `tokenEnvVar`), so it is resolved per-worker at build time and the UI shows a provider selector per-repo.
 
 **Current providers:** GitHub (via `gh` CLI for auth + clone)
 
 ## Git Identity
 
-Each worker's git identity is configured from the creating user's profile (name and email from the auth system). The orchestrator passes `gitName` and `gitEmail` in the `WORKER` JSON env var, and the entrypoint sets `git config --global user.name` and `user.email` accordingly. This means when user A creates a worker, all git commits inside that worker are attributed to user A. Agent CLIs add `Co-authored-by` trailers to their commits for attribution. The identity persists across rebuild and archive/unarchive (stored in `WorkerRecord`).
+Each worker's git identity is the **owning user's** profile (name and email from the auth system), **resolved live at build time** from the worker's `userId` — it is not stored on the worker. At create/rebuild/unarchive the orchestrator looks the owner up (`getUserById`) and passes `gitName` and `gitEmail` in the `WORKER` JSON env var; the entrypoint sets `git config --global user.name` and `user.email` accordingly. This means when user A creates a worker, all git commits inside that worker are attributed to user A. Agent CLIs add `Co-authored-by` trailers to their commits for attribution. Because the identity is resolved (not snapshotted), it survives rebuild and archive/unarchive automatically and always reflects the user's current profile.
 
 ## Docker-in-Docker (DinD)
 

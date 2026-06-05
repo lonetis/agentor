@@ -98,9 +98,11 @@ test.describe('Per-user worker env vars', () => {
       const github = `gh-token-${Date.now()}`;
       const anthropic = `sk-ant-${Date.now()}`;
       await u.api.putAccountEnvVars({
-        githubToken: github,
-        anthropicApiKey: anthropic,
-        customEnvVars: [{ key: 'AGENTOR_CUSTOM_X', value: 'hello-world-42' }],
+        envVars: [
+          { key: 'GITHUB_TOKEN', value: github },
+          { key: 'ANTHROPIC_API_KEY', value: anthropic },
+          { key: 'AGENTOR_CUSTOM_X', value: 'hello-world-42' },
+        ],
       });
 
       const container = await createWorker(u.ctx, {
@@ -125,8 +127,8 @@ test.describe('Per-user worker env vars', () => {
     let aContainerId: string | undefined;
     let bContainerId: string | undefined;
     try {
-      await a.api.putAccountEnvVars({ githubToken: 'gh-USER-A' });
-      await b.api.putAccountEnvVars({ githubToken: 'gh-USER-B' });
+      await a.api.putAccountEnvVars({ envVars: [{ key: 'GITHUB_TOKEN', value: 'gh-USER-A' }] });
+      await b.api.putAccountEnvVars({ envVars: [{ key: 'GITHUB_TOKEN', value: 'gh-USER-B' }] });
 
       const aContainer = await createWorker(a.ctx, { displayName: `iso-a-${Date.now()}` });
       aContainerId = aContainer.id;
@@ -152,7 +154,7 @@ test.describe('Per-user worker env vars', () => {
     let containerId: string | undefined;
     let environmentId: string | undefined;
     try {
-      await u.api.putAccountEnvVars({ githubToken: 'gh-from-account' });
+      await u.api.putAccountEnvVars({ envVars: [{ key: 'GITHUB_TOKEN', value: 'gh-from-account' }] });
 
       // Create a custom environment with envVars overriding GITHUB_TOKEN.
       const env = await u.api.createEnvironment({

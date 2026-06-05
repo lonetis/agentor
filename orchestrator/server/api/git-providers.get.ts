@@ -16,19 +16,16 @@ defineRouteMeta({
 
 import { listGitProviders } from '../utils/git-providers';
 import { useUserEnvStore } from '../utils/services';
+import { getUserEnvVar } from '../utils/user-env-store';
 import { requireAuth } from '../utils/auth-helpers';
-import type { UserEnvVars } from '../../shared/types';
 
 export default defineEventHandler((event) => {
   const { user } = requireAuth(event);
   const env = useUserEnvStore().getOrDefault(user.id);
-  return listGitProviders().map((p) => {
-    const value = env[p.userEnvKey as keyof UserEnvVars];
-    return {
-      id: p.id,
-      displayName: p.displayName,
-      placeholder: p.placeholder,
-      tokenConfigured: typeof value === 'string' && value.length > 0,
-    };
-  });
+  return listGitProviders().map((p) => ({
+    id: p.id,
+    displayName: p.displayName,
+    placeholder: p.placeholder,
+    tokenConfigured: getUserEnvVar(env, p.tokenEnvVar).length > 0,
+  }));
 });

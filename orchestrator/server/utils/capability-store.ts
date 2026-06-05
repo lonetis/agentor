@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { randomUUID } from 'node:crypto';
 import { BuiltInAndUserStore } from './built-in-and-user-store';
 import type { BuiltInCapability } from './built-in-content';
 
@@ -20,7 +20,7 @@ export class CapabilityStore extends BuiltInAndUserStore<Capability, BuiltInCapa
   async create(data: { name: string; content: string; userId: string }): Promise<Capability> {
     const now = new Date().toISOString();
     const capability: Capability = {
-      id: nanoid(12),
+      id: randomUUID(),
       name: data.name,
       content: data.content,
       builtIn: false,

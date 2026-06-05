@@ -19,6 +19,21 @@ test.describe('Environments API', () => {
       expect(status).toBe(200);
       expect(Array.isArray(body)).toBe(true);
     });
+
+    test('built-in default environment has a UUID id (not the slug)', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body } = await api.listEnvironments();
+      const def = body.find((e: { builtIn: boolean; name: string }) => e.builtIn && e.name === 'default');
+      expect(def).toBeTruthy();
+      // Built-in env ids are stable derived UUIDs — `default` is the name, not the id.
+      expect(def.id).not.toBe('default');
+      expect(def.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+      // Fetchable by its UUID id (built-ins resolve via the defaults store).
+      const { body: fetched } = await api.getEnvironment(def.id);
+      expect(fetched.id).toBe(def.id);
+      expect(fetched.builtIn).toBe(true);
+    });
   });
 
   test.describe('POST /api/environments', () => {

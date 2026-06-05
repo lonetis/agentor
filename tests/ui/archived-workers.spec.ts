@@ -18,7 +18,7 @@ test.describe('Archived Workers UI', () => {
       await expectSidebarTabExists(page, 'Archived');
 
       // Cleanup
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
 
     test('clicking Archived tab shows archived workers', async ({ page, request }) => {
@@ -32,7 +32,7 @@ test.describe('Archived Workers UI', () => {
       await page.waitForTimeout(500);
 
       // Cleanup
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
   });
 
@@ -50,7 +50,7 @@ test.describe('Archived Workers UI', () => {
       // The worker display name should appear
       await expect(page.locator('aside').locator(`text=${displayName}`)).toBeVisible({ timeout: 15_000 });
 
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
 
     test('archived worker has Unarchive button', async ({ page, request }) => {
@@ -65,7 +65,7 @@ test.describe('Archived Workers UI', () => {
       const archivedCard = page.locator('aside .rounded-lg').first();
       expect(await hasButtonWithTooltip(archivedCard, page, 'Unarchive')).toBe(true);
 
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
 
     test('archived worker has Delete button', async ({ page, request }) => {
@@ -80,13 +80,12 @@ test.describe('Archived Workers UI', () => {
       const archivedCard = page.locator('aside .rounded-lg').first();
       expect(await hasButtonWithTooltip(archivedCard, page, 'Delete')).toBe(true);
 
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
   });
 
   test.describe('Archive via UI', () => {
     let containerId: string;
-    let containerName: string;
 
     let displayName: string;
 
@@ -94,13 +93,12 @@ test.describe('Archived Workers UI', () => {
       displayName = `ArcViaUI-${Date.now()}`;
       const container = await createWorker(request, { displayName });
       containerId = container.id;
-      containerName = container.name as string;
     });
 
     test.afterEach(async ({ request }) => {
       await cleanupWorker(request, containerId);
       const api = new ApiClient(request);
-      try { await api.deleteArchivedWorker(containerName); } catch { /* ignore */ }
+      try { await api.deleteArchivedWorker(containerId); } catch { /* ignore */ }
     });
 
     test('archiving removes container from active list', async ({ page }) => {
@@ -119,7 +117,6 @@ test.describe('Archived Workers UI', () => {
   });
 
   test.describe.serial('Unarchive flow', () => {
-    let containerName: string;
     let containerId: string;
     let displayName: string;
 
@@ -127,7 +124,6 @@ test.describe('Archived Workers UI', () => {
       displayName = `UnarcAction-${Date.now()}`;
       const container = await createWorker(request, { displayName });
       containerId = container.id;
-      containerName = container.name as string;
       const api = new ApiClient(request);
       await api.archiveContainer(containerId);
     });
@@ -135,7 +131,7 @@ test.describe('Archived Workers UI', () => {
     test.afterAll(async ({ request }) => {
       const api = new ApiClient(request);
       try { await api.removeContainer(containerId); } catch { /* ignore */ }
-      try { await api.deleteArchivedWorker(containerName); } catch { /* ignore */ }
+      try { await api.deleteArchivedWorker(containerId); } catch { /* ignore */ }
     });
 
     test('archived worker card shows date', async ({ page }) => {
@@ -174,7 +170,6 @@ test.describe('Archived Workers UI', () => {
   });
 
   test.describe.serial('Delete flow', () => {
-    let containerName: string;
     let containerId: string;
     let displayName: string;
 
@@ -182,7 +177,6 @@ test.describe('Archived Workers UI', () => {
       displayName = `DelAction-${Date.now()}`;
       const container = await createWorker(request, { displayName });
       containerId = container.id;
-      containerName = container.name as string;
       const api = new ApiClient(request);
       await api.archiveContainer(containerId);
     });
@@ -190,7 +184,7 @@ test.describe('Archived Workers UI', () => {
     test.afterAll(async ({ request }) => {
       const api = new ApiClient(request);
       try { await api.removeContainer(containerId); } catch { /* ignore */ }
-      try { await api.deleteArchivedWorker(containerName); } catch { /* ignore */ }
+      try { await api.deleteArchivedWorker(containerId); } catch { /* ignore */ }
     });
 
     test('click Delete with confirm removes worker from archived list', async ({ page }) => {
@@ -233,8 +227,8 @@ test.describe('Archived Workers UI', () => {
         await expect(page.locator('aside').locator('.rounded-lg').filter({ hasText: `CntAction1-${ts}` })).toBeVisible({ timeout: 10_000 });
         await expect(page.locator('aside').locator('.rounded-lg').filter({ hasText: `CntAction2-${ts}` })).toBeVisible({ timeout: 10_000 });
       } finally {
-        await api.deleteArchivedWorker(container1.name as string);
-        await api.deleteArchivedWorker(container2.name as string);
+        await api.deleteArchivedWorker(container1.id);
+        await api.deleteArchivedWorker(container2.id);
       }
     });
   });

@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { randomUUID } from 'node:crypto';
 import { BuiltInAndUserStore } from './built-in-and-user-store';
 import type { BuiltInInstruction } from './built-in-content';
 
@@ -20,7 +20,7 @@ export class InstructionStore extends BuiltInAndUserStore<Instruction, BuiltInIn
   async create(data: { name: string; content: string; userId: string }): Promise<Instruction> {
     const now = new Date().toISOString();
     const entry: Instruction = {
-      id: nanoid(12),
+      id: randomUUID(),
       name: data.name,
       content: data.content,
       builtIn: false,

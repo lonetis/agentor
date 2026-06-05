@@ -10,14 +10,11 @@ function uniquePort(): number {
 
 test.describe('Port Mappings API', () => {
   let containerId: string;
-  let containerName: string;
-
   let containerDockerName: string;
 
   test.beforeAll(async ({ request }) => {
     const container = await createWorker(request);
     containerId = container.id;
-    containerName = container.name as string;
     containerDockerName = container.containerName as string;
   });
 
@@ -55,7 +52,7 @@ test.describe('Port Mappings API', () => {
       expect(status).toBe(201);
       expect(body.externalPort).toBe(port);
       expect(body.type).toBe('localhost');
-      expect(body.workerName).toBe(containerName);
+      expect(body.workerId).toBe(containerId);
     });
 
     test('response includes all expected fields', async ({ request }) => {
@@ -70,7 +67,8 @@ test.describe('Port Mappings API', () => {
       expect(typeof body.externalPort).toBe('number');
       expect(typeof body.internalPort).toBe('number');
       expect(typeof body.type).toBe('string');
-      expect(typeof body.workerName).toBe('string');
+      expect(typeof body.workerId).toBe('string');
+      expect(body.id).toBeTruthy();
       expect(body.internalPort).toBe(intPort);
     });
 

@@ -201,13 +201,13 @@ test.describe.serial('Agent data persistence — rebuild', () => {
 
 test.describe.serial('Agent data persistence — archive/unarchive', () => {
   let containerId: string;
-  let containerName: string;
+  let workerId: string;
   const MARKER = `archive-persist-${Date.now()}`;
 
   test.beforeAll(async ({ request }) => {
     const container = await createWorker(request, { displayName: `Archive-${Date.now()}` });
     containerId = container.id;
-    containerName = container.name;
+    workerId = container.id;
   });
 
   test.afterAll(async ({ request }) => {
@@ -223,7 +223,7 @@ test.describe.serial('Agent data persistence — archive/unarchive', () => {
     const api = new ApiClient(request);
     await api.archiveContainer(containerId);
 
-    const { status, body } = await api.unarchiveWorker(containerName);
+    const { status, body } = await api.unarchiveWorker(workerId);
     expect(status).toBe(200);
     containerId = body.id;
 
@@ -291,5 +291,45 @@ test.describe.serial('Agent data persistence — no overwrite', () => {
     const output = await execInWorker(containerId, 'cat ~/.claude/settings.json');
     expect(output).toContain('still-here');
     expect(output).not.toContain('bypassPermissions');
+  });
+});
+
+// -- exposeApis gates which built-in API capability docs are written --
+
+test.describe.serial('Capability exposeApis filtering (worker-level)', () => {
+  let containerId: string;
+  let envId: string;
+
+  test.beforeAll(async ({ request }) => {
+    const api = new ApiClient(request);
+    // portMappings disabled, domain/usage enabled. The built-in `port-mapping`
+    // capability must be filtered out of the worker; `domain-mapping`, `usage`,
+    // and the always-on `tmux` capability must still be written. The filter is
+    // keyed by the built-in's slug (its name) — a regression guard for the
+    // capability id becoming a derived UUID (a UUID-keyed lookup would never
+    // match, wrongly leaving agentor-port-mapping in place).
+    const { body: env } = await api.createEnvironment({
+      name: `CapFilter-${Date.now()}`,
+      networkMode: 'full',
+      exposeApis: { portMappings: false, domainMappings: true, usage: true },
+      enabledCapabilityIds: null, // all built-ins
+    });
+    envId = env.id;
+    const container = await createWorker(request, { environmentId: envId, displayName: `CapFilter-${Date.now()}` });
+    containerId = container.id;
+  });
+
+  test.afterAll(async ({ request }) => {
+    if (containerId) await cleanupWorker(request, containerId);
+    if (envId) await new ApiClient(request).deleteEnvironment(envId);
+  });
+
+  test('built-in capability with exposeApi=false is not written; enabled ones are', async () => {
+    // Capabilities are written to ~/.claude/skills/agentor-<safe-name>/ on first startup.
+    const out = await execInWorker(containerId, 'ls -1 ~/.claude/skills 2>/dev/null', 60_000);
+    expect(out).not.toContain('agentor-port-mapping'); // portMappings:false → filtered out
+    expect(out).toContain('agentor-domain-mapping');   // domainMappings:true → present
+    expect(out).toContain('agentor-usage');            // usage:true → present
+    expect(out).toContain('agentor-tmux');             // never API-filtered
   });
 });

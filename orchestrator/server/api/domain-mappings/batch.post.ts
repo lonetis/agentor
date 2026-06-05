@@ -51,7 +51,6 @@ defineRouteMeta({
   },
 });
 
-import { nanoid } from 'nanoid';
 import { useDomainMappingStore, useTraefikManager, useContainerManager, useConfig } from '../../utils/services';
 import { requireContainerAccess } from '../../utils/auth-helpers';
 
@@ -164,7 +163,7 @@ export default defineEventHandler(async (event) => {
       containerInfo = containerManager.get(item.workerId);
     } else if (item.workerName) {
       containerInfo = containerManager.findByContainerName(item.workerName)
-        ?? containerManager.list().find((c) => c.name === item.workerName);
+        ?? containerManager.get(item.workerName as string);
     }
     if (!containerInfo || containerInfo.status !== 'running') {
       throw createError({
@@ -184,14 +183,13 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    const mapping = {
-      id: nanoid(),
+    const input = {
       subdomain: item.subdomain,
       baseDomain: item.baseDomain,
       path: item.path || '',
       protocol: item.protocol,
       wildcard: itemWildcard,
-      workerName: containerInfo.name,
+      workerId: containerInfo.id,
       containerName: containerInfo.containerName,
       internalPort: intPort,
       userId: containerInfo.userId,
@@ -200,8 +198,9 @@ export default defineEventHandler(async (event) => {
         : {}),
     };
 
+    let createdMapping;
     try {
-      await store.add(mapping);
+      createdMapping = await store.add(input);
     } catch (err) {
       throw createError({
         statusCode: 409,
@@ -209,7 +208,7 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    created.push(mapping);
+    created.push(createdMapping);
   }
 
   await useTraefikManager().reconcile();

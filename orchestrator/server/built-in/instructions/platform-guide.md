@@ -22,7 +22,7 @@ All worker-facing API endpoints live under `$ORCHESTRATOR_URL/api/worker-self/*`
 curl "$ORCHESTRATOR_URL/api/worker-self/info"
 ```
 
-That returns `{ workerName, containerName, userId, status, displayName }` for *this* worker.
+That returns `{ workerId, containerName, userId, status, displayName }` for *this* worker.
 
 The orchestrator also exposes session-authenticated routes under `$ORCHESTRATOR_URL/api/...` (port mappings, domain mappings, etc.) for the dashboard UI — those need a logged-in browser session and are not usable from inside a worker. Always reach for the `/api/worker-self/*` variants when scripting from here.
 
@@ -35,7 +35,7 @@ The orchestrator also exposes session-authenticated routes under `$ORCHESTRATOR_
 - **Shell:** bash
 - **Workspace:** `/workspace` — this is your main working directory. It is stored on a persistent Docker volume that survives container restarts and even archiving/unarchiving of the worker. Always work here.
 - **Home:** `/home/agent`
-- **Hostname:** equals your per-user worker `name` (e.g. `happy-panda`) — visible in the shell prompt
+- **Hostname:** the short Docker container id (e.g. `16b082a7681b`) — visible in the shell prompt. It is not a friendly name; read your editable display name from the `WORKER` env var with `jq -r .displayName <<< "$WORKER"`.
 
 ### Installed tools
 
@@ -82,7 +82,7 @@ A permanent `delete` (not `archive`) wipes `/workspace` and the agent config vol
 ### Key environment variables
 
 - `ORCHESTRATOR_URL` — Base URL of the orchestrator API (e.g. `http://agentor-orchestrator:3000`). Use this for all `/api/worker-self/*` calls.
-- `WORKER_CONTAINER_NAME` — This worker's globally unique Docker container name (`<containerPrefix>-<userId>-<name>`). You almost never need to send it explicitly any more — `/api/worker-self/*` resolves your identity from your source IP — but it's still set for diagnostics and tools that need a stable identifier.
+- `WORKER_CONTAINER_NAME` — This worker's globally unique Docker container name (`<containerPrefix>-<id>`, e.g. `agentor-worker-<uuid>`, where `<id>` is your worker UUID). You almost never need to send it explicitly any more — `/api/worker-self/*` resolves your identity from your source IP — but it's still set for diagnostics and tools that need a stable identifier.
 - `DOCKER_ENABLED` — `true` if Docker-in-Docker is available
 - `DISPLAY` — X11 display (`:99`)
 - `EXPOSE_PORT_MAPPINGS`, `EXPOSE_DOMAIN_MAPPINGS`, `EXPOSE_USAGE` — `true`/`false` flags reflecting which worker-facing API capabilities the operator enabled for this environment. The corresponding skills are only injected when these are `true`.

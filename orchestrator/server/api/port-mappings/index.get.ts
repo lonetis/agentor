@@ -23,9 +23,13 @@ defineRouteMeta({
           PortMapping: {
             type: 'object',
             properties: {
+              id: { type: 'string', description: 'Mapping UUID' },
+              userId: { type: 'string' },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
               externalPort: { type: 'integer' },
               type: { type: 'string', enum: ['localhost', 'external'] },
-              workerName: { type: 'string', description: 'Per-user worker name' },
+              workerId: { type: 'string', description: "Owning worker's UUID id" },
               containerName: { type: 'string', description: 'Globally unique Docker container name' },
               internalPort: { type: 'integer' },
               appType: { type: 'string' },

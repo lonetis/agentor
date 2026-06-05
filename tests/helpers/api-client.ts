@@ -97,6 +97,17 @@ export class ApiClient {
     return { status: res.status(), body: await res.json().catch(() => ({})) };
   }
 
+  /**
+   * Partial worker-settings update via `PATCH /api/containers/:id`. Accepts any
+   * subset of `{ displayName, environmentId, initScript, repos, mounts }`.
+   */
+  async updateContainerSettings(id: string, patch: Record<string, unknown>) {
+    const res = await this.request.patch(`${BASE_URL}/api/containers/${id}`, {
+      data: patch,
+    });
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
   async getContainerLogs(id: string, tail?: number) {
     const url = tail
       ? `${BASE_URL}/api/containers/${id}/logs?tail=${tail}`
@@ -429,6 +440,17 @@ export class ApiClient {
 
   async putAccountEnvVars(data: Record<string, unknown>) {
     const res = await this.request.put(`${BASE_URL}/api/account/env-vars`, { data });
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  // ─── Account SSH key (per-user authorized_keys, NOT an env var) ───
+  async getAccountSshKey() {
+    const res = await this.request.get(`${BASE_URL}/api/account/ssh-key`);
+    return { status: res.status(), body: await res.json().catch(() => ({})) };
+  }
+
+  async putAccountSshKey(data: Record<string, unknown>) {
+    const res = await this.request.put(`${BASE_URL}/api/account/ssh-key`, { data });
     return { status: res.status(), body: await res.json().catch(() => ({})) };
   }
 

@@ -40,14 +40,21 @@ Web-native tab bar inside the terminal pane — each tab represents a tmux windo
 - Click an already-active tab to inline-rename it (input replaces label, Enter to confirm, Escape to cancel)
 - 10k scrollback per terminal, Alt+scroll for fast scrolling
 
-## Worker Display Name & Inline Rename
+## Worker Settings Modal
 
-A worker's user-facing label is its `displayName` — free-form, not required to be unique, and editable after creation (the internal `name` is an immutable UUID that never surfaces in these UIs except as the monospace "Worker ID").
+A worker's editable configuration lives in a single **Worker Settings modal** (`ContainerDetailModal.vue`) — there is no read-only detail view. Worker-related settings are split into two tiers; environment-specific settings (CPU/memory, network, Docker, capabilities, instructions, setup script, env vars, exposed APIs) are **not** shown here — they belong to the Environments modal.
 
-- **Create Worker modal**: the first field is labeled "Display name" (free-form, no keystroke sanitization). Its placeholder is a friendly suggestion fetched from `GET /api/containers/generate-name` (`{ displayName }`). On submit the client sends only `{ displayName }` (the typed value, or the suggestion when left blank) — never a `name`; the orchestrator mints the UUID.
-- **ContainerCard**: shows `displayName || shortName(name)`. A "Rename" pencil button (`i-lucide-pencil`, in a `<UTooltip text="Rename">`) in the action row swaps the title `<h3>` for an `<input>` (Enter commits, Esc cancels, blur commits), issuing `PATCH /api/containers/:id`.
-- **ContainerDetailModal**: the header `displayName` has the same inline-rename pencil. The Worker section's first row is labeled "Worker ID" and shows the UUID `container.name` in monospace.
-- **Port/Domain mapping panels**: each row resolves the worker's `displayName` from the live container list by `containerName` (fallback `shortName(m.workerName)`), so rows show the friendly label rather than the raw UUID.
+- **Applies immediately (no rebuild)** — `displayName`. Saving applies it to the running worker immediately (the `PATCH` updates the stored label + in-memory state; no recreation). Tagged with a green `no rebuild needed` badge.
+- **Rebuild-requiring edits** — `environmentId`, `repos`, `mounts`, `initScript`. Baked into the container at create time (the `WORKER`/`ENVIRONMENT` env JSON and Docker `Binds`), so saving only updates the stored desired config and flags the worker `pendingRebuild: true`. Each is tagged with an amber `requires rebuild` badge. A rebuild re-resolves from the stored config and clears the flag.
+
+The modal computes which fields changed: a pure display-name change shows just **Save**; any rebuild-requiring change additionally shows **Save & Rebuild** (persist + rebuild now) plus a "Changes require a rebuild" hint. While `pendingRebuild` is set, the header shows a `Rebuild pending` badge and a banner with a **Rebuild now** button.
+
+The flow front-to-back:
+
+- **Create Worker modal**: the first field is labeled "Display name" (free-form, no keystroke sanitization). Its placeholder is a friendly suggestion fetched from `GET /api/containers/generate-name` (`{ displayName }`). On submit the client sends only `{ displayName }` (the typed value, or the suggestion when left blank) — never an `id`; the orchestrator mints the worker UUID.
+- **ContainerCard**: shows `displayName || shortName(id)`. A "Settings" pencil button (`i-lucide-pencil`, in a `<UTooltip text="Settings">`) in the action row — and a click on the card title — opens the settings modal. When the worker has unapplied rebuild edits the card shows an amber `rebuild pending` badge next to its status. The card forwards an `update(id, patch, rebuild)` event (PATCH + optional rebuild) and a `rebuild(id)` event to `index.vue`'s `handleUpdate`, which relabels open tmux tabs when the display name changed and runs a rebuild when requested.
+- **ContainerDetailModal**: read-only **Worker** identity section (Worker ID = the worker UUID `container.id` in monospace, Container ID = the Docker `container.containerId` first 12 chars, Image = `container.imageName`, Image ID, Created) + an editable **Settings** section (Display name `UInput`, Environment `USelect`, Repositories via `RepoInput`, Volume Mounts via `MountInput`, Init Script via `useInitScriptSync` preset + textarea) + read-only **Info** sections (Port Mappings, Domain Mappings, App Instances) shown only when present. The form re-initialises from the worker each time the modal opens. `useContainers().updateContainerSettings(id, patch)` issues the `PATCH`.
+- **Port/Domain mapping panels**: each row resolves the worker's `displayName` from the live container list by `containerName` (fallback `shortName(m.workerId)`), so rows show the friendly label rather than the raw UUID.
 
 ## Theme System
 

@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
 
-const BUILT_IN_CAPABILITY_IDS = ['port-mapping', 'domain-mapping', 'usage', 'tmux'];
+// Built-in slugs are the capability NAMEs; their ids are derived UUIDs.
+const BUILT_IN_CAPABILITY_NAMES = ['port-mapping', 'domain-mapping', 'usage', 'tmux'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 test.describe('Capabilities API', () => {
   const createdCapabilityIds: string[] = [];
@@ -20,18 +22,19 @@ test.describe('Capabilities API', () => {
       const { status, body } = await api.listCapabilities();
       expect(status).toBe(200);
       expect(Array.isArray(body)).toBe(true);
-      expect(body.length).toBeGreaterThanOrEqual(BUILT_IN_CAPABILITY_IDS.length);
+      expect(body.length).toBeGreaterThanOrEqual(BUILT_IN_CAPABILITY_NAMES.length);
     });
 
-    test('built-in capabilities have builtIn: true and expected IDs', async ({ request }) => {
+    test('built-in capabilities have builtIn: true and expected names (UUID ids)', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.listCapabilities();
-      for (const id of BUILT_IN_CAPABILITY_IDS) {
-        const capability = body.find((s: { id: string }) => s.id === id);
+      for (const name of BUILT_IN_CAPABILITY_NAMES) {
+        const capability = body.find((s: { name: string }) => s.name === name);
         expect(capability).toBeTruthy();
         expect(capability.builtIn).toBe(true);
-        expect(typeof capability.name).toBe('string');
-        expect(capability.name.length).toBeGreaterThan(0);
+        // Built-in ids are stable derived UUIDs — the slug is the name, not the id.
+        expect(capability.id).not.toBe(name);
+        expect(capability.id).toMatch(UUID_RE);
         expect(typeof capability.content).toBe('string');
         expect(capability.content.length).toBeGreaterThan(0);
       }
@@ -139,11 +142,19 @@ test.describe('Capabilities API', () => {
       expect(status).toBe(404);
     });
 
-    test('can get built-in capability by ID', async ({ request }) => {
+    test('built-in capability has a UUID id (not the slug) and is fetchable by it', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status, body } = await api.getCapability('tmux');
+      const { body: list } = await api.listCapabilities();
+      const tmux = list.find((c: { name: string }) => c.name === 'tmux');
+      expect(tmux).toBeTruthy();
+      // Built-in ids are stable derived UUIDs — the slug is the name, not the id.
+      expect(tmux.id).not.toBe('tmux');
+      expect(tmux.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+      const { status, body } = await api.getCapability(tmux.id);
       expect(status).toBe(200);
-      expect(body.id).toBe('tmux');
+      expect(body.id).toBe(tmux.id);
+      expect(body.name).toBe('tmux');
       expect(body.builtIn).toBe(true);
     });
   });
@@ -169,7 +180,9 @@ test.describe('Capabilities API', () => {
 
     test('update built-in capability returns 400', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.updateCapability('tmux', {
+      const { body: list } = await api.listCapabilities();
+      const tmuxId = list.find((c: { name: string; builtIn: boolean }) => c.builtIn && c.name === 'tmux').id;
+      const { status } = await api.updateCapability(tmuxId, {
         name: 'Hacked Tmux',
         content: '# Hacked',
       });
@@ -225,7 +238,9 @@ test.describe('Capabilities API', () => {
 
     test('delete built-in capability returns 400', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.deleteCapability('port-mapping');
+      const { body: list } = await api.listCapabilities();
+      const pmId = list.find((c: { name: string; builtIn: boolean }) => c.builtIn && c.name === 'port-mapping').id;
+      const { status } = await api.deleteCapability(pmId);
       expect(status).toBe(400);
     });
 

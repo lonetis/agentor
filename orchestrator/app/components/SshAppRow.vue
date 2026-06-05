@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AppInstanceInfo, AppTypeInfo } from '~/types';
-import type { UserEnvVars } from '../../shared/types';
+import type { UserSshKey } from '../../shared/types';
 
 const props = defineProps<{
   instance: AppInstanceInfo;
@@ -18,8 +18,8 @@ const emit = defineEmits<{
 const hasKey = ref<boolean | null>(null);
 onMounted(async () => {
   try {
-    const env = await $fetch<UserEnvVars>('/api/account/env-vars');
-    hasKey.value = Boolean(env.sshPublicKey && env.sshPublicKey.trim().length > 0);
+    const { sshPublicKey } = await $fetch<UserSshKey>('/api/account/ssh-key');
+    hasKey.value = Boolean(sshPublicKey && sshPublicKey.trim().length > 0);
   } catch {
     hasKey.value = null;
   }

@@ -1,11 +1,9 @@
-import type { UserEnvVars } from '../../shared/types';
-
 export interface GitProvider {
   id: string;
   displayName: string;
   placeholder: string;
-  /** Field on UserEnvVars that holds this provider's token. */
-  userEnvKey: keyof UserEnvVars;
+  /** The env var NAME that holds this provider's token (looked up in the user's
+   * env vars). */
   tokenEnvVar: string;
   cloneDomains: string[];
 }
@@ -15,7 +13,6 @@ export const GIT_PROVIDER_REGISTRY: Record<string, GitProvider> = {
     id: 'github',
     displayName: 'GitHub',
     placeholder: 'https://github.com/owner/repo',
-    userEnvKey: 'githubToken',
     tokenEnvVar: 'GITHUB_TOKEN',
     cloneDomains: ['github.com', '*.github.com', '*.githubusercontent.com'],
   },

@@ -5,7 +5,7 @@ defineRouteMeta({
     description: 'Permanently deletes the caller\'s archived worker and its volumes. Admins may pass `?userId=` to target another user\'s worker.',
     operationId: 'deleteArchivedWorker',
     parameters: [
-      { name: 'name', in: 'path', required: true, schema: { type: 'string' }, description: 'Worker UUID (internal identity)' },
+      { name: 'name', in: 'path', required: true, schema: { type: 'string' }, description: 'Worker id (internal identity)' },
       { name: 'userId', in: 'query', required: false, schema: { type: 'string' }, description: 'Admin-only — act on this user\'s worker' },
     ],
     responses: {

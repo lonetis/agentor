@@ -78,18 +78,21 @@ function handleTerminalOpen(peer: Peer): void {
       return;
     }
 
+    // `params.containerId` is the worker's UUID `id` (the route segment); Docker
+    // exec needs the actual Docker container id, which lives on the resolved info.
+    const dockerContainerId = info.containerId;
     dockerService
-    .execAttachTmuxWindow(params.containerId, params.windowIndex)
+    .execAttachTmuxWindow(dockerContainerId, params.windowIndex)
     .then(({ exec, stream, tmuxSession }) => {
       if (ctx.closed) {
         stream.end();
-        dockerService.killTmuxSession(params.containerId, tmuxSession);
+        dockerService.killTmuxSession(dockerContainerId, tmuxSession);
         return;
       }
 
       ctx.dockerStream = stream;
       ctx.execId = exec.id;
-      ctx.containerId = params.containerId;
+      ctx.containerId = dockerContainerId;
       ctx.tmuxSession = tmuxSession;
 
       stream.on('data', (chunk: Buffer) => {

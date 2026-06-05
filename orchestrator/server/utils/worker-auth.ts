@@ -7,7 +7,8 @@ export interface WorkerSelfContext {
   container: ContainerInfo;
   userId: string;
   containerName: string;
-  workerName: string;
+  /** The calling worker's UUID `id`. */
+  workerId: string;
 }
 
 interface IpMapEntry {
@@ -93,6 +94,6 @@ export async function requireWorkerSelf(event: H3Event): Promise<WorkerSelfConte
     container,
     userId: container.userId,
     containerName: container.containerName,
-    workerName: container.name,
+    workerId: container.id,
   };
 }

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { CreateContainerRequest } from '~/types';
+import type { CreateContainerRequest, UpdateContainerSettingsRequest } from '~/types';
 
 useHead({ title: 'Agentor' });
 
 const { gitProviders } = useGitProviders();
-const { containers, refresh: refreshContainers, createContainer, stopContainer, restartContainer, rebuildContainer, removeContainer, renameContainer } = useContainers();
+const { containers, refresh: refreshContainers, createContainer, stopContainer, restartContainer, rebuildContainer, removeContainer, updateContainerSettings } = useContainers();
 const { archivedWorkers, refresh: refreshArchived, archiveWorker, unarchiveWorker, deleteArchivedWorker } = useArchivedWorkers();
 const {
   rootNode,
@@ -39,7 +39,7 @@ function handleOpenLogs() {
 
 function handleOpenTab(containerId: string, type: 'terminal' | 'desktop' | 'apps' | 'editor') {
   const container = containers.value.find((c) => c.id === containerId);
-  const name = container?.displayName || shortName(container?.name || containerId.slice(0, 12));
+  const name = container?.displayName || shortName(container?.id || containerId.slice(0, 12));
   openTab(containerId, name, type);
 }
 
@@ -83,10 +83,20 @@ async function handleArchive(id: string) {
   await refreshContainers();
 }
 
-async function handleRename(id: string, displayName: string) {
-  await renameContainer(id, displayName);
-  // Open tab labels are captured at open time — refresh them in place.
-  renameContainerTabs(id, displayName);
+async function handleUpdate(id: string, patch: UpdateContainerSettingsRequest, rebuild: boolean) {
+  const updated = await updateContainerSettings(id, patch);
+  // Open tab labels are captured at open time — refresh them in place when the
+  // display name (a live edit) changed.
+  if (patch.displayName && updated) {
+    renameContainerTabs(id, updated.displayName || patch.displayName);
+  }
+  // Rebuild-requiring edits only take effect after a rebuild. When the user
+  // chose "Save & Rebuild", apply them now (no confirm — the choice is explicit).
+  if (rebuild) {
+    closeTabsForContainer(id);
+    const rebuilt = await rebuildContainer(id);
+    if (rebuilt) handleOpenTab(rebuilt.id, 'terminal');
+  }
 }
 
 async function handleUnarchive(name: string) {
@@ -162,7 +172,7 @@ function onCreateModalClosed() {
       @rebuild-container="handleRebuild"
       @remove-container="handleRemove"
       @archive-container="handleArchive"
-      @rename-container="handleRename"
+      @update-container="handleUpdate"
       @download-workspace="handleDownloadWorkspace"
       @unarchive-worker="handleUnarchive"
       @delete-archived-worker="handleDeleteArchived"

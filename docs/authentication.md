@@ -104,7 +104,7 @@ Each `/api/worker-self/*` handler instead calls `requireWorkerSelf(event)` from 
 1. Reads the source IP from `event.node.req.socket.remoteAddress` (stripping any `::ffff:` IPv4-mapped prefix).
 2. Lists managed Docker containers (filtered by `agentor.managed=true`) and matches each container's IP on `dockerNetwork` (`agentor-net`) against the source IP. The IP→containerName map is cached for 3 seconds; a miss forces a refresh.
 3. Resolves the matched containerName back to an in-memory `ContainerInfo` via `containerManager.findByContainerName()`. If the container is not in `running` state, returns 409.
-4. Returns `{ container, userId, containerName, workerName }`.
+4. Returns `{ container, userId, containerName, workerId }`.
 
 Every `/api/worker-self/*` mutation is therefore scoped to the calling worker only — `workerId` / `workerName` body fields are ignored, list endpoints filter by the caller's `containerName`, and delete endpoints reject (403) operations that would touch a different worker's mappings.
 
@@ -112,7 +112,7 @@ Routes:
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET`  | `/api/worker-self/info` | `{ workerName, containerName, userId, status, displayName }` for diagnostics |
+| `GET`  | `/api/worker-self/info` | `{ workerId, containerName, userId, status, displayName }` for diagnostics |
 | `GET`  | `/api/worker-self/port-mapper/status` | Counts of all port mappings (read-only) |
 | `GET`  | `/api/worker-self/port-mappings` | Only mappings owned by the calling worker |
 | `POST` | `/api/worker-self/port-mappings` | Creates a port mapping for the calling worker |

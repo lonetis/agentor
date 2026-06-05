@@ -239,3 +239,58 @@ export class TerminalWsClient {
     }
   }
 }
+
+/**
+ * Run `command` in a FRESH tmux window on the worker and wait for `pattern` in
+ * the ANSI-stripped output, then return the buffer. Cleans up the window.
+ *
+ * A fresh window is always a plain bash shell running as the `agent` user,
+ * isolated from whatever the main window's init script is doing — so it can read
+ * the container's baked config from `/proc/1/environ` (PID 1 runs as `agent`, so
+ * it is readable without sudo) and `/proc/mounts` regardless of how far the
+ * entrypoint has progressed.
+ *
+ * IMPORTANT for callers: the worker's shell echoes the typed command back into
+ * the terminal buffer, so any LITERAL token in `command` also appears in the
+ * buffer. Assert on values the shell COMPUTES at runtime (e.g.
+ * `echo "C=$(grep -ca MARK /proc/1/environ)"` → assert `C=1`), never on a literal
+ * label embedded in the command — otherwise the assertion passes off the echoed
+ * command text and is vacuous.
+ *
+ * A worker reports `running` as soon as its container starts, while the
+ * entrypoint (which creates the tmux server in its first phase) may still be
+ * coming up — so `createPane` can briefly fail; this retries it.
+ */
+export async function runInFreshWindow(
+  request: APIRequestContext,
+  containerId: string,
+  command: string,
+  pattern: RegExp,
+  timeoutMs = 30_000,
+): Promise<string> {
+  const api = new ApiClient(request);
+  let idx: number | undefined;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const { status, body } = await api.createPane(containerId);
+    if (status === 201 && typeof body.index === 'number') {
+      idx = body.index;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  if (idx === undefined) {
+    throw new Error('createPane never succeeded — tmux not ready');
+  }
+  const windowIndex = idx;
+  const ws = new TerminalWsClient(containerId, String(windowIndex));
+  try {
+    await ws.connect();
+    await ws.waitForOutput(/[$#>]\s*$/, 15_000);
+    ws.clearBuffer();
+    ws.sendLine(command);
+    return await ws.waitForOutput(pattern, timeoutMs);
+  } finally {
+    ws.close();
+    await api.deletePane(containerId, windowIndex).catch(() => {});
+  }
+}

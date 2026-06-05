@@ -2,7 +2,7 @@ defineRouteMeta({
   openAPI: {
     tags: ['Account'],
     summary: "Get the current user's env vars",
-    description: 'Returns the environment variables configured for the authenticated user. These are injected into every worker that user creates (agent API keys, GitHub token, custom env vars). Values are returned in plaintext — only the owner can call this endpoint.',
+    description: 'Returns the environment variables configured for the authenticated user as a uniform `envVars` list (predefined + custom alike, keyed by env var name). These are injected into every worker that user creates. Values are returned in plaintext — only the owner can call this endpoint. The SSH public key is not an env var; see `/api/account/ssh-key`.',
     operationId: 'getAccountEnvVars',
     responses: {
       200: {
@@ -13,12 +13,9 @@ defineRouteMeta({
               type: 'object',
               properties: {
                 userId: { type: 'string' },
-                githubToken: { type: 'string' },
-                anthropicApiKey: { type: 'string' },
-                claudeCodeOauthToken: { type: 'string' },
-                openaiApiKey: { type: 'string' },
-                geminiApiKey: { type: 'string' },
-                customEnvVars: {
+                createdAt: { type: 'string' },
+                updatedAt: { type: 'string' },
+                envVars: {
                   type: 'array',
                   items: {
                     type: 'object',
@@ -29,12 +26,8 @@ defineRouteMeta({
                     required: ['key', 'value'],
                   },
                 },
-                updatedAt: { type: 'string' },
               },
-              required: [
-                'userId', 'githubToken', 'anthropicApiKey', 'claudeCodeOauthToken',
-                'openaiApiKey', 'geminiApiKey', 'customEnvVars', 'updatedAt',
-              ],
+              required: ['userId', 'createdAt', 'updatedAt', 'envVars'],
             },
           },
         },

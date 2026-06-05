@@ -5,7 +5,7 @@ defineRouteMeta({
     description: 'Restores the caller\'s archived worker by creating a new container. Admins may pass `?userId=` to target another user\'s archived worker.',
     operationId: 'unarchiveWorker',
     parameters: [
-      { name: 'name', in: 'path', required: true, schema: { type: 'string' }, description: 'Worker UUID (internal identity)' },
+      { name: 'name', in: 'path', required: true, schema: { type: 'string' }, description: 'Worker id (internal identity)' },
       { name: 'userId', in: 'query', required: false, schema: { type: 'string' }, description: 'Admin-only — act on this user\'s worker' },
     ],
     responses: {

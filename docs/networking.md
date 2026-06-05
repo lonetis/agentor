@@ -11,12 +11,13 @@ on the same container. The orchestrator manages Traefik's lifecycle via dockerod
 Port mappings are persisted to `<DATA_DIR>/port-mappings.json` and survive
 orchestrator restarts. They also survive worker lifecycle events — stop/restart,
 archive/unarchive, and rebuild all preserve the mapping. Mappings are only
-removed when the worker is permanently deleted. Records are keyed by the stable
-`containerName` (not the Docker container ID), so Traefik continues routing to the
-worker after it comes back under a new container ID. The `workerId` field is
-updated automatically on rebuild and unarchive via `reassignWorkerMappings`. A
-mapping's `workerName` field holds the worker UUID (`container.name`) for display,
-while `containerName` is the Traefik DNS backend.
+removed when the worker is permanently deleted. Each mapping carries the standard
+base-resource fields (`id` UUID, `userId`, `createdAt`, `updatedAt`) and is keyed
+internally by the stable `containerName` (not the Docker container id), so Traefik
+continues routing to the worker after it comes back under a new container id. The
+`workerId` field holds the owning worker's UUID `id`, while `containerName` is the
+Traefik DNS backend; on rebuild and unarchive the mapping's `containerId`/`workerId`
+linkage is re-resolved automatically via `reassignWorkerMappings`.
 
 **Architecture:**
 - `PortMappingStore` (`port-mapping-store.ts`): Persists mappings to disk, extends `JsonStore<number, PortMapping>`

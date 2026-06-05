@@ -1,8 +1,12 @@
-import { nanoid } from 'nanoid';
+import { randomUUID } from 'node:crypto';
 import { BuiltInAndUserStore } from './built-in-and-user-store';
 import { loadConfig } from './config';
 import type { NetworkMode, ExposeApis } from '../../shared/types';
-import type { BuiltInEnvironment } from './built-in-content';
+import { builtInId, type BuiltInEnvironment } from './built-in-content';
+
+/** Id of the built-in `default` environment — the fallback used when a worker
+ * has no explicit `environmentId`. Stable across restarts (derived UUID). */
+export const DEFAULT_ENVIRONMENT_ID = builtInId('environment', 'default');
 
 export interface Environment {
   id: string;
@@ -170,7 +174,7 @@ export class EnvironmentStore extends BuiltInAndUserStore<Environment, BuiltInEn
   async create(data: Omit<Environment, 'id' | 'builtIn' | 'createdAt' | 'updatedAt'>): Promise<Environment> {
     if (!data.userId) throw new Error('create: userId is required for user environments');
     const now = new Date().toISOString();
-    const env: Environment = { ...data, id: nanoid(12), builtIn: false, createdAt: now, updatedAt: now };
+    const env: Environment = { ...data, id: randomUUID(), builtIn: false, createdAt: now, updatedAt: now };
     await this.setItem(data.userId, env);
     useLogger().info(`[environment] created "${env.name}" (${env.id}) for user ${env.userId}`);
     return env;

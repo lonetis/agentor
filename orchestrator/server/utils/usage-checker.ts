@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Config } from './config';
 import type { AgentUsageInfo, AgentUsageStatus, AgentAuthType } from '../../shared/types';
+import { getUserEnvVar } from './user-env-store';
 import type { UserEnvVarStore } from './user-env-store';
 import type { UserCredentialManager } from './user-credentials';
 
@@ -279,14 +280,15 @@ export class UsageChecker {
   private detectAuthType(userId: string, agentId: string, hasOAuthFile: boolean): AgentAuthType {
     if (hasOAuthFile) return 'oauth';
     const env = this.userEnvStore?.getOrDefault(userId);
-    if (agentId === 'claude' && env?.claudeCodeOauthToken) return 'oauth';
-    const keyMap: Record<string, keyof NonNullable<typeof env>> = {
-      claude: 'anthropicApiKey',
-      codex: 'openaiApiKey',
-      gemini: 'geminiApiKey',
+    if (!env) return 'none';
+    if (agentId === 'claude' && getUserEnvVar(env, 'CLAUDE_CODE_OAUTH_TOKEN')) return 'oauth';
+    const apiKeyName: Record<string, string> = {
+      claude: 'ANTHROPIC_API_KEY',
+      codex: 'OPENAI_API_KEY',
+      gemini: 'GEMINI_API_KEY',
     };
-    const configKey = keyMap[agentId];
-    if (env && configKey && typeof env[configKey] === 'string' && env[configKey]) return 'api-key';
+    const name = apiKeyName[agentId];
+    if (name && getUserEnvVar(env, name)) return 'api-key';
     return 'none';
   }
 
@@ -295,7 +297,8 @@ export class UsageChecker {
   private async fetchClaudeUsage(userId: string): Promise<AgentUsageInfo> {
     const now = new Date().toISOString();
     const cred = await this.readCredFile<ClaudeCredFile>(userId, 'claude.json');
-    const envToken = this.userEnvStore?.getOrDefault(userId).claudeCodeOauthToken;
+    const userEnv = this.userEnvStore?.getOrDefault(userId);
+    const envToken = userEnv ? getUserEnvVar(userEnv, 'CLAUDE_CODE_OAUTH_TOKEN') : '';
     const token = cred?.claudeAiOauth?.accessToken || envToken || '';
     const authType = this.detectAuthType(
       userId,

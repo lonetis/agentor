@@ -33,6 +33,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const url = getRequestURL(event);
-  const target = `http://${info.name}:6080/${path}${url.search}`;
+  const target = `http://${info.containerName}:6080/${path}${url.search}`;
   return proxyRequest(event, target);
 });

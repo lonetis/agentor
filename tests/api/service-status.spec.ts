@@ -49,18 +49,25 @@ test.describe('Service Status API', () => {
   });
 
   test.describe('Response fields', () => {
-    test('desktop status includes containerId', async ({ request }) => {
+    // The route is addressed by the worker UUID `id`, but the status response's
+    // `containerId` is the actual Docker container id (resolved server-side).
+    async function workerDockerId(request: import('@playwright/test').APIRequestContext): Promise<string> {
+      const { body: containers } = await new ApiClient(request).listContainers();
+      return containers.find((c: { id: string }) => c.id === containerId).containerId;
+    }
+
+    test('desktop status includes the Docker containerId', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.getDesktopStatus(containerId);
       expect(typeof body.containerId).toBe('string');
-      expect(body.containerId).toBe(containerId);
+      expect(body.containerId).toBe(await workerDockerId(request));
     });
 
-    test('editor status includes containerId', async ({ request }) => {
+    test('editor status includes the Docker containerId', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.getEditorStatus(containerId);
       expect(typeof body.containerId).toBe('string');
-      expect(body.containerId).toBe(containerId);
+      expect(body.containerId).toBe(await workerDockerId(request));
     });
   });
 

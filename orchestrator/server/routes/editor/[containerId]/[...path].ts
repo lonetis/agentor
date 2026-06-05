@@ -20,7 +20,8 @@ import { createWsRelayHandlers, getPeerUrl } from '../../../utils/ws-utils';
 import { requireAuthFromEvent } from '../../../utils/auth-helpers';
 
 const wsHandlers = createWsRelayHandlers(
-  /\/editor\/([a-f0-9]+)/,
+  // The worker id is a UUID (with hyphens) — match the whole segment, not just hex.
+  /\/editor\/([^/?]+)/,
   (containerName, containerId, peer) => {
     const url = getPeerUrl(peer);
     const prefix = `/editor/${containerId}`;
@@ -46,7 +47,7 @@ export default defineEventHandler({
     }
 
     const url = getRequestURL(event);
-    const target = `http://${info.name}:8443/${path}${url.search}`;
+    const target = `http://${info.containerName}:8443/${path}${url.search}`;
     return proxyRequest(event, target);
   },
 

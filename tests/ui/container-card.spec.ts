@@ -21,7 +21,7 @@ test.describe.serial('Container Card', () => {
     const api = new ApiClient(request);
     const { body: archived } = await api.listArchived();
     for (const w of archived) {
-      try { await api.deleteArchivedWorker(w.name); } catch { /* ignore */ }
+      try { await api.deleteArchivedWorker(w.id); } catch { /* ignore */ }
     }
   });
 
@@ -116,7 +116,7 @@ test.describe.serial('Container Card', () => {
     // are hidden (v-if="isRunning") but action buttons remain
     const iconButtons = card.locator('button');
     const count = await iconButtons.count();
-    // 5 action buttons remain: Rename, Restart, Rebuild, Archive, Remove
+    // 5 action buttons remain: Settings, Restart, Rebuild, Archive, Remove
     expect(count).toBe(5);
   });
 
@@ -203,11 +203,12 @@ test.describe.serial('Container Card', () => {
   });
 });
 
-// ─── 7. Inline Rename ──────────────────────────────────────────
-// Renaming is exercised on a dedicated worker so it never interferes with the
-// serial flow above (which locates the shared card by its original displayName).
+// ─── 7. Rename (via Settings modal) ────────────────────────────
+// The Settings pencil opens the Worker Settings modal where the display name is
+// an editable field applied without a rebuild. Exercised on a dedicated worker so it never
+// interferes with the serial flow above.
 
-test.describe.serial('Container Card — inline rename', () => {
+test.describe.serial('Container Card — Settings pencil opens the settings modal', () => {
   let containerId: string;
   let displayName: string;
 
@@ -223,27 +224,29 @@ test.describe.serial('Container Card — inline rename', () => {
     }
   });
 
-  test('Rename pencil turns the title into an input and updates the displayed name', async ({ page }) => {
+  test('Settings pencil opens the modal and renames via the display-name field', async ({ page }) => {
     const newDisplayName = `CardRenamed-${Date.now()}`;
 
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
     await expect(card).toBeVisible({ timeout: 15_000 });
 
-    // Click the Rename (i-lucide-pencil) button in the card action row
-    const renameBtn = await findButtonByTooltip(card, page, 'Rename');
-    await renameBtn.click();
+    // Click the Settings (i-lucide-pencil) button — it opens the settings modal.
+    const settingsBtn = await findButtonByTooltip(card, page, 'Settings');
+    await settingsBtn.click();
 
-    // Renaming swaps the title <h3> for an <input>, which removes the displayName
-    // TEXT from the card — so the `hasText`-filtered `card` locator no longer
-    // matches it. Locate the rename input at the page level instead (it is the
-    // only worker-card input visible on the Workers tab).
-    const renameInput = page.locator('.rounded-lg input').first();
-    await expect(renameInput).toBeVisible({ timeout: 10_000 });
-    await renameInput.fill(newDisplayName);
-    await renameInput.press('Enter');
+    const dialog = page.locator('[role="dialog"]');
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
 
-    // The displayed name updates to the new label
+    // Edit the display-name field and Save (no rebuild for a name change).
+    const nameInput = dialog.getByPlaceholder('Worker label');
+    await expect(nameInput).toHaveValue(displayName);
+    await nameInput.fill(newDisplayName);
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+    // The card title updates to the new label and the old one is gone.
     await expect(page.locator(`h3:has-text("${newDisplayName}")`).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.locator(`h3:has-text("${displayName}")`)).toHaveCount(0);
 

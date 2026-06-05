@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { UserEnvVars, UserEnvVarsInput, UserCustomEnvVar } from '../../shared/types';
+import type { UserEnvVars, UserEnvVarsInput, UserEnvVar } from '../../shared/types';
 
 export const USER_ENV_KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
 
@@ -24,22 +24,22 @@ const RESERVED_KEYS = new Set([
 export function zeroUserEnvVars(userId: string): UserEnvVars {
   return {
     userId,
-    githubToken: '',
-    anthropicApiKey: '',
-    claudeCodeOauthToken: '',
-    openaiApiKey: '',
-    geminiApiKey: '',
-    sshPublicKey: '',
-    customEnvVars: [],
+    createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
+    envVars: [],
   };
+}
+
+/** Look up a single env var's value by name (empty string if unset). */
+export function getUserEnvVar(env: UserEnvVars, key: string): string {
+  return env.envVars.find((e) => e.key === key)?.value ?? '';
 }
 
 const FILENAME = 'env-vars.json';
 
 /** Per-user env vars, persisted as a single JSON object at
- * `<DATA_DIR>/users/<userId>/env-vars.json`. The `userId` is the directory
- * name; it is not persisted inside the file itself.
+ * `<DATA_DIR>/users/<userId>/env-vars.json`. The file carries the owner `userId`
+ * (matching the directory name) like every other user-scoped resource.
  *
  * Serialized writes per user via an in-memory save queue. */
 export class UserEnvVarStore {
@@ -71,8 +71,18 @@ export class UserEnvVarStore {
     const filePath = this.filePath(userId);
     try {
       const raw = await readFile(filePath, 'utf-8');
-      const parsed = JSON.parse(raw) as Omit<UserEnvVars, 'userId'>;
-      this.items.set(userId, { userId, ...parsed });
+      const parsed = JSON.parse(raw) as Partial<UserEnvVars>;
+      const now = new Date().toISOString();
+      // Coerce to the current shape: tolerate files written before env-vars
+      // became a uniform `envVars` list (older shapes have no `envVars`, so they
+      // load as an empty list rather than crashing the renderer). `userId` is
+      // always taken from the directory name, not the file.
+      this.items.set(userId, {
+        userId,
+        createdAt: parsed.createdAt ?? now,
+        updatedAt: parsed.updatedAt ?? now,
+        envVars: Array.isArray(parsed.envVars) ? parsed.envVars : [],
+      });
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
       useLogger().error(`[user-env-store] failed to load ${filePath}: ${err instanceof Error ? err.message : err}`);
@@ -90,50 +100,22 @@ export class UserEnvVarStore {
 
   async upsert(userId: string, input: UserEnvVarsInput): Promise<UserEnvVars> {
     const existing = this.items.get(userId) ?? zeroUserEnvVars(userId);
-    const customEnvVars = input.customEnvVars !== undefined
-      ? sanitizeCustomEnvVars(input.customEnvVars)
-      : existing.customEnvVars;
-
-    const sshPublicKey = input.sshPublicKey !== undefined
-      ? (input.sshPublicKey ?? '').trim()
-      : existing.sshPublicKey;
+    const envVars = input.envVars !== undefined
+      ? sanitizeEnvVars(input.envVars)
+      : existing.envVars;
 
     const merged: UserEnvVars = {
       userId,
-      githubToken: input.githubToken ?? existing.githubToken,
-      anthropicApiKey: input.anthropicApiKey ?? existing.anthropicApiKey,
-      claudeCodeOauthToken: input.claudeCodeOauthToken ?? existing.claudeCodeOauthToken,
-      openaiApiKey: input.openaiApiKey ?? existing.openaiApiKey,
-      geminiApiKey: input.geminiApiKey ?? existing.geminiApiKey,
-      sshPublicKey,
-      customEnvVars,
+      createdAt: existing.createdAt && existing.createdAt !== new Date(0).toISOString()
+        ? existing.createdAt
+        : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      envVars,
     };
     this.items.set(userId, merged);
     await this.persist(userId);
-    if (input.sshPublicKey !== undefined) {
-      await this.writeSshKeyFile(userId, sshPublicKey);
-    }
     useLogger().debug(`[user-env-store] upserted env vars for user ${userId}`);
     return merged;
-  }
-
-  /** Writes `<DATA_DIR>/users/<userId>/ssh/authorized_keys`. File is bind-mounted
-   * into every worker this user owns; sshd uses `StrictModes no` so host ownership
-   * does not matter. Empty key writes an empty file (no logins accepted). */
-  private async writeSshKeyFile(userId: string, publicKey: string): Promise<void> {
-    const dir = join(this.dataDir, 'users', userId, 'ssh');
-    const filePath = join(dir, 'authorized_keys');
-    try {
-      await mkdir(dir, { recursive: true });
-      const body = publicKey ? (publicKey.endsWith('\n') ? publicKey : `${publicKey}\n`) : '';
-      await writeFile(filePath, body, { mode: 0o644 });
-    } catch (err) {
-      useLogger().error(
-        `[user-env-store] failed to write ssh authorized_keys for user ${userId}: ${err instanceof Error ? err.message : err}`,
-      );
-      throw err;
-    }
   }
 
   async delete(userId: string): Promise<void> {
@@ -164,9 +146,8 @@ export class UserEnvVarStore {
     const filePath = this.filePath(userId);
     try {
       await mkdir(join(this.dataDir, 'users', userId), { recursive: true });
-      // Strip `userId` — it's implied by the file location.
-      const { userId: _u, ...body } = entry;
-      await writeFile(filePath, JSON.stringify(body, null, 2));
+      // Persist the full record (incl. `userId`) like every user-scoped resource.
+      await writeFile(filePath, JSON.stringify(entry, null, 2));
     } catch (err) {
       useLogger().error(`[user-env-store] failed to save ${filePath}: ${err instanceof Error ? err.message : err}`);
       throw err;
@@ -174,8 +155,12 @@ export class UserEnvVarStore {
   }
 }
 
-function sanitizeCustomEnvVars(input: UserCustomEnvVar[]): UserCustomEnvVar[] {
-  const out: UserCustomEnvVar[] = [];
+/** Validate + dedupe a user's env var list. All env vars (predefined + custom)
+ * go through the same checks: key format `[A-Z_][A-Z0-9_]*`, not a reserved name,
+ * no duplicates. Empty-keyed entries are dropped. */
+function sanitizeEnvVars(input: UserEnvVar[]): UserEnvVar[] {
+  if (!Array.isArray(input)) throw new Error('envVars must be an array');
+  const out: UserEnvVar[] = [];
   const seen = new Set<string>();
   for (const entry of input) {
     if (!entry || typeof entry.key !== 'string' || typeof entry.value !== 'string') continue;
@@ -185,7 +170,7 @@ function sanitizeCustomEnvVars(input: UserCustomEnvVar[]): UserCustomEnvVar[] {
       throw new Error(`Invalid env var name: "${key}". Must match ${USER_ENV_KEY_RE}.`);
     }
     if (RESERVED_KEYS.has(key)) {
-      throw new Error(`"${key}" is reserved and cannot be set as a custom env var.`);
+      throw new Error(`"${key}" is reserved and cannot be set as an env var.`);
     }
     if (seen.has(key)) {
       throw new Error(`Duplicate env var name: "${key}"`);
@@ -197,20 +182,10 @@ function sanitizeCustomEnvVars(input: UserCustomEnvVar[]): UserCustomEnvVar[] {
 }
 
 /** Render user env vars as a list of `KEY=VALUE` strings, skipping empty values.
- * Well-known slots are emitted first, then customEnvVars. Later entries overwrite
- * earlier ones within the same render so customEnvVars can shadow well-known keys.
- */
+ * Order follows the stored list; later entries shadow earlier ones on key clash. */
 export function renderUserEnvVars(env: UserEnvVars): string[] {
   const merged = new Map<string, string>();
-  const slot = (key: string, value: string) => {
-    if (value) merged.set(key, value);
-  };
-  slot('GITHUB_TOKEN', env.githubToken);
-  slot('ANTHROPIC_API_KEY', env.anthropicApiKey);
-  slot('CLAUDE_CODE_OAUTH_TOKEN', env.claudeCodeOauthToken);
-  slot('OPENAI_API_KEY', env.openaiApiKey);
-  slot('GEMINI_API_KEY', env.geminiApiKey);
-  for (const { key, value } of env.customEnvVars) {
+  for (const { key, value } of env.envVars) {
     if (value) merged.set(key, value);
   }
   return [...merged.entries()].map(([k, v]) => `${k}=${v}`);

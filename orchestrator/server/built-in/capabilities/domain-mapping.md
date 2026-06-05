@@ -239,7 +239,7 @@ TCP mappings route at the transport layer using TLS SNI — path and basic auth 
 curl "$ORCHESTRATOR_URL/api/worker-self/domain-mappings"
 ```
 
-Returns a JSON array of domain mappings owned by *this* worker (mappings owned by sibling workers are filtered out). Each entry includes `id`, `subdomain`, `baseDomain`, `path`, `protocol`, `wildcard`, `workerName`, `containerName`, `internalPort`, and optional `basicAuth`.
+Returns a JSON array of domain mappings owned by *this* worker (mappings owned by sibling workers are filtered out). Each entry includes `id`, `subdomain`, `baseDomain`, `path`, `protocol`, `wildcard`, `workerId`, `containerName`, `internalPort`, and optional `basicAuth`.
 
 ### Delete a domain mapping
 

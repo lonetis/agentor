@@ -39,7 +39,7 @@ Capabilities are written to agent-specific paths on container first startup:
 
 ## Instructions
 
-Platform context documents following the [AGENTS.md standard](https://agents.md/) — a dedicated, predictable place to provide context and instructions to help AI coding agents work on a project. Managed via `orchestrator/server/utils/instruction-store.ts` (`InstructionStore`), persisted to `<DATA_DIR>/instructions.json`. Built-in instruction files live in `orchestrator/server/built-in/instructions/`. The entry name is parsed from the first `# Heading` in the markdown.
+Platform context documents following the [AGENTS.md standard](https://agents.md/) — a dedicated, predictable place to provide context and instructions to help AI coding agents work on a project. Managed via `orchestrator/server/utils/instruction-store.ts` (`InstructionStore`), persisted to `<DATA_DIR>/instructions.json`. Built-in instruction files live in `orchestrator/server/built-in/instructions/`. The entry name is the filename (without extension); the id is a stable UUID derived from it.
 
 **Built-in entry (1):**
 - `platform-guide` — Comprehensive worker environment description (OS, tools, display stack, Docker, orchestrator API, etc.)
@@ -70,10 +70,10 @@ Workers call dedicated `/api/worker-self/*` routes. These are listed in the glob
 1. Reads the source IP from `event.node.req.socket.remoteAddress` (stripping any `::ffff:` IPv4-mapped prefix).
 2. Lists managed Docker containers (filtered by `agentor.managed=true`) and matches each container's IP on the configured `dockerNetwork` (default `agentor-net`) against the source IP. The IP→containerName map is cached for 3 seconds; misses force a refresh.
 3. Resolves the matched `containerName` back to a `ContainerInfo` via `containerManager.findByContainerName()`. If the container is not in `running` state, returns 409.
-4. Returns `{ container, userId, containerName, workerName }` — the handler uses these to scope the operation to the calling worker.
+4. Returns `{ container, userId, containerName, workerId }` — the handler uses these to scope the operation to the calling worker.
 
 Available routes:
-- `GET  /api/worker-self/info` — diagnostics (`{ workerName, containerName, userId, status, displayName }`)
+- `GET  /api/worker-self/info` — diagnostics (`{ workerId, containerName, userId, status, displayName }`)
 - `GET  /api/worker-self/port-mapper/status`
 - `GET  /api/worker-self/port-mappings` — only mappings owned by the calling worker
 - `POST /api/worker-self/port-mappings` — `workerId` / `workerName` body fields are not accepted; the calling worker is the target

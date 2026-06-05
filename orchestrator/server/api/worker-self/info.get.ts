@@ -16,7 +16,7 @@ import { requireWorkerSelf } from '../../utils/worker-auth';
 export default defineEventHandler(async (event) => {
   const ctx = await requireWorkerSelf(event);
   return {
-    workerName: ctx.workerName,
+    workerId: ctx.workerId,
     containerName: ctx.containerName,
     userId: ctx.userId,
     status: ctx.container.status,

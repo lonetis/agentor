@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { UserScopedJsonStore } from './user-scoped-store';
+import type { UserOwnedResource } from '../../shared/types';
 
-export interface DomainMapping {
-  id: string;
+export interface DomainMapping extends UserOwnedResource {
   subdomain: string;
   baseDomain: string;
   path: string;
@@ -13,8 +14,8 @@ export interface DomainMapping {
    * ACME cannot issue wildcard certificates.
    */
   wildcard: boolean;
-  /** Per-user worker name — shown in the UI. */
-  workerName: string;
+  /** The owning worker's UUID `id` (used as a display fallback). */
+  workerId: string;
   /** Globally unique Docker container name — used as the Traefik backend
    * address and as the stable identifier across rebuild/unarchive. */
   containerName: string;
@@ -23,46 +24,53 @@ export interface DomainMapping {
     username: string;
     password: string;
   };
-  userId: string;
 }
+
+/** Fields a caller supplies when creating a mapping. `id`/`createdAt`/`updatedAt`
+ * are minted by the store. */
+export type DomainMappingInput = Omit<DomainMapping, 'id' | 'createdAt' | 'updatedAt'>;
 
 export class DomainMappingStore extends UserScopedJsonStore<string, DomainMapping> {
   constructor(dataDir: string) {
     super(dataDir, 'domain-mappings.json', (m) => m.id);
   }
 
-  /** Returns the (userId, mapping) pair that owns `id`, or undefined. Mapping
-   * ids are nanoid-generated so globally unique. */
+  /** Returns the (userId, mapping) pair that owns `id`, or undefined. */
   findById(id: string): { userId: string; item: DomainMapping } | undefined {
     return this.findWithOwner((m) => m.id === id);
   }
 
-  async add(mapping: DomainMapping): Promise<void> {
-    const fullDomain = mapping.subdomain ? `${mapping.subdomain}.${mapping.baseDomain}` : mapping.baseDomain;
-    const fullRoute = mapping.path ? `${fullDomain}${mapping.path}` : fullDomain;
+  /** Create a mapping, minting its UUID `id` and timestamps. Runs uniqueness /
+   * protocol-conflict checks. Returns the created mapping. */
+  async add(input: DomainMappingInput): Promise<DomainMapping> {
+    const fullDomain = input.subdomain ? `${input.subdomain}.${input.baseDomain}` : input.baseDomain;
+    const fullRoute = input.path ? `${fullDomain}${input.path}` : fullDomain;
 
     for (const existing of this.list()) {
-      if (existing.subdomain !== mapping.subdomain || existing.baseDomain !== mapping.baseDomain) continue;
+      if (existing.subdomain !== input.subdomain || existing.baseDomain !== input.baseDomain) continue;
 
       // HTTPS and TCP both use Traefik's websecure entrypoint (port 443) —
       // TCP's HostSNI matches at the TLS layer before HTTP routing, so they conflict
       // regardless of path (TCP has no path awareness).
-      const pair = new Set([existing.protocol, mapping.protocol]);
+      const pair = new Set([existing.protocol, input.protocol]);
       if (pair.has('https') && pair.has('tcp')) {
         useLogger().warn(`[domain-mappings] HTTPS/TCP conflict for '${fullDomain}' rejected`);
         throw new Error(`'${fullDomain}' cannot have both HTTPS and TCP mappings (both use port 443)`);
       }
 
       // Same domain + path + protocol = duplicate
-      if ((existing.path || '') === (mapping.path || '') && existing.protocol === mapping.protocol) {
-        useLogger().warn(`[domain-mappings] duplicate ${mapping.protocol} mapping for '${fullRoute}' rejected`);
-        throw new Error(`'${fullRoute}' is already mapped for protocol '${mapping.protocol}'`);
+      if ((existing.path || '') === (input.path || '') && existing.protocol === input.protocol) {
+        useLogger().warn(`[domain-mappings] duplicate ${input.protocol} mapping for '${fullRoute}' rejected`);
+        throw new Error(`'${fullRoute}' is already mapped for protocol '${input.protocol}'`);
       }
     }
+    const now = new Date().toISOString();
+    const mapping: DomainMapping = { id: randomUUID(), createdAt: now, updatedAt: now, ...input };
     await this.setItem(mapping.userId, mapping);
     useLogger().info(
       `[domain-mappings] added ${mapping.protocol} mapping ${fullRoute} → ${mapping.containerName}:${mapping.internalPort}${mapping.basicAuth ? ' (auth)' : ''}`,
     );
+    return mapping;
   }
 
   async remove(id: string): Promise<boolean> {

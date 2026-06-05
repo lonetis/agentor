@@ -2,7 +2,7 @@ defineRouteMeta({
   openAPI: {
     tags: ['Account'],
     summary: "Update the current user's env vars",
-    description: 'Upserts the env vars configured for the authenticated user. Well-known slots (GitHub token, agent API/OAuth keys) are individual fields; customEnvVars is a free-form list of additional `KEY=VALUE` pairs that will be injected into every worker that user creates. Keys must match [A-Z_][A-Z0-9_]* and cannot collide with reserved names (ENVIRONMENT, WORKER, ORCHESTRATOR_URL, etc.).',
+    description: 'Replaces the env vars configured for the authenticated user with the given `envVars` list. All env vars (predefined and custom alike) are stored uniformly, keyed by their actual env var NAME (e.g. `GITHUB_TOKEN`); they are injected into every worker that user creates. Keys must match [A-Z_][A-Z0-9_]* and cannot collide with reserved names (ENVIRONMENT, WORKER, ORCHESTRATOR_URL, etc.). The SSH public key is NOT an env var — manage it via `/api/account/ssh-key`.',
     operationId: 'putAccountEnvVars',
     requestBody: {
       required: true,
@@ -11,13 +11,9 @@ defineRouteMeta({
           schema: {
             type: 'object',
             properties: {
-              githubToken: { type: 'string' },
-              anthropicApiKey: { type: 'string' },
-              claudeCodeOauthToken: { type: 'string' },
-              openaiApiKey: { type: 'string' },
-              geminiApiKey: { type: 'string' },
-              customEnvVars: {
+              envVars: {
                 type: 'array',
+                description: 'The complete env var list (replaces the stored list).',
                 items: {
                   type: 'object',
                   properties: {

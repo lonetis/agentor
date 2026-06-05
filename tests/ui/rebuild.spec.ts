@@ -55,30 +55,31 @@ test.describe('Rebuild Worker UI', () => {
 });
 
 test.describe.serial('Rebuild Worker UI — state transition', () => {
-  let containerId: string;
-  let containerName: string;
+  let workerId: string;
+  let dockerContainerId: string;
   let displayName: string;
 
   test.beforeAll(async ({ request }) => {
     displayName = `Rebuild-ST-${Date.now()}`;
     const container = await createWorker(request, { displayName });
-    containerId = container.id;
-    // `name` is the worker's immutable UUID identity key (stable across rebuild),
-    // used here only to re-find the worker after a rebuild and for archived cleanup.
-    containerName = container.name;
+    // `id` is the worker's immutable UUID identity key (stable across rebuild),
+    // used here to re-find the worker after a rebuild and for archived cleanup.
+    workerId = container.id;
+    // `containerId` is the Docker container id — this is what changes on rebuild.
+    dockerContainerId = container.containerId;
   });
 
   test.afterAll(async ({ request }) => {
     // Clean up whatever container exists
-    if (containerId) {
-      await cleanupWorker(request, containerId);
+    if (workerId) {
+      await cleanupWorker(request, workerId);
     }
     // Also check archived in case something went wrong
     const api = new ApiClient(request);
     const { body: archived } = await api.listArchived();
     for (const w of archived) {
-      if (w.name === containerName) {
-        try { await api.deleteArchivedWorker(w.name); } catch { /* ignore */ }
+      if (w.id === workerId) {
+        try { await api.deleteArchivedWorker(w.id); } catch { /* ignore */ }
       }
     }
   });
@@ -103,14 +104,15 @@ test.describe.serial('Rebuild Worker UI — state transition', () => {
     await expect(heading).toBeVisible({ timeout: 15_000 });
   });
 
-  test('rebuilt container has new container ID', async ({ request }) => {
+  test('rebuilt worker keeps its id but gets a new Docker container ID', async ({ request }) => {
     const api = new ApiClient(request);
     const { body: containers } = await api.listContainers();
-    const found = containers.find((c: { name: string }) => c.name === containerName);
+    // The worker is still present under the same stable UUID id.
+    const found = containers.find((c: { id: string }) => c.id === workerId);
     expect(found).toBeTruthy();
-    // The container ID should have changed
-    expect(found.id).not.toBe(containerId);
-    // Update for cleanup
-    containerId = found.id;
+    // But the underlying Docker container was recreated.
+    expect(found.containerId).not.toBe(dockerContainerId);
+    // Track the new Docker container id for subsequent assertions.
+    dockerContainerId = found.containerId;
   });
 });

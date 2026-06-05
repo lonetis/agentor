@@ -42,12 +42,12 @@ test.describe('Containers API — Edge Cases', () => {
       expect(found.displayName).toBe(maxName);
     });
 
-    test('auto-generates name when none provided', async ({ request }) => {
+    test('auto-generates id when none provided', async ({ request }) => {
       const api = new ApiClient(request);
       const { status, body } = await api.createContainer({});
       expect(status).toBe(201);
-      expect(body.name).toBeTruthy();
-      expect(body.name.length).toBeGreaterThan(0);
+      expect(body.id).toBeTruthy();
+      expect(body.id.length).toBeGreaterThan(0);
       createdContainerIds.push(body.id);
     });
   });
@@ -115,7 +115,7 @@ test.describe('Containers API — Edge Cases', () => {
         const { body: stoppedMappings } = await api.listPortMappings();
         const stoppedFound = stoppedMappings.find((m: { externalPort: number }) => m.externalPort === port);
         expect(stoppedFound).toBeTruthy();
-        expect(stoppedFound.workerName).toBe(container.name);
+        expect(stoppedFound.workerId).toBe(container.id);
 
         await api.restartContainer(container.id);
         await new Promise(r => setTimeout(r, 1500));
@@ -161,12 +161,12 @@ test.describe('Containers API — Edge Cases', () => {
 
       // Should appear in archived list
       const { body: archived } = await api.listArchived();
-      const found = archived.find((w: { name: string }) => w.name === container.name);
+      const found = archived.find((w: { id: string }) => w.id === container.id);
       expect(found).toBeTruthy();
       expect(found.status).toBe('archived');
 
       // Cleanup archived worker
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
   });
 });

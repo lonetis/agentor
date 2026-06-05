@@ -64,15 +64,15 @@ export default defineEventHandler(async (event) => {
   const store = usePortMappingStore();
   const containerManager = useContainerManager();
 
-  // Resolve worker by container ID (UI dropdown), globally unique container name
-  // (worker-facing API shortcut via `WORKER_CONTAINER_NAME`), or the worker UUID
-  // `name`. All paths converge on a ContainerInfo.
+  // Resolve worker by worker UUID `id` (UI dropdown), globally unique container
+  // name (worker-facing API shortcut via `WORKER_CONTAINER_NAME`), or the
+  // worker `id`. All paths converge on a ContainerInfo.
   let containerInfo;
   if (body.workerId) {
     containerInfo = containerManager.get(body.workerId);
   } else if (body.workerName) {
     containerInfo = containerManager.findByContainerName(body.workerName)
-      ?? containerManager.list().find((c) => c.name === body.workerName);
+      ?? containerManager.get(body.workerName as string);
   }
   if (!containerInfo || containerInfo.status !== 'running') {
     throw createError({
@@ -83,20 +83,18 @@ export default defineEventHandler(async (event) => {
 
   requireContainerAccess(event, containerInfo);
 
-  const mapping = {
+  const created = await store.add({
     externalPort: extPort,
     type: body.type as 'localhost' | 'external',
-    workerName: containerInfo.name,
+    workerId: containerInfo.id,
     containerName: containerInfo.containerName,
     internalPort: intPort,
     appType: body.appType as string | undefined,
     instanceId: body.instanceId as string | undefined,
     userId: containerInfo.userId,
-  };
-
-  await store.add(mapping);
+  });
   await useTraefikManager().reconcile();
 
   setResponseStatus(event, 201);
-  return mapping;
+  return created;
 });

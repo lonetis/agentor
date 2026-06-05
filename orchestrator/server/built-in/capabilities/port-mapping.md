@@ -30,7 +30,7 @@ All endpoints described here live under `$ORCHESTRATOR_URL/api/worker-self/*` an
 curl "$ORCHESTRATOR_URL/api/worker-self/info"
 ```
 
-Returns `{ workerName, containerName, userId, status, displayName }` — useful as a quick sanity check that the orchestrator can see your worker.
+Returns `{ workerId, containerName, userId, status, displayName }` — useful as a quick sanity check that the orchestrator can see your worker.
 
 ### Check port mapping status
 
@@ -67,7 +67,7 @@ This maps host port 9000 to port 3000 inside *this* worker. The user can then op
 curl "$ORCHESTRATOR_URL/api/worker-self/port-mappings"
 ```
 
-Returns a JSON array of port mappings owned by *this* worker (mappings owned by sibling workers are filtered out). Each entry includes `externalPort`, `type`, `workerName`, `containerName`, and `internalPort`.
+Returns a JSON array of port mappings owned by *this* worker (mappings owned by sibling workers are filtered out). Each entry includes `externalPort`, `type`, `workerId`, `containerName`, and `internalPort`.
 
 ### Delete a port mapping
 

@@ -259,7 +259,7 @@ test.describe('Domain Mappings Batch API', () => {
           expect(body[0].protocol).toBe('http');
           expect(body[0].internalPort).toBe(8080);
           expect(typeof body[0].id).toBe('string');
-          expect(typeof body[0].workerName).toBe('string');
+          expect(typeof body[0].workerId).toBe('string');
 
           // Verify second mapping fields
           expect(body[1].subdomain).toBe(sub2);
@@ -375,14 +375,14 @@ test.describe('Domain Mappings Batch API', () => {
                 subdomain: uniqueSub,
                 baseDomain,
                 protocol: 'http',
-                workerName: container.name,
+                workerName: container.containerName,
                 internalPort: 8080,
               },
             ],
           });
           expect(status).toBe(201);
           expect(body).toHaveLength(1);
-          expect(body[0].workerName).toBe(container.name);
+          expect(body[0].workerId).toBe(container.id);
 
           await api.deleteDomainMapping(body[0].id);
         } finally {

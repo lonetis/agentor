@@ -17,10 +17,11 @@ defineRouteMeta({
 import { getGitHubServiceForToken } from '../../utils/github';
 import { requireAuth } from '../../utils/auth-helpers';
 import { useUserEnvStore } from '../../utils/services';
+import { getUserEnvVar } from '../../utils/user-env-store';
 
 export default defineEventHandler(async (event) => {
   const { user } = requireAuth(event);
-  const token = useUserEnvStore().getOrDefault(user.id).githubToken;
+  const token = getUserEnvVar(useUserEnvStore().getOrDefault(user.id), 'GITHUB_TOKEN');
   if (!token) {
     return { repos: [], tokenConfigured: false, username: '', orgs: [] as string[] };
   }

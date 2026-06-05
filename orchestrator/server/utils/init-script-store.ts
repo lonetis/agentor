@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { randomUUID } from 'node:crypto';
 import { BuiltInAndUserStore } from './built-in-and-user-store';
 import type { BuiltInInitScript } from './built-in-content';
 
@@ -21,7 +21,7 @@ export class InitScriptStore extends BuiltInAndUserStore<InitScript, BuiltInInit
     if (!data.name?.trim()) throw new Error('name is required');
     const now = new Date().toISOString();
     const script: InitScript = {
-      id: nanoid(12),
+      id: randomUUID(),
       name: data.name,
       content: data.content,
       builtIn: false,

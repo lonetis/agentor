@@ -9,7 +9,8 @@ import { zeroUserEnvVars } from './user-env-store';
 import type { AppInstanceInfo, TmuxWindow } from '../../shared/types';
 import { getAllGitCloneDomains } from './git-providers';
 import { getAllAgentApiDomains } from './agent-config';
-import { getPackageManagerDomains } from './environments';
+import { getPackageManagerDomains, DEFAULT_ENVIRONMENT_ID } from './environments';
+import { getUserById } from './auth';
 import type { EnvironmentStore } from './environments';
 import type { WorkerStore, WorkerRecord } from './worker-store';
 import type { UserCredentialManager } from './user-credentials';
@@ -17,25 +18,25 @@ import type { UserEnvVarStore } from './user-env-store';
 import type { CapabilityStore } from './capability-store';
 import type { InstructionStore } from './instruction-store';
 import type { StorageManager } from './storage';
-import type { NetworkMode, ExposeApis, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, UserEnvVars } from '../../shared/types';
+import type { ExposeApis, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, UpdateContainerSettingsRequest, RepoConfig, MountConfig, UserEnvVars } from '../../shared/types';
 
 
 interface ResolvedEnvConfig {
   cpuLimit?: number;
   memoryLimit?: string;
   dockerEnabled?: boolean;
-  environmentName?: string;
-  includePackageManagerDomains?: boolean;
   environmentJson: EnvironmentJsonPayload;
   capabilitiesJson: CapabilityJsonEntry[];
   instructionsJson: InstructionJsonEntry[];
 }
 
 const WORKER_MANAGED_LABEL = 'agentor.managed';
-const WORKER_USER_ID_LABEL = 'agentor.user-id';
-const WORKER_NAME_LABEL = 'agentor.worker-name';
+/** The worker's UUID `id` — the only identifying label on a worker container.
+ * Everything else (userId, config) lives in the WorkerStore record. */
+const WORKER_ID_LABEL = 'agentor.id';
 
 export class ContainerManager {
+  /** Keyed by the worker's UUID `id` (stable across rebuild/unarchive). */
   private containers: Map<string, ContainerInfo> = new Map();
   private dockerService: DockerService;
   private config: Config;
@@ -79,19 +80,18 @@ export class ContainerManager {
     this.storageManager = manager;
   }
 
-  /** Build the globally unique Docker container name from the worker's UUID
-   * `name`. The UUID is already globally unique and DNS-label-safe, so the
-   * container name is simply `<containerPrefix>-<uuid>`. */
-  buildContainerName(name: string): string {
-    return `${this.config.containerPrefix}-${name}`;
+  /** Build the globally unique Docker container name from the worker's UUID `id`:
+   * `<containerPrefix>-<id>`. UUIDs are DNS-label-safe. */
+  buildContainerName(id: string): string {
+    return `${this.config.containerPrefix}-${id}`;
   }
 
-  /** VS Code tunnel name — must be 3-20 alphanumeric + hyphens. The worker UUID
+  /** VS Code tunnel name — must be 3-20 alphanumeric + hyphens. The worker `id`
    * already guarantees global uniqueness; take a userId-prefixed slice so it
    * fits the length cap. */
-  private buildTunnelName(userId: string, name: string): string {
+  private buildTunnelName(userId: string, workerId: string): string {
     const shortId = userId.slice(0, 8);
-    return `${shortId}-${name}`.slice(0, 20);
+    return `${shortId}-${workerId}`.slice(0, 20);
   }
 
   private async resolveUserEnvAndBinds(userId: string): Promise<{ userEnv: UserEnvVars; credentialBinds: string[] }> {
@@ -112,6 +112,14 @@ export class ContainerManager {
       }
     }
     return { userEnv, credentialBinds };
+  }
+
+  /** Resolve the worker's git identity live from the owning user. The worker
+   * references the owner by `userId` only — name/email are never snapshotted onto
+   * the worker record, so they always reflect the user's current profile. */
+  private resolveGitIdentity(userId: string): { gitName: string; gitEmail: string } {
+    const user = getUserById(userId);
+    return { gitName: user?.name ?? '', gitEmail: user?.email ?? '' };
   }
 
   private resolveCapabilitiesAndInstructions(
@@ -138,13 +146,16 @@ export class ContainerManager {
         ? allCapabilities
         : allCapabilities.filter((s) => enabledCapabilityIds!.includes(s.id));
 
+      // Keyed by the built-in capability's slug, which is its `name` (the id is
+      // now a derived UUID). Gated on `builtIn` so a user's custom capability
+      // that happens to share the name is never auto-filtered.
       const apiCapabilityFilter: Record<string, keyof ExposeApis> = {
         'port-mapping': 'portMappings',
         'domain-mapping': 'domainMappings',
         'usage': 'usage',
       };
       enabledCapabilities = enabledCapabilities.filter((s) => {
-        const apiKey = apiCapabilityFilter[s.id];
+        const apiKey = s.builtIn ? apiCapabilityFilter[s.name] : undefined;
         return !apiKey || exposeApis[apiKey];
       });
 
@@ -162,7 +173,6 @@ export class ContainerManager {
     if (!this.environmentStore) {
       const { capabilitiesJson, instructionsJson } = this.resolveCapabilitiesAndInstructions(null, null, defaultExposeApis);
       return {
-        includePackageManagerDomains: true,
         environmentJson: {
           networkMode: 'full',
           allowedDomains: [],
@@ -176,7 +186,7 @@ export class ContainerManager {
       };
     }
 
-    const resolvedId = environmentId || 'default';
+    const resolvedId = environmentId || DEFAULT_ENVIRONMENT_ID;
     const env = this.environmentStore.getById(resolvedId);
     if (!env) throw new Error(`Environment not found: ${resolvedId}`);
 
@@ -206,8 +216,6 @@ export class ContainerManager {
       cpuLimit: env.cpuLimit != null ? env.cpuLimit : undefined,
       memoryLimit: env.memoryLimit || undefined,
       dockerEnabled,
-      environmentName: env.name,
-      includePackageManagerDomains: env.includePackageManagerDomains ?? false,
       environmentJson: {
         networkMode: env.networkMode || 'full',
         allowedDomains: domains,
@@ -237,45 +245,32 @@ export class ContainerManager {
     for (const dc of dockerContainers) {
       const containerName = dc.Names[0]?.replace(/^\//, '') || dc.Id.slice(0, 12);
       const labels = dc.Labels ?? {};
-      const labelUserId = labels[WORKER_USER_ID_LABEL] ?? '';
-      const labelName = labels[WORKER_NAME_LABEL] ?? '';
-
-      // Prefer the store's record (authoritative metadata), fall back to labels.
-      const worker = labelUserId && labelName
-        ? this.workerStore?.get(labelUserId, labelName)
+      // The worker UUID `id` is the only identifying label; resolve the
+      // authoritative record (with userId + config) from the WorkerStore.
+      const labelId = labels[WORKER_ID_LABEL] ?? '';
+      const worker = labelId
+        ? this.workerStore?.findById(labelId)
         : this.workerStore?.findByContainerName(containerName);
 
-      const userId = worker?.userId ?? labelUserId ?? '';
-      const name = worker?.name ?? labelName ?? containerName;
+      const id = worker?.id ?? labelId ?? dc.Id;
+      const now = new Date().toISOString();
 
-      this.containers.set(dc.Id, {
-        id: dc.Id,
-        name,
+      this.containers.set(id, {
+        id,
+        userId: worker?.userId ?? '',
+        createdAt: worker?.createdAt ?? now,
+        updatedAt: worker?.updatedAt ?? now,
+        containerId: dc.Id,
         containerName,
-        displayName: worker?.displayName,
+        displayName: worker?.displayName ?? containerName,
+        imageName: dc.Image,
+        imageId: dc.ImageID,
+        status: ContainerManager.STATE_MAP[dc.State] || 'error',
         repos: worker?.repos,
         mounts: worker?.mounts,
         initScript: worker?.initScript,
-        status: ContainerManager.STATE_MAP[dc.State] || 'error',
-        createdAt: worker?.createdAt || '',
-        image: dc.Image,
-        imageId: dc.ImageID,
         environmentId: worker?.environmentId,
-        environmentName: worker?.environmentName,
-        cpuLimit: worker?.cpuLimit,
-        memoryLimit: worker?.memoryLimit,
-        networkMode: worker?.networkMode,
-        dockerEnabled: worker?.dockerEnabled,
-        allowedDomains: worker?.allowedDomains,
-        includePackageManagerDomains: worker?.includePackageManagerDomains,
-        setupScript: worker?.setupScript,
-        envVars: worker?.envVars,
-        exposeApis: worker?.exposeApis,
-        capabilityNames: worker?.capabilityNames,
-        instructionNames: worker?.instructionNames,
-        userId,
-        gitName: worker?.gitName,
-        gitEmail: worker?.gitEmail,
+        pendingRebuild: worker?.pendingRebuild,
       });
     }
 
@@ -286,11 +281,20 @@ export class ContainerManager {
     return Array.from(this.containers.values());
   }
 
+  /** Look up a worker by its UUID `id`. */
   get(id: string): ContainerInfo | undefined {
     return this.containers.get(id);
   }
 
-  /** Find an active container by its globally unique Docker container name. */
+  /** Resolve a worker `id` to its current Docker container id (for dockerode
+   * calls). Throws if the worker is unknown. */
+  private dockerIdFor(id: string): string {
+    const info = this.containers.get(id);
+    if (!info) throw new Error('Container not found');
+    return info.containerId;
+  }
+
+  /** Find an active worker by its globally unique Docker container name. */
   findByContainerName(containerName: string): ContainerInfo | undefined {
     for (const c of this.containers.values()) {
       if (c.containerName === containerName) return c;
@@ -327,24 +331,26 @@ export class ContainerManager {
 
     const envConfig = this.resolveEnvironmentConfig(request.environmentId);
 
-    // Internal identity is an immutable UUID; the user-facing label is the
-    // free-form, editable `displayName` (defaulted to a friendly slug when the
-    // user provides none).
-    const name = randomUUID();
+    // The worker's identity is an immutable UUID `id`. The user-facing label is
+    // the free-form, editable `displayName` (defaulted to a friendly slug when
+    // the user provides none). The Docker container is described by the separate
+    // `containerId` (assigned by Docker) and `containerName` (`<prefix>-<id>`).
+    const id = randomUUID();
     const displayName = request.displayName?.trim() || this.suggestDisplayName(userId);
-    const containerName = this.buildContainerName(name);
+    const containerName = this.buildContainerName(id);
 
     const repos = request.repos?.filter((r) => r.url) || [];
 
-    const cpuLimit = envConfig.cpuLimit ?? request.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
-    const memoryLimit = envConfig.memoryLimit || request.memoryLimit || this.config.defaultMemoryLimit || undefined;
+    // Resource limits are an environment property (no per-worker override).
+    const cpuLimit = envConfig.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
+    const memoryLimit = envConfig.memoryLimit || this.config.defaultMemoryLimit || undefined;
     const dockerEnabled = envConfig.dockerEnabled ?? true;
 
-    const gitName = request.gitName || '';
-    const gitEmail = request.gitEmail || '';
+    // Git identity resolved live from the owner — never stored on the worker.
+    const { gitName, gitEmail } = this.resolveGitIdentity(userId);
 
     const workerJson: WorkerJsonPayload = {
-      name,
+      id,
       displayName,
       repos,
       initScript: request.initScript?.trim() || '',
@@ -356,9 +362,8 @@ export class ContainerManager {
 
     const container = await this.dockerService.createWorkerContainer({
       userId,
-      name,
+      id,
       containerName,
-      displayName,
       cpuLimit,
       memoryLimit,
       mounts: request.mounts,
@@ -372,50 +377,31 @@ export class ContainerManager {
       userEnv,
     });
 
-    const image = this.config.workerImagePrefix + this.config.workerImage;
-
-    const networkMode = envConfig.environmentJson.networkMode as NetworkMode;
+    const imageName = this.config.workerImagePrefix + this.config.workerImage;
+    const now = new Date().toISOString();
 
     const mounts = request.mounts?.length ? request.mounts : undefined;
     const initScript = request.initScript?.trim() || undefined;
-    const allowedDomains = envConfig.environmentJson.allowedDomains.length > 0 ? envConfig.environmentJson.allowedDomains : undefined;
-    const setupScript = envConfig.environmentJson.setupScript || undefined;
-    const envVars = envConfig.environmentJson.envVars || undefined;
-    const exposeApis = envConfig.environmentJson.exposeApis;
-    const capabilityNames = envConfig.capabilitiesJson.length > 0 ? envConfig.capabilitiesJson.map((s) => s.name) : undefined;
-    const instructionNames = envConfig.instructionsJson.length > 0 ? envConfig.instructionsJson.map((e) => e.name) : undefined;
 
     const containerInfo: ContainerInfo = {
-      id: container.id,
-      name,
+      id,
+      userId,
+      createdAt: now,
+      updatedAt: now,
+      containerId: container.id,
       containerName,
       displayName,
+      imageName,
+      imageId: '',
+      status: 'running',
       repos: repos.length > 0 ? repos : undefined,
       mounts,
       initScript,
-      status: 'running',
-      createdAt: new Date().toISOString(),
-      image,
-      imageId: '',
       environmentId: request.environmentId,
-      environmentName: envConfig.environmentName,
-      cpuLimit,
-      memoryLimit,
-      networkMode,
-      dockerEnabled,
-      allowedDomains,
-      includePackageManagerDomains: envConfig.includePackageManagerDomains,
-      setupScript,
-      envVars,
-      exposeApis,
-      capabilityNames,
-      instructionNames,
-      userId,
-      gitName: gitName || undefined,
-      gitEmail: gitEmail || undefined,
+      pendingRebuild: false,
     };
 
-    this.containers.set(container.id, containerInfo);
+    this.containers.set(id, containerInfo);
 
     if (this.workerStore) {
       await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
@@ -438,76 +424,153 @@ export class ContainerManager {
   }
 
   async uploadToWorkspace(id: string, tarBuffer: Buffer): Promise<void> {
-    this.assertRunning(id);
-    await this.dockerService.putWorkspaceArchive(id, tarBuffer);
+    const info = this.assertRunning(id);
+    await this.dockerService.putWorkspaceArchive(info.containerId, tarBuffer);
   }
 
   async downloadWorkspace(id: string): Promise<NodeJS.ReadableStream> {
-    this.assertRunning(id);
-    return this.dockerService.getWorkspaceArchive(id);
+    const info = this.assertRunning(id);
+    return this.dockerService.getWorkspaceArchive(info.containerId);
   }
 
   async stop(id: string): Promise<void> {
-    useLogCollector().detach(id);
-    await this.dockerService.stopContainer(id);
     const info = this.containers.get(id);
-    if (info) {
-      info.status = 'stopped';
-      useLogger().info(`[container] stopped ${info.containerName}`);
-    }
+    if (!info) throw new Error('Container not found');
+    useLogCollector().detach(info.containerId);
+    await this.dockerService.stopContainer(info.containerId);
+    info.status = 'stopped';
+    info.updatedAt = new Date().toISOString();
+    useLogger().info(`[container] stopped ${info.containerName}`);
   }
 
   async restart(id: string): Promise<void> {
-    useLogCollector().detach(id);
-    await this.dockerService.restartContainer(id);
     const info = this.containers.get(id);
-    if (info) {
-      info.status = 'running';
-      useLogCollector().attach(info.containerName, id, 'worker', info.displayName).catch(() => {});
-      useLogger().info(`[container] restarted ${info.containerName}`);
-    }
+    if (!info) throw new Error('Container not found');
+    useLogCollector().detach(info.containerId);
+    await this.dockerService.restartContainer(info.containerId);
+    info.status = 'running';
+    info.updatedAt = new Date().toISOString();
+    useLogCollector().attach(info.containerName, info.containerId, 'worker', info.displayName).catch(() => {});
+    useLogger().info(`[container] restarted ${info.containerName}`);
   }
 
-  /** Rename a worker's user-facing display name. The internal identity (UUID
-   * `name`, `containerName`, volumes, routing) is immutable, so this only
-   * updates the WorkerStore record and the in-memory ContainerInfo — no
-   * container recreation. The running worker's `WORKER` env keeps the old value
-   * until its next rebuild, which is harmless (the worker does not surface it).
-   * The LogCollector's cached source label likewise refreshes on the next
-   * lifecycle event (re-attaching here would replay the container's whole log
-   * history into the live stream), so log entries may show the prior label
-   * until then — cosmetic only. */
-  async rename(id: string, displayName: string): Promise<ContainerInfo> {
+  private static normRepos(repos: RepoConfig[] | undefined): string {
+    return JSON.stringify((repos ?? []).map((r) => ({ provider: r.provider, url: r.url, branch: r.branch || '' })));
+  }
+
+  private static normMounts(mounts: MountConfig[] | undefined): string {
+    return JSON.stringify((mounts ?? []).map((m) => ({ source: m.source, target: m.target, readOnly: !!m.readOnly })));
+  }
+
+  /** Update a worker's editable settings without forcing a recreation.
+   *
+   * The internal identity (`id`, `containerName`, volumes, routing) is always
+   * immutable. Two tiers of settings exist:
+   *
+   * - **Applied immediately (no rebuild)** — `displayName`. Applied to the
+   *   in-memory ContainerInfo and the WorkerStore immediately; the running
+   *   worker keeps serving.
+   * - **Rebuild-requiring** — `environmentId`, `initScript`, `repos`, `mounts`.
+   *   These are baked into the container at create time (the `WORKER`/`ENVIRONMENT`
+   *   env JSON and Docker `Binds`), so editing them only updates the stored
+   *   desired config and flags the worker `pendingRebuild`. The next `rebuild()`
+   *   re-resolves from this stored config and clears the flag.
+   *
+   * Only the keys present in `patch` are touched. Returns the updated
+   * ContainerInfo. */
+  async updateSettings(id: string, patch: UpdateContainerSettingsRequest): Promise<ContainerInfo> {
     const info = this.containers.get(id);
     if (!info) throw new Error('Container not found');
 
-    info.displayName = displayName;
+    let liveChanged = false;
+    let rebuildChanged = false;
 
-    if (this.workerStore) {
-      const worker = this.workerStore.get(info.userId, info.name);
-      if (worker) {
-        worker.displayName = displayName;
-        await this.workerStore.upsert(worker);
+    // Validate the new environment UP FRONT — `resolveEnvironmentConfig` is the
+    // only operation that can throw (a since-deleted / non-existent environment),
+    // and validating before mutating any field keeps `info` untouched on failure.
+    // The worker only stores the `environmentId` FK; the config is resolved live
+    // at build time, so nothing is snapshotted here. An absent `environmentId`
+    // resolves to the built-in `default` environment, so treat `undefined` and the
+    // default-env id as the same assignment — otherwise a pure display-name save
+    // (which round-trips the form's default-env id) would spuriously flag a rebuild.
+    const envChanged = patch.environmentId !== undefined && patch.environmentId !== (info.environmentId || DEFAULT_ENVIRONMENT_ID);
+    if (envChanged) this.resolveEnvironmentConfig(patch.environmentId!); // throws → 400 on a bad id
+
+    // Display name — applied immediately (no rebuild).
+    if (patch.displayName !== undefined) {
+      const next = patch.displayName.trim();
+      if (next && next !== info.displayName) {
+        info.displayName = next;
+        liveChanged = true;
       }
     }
 
-    useLogger().info(`[container] renamed ${info.containerName} display name to '${displayName}'`);
+    // Environment assignment — rebuild. Only the FK is stored; the new env's
+    // config is applied when the container is next (re)built.
+    if (envChanged) {
+      info.environmentId = patch.environmentId;
+      rebuildChanged = true;
+    }
+
+    // Init script — rebuild.
+    if (patch.initScript !== undefined) {
+      const next = patch.initScript.trim() || undefined;
+      if (next !== info.initScript) {
+        info.initScript = next;
+        rebuildChanged = true;
+      }
+    }
+
+    // Repositories — rebuild.
+    if (patch.repos !== undefined) {
+      const cleaned = patch.repos
+        .filter((r) => r && r.url)
+        .map((r) => ({ provider: r.provider, url: r.url, ...(r.branch ? { branch: r.branch } : {}) }));
+      const next = cleaned.length > 0 ? cleaned : undefined;
+      if (ContainerManager.normRepos(next) !== ContainerManager.normRepos(info.repos)) {
+        info.repos = next;
+        rebuildChanged = true;
+      }
+    }
+
+    // Volume mounts — rebuild.
+    if (patch.mounts !== undefined) {
+      const cleaned = patch.mounts
+        .filter((m) => m && m.source && m.target)
+        .map((m) => ({ source: m.source, target: m.target, ...(m.readOnly ? { readOnly: true } : {}) }));
+      const next = cleaned.length > 0 ? cleaned : undefined;
+      if (ContainerManager.normMounts(next) !== ContainerManager.normMounts(info.mounts)) {
+        info.mounts = next;
+        rebuildChanged = true;
+      }
+    }
+
+    if (rebuildChanged) info.pendingRebuild = true;
+
+    if (liveChanged || rebuildChanged) {
+      info.updatedAt = new Date().toISOString();
+      if (this.workerStore) {
+        await this.workerStore.upsert(this.containerInfoToWorkerRecord(info));
+      }
+      useLogger().info(`[container] updated settings for ${info.containerName}${rebuildChanged ? ' (pending rebuild)' : ''}`);
+    }
+
     return info;
   }
 
   async remove(id: string): Promise<void> {
-    useLogCollector().detach(id);
     const info = this.containers.get(id);
-    await this.dockerService.removeContainer(id);
+    if (info) useLogCollector().detach(info.containerId);
+    await this.dockerService.removeContainer(info?.containerId ?? id);
     if (info) {
       await cleanupWorkerMappings(info.containerName);
       if (this.storageManager) {
         await this.storageManager.removeWorkerDocker(info.containerName);
-        await this.storageManager.removeWorkerWorkspace(info.userId, info.name, info.containerName);
-        await this.storageManager.removeWorkerAgents(info.userId, info.name, info.containerName);
+        await this.storageManager.removeWorkerWorkspace(info.userId, info.id, info.containerName);
+        await this.storageManager.removeWorkerAgents(info.userId, info.id, info.containerName);
       }
       if (this.workerStore) {
-        await this.workerStore.delete(info.userId, info.name).catch((err) => {
+        await this.workerStore.delete(info.userId, info.id).catch((err) => {
           useLogger().error(`[container] failed to delete worker record '${info.containerName}': ${err instanceof Error ? err.message : err}`);
         });
       }
@@ -517,19 +580,20 @@ export class ContainerManager {
   }
 
   async archive(id: string): Promise<void> {
-    useLogCollector().detach(id);
     const info = this.containers.get(id);
     if (!info) throw new Error('Container not found');
 
+    useLogCollector().detach(info.containerId);
+
     if (info.status === 'running') {
-      await this.dockerService.stopContainer(id);
+      await this.dockerService.stopContainer(info.containerId);
     }
 
-    await this.dockerService.removeContainer(id);
+    await this.dockerService.removeContainer(info.containerId);
 
     if (this.workerStore) {
       await this.workerStore.upsert(this.containerInfoToWorkerRecord(info));
-      await this.workerStore.archive(info.userId, info.name);
+      await this.workerStore.archive(info.userId, info.id);
     }
 
     useLogger().info(`[container] archived ${info.containerName}`);
@@ -537,61 +601,54 @@ export class ContainerManager {
   }
 
   async rebuild(id: string): Promise<ContainerInfo> {
-    useLogCollector().detach(id);
     const info = this.containers.get(id);
     if (!info) throw new Error('Container not found');
+
+    useLogCollector().detach(info.containerId);
 
     // Stop and remove the old container — workspace, agents, and DinD volumes
     // are preserved (rebuild behaves identically to archive + unarchive).
     if (info.status === 'running') {
-      await this.dockerService.stopContainer(id);
+      await this.dockerService.stopContainer(info.containerId);
     }
-    await this.dockerService.removeContainer(id);
+    await this.dockerService.removeContainer(info.containerId);
 
     this.containers.delete(id);
 
-    const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
-    let envConfig: ResolvedEnvConfig = {
-      environmentJson: {
-        networkMode: info.networkMode || 'full',
-        allowedDomains: info.allowedDomains || [],
-        dockerEnabled: info.dockerEnabled ?? true,
-        setupScript: info.setupScript || '',
-        envVars: info.envVars || '',
-        exposeApis: info.exposeApis || defaultExposeApis,
-      },
-      includePackageManagerDomains: info.includePackageManagerDomains,
-      capabilitiesJson: info.capabilityNames?.map((name) => ({ name, content: '' })) || [],
-      instructionsJson: info.instructionNames?.map((name) => ({ name, content: '' })) || [],
-    };
+    // Re-resolve the environment config LIVE from the FK. If the referenced
+    // environment was deleted, fall back to the built-in default (the worker no
+    // longer carries a config snapshot to fall back to).
+    let envConfig: ResolvedEnvConfig;
     try {
       envConfig = this.resolveEnvironmentConfig(info.environmentId);
     } catch {
-      // Environment may have been deleted — use current container info
+      envConfig = this.resolveEnvironmentConfig(undefined); // deleted env → default
     }
 
-    const cpuLimit = envConfig.cpuLimit ?? info.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
-    const memoryLimit = envConfig.memoryLimit || info.memoryLimit || this.config.defaultMemoryLimit || undefined;
-    const dockerEnabled = envConfig.dockerEnabled ?? info.dockerEnabled ?? true;
+    const cpuLimit = envConfig.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
+    const memoryLimit = envConfig.memoryLimit || this.config.defaultMemoryLimit || undefined;
+    const dockerEnabled = envConfig.dockerEnabled ?? true;
+
+    const { gitName, gitEmail } = this.resolveGitIdentity(info.userId);
 
     const workerJson: WorkerJsonPayload = {
-      name: info.name,
+      id: info.id,
       displayName: info.displayName || '',
       repos: info.repos || [],
       initScript: info.initScript || '',
-      gitName: info.gitName || '',
-      gitEmail: info.gitEmail || '',
+      gitName,
+      gitEmail,
     };
 
     const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(info.userId);
 
     const container = await this.dockerService.createWorkerContainer({
       userId: info.userId,
-      name: info.name,
+      id: info.id,
       containerName: info.containerName,
-      displayName: info.displayName,
       cpuLimit,
       memoryLimit,
+      mounts: info.mounts,
       dockerEnabled,
       credentialBinds,
       environmentJson: envConfig.environmentJson,
@@ -602,38 +659,27 @@ export class ContainerManager {
       userEnv,
     });
 
-    const image = this.config.workerImagePrefix + this.config.workerImage;
+    const imageName = this.config.workerImagePrefix + this.config.workerImage;
     const containerInfo: ContainerInfo = {
-      id: container.id,
-      name: info.name,
+      id: info.id,
+      userId: info.userId,
+      createdAt: info.createdAt,
+      updatedAt: new Date().toISOString(),
+      containerId: container.id,
       containerName: info.containerName,
       displayName: info.displayName,
+      imageName,
+      imageId: '',
+      status: 'running',
       repos: info.repos,
       mounts: info.mounts,
       initScript: info.initScript,
-      status: 'running',
-      createdAt: info.createdAt,
-      image,
-      imageId: '',
       environmentId: info.environmentId,
-      environmentName: envConfig.environmentName || info.environmentName,
-      cpuLimit,
-      memoryLimit,
-      networkMode: info.networkMode,
-      dockerEnabled,
-      allowedDomains: info.allowedDomains,
-      includePackageManagerDomains: info.includePackageManagerDomains,
-      setupScript: info.setupScript,
-      envVars: info.envVars,
-      exposeApis: info.exposeApis,
-      capabilityNames: info.capabilityNames,
-      instructionNames: info.instructionNames,
-      userId: info.userId,
-      gitName: info.gitName,
-      gitEmail: info.gitEmail,
+      // Rebuild applies any pending settings edits, so the flag is cleared.
+      pendingRebuild: false,
     };
 
-    this.containers.set(container.id, containerInfo);
+    this.containers.set(info.id, containerInfo);
 
     if (this.workerStore) {
       await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
@@ -649,56 +695,47 @@ export class ContainerManager {
     return containerInfo;
   }
 
-  async unarchive(userId: string, name: string): Promise<ContainerInfo> {
+  async unarchive(userId: string, id: string): Promise<ContainerInfo> {
     if (!this.workerStore) throw new Error('WorkerStore not available');
 
-    const worker = this.workerStore.get(userId, name);
+    const worker = this.workerStore.get(userId, id);
     if (!worker || worker.status !== 'archived') {
       throw new Error('Archived worker not found');
     }
 
-    const defaultExposeApis: ExposeApis = { portMappings: true, domainMappings: true, usage: true };
-    let envConfig: ResolvedEnvConfig = {
-      environmentJson: {
-        networkMode: worker.networkMode || 'full',
-        allowedDomains: worker.allowedDomains || [],
-        dockerEnabled: worker.dockerEnabled ?? true,
-        setupScript: worker.setupScript || '',
-        envVars: worker.envVars || '',
-        exposeApis: worker.exposeApis || defaultExposeApis,
-      },
-      includePackageManagerDomains: worker.includePackageManagerDomains,
-      capabilitiesJson: worker.capabilityNames?.map((n) => ({ name: n, content: '' })) || [],
-      instructionsJson: worker.instructionNames?.map((n) => ({ name: n, content: '' })) || [],
-    };
+    // Re-resolve the environment config LIVE from the FK. If the referenced
+    // environment was deleted, fall back to the built-in default.
+    let envConfig: ResolvedEnvConfig;
     try {
       envConfig = this.resolveEnvironmentConfig(worker.environmentId);
     } catch {
-      // Environment may have been deleted — use snapshotted worker data
+      envConfig = this.resolveEnvironmentConfig(undefined); // deleted env → default
     }
 
-    const cpuLimit = envConfig.cpuLimit ?? worker.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
-    const memoryLimit = envConfig.memoryLimit || worker.memoryLimit || this.config.defaultMemoryLimit || undefined;
-    const dockerEnabled = envConfig.dockerEnabled ?? worker.dockerEnabled ?? true;
+    const cpuLimit = envConfig.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
+    const memoryLimit = envConfig.memoryLimit || this.config.defaultMemoryLimit || undefined;
+    const dockerEnabled = envConfig.dockerEnabled ?? true;
+
+    const { gitName, gitEmail } = this.resolveGitIdentity(worker.userId);
 
     const workerJson: WorkerJsonPayload = {
-      name: worker.name,
+      id: worker.id,
       displayName: worker.displayName || '',
       repos: worker.repos || [],
       initScript: worker.initScript || '',
-      gitName: worker.gitName || '',
-      gitEmail: worker.gitEmail || '',
+      gitName,
+      gitEmail,
     };
 
     const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(worker.userId);
 
     const container = await this.dockerService.createWorkerContainer({
       userId: worker.userId,
-      name: worker.name,
+      id: worker.id,
       containerName: worker.containerName,
-      displayName: worker.displayName,
       cpuLimit,
       memoryLimit,
+      mounts: worker.mounts,
       dockerEnabled,
       credentialBinds,
       environmentJson: envConfig.environmentJson,
@@ -709,40 +746,30 @@ export class ContainerManager {
       userEnv,
     });
 
-    await this.workerStore.unarchive(worker.userId, worker.name, container.id);
+    await this.workerStore.unarchive(worker.userId, worker.id, container.id);
 
-    const image = this.config.workerImagePrefix + this.config.workerImage;
+    const imageName = this.config.workerImagePrefix + this.config.workerImage;
     const containerInfo: ContainerInfo = {
-      id: container.id,
-      name: worker.name,
+      id: worker.id,
+      userId: worker.userId,
+      createdAt: worker.createdAt,
+      updatedAt: new Date().toISOString(),
+      containerId: container.id,
       containerName: worker.containerName,
       displayName: worker.displayName,
+      imageName,
+      imageId: '',
+      status: 'running',
       repos: worker.repos,
       mounts: worker.mounts,
       initScript: worker.initScript,
-      status: 'running',
-      createdAt: worker.createdAt,
-      image,
-      imageId: '',
       environmentId: worker.environmentId,
-      environmentName: envConfig.environmentName || worker.environmentName,
-      cpuLimit,
-      memoryLimit,
-      networkMode: worker.networkMode,
-      dockerEnabled,
-      allowedDomains: worker.allowedDomains,
-      includePackageManagerDomains: worker.includePackageManagerDomains,
-      setupScript: worker.setupScript,
-      envVars: worker.envVars,
-      exposeApis: worker.exposeApis,
-      capabilityNames: worker.capabilityNames,
-      instructionNames: worker.instructionNames,
-      userId: worker.userId,
-      gitName: worker.gitName,
-      gitEmail: worker.gitEmail,
+      // Unarchive recreates the container from the stored config, applying any
+      // pending settings edits, so the flag is cleared.
+      pendingRebuild: false,
     };
 
-    this.containers.set(container.id, containerInfo);
+    this.containers.set(worker.id, containerInfo);
 
     await reassignWorkerMappings(worker.containerName);
 
@@ -753,10 +780,10 @@ export class ContainerManager {
     return containerInfo;
   }
 
-  async deleteArchived(userId: string, name: string): Promise<void> {
+  async deleteArchived(userId: string, id: string): Promise<void> {
     if (!this.workerStore) throw new Error('WorkerStore not available');
 
-    const worker = this.workerStore.get(userId, name);
+    const worker = this.workerStore.get(userId, id);
     if (!worker || worker.status !== 'archived') {
       throw new Error('Archived worker not found');
     }
@@ -764,11 +791,11 @@ export class ContainerManager {
     await cleanupWorkerMappings(worker.containerName);
 
     if (this.storageManager) {
-      await this.storageManager.removeWorkerWorkspace(worker.userId, worker.name, worker.containerName);
+      await this.storageManager.removeWorkerWorkspace(worker.userId, worker.id, worker.containerName);
       await this.storageManager.removeWorkerDocker(worker.containerName);
-      await this.storageManager.removeWorkerAgents(worker.userId, worker.name, worker.containerName);
+      await this.storageManager.removeWorkerAgents(worker.userId, worker.id, worker.containerName);
     }
-    await this.workerStore.delete(worker.userId, worker.name);
+    await this.workerStore.delete(worker.userId, worker.id);
   }
 
   listArchived(): WorkerRecord[] {
@@ -781,7 +808,7 @@ export class ContainerManager {
     const activeContainerNames = new Set<string>();
     for (const [, info] of this.containers) {
       activeContainerNames.add(info.containerName);
-      const existing = this.workerStore.get(info.userId, info.name);
+      const existing = this.workerStore.get(info.userId, info.id);
       if (!existing || existing.status === 'active') {
         await this.workerStore.upsert(this.containerInfoToWorkerRecord(info));
       }
@@ -789,7 +816,7 @@ export class ContainerManager {
 
     for (const worker of this.workerStore.listActive()) {
       if (!activeContainerNames.has(worker.containerName)) {
-        await this.workerStore.archive(worker.userId, worker.name);
+        await this.workerStore.archive(worker.userId, worker.id);
       }
     }
   }
@@ -797,47 +824,36 @@ export class ContainerManager {
   private containerInfoToWorkerRecord(info: ContainerInfo): WorkerRecord {
     return {
       id: info.id,
-      name: info.name,
+      userId: info.userId,
+      createdAt: info.createdAt,
+      updatedAt: info.updatedAt,
+      containerId: info.containerId,
       containerName: info.containerName,
       displayName: info.displayName,
+      imageName: info.imageName,
+      imageId: info.imageId,
+      status: 'active',
       environmentId: info.environmentId,
-      environmentName: info.environmentName,
-      createdAt: info.createdAt,
       repos: info.repos,
       mounts: info.mounts,
       initScript: info.initScript,
-      cpuLimit: info.cpuLimit,
-      memoryLimit: info.memoryLimit,
-      networkMode: info.networkMode,
-      dockerEnabled: info.dockerEnabled,
-      allowedDomains: info.allowedDomains,
-      includePackageManagerDomains: info.includePackageManagerDomains,
-      setupScript: info.setupScript,
-      envVars: info.envVars,
-      exposeApis: info.exposeApis,
-      capabilityNames: info.capabilityNames,
-      instructionNames: info.instructionNames,
-      image: info.image,
-      imageId: info.imageId,
-      status: 'active',
-      userId: info.userId,
-      gitName: info.gitName,
-      gitEmail: info.gitEmail,
+      pendingRebuild: info.pendingRebuild,
     };
   }
 
   async logs(id: string, tail?: number): Promise<string> {
-    return this.dockerService.getLogs(id, tail);
+    return this.dockerService.getLogs(this.dockerIdFor(id), tail);
   }
 
   async listTmuxWindows(id: string): Promise<TmuxWindow[]> {
-    return this.dockerService.execListTmuxWindows(id);
+    return this.dockerService.execListTmuxWindows(this.dockerIdFor(id));
   }
 
   async createTmuxWindow(id: string, name?: string): Promise<TmuxWindow> {
+    const containerId = this.dockerIdFor(id);
     const windowName = name || `shell-${nanoid(4)}`;
-    await this.dockerService.execTmux(id, ['new-window', '-t', 'main:', '-n', windowName]);
-    const windows = await this.dockerService.execListTmuxWindows(id);
+    await this.dockerService.execTmux(containerId, ['new-window', '-t', 'main:', '-n', windowName]);
+    const windows = await this.dockerService.execListTmuxWindows(containerId);
     const created = windows.findLast((w) => w.name === windowName);
     if (!created) {
       throw new Error('Failed to find newly created tmux window');
@@ -846,30 +862,30 @@ export class ContainerManager {
   }
 
   async renameTmuxWindow(id: string, windowIndex: number, newName: string): Promise<void> {
-    await this.dockerService.execTmux(id, ['rename-window', '-t', `main:${windowIndex}`, newName]);
+    await this.dockerService.execTmux(this.dockerIdFor(id), ['rename-window', '-t', `main:${windowIndex}`, newName]);
   }
 
   async killTmuxWindow(id: string, windowIndex: number): Promise<void> {
     if (windowIndex === 0) {
       throw new Error('Cannot kill the main tmux window');
     }
-    await this.dockerService.execTmux(id, ['kill-window', '-t', `main:${windowIndex}`]);
+    await this.dockerService.execTmux(this.dockerIdFor(id), ['kill-window', '-t', `main:${windowIndex}`]);
   }
 
-  getServiceStatus(workerId: string): ServiceStatus {
-    const info = this.containers.get(workerId);
+  getServiceStatus(id: string): ServiceStatus {
+    const info = this.containers.get(id);
     return {
       running: info?.status === 'running',
-      containerId: workerId,
+      containerId: info?.containerId,
     };
   }
 
   // --- Generic app instance methods ---
 
-  async listAppInstances(workerId: string, appTypeId: string): Promise<AppInstanceInfo[]> {
-    const info = this.containers.get(workerId);
+  async listAppInstances(id: string, appTypeId: string): Promise<AppInstanceInfo[]> {
+    const info = this.containers.get(id);
     if (!info || info.status !== 'running') return [];
-    const instances = await this.dockerService.listAppInstances(workerId, appTypeId);
+    const instances = await this.dockerService.listAppInstances(info.containerId, appTypeId);
 
     // Enrich instances with their externally mapped port (if any) so the UI
     // can render SSH connection strings etc. without a second round-trip.
@@ -887,17 +903,17 @@ export class ContainerManager {
    * apps with `autoPortMapping` (e.g. ssh) so the UI can render the connect
    * string immediately. */
   async createAppInstance(
-    workerId: string,
+    id: string,
     appTypeId: string,
   ): Promise<{ id: string; port: number; externalPort?: number }> {
-    const info = this.assertRunning(workerId);
+    const info = this.assertRunning(id);
 
     const appType = getAppType(appTypeId);
     if (!appType) {
       throw new Error(`Unknown app type: ${appTypeId}`);
     }
 
-    const existing = await this.dockerService.listAppInstances(workerId, appTypeId);
+    const existing = await this.dockerService.listAppInstances(info.containerId, appTypeId);
 
     if (appType.singleton) {
       const alreadyRunning = existing.find((i) => i.status === 'running' || i.status === 'auth_required');
@@ -931,12 +947,12 @@ export class ContainerManager {
 
     // Allocate an instance id. For singletons the id is fixed to the app type id
     // so restarts reuse the same identifier (and the same port mapping).
-    const id = appType.singleton ? appTypeId : `${appTypeId}-${Date.now().toString(36)}`;
+    const instanceId = appType.singleton ? appTypeId : `${appTypeId}-${Date.now().toString(36)}`;
 
     // Compose any app-type-specific extra args for `manage.sh start`.
     const extraArgs: string[] = [];
     if (appTypeId === 'vscode') {
-      extraArgs.push(this.buildTunnelName(info.userId, info.name));
+      extraArgs.push(this.buildTunnelName(info.userId, info.id));
     }
 
     // Auto port mapping — allocate or reuse BEFORE calling manage.sh, so the
@@ -944,12 +960,12 @@ export class ContainerManager {
     // remove it manually if needed).
     let externalPort: number | undefined;
     if (appType.autoPortMapping) {
-      externalPort = await this.ensureAutoPortMapping(info, appType, id, port);
+      externalPort = await this.ensureAutoPortMapping(info, appType, instanceId, port);
     }
 
-    await this.dockerService.startAppInstance(workerId, appTypeId, id, port, extraArgs);
+    await this.dockerService.startAppInstance(info.containerId, appTypeId, instanceId, port, extraArgs);
 
-    return { id, port, ...(externalPort !== undefined ? { externalPort } : {}) };
+    return { id: instanceId, port, ...(externalPort !== undefined ? { externalPort } : {}) };
   }
 
   private async ensureAutoPortMapping(
@@ -973,7 +989,7 @@ export class ContainerManager {
     await store.add({
       externalPort,
       type: cfg.type,
-      workerName: info.name,
+      workerId: info.id,
       containerName: info.containerName,
       internalPort,
       appType: appType.id,
@@ -990,8 +1006,8 @@ export class ContainerManager {
     return externalPort;
   }
 
-  async stopAppInstance(workerId: string, appTypeId: string, instanceId: string): Promise<void> {
-    this.assertRunning(workerId);
-    await this.dockerService.stopAppInstance(workerId, appTypeId, instanceId);
+  async stopAppInstance(id: string, appTypeId: string, instanceId: string): Promise<void> {
+    const info = this.assertRunning(id);
+    await this.dockerService.stopAppInstance(info.containerId, appTypeId, instanceId);
   }
 }

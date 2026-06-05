@@ -10,7 +10,7 @@
 - `orchestrator/app.config.ts` - App-level configuration
 
 ## Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UserCustomEnvVar, UserEnvVars, UserEnvVarsInput, UpdatableImage, LogLevel, LogSource, LogEntry). All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UserEnvVar, UserEnvVars, UserEnvVarsInput, UserSshKey, PREDEFINED_ENV_VAR_KEYS, UpdatableImage, LogLevel, LogSource, LogEntry). `UserEnvVars` is `{ userId, createdAt, updatedAt, envVars: UserEnvVar[] }` (`UserEnvVar = { key, value }` — a uniform list, no hardcoded fields); `UserEnvVarsInput = { envVars? }`; `UserSshKey = { sshPublicKey }`; `PREDEFINED_ENV_VAR_KEYS` is the predefined-key UI affordance list (`GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) — extend it to add a predefined input. All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
 
 ## Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build (includes python3/make/g++ for better-sqlite3 native build)
@@ -36,8 +36,10 @@
 - `orchestrator/server/api/account/credentials.get.ts` - Returns `{ hasPassword, passkeyCount }` for the current user
 - `orchestrator/server/api/account/set-password.post.ts` - Sets a new password without requiring a current one (wraps better-auth's server-only `setPassword`)
 - `orchestrator/server/api/account/remove-password.post.ts` - Removes the password credential. Refuses if no passkey is registered.
-- `orchestrator/server/api/account/env-vars.get.ts` - Returns the caller's `UserEnvVars` (well-known agent API/OAuth keys + GitHub token + customEnvVars) — owner-only
-- `orchestrator/server/api/account/env-vars.put.ts` - Upserts the caller's `UserEnvVars`. Validates customEnvVars key names and rejects reserved keys.
+- `orchestrator/server/api/account/env-vars.get.ts` - Returns the caller's `UserEnvVars` (`{ userId, createdAt, updatedAt, envVars: [{ key, value }] }` — a uniform list keyed by env var name) — owner-only
+- `orchestrator/server/api/account/env-vars.put.ts` - Replaces the caller's `envVars` list. Validates every key (`[A-Z_][A-Z0-9_]*`, no reserved names, no duplicates) and rejects on failure with 400.
+- `orchestrator/server/api/account/ssh-key.get.ts` - Returns the caller's SSH public key `{ sshPublicKey }` (read from `<DATA_DIR>/users/<userId>/ssh/authorized_keys`) — owner-only
+- `orchestrator/server/api/account/ssh-key.put.ts` - Writes the caller's SSH public key to `<DATA_DIR>/users/<userId>/ssh/authorized_keys` (empty string → empty file). The SSH key is NOT an env var.
 - `orchestrator/server/api/account/agent-credentials.get.ts` - Per-user agent OAuth credential file status (`[{ agentId, fileName, configured }]`)
 - `orchestrator/server/api/account/agent-credentials/[agentId].delete.ts` - Resets one agent's per-user OAuth file to `{}` so the next CLI login writes fresh tokens
 - `orchestrator/server/utils/orphan-sweeper.ts` - OrphanSweeper class. Runs at startup and every 10 minutes; reads the auth DB's user table and prunes any per-user env-vars row / credentials directory / usage state whose userId is no longer present. Uses a timer rather than a middleware so nothing touches better-auth's request pipeline.
@@ -56,18 +58,18 @@
 - `orchestrator/server/utils/environments.ts` - EnvironmentStore class, network mode types, package manager domains list
 - `orchestrator/server/utils/worker-store.ts` - WorkerStore class (persistent worker metadata for archive/unarchive)
 - `orchestrator/server/utils/user-credentials.ts` - UserCredentialManager class (per-user OAuth credential files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json`, ensures dirs/files, generates per-user bind strings, statusList + reset) + AGENT_CREDENTIAL_MAPPINGS registry
-- `orchestrator/server/utils/user-env-store.ts` - UserEnvVarStore class (one file per user at `<DATA_DIR>/users/<userId>/env-vars.json` — well-known agent API keys + GitHub token + arbitrary customEnvVars, with renderUserEnvVars helper)
+- `orchestrator/server/utils/user-env-store.ts` - UserEnvVarStore class (one file per user at `<DATA_DIR>/users/<userId>/env-vars.json` holding a uniform `envVars: [{ key, value }]` list — no hardcoded fields and no SSH handling; provides the `renderUserEnvVars` helper and a `getUserEnvVar(env, key)` lookup used e.g. for the GitHub token)
 - `orchestrator/server/utils/user-scoped-store.ts` - UserScopedJsonStore<K, V> base class. Loads from `<DATA_DIR>/users/*/<filename>` and keeps `Map<userId, Map<K, V>>` in memory; each user's file is persisted independently. Used by WorkerStore, PortMappingStore, DomainMappingStore, and the user half of the built-in-plus-user stores (Environments, Capabilities, Instructions, InitScripts).
 - `orchestrator/server/utils/defaults-store.ts` - DefaultsStore<V> base class. Single-file JSON store at `<DATA_DIR>/defaults/<filename>` holding built-in, platform-seeded entries. Written by `seedBuiltIns()`; never mutated by user-facing APIs.
-- `orchestrator/server/utils/storage.ts` - StorageManager class (auto-detects volume vs directory storage mode, provides bind string construction and cleanup for worker workspaces, agent config data, DinD, Traefik certs)
+- `orchestrator/server/utils/storage.ts` - StorageManager class (auto-detects volume vs directory storage mode, provides bind string construction and cleanup for worker workspaces, agent config data, DinD, Traefik certs; also reads/writes the per-user SSH key via `readSshAuthorizedKeys`/`writeSshAuthorizedKeys` at `<DATA_DIR>/users/<userId>/ssh/authorized_keys`)
 - `orchestrator/server/utils/selfsigned-certs.ts` - SelfSignedCertManager class (CA + wildcard cert generation using node-forge for selfsigned domains)
 - `orchestrator/server/utils/capability-store.ts` - CapabilityStore class (extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/instruction-store.ts` - InstructionStore class (instruction entries, extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/built-in-content.ts` - Built-in content loader (reads markdown files from server assets via `useStorage()`)
-- `orchestrator/server/built-in/capabilities/` - Built-in capability markdown files (filename = ID, content = capability markdown with YAML frontmatter)
-- `orchestrator/server/built-in/instructions/` - Built-in instruction files (filename = ID, name parsed from first `# Heading`)
-- `orchestrator/server/built-in/init-scripts/` - Built-in init script files (plain .sh, filename = ID and name)
-- `orchestrator/server/built-in/environments/` - Built-in environment JSON files (filename = ID, contains environment config)
+- `orchestrator/server/built-in/capabilities/` - Built-in capability markdown files (filename = name; id is a stable derived UUID; content = capability markdown with YAML frontmatter)
+- `orchestrator/server/built-in/instructions/` - Built-in instruction files (filename = name; id is a stable derived UUID)
+- `orchestrator/server/built-in/init-scripts/` - Built-in init script files (plain .sh; filename = name; id is a stable derived UUID)
+- `orchestrator/server/built-in/environments/` - Built-in environment JSON files (filename = name; id is a stable derived UUID; contains environment config)
 - `orchestrator/server/utils/logger.ts` - Logger class (replaces console.log/warn/error, buffers during startup, writes to LogStore + LogBroadcaster)
 - `orchestrator/server/utils/log-store.ts` - LogStore class (NDJSON file storage with size-based rotation, query with filters)
 - `orchestrator/server/utils/log-broadcaster.ts` - LogBroadcaster class (manages WebSocket peers for live log streaming)

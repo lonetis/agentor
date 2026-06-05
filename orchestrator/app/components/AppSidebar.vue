@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ContainerInfo, Tab, ArchivedWorker } from '~/types';
+import type { ContainerInfo, Tab, ArchivedWorker, UpdateContainerSettingsRequest } from '~/types';
 
 const props = defineProps<{
   containers: ContainerInfo[];
@@ -23,7 +23,7 @@ const emit = defineEmits<{
   rebuildContainer: [id: string];
   removeContainer: [id: string];
   archiveContainer: [id: string];
-  renameContainer: [id: string, displayName: string];
+  updateContainer: [id: string, patch: UpdateContainerSettingsRequest, rebuild: boolean];
   downloadWorkspace: [id: string];
   unarchiveWorker: [name: string];
   deleteArchivedWorker: [name: string];
@@ -322,7 +322,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             @rebuild="(id) => emit('rebuildContainer', id)"
             @remove="(id) => emit('removeContainer', id)"
             @archive="(id) => emit('archiveContainer', id)"
-            @rename="(id, dn) => emit('renameContainer', id, dn)"
+            @update="(id, patch, rebuild) => emit('updateContainer', id, patch, rebuild)"
             @download-workspace="(id) => emit('downloadWorkspace', id)"
           />
         </div>
@@ -336,10 +336,10 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         <div class="space-y-2">
           <ArchivedWorkerCard
             v-for="w in archivedWorkers"
-            :key="w.name"
+            :key="w.id"
             :worker="w"
-            @unarchive="(name) => emit('unarchiveWorker', name)"
-            @delete="(name) => emit('deleteArchivedWorker', name)"
+            @unarchive="(id) => emit('unarchiveWorker', id)"
+            @delete="(id) => emit('deleteArchivedWorker', id)"
           />
         </div>
       </div>

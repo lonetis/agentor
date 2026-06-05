@@ -33,7 +33,6 @@ defineRouteMeta({
   },
 });
 
-import { nanoid } from 'nanoid';
 import { useDomainMappingStore, useTraefikManager, useContainerManager, useConfig } from '../../utils/services';
 import { requireContainerAccess } from '../../utils/auth-helpers';
 
@@ -132,14 +131,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const containerManager = useContainerManager();
-  // Resolve worker by container ID (UI dropdown), globally unique container name
-  // (worker-API shortcut via `WORKER_CONTAINER_NAME`), or the worker UUID `name`.
+  // Resolve worker by worker UUID `id` (UI dropdown), globally unique container
+  // name (worker-API shortcut via `WORKER_CONTAINER_NAME`), or the worker `id`.
   let containerInfo;
   if (body.workerId) {
     containerInfo = containerManager.get(body.workerId);
   } else if (body.workerName) {
     containerInfo = containerManager.findByContainerName(body.workerName)
-      ?? containerManager.list().find((c) => c.name === body.workerName);
+      ?? containerManager.get(body.workerName as string);
   }
   if (!containerInfo || containerInfo.status !== 'running') {
     throw createError({
@@ -159,14 +158,13 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const mapping = {
-    id: nanoid(),
+  const input = {
     subdomain: body.subdomain,
     baseDomain: body.baseDomain,
     path: body.path || '',
     protocol: body.protocol,
     wildcard,
-    workerName: containerInfo.name,
+    workerId: containerInfo.id,
     containerName: containerInfo.containerName,
     internalPort: intPort,
     userId: containerInfo.userId,
@@ -176,8 +174,9 @@ export default defineEventHandler(async (event) => {
   };
 
   const store = useDomainMappingStore();
+  let created;
   try {
-    await store.add(mapping);
+    created = await store.add(input);
   } catch (err) {
     throw createError({
       statusCode: 409,
@@ -187,5 +186,5 @@ export default defineEventHandler(async (event) => {
   await useTraefikManager().reconcile();
 
   setResponseStatus(event, 201);
-  return mapping;
+  return created;
 });

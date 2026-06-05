@@ -13,8 +13,6 @@ defineRouteMeta({
             properties: {
               displayName: { type: 'string', description: 'Editable user-facing label (free-form; auto-generated friendly slug if omitted). The internal worker identity is a server-minted UUID.' },
               repos: { type: 'array', items: { $ref: '#/components/schemas/RepoConfig' } },
-              cpuLimit: { type: 'number', description: 'CPU core limit' },
-              memoryLimit: { type: 'string', description: 'Memory limit (e.g. "2g")' },
               mounts: { type: 'array', items: { $ref: '#/components/schemas/MountConfig' } },
               environmentId: { type: 'string', description: 'Environment configuration ID' },
               initScript: { type: 'string', description: 'Init script to run on startup' },
@@ -71,23 +69,16 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const cpuLimit = body.cpuLimit != null ? parseFloat(body.cpuLimit) : undefined;
-  if (cpuLimit !== undefined && (Number.isNaN(cpuLimit) || cpuLimit <= 0)) {
-    throw createError({ statusCode: 400, statusMessage: 'cpuLimit must be a positive number' });
-  }
-
+  // Resource limits are an environment property — no per-worker override. Git
+  // identity is resolved live from the owning user, not passed in here.
   const containerManager = useContainerManager();
   const container = await containerManager.create({
     displayName: body.displayName || undefined,
     repos: parsedRepos,
-    cpuLimit,
-    memoryLimit: body.memoryLimit || undefined,
     mounts: parsedMounts,
     environmentId: body.environmentId || undefined,
     initScript: body.initScript || undefined,
     userId: user.id,
-    gitName: user.name,
-    gitEmail: user.email,
   });
 
   setResponseStatus(event, 201);

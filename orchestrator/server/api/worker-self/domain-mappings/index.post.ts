@@ -33,7 +33,6 @@ defineRouteMeta({
   },
 });
 
-import { nanoid } from 'nanoid';
 import { useDomainMappingStore, useTraefikManager, useConfig } from '../../../utils/services';
 import { requireWorkerSelf } from '../../../utils/worker-auth';
 
@@ -119,14 +118,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'basicAuth requires both username and password' });
   }
 
-  const mapping = {
-    id: nanoid(),
+  const input = {
     subdomain: body.subdomain,
     baseDomain: body.baseDomain,
     path: body.path || '',
     protocol: body.protocol,
     wildcard,
-    workerName: ctx.container.name,
+    workerId: ctx.container.id,
     containerName: ctx.containerName,
     internalPort: intPort,
     userId: ctx.userId,
@@ -136,8 +134,9 @@ export default defineEventHandler(async (event) => {
   };
 
   const store = useDomainMappingStore();
+  let created;
   try {
-    await store.add(mapping);
+    created = await store.add(input);
   } catch (err) {
     throw createError({
       statusCode: 409,
@@ -147,5 +146,5 @@ export default defineEventHandler(async (event) => {
   await useTraefikManager().reconcile();
 
   setResponseStatus(event, 201);
-  return mapping;
+  return created;
 });

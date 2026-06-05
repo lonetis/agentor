@@ -24,8 +24,11 @@ test.describe('Instructions API', () => {
     test('built-in platform-guide entry has builtIn: true', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.listInstructions();
-      const platformGuide = body.find((e: { id: string }) => e.id === 'platform-guide');
+      const platformGuide = body.find((e: { name: string }) => e.name === 'platform-guide');
       expect(platformGuide).toBeTruthy();
+      // Built-in ids are stable derived UUIDs — `platform-guide` is the name.
+      expect(platformGuide.id).not.toBe('platform-guide');
+      expect(platformGuide.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
       expect(platformGuide.builtIn).toBe(true);
       expect(platformGuide.name).toBeTruthy();
       expect(platformGuide.content).toBeTruthy();
@@ -121,11 +124,18 @@ test.describe('Instructions API', () => {
       expect(body.content).toContain(`${ts}`);
     });
 
-    test('returns built-in entry by ID', async ({ request }) => {
+    test('returns built-in entry by ID (UUID id, slug is the name)', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status, body } = await api.getInstruction('platform-guide');
+      const { body: list } = await api.listInstructions();
+      const pg = list.find((e: { name: string }) => e.name === 'platform-guide');
+      expect(pg).toBeTruthy();
+      expect(pg.id).not.toBe('platform-guide');
+      expect(pg.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+      const { status, body } = await api.getInstruction(pg.id);
       expect(status).toBe(200);
-      expect(body.id).toBe('platform-guide');
+      expect(body.id).toBe(pg.id);
+      expect(body.name).toBe('platform-guide');
       expect(body.builtIn).toBe(true);
     });
 
@@ -157,7 +167,9 @@ test.describe('Instructions API', () => {
 
     test('returns 400 when updating built-in entry', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.updateInstruction('platform-guide', {
+      const { body: list } = await api.listInstructions();
+      const pgId = list.find((e: { name: string; builtIn: boolean }) => e.builtIn && e.name === 'platform-guide').id;
+      const { status } = await api.updateInstruction(pgId, {
         name: 'Modified Built-in',
       });
       expect(status).toBe(400);
@@ -199,7 +211,9 @@ test.describe('Instructions API', () => {
 
     test('returns 400 when deleting built-in entry', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.deleteInstruction('platform-guide');
+      const { body: list } = await api.listInstructions();
+      const pgId = list.find((e: { name: string; builtIn: boolean }) => e.builtIn && e.name === 'platform-guide').id;
+      const { status } = await api.deleteInstruction(pgId);
       expect(status).toBe(400);
     });
 

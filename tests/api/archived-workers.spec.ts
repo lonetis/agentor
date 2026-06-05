@@ -23,12 +23,12 @@ test.describe('Archived Workers API', () => {
 
       // List archived - should contain our worker
       const { body: archived } = await api.listArchived();
-      const found = archived.find((w: { name: string }) => w.name === container.name);
+      const found = archived.find((w: { id: string }) => w.id === container.id);
       expect(found).toBeTruthy();
-      expect(found.name).toBe(container.name);
+      expect(found.id).toBe(container.id);
 
       // Cleanup
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
 
     test('unarchives a worker', async ({ request }) => {
@@ -39,13 +39,13 @@ test.describe('Archived Workers API', () => {
       await api.archiveContainer(container.id);
 
       // Unarchive
-      const { status, body } = await api.unarchiveWorker(container.name);
+      const { status, body } = await api.unarchiveWorker(container.id);
       expect(status).toBe(200);
-      expect(body.name).toBe(container.name);
+      expect(body.id).toBe(container.id);
 
       // Verify it's back in active containers
       const { body: containers } = await api.listContainers();
-      const found = containers.find((c: { name: string }) => c.name === container.name);
+      const found = containers.find((c: { id: string }) => c.id === container.id);
       expect(found).toBeTruthy();
 
       // Cleanup
@@ -60,13 +60,13 @@ test.describe('Archived Workers API', () => {
       await api.archiveContainer(container.id);
 
       // Delete
-      const { status, body } = await api.deleteArchivedWorker(container.name);
+      const { status, body } = await api.deleteArchivedWorker(container.id);
       expect(status).toBe(200);
       expect(body.ok).toBe(true);
 
       // Verify it's gone
       const { body: archived } = await api.listArchived();
-      const found = archived.find((w: { name: string }) => w.name === container.name);
+      const found = archived.find((w: { id: string }) => w.id === container.id);
       expect(found).toBeUndefined();
     });
   });
@@ -92,24 +92,28 @@ test.describe('Archived Workers API', () => {
       await api.archiveContainer(container.id);
 
       const { body: archived } = await api.listArchived();
-      const found = archived.find((w: { name: string }) => w.name === container.name);
+      const found = archived.find((w: { id: string }) => w.id === container.id);
       expect(found).toBeTruthy();
-      expect(typeof found.name).toBe('string');
+      expect(typeof found.id).toBe('string');
       expect(typeof found.createdAt).toBe('string');
       expect(typeof found.archivedAt).toBe('string');
 
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
 
-    test('unarchive returns new container id', async ({ request }) => {
+    test('unarchive returns the same worker id with a new Docker container', async ({ request }) => {
       const container = await createWorker(request);
       const api = new ApiClient(request);
       await api.archiveContainer(container.id);
 
-      const { body } = await api.unarchiveWorker(container.name);
+      const { body } = await api.unarchiveWorker(container.id);
       expect(typeof body.id).toBe('string');
       expect(body.id.length).toBeGreaterThan(0);
-      expect(body.name).toBe(container.name);
+      // Worker identity (id) is preserved across archive/unarchive...
+      expect(body.id).toBe(container.id);
+      // ...but a fresh Docker container is created.
+      expect(body.containerId).toBeTruthy();
+      expect(body.containerId).not.toBe(container.containerId);
 
       await cleanupWorker(request, body.id);
     });
@@ -120,7 +124,7 @@ test.describe('Archived Workers API', () => {
       const api = new ApiClient(request);
       await api.archiveContainer(container.id);
 
-      const { body } = await api.unarchiveWorker(container.name);
+      const { body } = await api.unarchiveWorker(container.id);
       expect(body.displayName).toBe(displayName);
 
       await cleanupWorker(request, body.id);
@@ -133,27 +137,27 @@ test.describe('Archived Workers API', () => {
       await api.archiveContainer(container.id);
 
       const { body: archived } = await api.listArchived();
-      const found = archived.find((w: { name: string }) => w.name === container.name);
+      const found = archived.find((w: { id: string }) => w.id === container.id);
       expect(found).toBeTruthy();
       expect(found.displayName).toBe(displayName);
 
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
 
-    test('archived worker has image or environmentId field', async ({ request }) => {
+    test('archived worker has imageName or environmentId field', async ({ request }) => {
       const container = await createWorker(request, { displayName: `ImageField-${Date.now()}` });
       const api = new ApiClient(request);
       await api.archiveContainer(container.id);
 
       const { body: archived } = await api.listArchived();
-      const found = archived.find((w: { name: string }) => w.name === container.name);
+      const found = archived.find((w: { id: string }) => w.id === container.id);
       expect(found).toBeTruthy();
-      // Worker should have at least one of image or environmentId
-      const hasImage = typeof found.image === 'string';
+      // Worker should have at least one of imageName or environmentId
+      const hasImage = typeof found.imageName === 'string';
       const hasEnvId = typeof found.environmentId === 'string';
       expect(hasImage || hasEnvId).toBe(true);
 
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
   });
 
@@ -167,10 +171,10 @@ test.describe('Archived Workers API', () => {
 
       // Verify archived
       const { body: archived } = await api.listArchived();
-      expect(archived.some((w: { name: string }) => w.name === container.name)).toBe(true);
+      expect(archived.some((w: { id: string }) => w.id === container.id)).toBe(true);
 
       // Unarchive
-      const { body: unarchived } = await api.unarchiveWorker(container.name);
+      const { body: unarchived } = await api.unarchiveWorker(container.id);
       expect(unarchived.id).toBeTruthy();
 
       // Wait for running status
@@ -203,7 +207,7 @@ test.describe('Archived Workers API', () => {
       expect(secondStatus).toBeGreaterThanOrEqual(400);
 
       // Cleanup
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
     });
   });
 
@@ -227,16 +231,16 @@ test.describe('Archived Workers API', () => {
         const { body: afterArchive } = await api.listPortMappings();
         const archivedMapping = afterArchive.find((m: { externalPort: number }) => m.externalPort === port);
         expect(archivedMapping).toBeTruthy();
-        expect(archivedMapping.workerName).toBe(container.name);
+        expect(archivedMapping.workerId).toBe(container.id);
         expect(archivedMapping.containerName).toBe(container.containerName);
 
         // Unarchive — containerName is stable; Traefik will pick up the new
         // container automatically via Docker DNS.
-        const { body: unarchived } = await api.unarchiveWorker(container.name);
+        const { body: unarchived } = await api.unarchiveWorker(container.id);
         const { body: afterUnarchive } = await api.listPortMappings();
         const restoredMapping = afterUnarchive.find((m: { externalPort: number }) => m.externalPort === port);
         expect(restoredMapping).toBeTruthy();
-        expect(restoredMapping.workerName).toBe(container.name);
+        expect(restoredMapping.workerId).toBe(container.id);
         expect(restoredMapping.containerName).toBe(container.containerName);
 
         await cleanupWorker(request, unarchived.id);
@@ -258,7 +262,7 @@ test.describe('Archived Workers API', () => {
       });
 
       await api.archiveContainer(container.id);
-      await api.deleteArchivedWorker(container.name);
+      await api.deleteArchivedWorker(container.id);
 
       const { body: mappings } = await api.listPortMappings();
       const found = mappings.find((m: { externalPort: number }) => m.externalPort === port);

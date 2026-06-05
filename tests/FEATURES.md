@@ -34,8 +34,10 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - `/api/auth/admin/*` endpoints (create, list, setRole, remove, ban/unban) are restricted to admins
 
 ### 0.5 Resource Ownership
+- Every resource shares a consistent, extensible base shape — `id` (UUID v4), `createdAt`, `updatedAt` — and user-owned resources additionally carry `userId` (a shared `BaseResource` / `UserOwnedResource` in `orchestrator/shared/types.ts`). New optional fields can be added later without breaking the base.
 - Workers, port mappings, domain mappings, environments, capabilities, instructions, init scripts all carry a `userId`
-- Built-in capabilities/instructions/init-scripts/environments have `userId: null` and are visible to all users
+- Built-in capabilities/instructions/init-scripts/environments have `userId: null` (a `builtIn` flag) and are visible to all users. Their `id` is a stable UUID **deterministically derived from the slug (filename)** — the filename is the `name`, the id is a derived UUID (RFC 4122 v5), so it stays constant across the every-startup re-seed (a random id per boot would orphan references like a worker's `environmentId`). User-created entries get random UUIDs.
+- better-auth is configured with `advanced.database.generateId: 'uuid'`, so user/session/account ids minted for NEW records are UUIDs (existing rows keep their original ids)
 - Regular users cannot see or modify another user's resources (403 on mutations, filtered out of list responses)
 - Admins can see and modify everything
 - Port/domain mappings inherit the `userId` of the target worker
@@ -63,12 +65,14 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Accessible from the sidebar footer by clicking the user info area
 - **Profile section**: edit name and email, Save button. Email changes apply immediately (no verification email sent — Agentor does not send email).
 - **Change password section**: current password + new password (min 8 chars) + confirm new password. Server rejects the wrong current password.
-- **API keys & tokens section**: per-user inputs for `GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`. All fields are masked password inputs with a show/hide eye toggle. Values are injected into every worker the user creates.
-- **Custom environment variables section**: list of `{key, value}` rows with Add/Remove. Keys validated to `[A-Z_][A-Z0-9_]*`; reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.) are rejected with an inline error. Saved together with the API keys via a single "Save env vars" button (`PUT /api/account/env-vars`).
-- **SSH Access section**: `sshPublicKey` textarea (4 rows, monospace). On save the key is written to `<DATA_DIR>/users/<userId>/ssh/authorized_keys` (empty string → empty file), which is bind-mounted read-only at `/home/agent/.ssh/authorized_keys` in every one of the user's workers. Used by the **SSH** app (Apps pane → Start).
+- **Environment variables**: stored per user as a single uniform list of `{key, value}` pairs keyed by the env var NAME (no hardcoded fields). The modal splits this into two sections that share one **"Save env vars"** button (`PUT /api/account/env-vars`, which replaces the whole list):
+  - **Predefined environment variables section**: one masked password input (show/hide eye toggle) per key in `PREDEFINED_ENV_VAR_KEYS` (`GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`), each labeled by the env var NAME (e.g. "GITHUB_TOKEN", not "GitHub token"). This list is purely a UI affordance — adding a key to `PREDEFINED_ENV_VAR_KEYS` in `orchestrator/shared/types.ts` adds an input, nothing else.
+  - **Custom environment variables section**: list of `{key, value}` rows with Add/Remove for any other env var. Keys validated `[A-Z_][A-Z0-9_]*`; reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.) and duplicates are rejected with an inline error.
+  - All inputs (predefined + custom) are serialized into one `envVars` list and injected into every worker the user creates.
+- **SSH Access section**: `sshPublicKey` textarea (4 rows, monospace) with its OWN **"Save SSH key"** button hitting `PUT /api/account/ssh-key`. The SSH key is NOT an env var — on save the key is written only to `<DATA_DIR>/users/<userId>/ssh/authorized_keys` (empty string → empty file), which is bind-mounted read-only at `/home/agent/.ssh/authorized_keys` in every one of the user's workers. Used by the **SSH** app (Apps pane → Start).
 - **Agent OAuth credentials section**: per-agent (claude/codex/gemini) status indicator (`Logged in` green / `Not logged in` gray) plus a per-agent **Reset** button (two-step confirm) that overwrites the OAuth file with `{}` so the next CLI login writes fresh tokens. Login itself happens by running the agent CLI inside one of the user's workers — credentials live at `<DATA_DIR>/users/<userId>/credentials/` and are bind-mounted into all of the user's workers.
 - Success and error messages displayed per section
-- Backed by `/api/auth/update-user`, `/api/auth/change-email`, `/api/auth/change-password` (built-in better-auth) and Agentor's per-user `/api/account/env-vars` and `/api/account/agent-credentials` endpoints
+- Backed by `/api/auth/update-user`, `/api/auth/change-email`, `/api/auth/change-password` (built-in better-auth) and Agentor's per-user `/api/account/env-vars`, `/api/account/ssh-key`, and `/api/account/agent-credentials` endpoints
 
 ### 0.9c Admin Password Reset
 - In the Users modal each row has a "Reset password" button that prompts for a new password and calls `/api/auth/admin/set-user-password`
@@ -182,18 +186,16 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ## 4. Container Cards (Worker Cards in Sidebar)
 
 ### 4.1 Card Content
-- Display name (`displayName`, truncated with title tooltip; falls back to `shortName(name)` only if the label were ever empty). The display name is free-form (spaces / mixed case allowed) and is NOT the worker's internal identity — the internal `name` is an opaque immutable UUID.
+- Display name (`displayName`, truncated with title tooltip; falls back to `shortName(id)` only if the label were ever empty). The display name is free-form (spaces / mixed case allowed) and is NOT the worker's internal identity — the internal `id` is an immutable UUID v4.
 - Status badge: running (green), stopped (neutral), creating (warning), error (error), removing (warning)
 - Short image ID in monospace (first 10 chars)
 - Active card: blue-tinted background with blue border and shadow
 - Clicking name/status area opens detail modal
 
-### 4.1a Inline Rename
-- A "Rename" pencil button (icon `i-lucide-pencil`, wrapped in `<UTooltip text="Rename">`) sits in the card's action button row
-- Clicking it swaps the title `<h3>` for an `<input>` pre-filled with the current `displayName`
-- Enter commits the new display name, Escape cancels, blur commits
-- Committing emits a rename that triggers `PATCH /api/containers/:id { displayName }` — the container is NOT recreated; the running worker keeps serving
-- Only `displayName` changes — the internal UUID `name`, `containerName`, volumes, and port/domain mappings are untouched
+### 4.1a Settings Pencil
+- A "Settings" pencil button (icon `i-lucide-pencil`, wrapped in `<UTooltip text="Settings">`) sits in the card's action button row
+- Clicking it (or clicking the card title) opens the editable **Worker Settings modal** (§5) — there is no inline-on-card rename input anymore; renaming and all other editable settings live in the modal
+- When the worker has unsaved rebuild-requiring edits, the card shows an amber `rebuild pending` badge next to the status badge (tooltip "Settings changed — rebuild to apply")
 
 ### 4.2 View Buttons (only when running)
 - Terminal button (tooltip "Terminal") — opens terminal pane
@@ -219,19 +221,36 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ---
 
-## 5. Container Detail Modal
+## 5. Worker Settings Modal
+
+The worker "detail" view is a fully editable **Worker Settings modal** (no more read-only view). It shows only worker-related settings — environment-specific settings (CPU/memory, network, Docker, capabilities, instructions, setup script, env vars, exposed APIs) live in the Environments modal, not here.
 
 ### 5.1 Content
-- Header: container `displayName` + a "Rename" pencil (UButton icon `i-lucide-pencil`) + status badge (color-coded)
-- Worker info: **Worker ID** (the immutable UUID `container.name`, shown in monospace — this is the first row, previously labeled "Container" and showed `shortName(name)`), Container ID (first 12 chars), Image, Image ID (first 12 chars), Created timestamp
-- Configuration section (conditional): Environment name, CPU limit, Memory limit, Network mode (if non-full), Docker enabled
-- Repositories section (conditional): repo URLs in monospace + optional branch with "@" prefix
+- Header: `<displayName> — Settings` + status badge (color-coded) + an amber `Rebuild pending` badge when there are unapplied rebuild-requiring edits
+- Pending-rebuild banner (only when `pendingRebuild`): "Settings changes are saved but not yet applied…" + a "Rebuild now" button
+- **Worker** section (read-only identity): Worker ID (the immutable worker UUID `container.id`, monospace), Container ID (the Docker `container.containerId`, first 12 chars), Image (`container.imageName`), Image ID (first 12 chars), Created timestamp
+- **Settings** section (editable):
+  - **Display name** — `<input>`, tagged `no rebuild needed` (applied without a rebuild)
+  - **Environment** — `<select>` of available environments, tagged `requires rebuild`
+  - **Repositories** — RepoInput rows + "+ Add repository", tagged `requires rebuild`
+  - **Volume Mounts** — MountInput rows + "+ Add mount", tagged `requires rebuild`
+  - **Init Script** — preset `<select>` + textarea (synced via `useInitScriptSync`), tagged `requires rebuild`
+- **Info** sections (read-only, shown only when present): Port Mappings, Domain Mappings, App Instances
 
-### 5.2 Interactions
-- Opens when clicking container name/status
-- Header Rename pencil turns the displayName into an inline `<input>` (Enter commits, Escape cancels, blur commits); committing triggers `PATCH /api/containers/:id { displayName }` without recreating the container
-- Close via Escape key
-- Close via clicking overlay
+### 5.2 Settings editing tiers
+- **Live** — `displayName`. Saving applies it to the running worker immediately (the `PATCH` updates the stored label and in-memory state; no recreation).
+- **Requires rebuild** — `environmentId`, `repos`, `mounts`, `initScript`. These are baked into the container at create time (the `WORKER`/`ENVIRONMENT` env JSON and Docker `Binds`), so saving them only updates the stored desired config and flags the worker `pendingRebuild: true`. A rebuild re-resolves from the stored config and applies them.
+
+### 5.3 Save actions
+- **Save** — `PATCH /api/containers/:id` with the edited fields. Disabled until a change is made and while the display name is empty/over 100 chars. Live fields apply immediately; rebuild fields are stored + the worker is flagged `pendingRebuild`.
+- **Save & Rebuild** — shown only when a rebuild-requiring field changed. Persists the edits, then rebuilds the worker (no extra confirm — the choice is explicit), so the running container immediately reflects the new config. The accompanying hint reads "Changes require a rebuild to take effect."
+- **Rebuild now** — in the pending banner; rebuilds to apply already-saved pending edits.
+- **Close** — dismisses without saving.
+
+### 5.4 Interactions
+- Opens when clicking the worker name or the Settings pencil (§4.1a)
+- Close via Escape key or clicking the overlay
+- Re-openable; the form re-initialises from the worker each time it opens
 
 ---
 
@@ -264,16 +283,16 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Cross-modal navigation: "Manage" buttons close create modal, open target modal (350ms delay)
 
 ### 6.5 Display name & worker identity handling
-- The client sends only `{ displayName }` on create — either the value the user typed or, when the field is left blank, the suggestion fetched from `GET /api/containers/generate-name`. It NEVER sends a `name`.
-- The orchestrator mints the worker's internal identity itself: an opaque, immutable **UUID v4** (`crypto.randomUUID`) stored as `name`. The client cannot choose or influence it.
-- `containerName = <containerPrefix>-<name>` — the default prefix is `agentor-worker`, so the Docker container name looks like `agentor-worker-<uuid>`. There is NO `userId` segment.
-- The worker's in-container `hostname` equals the UUID `name`, so the `hostname` command (and the shell prompt) returns the UUID — not a friendly label. The friendly, editable label lives only in `displayName` and only ever appears in the dashboard UI.
+- The client sends only `{ displayName }` on create — either the value the user typed or, when the field is left blank, the suggestion fetched from `GET /api/containers/generate-name`. It NEVER sends an `id`.
+- The orchestrator mints the worker's internal identity itself: an immutable **UUID v4** (`crypto.randomUUID`) stored as `id`. The client cannot choose or influence it. It is stable across rebuild/unarchive.
+- `containerName = agentor-worker-<id>`, so the Docker container name looks like `agentor-worker-<uuid>`. There is NO `userId` segment.
+- No custom `Hostname` is set on the container, so the in-container `hostname` command (and the shell prompt) returns the Docker short container id (e.g. `16b082a7681b`) — NOT the worker UUID and NOT a friendly label. The friendly, editable label lives only in `displayName` and only ever appears in the dashboard UI.
 - `displayName` is always populated in the API response: the server defaults it to a friendly adjective-animal slug when the client omits it. It is free-form (spaces / mixed case allowed), capped at 100 chars, NOT required to be unique (one user, or two users, can have many workers sharing a displayName), and is renameable post-creation (see §4.1a / §5).
-- Per-user `name` uniqueness no longer exists — UUIDs are globally unique, so two workers (same or different owners) can share any displayName without collision.
+- Per-worker `id` uniqueness is guaranteed by UUID v4, so two workers (same or different owners) can share any displayName without collision.
 
 ### 6.6 Internal identity vs editable label (end to end)
-- **Internal identity (`name`)** — server-minted UUID v4, immutable. It is the WorkerStore key, the Docker container Hostname, the `agentor.worker-name` label, the directory-mode storage leaf, and the basis for `containerName`. Worker volumes (`<containerName>-workspace`, `-agents`, `-docker`) and the directory-mode dirs are keyed by this UUID. Clients never see it in a chooseable form — only displayed read-only as "Worker ID" in the detail modal.
-- **Editable label (`displayName`)** — the only user-facing, mutable name. Set on create (typed or suggested) and changed at any time via `PATCH /api/containers/:id` (see §24.2). A rename touches ONLY `displayName`: the UUID `name`, `containerName`, volumes, and port/domain mappings are unchanged, and the running container is not recreated. `displayName` is preserved across rebuild and archive/unarchive.
+- **Internal identity (`id`)** — server-minted UUID v4, immutable and stable across rebuild/unarchive. It is the WorkerStore key, the `agentor.id` label, the directory-mode storage leaf, and the basis for `containerName`. Worker volumes (`<containerName>-workspace`, `-agents`, `-docker`) and the directory-mode dirs (`workspaces/<id>/`, `agents/<id>/`) are keyed by this UUID. The Docker container id (`containerId`) is separate and changes on every rebuild. Clients never choose `id` — it is only displayed read-only as "Worker ID" in the settings modal.
+- **Editable label (`displayName`)** — the only user-facing, mutable name. Set on create (typed or suggested) and changed at any time via `PATCH /api/containers/:id` (see §24.2). A rename touches ONLY `displayName`: the `id`, `containerName`, volumes, and port/domain mappings are unchanged, and the running container is not recreated. `displayName` is preserved across rebuild and archive/unarchive.
 
 ---
 
@@ -374,7 +393,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ## 12. Port Mappings Panel
 
-> Port mappings and domain mappings both run on the same **Traefik** container (`agentor-traefik`). There is no separate `agentor-mapper` container. Each port mapping becomes a dedicated TCP entrypoint on Traefik (`pm-<port>`) with a `HostSNI(*)` catch-all router that forwards to `workerName:internalPort`. Adding or removing a port mapping triggers a Traefik container recreate because entrypoints are part of Traefik's static config.
+> Port mappings and domain mappings both run on the same **Traefik** container (`agentor-traefik`). There is no separate `agentor-mapper` container. Each port mapping becomes a dedicated TCP entrypoint on Traefik (`pm-<port>`) with a `HostSNI(*)` catch-all router that forwards to `containerName:internalPort`. Adding or removing a port mapping triggers a Traefik container recreate because entrypoints are part of Traefik's static config.
 
 ### 12.1 Empty State
 - "No active mappings" message
@@ -389,7 +408,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - "Cancel" button (hides form)
 
 ### 12.3 Mapping List
-- Per-mapping row: type badge (blue "local" / orange "ext") + external port (monospace) + arrow + worker label:internal port + remove (X) button. The worker label is resolved from the live container list by `containerName` to show the worker's `displayName` (fallback `shortName(m.workerName)`); the raw UUID `workerName` is not printed.
+- Per-mapping row: type badge (blue "local" / orange "ext") + external port (monospace) + arrow + worker label:internal port + remove (X) button. The worker label is resolved from the live container list by `containerName` to show the worker's `displayName` (fallback `shortName(m.workerId)`); the raw UUID `workerId` is not printed.
 - Delete removes mapping immediately
 
 ---
@@ -421,7 +440,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - "Cancel" and "Add" buttons
 
 ### 13.4 Mapping List
-- Per-mapping row: protocol badge (blue=http, green=https, purple=tcp) + challenge type badge + optional indigo `wildcard` badge + full domain with path (if set) + lock icon (if basic auth) + arrow + worker label:port + remove button. The worker label is resolved from the live container list by `containerName` to show the worker's `displayName` (fallback `shortName(m.workerName)`); the raw UUID `workerName` is not printed.
+- Per-mapping row: protocol badge (blue=http, green=https, purple=tcp) + challenge type badge + optional indigo `wildcard` badge + full domain with path (if set) + lock icon (if basic auth) + arrow + worker label:port + remove button. The worker label is resolved from the live container list by `containerName` to show the worker's `displayName` (fallback `shortName(m.workerId)`); the raw UUID `workerId` is not printed.
 - Wildcard mappings display the host with a `*.` prefix in the list
 - Challenge type badges: none (gray), http (emerald), dns (cyan), selfsigned/self (amber)
 
@@ -709,16 +728,22 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/health` — returns `{ status: 'ok', containers: N }`
 
 ### 24.2 Containers
-- `GET /api/containers` — list all workers. Each `ContainerInfo.name` is an immutable UUID v4; `.displayName` is the editable label and is always populated.
-- `POST /api/containers` — create worker. Body NO LONGER accepts `name`. Accepts optional `displayName` (string, trimmed, ≤100 chars else HTTP 400) plus environmentId, initScript, repos, mounts. The orchestrator mints the UUID `name` itself; the response `ContainerInfo.name` is that UUID and `.displayName` is always populated (defaults to an adjective-animal slug when omitted).
-- `PATCH /api/containers/:id` — rename the worker's display name WITHOUT recreating the container (the running worker keeps serving). Body `{ displayName }`. Returns the updated `ContainerInfo`. Only `displayName` changes — `name`, `containerName`, volumes, and mappings are unchanged. Rules: empty/whitespace-only displayName → 400; >100 chars → 400; unknown container id → 404; a regular user renaming another user's worker → 403 (ownership via `requireContainerAccess`).
+- Every `ContainerInfo` carries the standard base-resource fields: `id` (immutable worker UUID v4), `createdAt`, `updatedAt`, plus `userId` (owner). Identity fields: `id` is the stable worker identity; `containerId` is the Docker container id (changes on every rebuild/unarchive); `containerName = agentor-worker-<id>`; `imageName` (+ `imageId`); `.displayName` is the editable label and is always populated. There is NO `name` field.
+- **Normalized — references, not copies.** `ContainerInfo`/`WorkerRecord` store ONLY the worker's own settings (`displayName`, `repos`, `mounts`, `initScript`) plus foreign keys: `userId` (owner) and `environmentId` (assigned environment). They do NOT carry the environment's config (`environmentName`, `cpuLimit`, `memoryLimit`, `networkMode`, `dockerEnabled`, `allowedDomains`, `includePackageManagerDomains`, `setupScript`, `envVars`, `exposeApis`, `capabilityNames`, `instructionNames`) nor the git identity (`gitName`, `gitEmail`) — those are resolved live from the `EnvironmentStore` / the owning user at build time. The create/list/PATCH/rebuild/unarchive responses for a worker therefore expose none of those fields (they are `undefined`). Resource limits (`cpuLimit`/`memoryLimit`) are an environment property — `POST /api/containers` no longer accepts them, and there is no per-worker override.
+- `GET /api/containers` — list all workers. Each `ContainerInfo.id` is the immutable worker UUID; `.containerId` is the current Docker container id; `.imageName` is the image reference; `.displayName` is always populated.
+- `POST /api/containers` — create worker. Body NO LONGER accepts `id` (or `name`). Accepts optional `displayName` (string, trimmed, ≤100 chars else HTTP 400) plus environmentId, initScript, repos, mounts. The orchestrator mints the UUID `id` itself; the response `ContainerInfo.id` is that UUID, `.containerId`/`.containerName`/`.imageName` are populated, and `.displayName` is always populated (defaults to an adjective-animal slug when omitted).
+- `PATCH /api/containers/:id` — update editable worker settings WITHOUT recreating the container (`:id` is the worker UUID). Body is a partial `{ displayName?, environmentId?, initScript?, repos?, mounts? }` — only the present keys change. Returns the updated `ContainerInfo`. The internal identity (`id`, `containerName`, volumes, mappings) is always unchanged; `updatedAt` is bumped.
+  - **`displayName` applies immediately (no rebuild needed)** — applied to the running worker immediately. Backward compatible with the old rename: `PATCH { displayName }` works exactly as before.
+  - **`environmentId`, `initScript`, `repos`, `mounts` are rebuild-requiring** — the new value is stored (for `environmentId`, only the FK is stored, after validating it exists in the EnvironmentStore) and the worker is flagged `pendingRebuild: true` in the response and the container list. The running container is NOT changed until the next `POST /api/containers/:id/rebuild`, which re-resolves the environment config + git identity live from the stored FKs and clears the flag.
+  - Validation: empty/whitespace-only `displayName` → 400; `displayName` >100 chars → 400; non-existent `environmentId` → 400; malformed `repos`/`mounts` → 400; unknown worker id → 404; a regular user editing another user's worker → 403 (ownership via `requireContainerAccess`).
+  - `ContainerInfo.pendingRebuild` is `true` while rebuild-requiring edits are unapplied; a restart does NOT clear it (a restart reuses the baked env), only create/rebuild/unarchive do.
 - `GET /api/containers/generate-name` — returns `{ displayName: "<friendly slug>" }`, a display-name SUGGESTION (the field is `displayName`, not `name`). The slug matches `/^[a-z]+-[a-z]+$/` (adjective-animal), with a rare fallback of `worker-<6 lowercase alnum>`.
 - `POST /api/containers/:id/stop` — stop worker
 - `POST /api/containers/:id/restart` — restart worker
 - `DELETE /api/containers/:id` — remove worker (cleans up port/domain mappings, volumes, store)
-- `POST /api/containers/:id/rebuild` — rebuild worker (destroys and recreates with latest image, preserves workspace, agents, and DinD volumes plus metadata — equivalent to archive + unarchive)
+- `POST /api/containers/:id/rebuild` — rebuild worker (destroys and recreates with latest image, preserves workspace, agents, and DinD volumes plus metadata including host bind **mounts** — equivalent to archive + unarchive). Applies any `pendingRebuild` settings edits (environment, repos, mounts, init script) and clears the flag.
 - `POST /api/containers/:id/archive` — archive (port/domain mappings are preserved and reattach to the new container on unarchive via the stable `containerName`)
-- Port and domain mappings survive stop/restart, archive/unarchive, and rebuild — they are keyed by the globally unique `containerName` which is stable across the worker's whole lifecycle. Traefik routes to the container by DNS name, so lookups pick up the new container after rebuild/unarchive without any mapping changes. Mappings are only removed on permanent delete (`DELETE /api/containers/:id` or `DELETE /api/archived/:name`).
+- Port and domain mappings survive stop/restart, archive/unarchive, and rebuild — they are keyed by the globally unique `containerName` which is stable across the worker's whole lifecycle. Traefik routes to the container by DNS name, so lookups pick up the new container after rebuild/unarchive without any mapping changes. Mappings are only removed on permanent delete (`DELETE /api/containers/:id` or `DELETE /api/archived/:id`).
 - `GET /api/containers/:id/logs` — logs with optional ?tail=N (default 200, max 10000)
 - `GET /api/containers/:id/workspace` — download workspace .tar.gz
 - `POST /api/containers/:id/workspace` — upload files (multipart, path traversal protection)
@@ -740,15 +765,17 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/app-types` — list app type definitions. Each entry includes `{ id, displayName, description, ports, maxInstances, singleton }` plus optional `fixedInternalPort` and `autoPortMapping: { type, externalPortStart, externalPortEnd }` for apps that declare them (ssh).
 
 ### 24.5 Port Mappings
+- Every `PortMapping` carries the standard base-resource fields: `id` (UUID), `userId`, `createdAt`, `updatedAt` — plus `workerId`, `containerName`, `externalPort`, `internalPort`, `type`.
 - `GET /api/port-mappings` — list all
-- `POST /api/port-mappings` — create (externalPort, internalPort, type, workerId or workerName). `workerName` resolves against either the globally unique Docker `containerName` (worker-API shortcut via `$WORKER_CONTAINER_NAME`) or the worker's UUID `name`. Response `workerName` equals the worker UUID (`container.name`) and `containerName` equals `container.containerName`.
+- `POST /api/port-mappings` — create (externalPort, internalPort, type, workerId). `workerId` resolves against either the globally unique Docker `containerName` (worker-API shortcut via `$WORKER_CONTAINER_NAME`) or the worker's UUID `id`. Response `workerId` equals the owning worker's UUID (`container.id`) and `containerName` equals `container.containerName`.
 - `DELETE /api/port-mappings/:port` — remove
 - `GET /api/port-mapper/status` — counts by type
 - Validations: port range 1-65535, type localhost/external, worker must exist and be running, duplicate port 409
 
 ### 24.6 Domain Mappings
+- Every `DomainMapping` carries the standard base-resource fields: `id` (UUID), `userId`, `createdAt`, `updatedAt` — plus `workerId`, `containerName`, and the routing fields.
 - `GET /api/domain-mappings` — list all
-- `POST /api/domain-mappings` — create (subdomain, baseDomain, path, protocol, wildcard, workerId or workerName, internalPort, basicAuth). `workerName` resolves against either the `containerName` or the worker's UUID `name`. Response `workerName` equals the worker UUID (`container.name`) and `containerName` equals `container.containerName`.
+- `POST /api/domain-mappings` — create (subdomain, baseDomain, path, protocol, wildcard, workerId, internalPort, basicAuth). `workerId` resolves against either the `containerName` or the worker's UUID `id`. Response `workerId` equals the owning worker's UUID (`container.id`) and `containerName` equals `container.containerName`.
 - `POST /api/domain-mappings/batch` — batch create (single Traefik reconcile). Accepts `wildcard` per item.
 - `DELETE /api/domain-mappings/:id` — remove (idempotent)
 - `GET /api/domain-mapper/status` — enabled flag, baseDomains list, baseDomainConfigs (domain + challengeType + optional dnsProvider), hasSelfSignedCa flag, dashboard URL
@@ -788,9 +815,9 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - Built-in scripts: claude, codex, gemini
 
 ### 24.11 Archived Workers
-- `GET /api/archived` — list. Each entry's `name` is the worker UUID (the WorkerStore key); `displayName` is the editable label.
-- `POST /api/archived/:name/unarchive` — restore. The `:name` segment is the worker UUID. Returns a `ContainerInfo` whose `.name` is that same UUID; `displayName` is preserved.
-- `DELETE /api/archived/:name` — permanently delete (`:name` is the worker UUID)
+- `GET /api/archived` — list. Each entry's `id` is the worker UUID (the WorkerStore key); `displayName` is the editable label.
+- `POST /api/archived/:id/unarchive` — restore. The `:id` segment is the worker UUID. Returns a `ContainerInfo` whose `.id` is that same UUID (stable across unarchive); `displayName` is preserved while `containerId` is the freshly created container's id.
+- `DELETE /api/archived/:id` — permanently delete (`:id` is the worker UUID)
 
 ### 24.12 Updates
 - `GET /api/updates` — status for 4 images
@@ -815,14 +842,16 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/package-manager-domains` — PM domain list
 
 ### 24.15a Per-user Account env vars and credentials
-- `GET /api/account/env-vars` — returns the current user's `UserEnvVars` `{ githubToken, anthropicApiKey, claudeCodeOauthToken, openaiApiKey, geminiApiKey, sshPublicKey, customEnvVars[], updatedAt }`. Owner-only — admins do NOT see other users' values via this endpoint.
-- `PUT /api/account/env-vars` — upserts the current user's `UserEnvVars`. Partial updates are allowed (omitted fields keep their previous value). `sshPublicKey` is trimmed; when supplied, `<DATA_DIR>/users/<userId>/ssh/authorized_keys` is rewritten (empty string → empty file), which all of the user's workers see live through the read-only bind mount. `customEnvVars` keys must match `[A-Z_][A-Z0-9_]*`, must not collide with reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.), and must be unique. Validation failures return 400.
+- `GET /api/account/env-vars` — returns the current user's `UserEnvVars` `{ userId, createdAt, updatedAt, envVars: [{ key, value }] }` — a single uniform list keyed by the env var NAME, no hardcoded fields. Owner-only — admins do NOT see other users' values via this endpoint.
+- `PUT /api/account/env-vars` — REPLACES the current user's `envVars` list with the supplied `{ envVars: [...] }`. There is no per-field/partial-update semantics anymore — the whole list is the unit of update. Every key must match `[A-Z_][A-Z0-9_]*`, must not collide with reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.), and must be unique. Validation failures return 400.
+- `GET /api/account/ssh-key` — returns the current user's SSH public key `{ sshPublicKey }`, read from `<DATA_DIR>/users/<userId>/ssh/authorized_keys`. Owner-only. The SSH key is NOT stored in env-vars.json.
+- `PUT /api/account/ssh-key` — writes `{ sshPublicKey }` to `<DATA_DIR>/users/<userId>/ssh/authorized_keys` (trimmed; empty string → empty file), which all of the user's workers see live through the read-only bind mount. Backed by `StorageManager.writeSshAuthorizedKeys`.
 - `GET /api/account/agent-credentials` — returns `[{ agentId, fileName, configured }]` for the current user. `configured` is true when the per-user OAuth file at `<DATA_DIR>/users/<userId>/credentials/<fileName>` contains more than `{}`.
 - `DELETE /api/account/agent-credentials/:agentId` — overwrites that agent's per-user OAuth file with `{}` so the next CLI login writes a fresh token. Unknown agent ids return 400.
 - **Scoping**: env vars and credentials are strictly per-user. Each user's workers inherit only their own env vars; user A's worker can never read user B's tokens.
 - **Worker provisioning**: when a worker is created/rebuilt/unarchived, the orchestrator resolves the worker owner's `UserEnvVars` and bind-mounts the user's three credential files directly at the CLIs' expected paths — `/home/agent/.agent-data/.claude/.credentials.json`, `/home/agent/.agent-data/.codex/auth.json`, `/home/agent/.agent-data/.gemini/oauth_creds.json`. In directory mode, `StorageManager.ensureWorkerDirs` pre-creates the mountpoint files so Docker Desktop's virtiofs accepts the nested file bind. Writes from any of the user's workers update the same host file immediately, with no symlink indirection or restart dance.
-- **Precedence inside the worker**: agent + git tokens come from `UserEnvVars`; the per-environment `envVars` field is exported by the entrypoint AFTER Docker's env array, so an Environment can override any per-user var (including `GITHUB_TOKEN`).
-- **User deletion cleanup**: a background `OrphanSweeper` runs at orchestrator startup and every 10 minutes; it reads the auth DB's user table and prunes any per-user `user-env-vars.json` row, `<DATA_DIR>/users/<userId>/` directory, and usage-state entry whose user is no longer present. Implemented as a timer rather than a middleware so nothing touches better-auth's request pipeline.
+- **Precedence inside the worker**: agent + git tokens come from the user's uniform `UserEnvVars.envVars` list (rendered verbatim by `renderUserEnvVars`); the per-environment `envVars` field is exported by the entrypoint AFTER Docker's env array, so an Environment can override any per-user var (including `GITHUB_TOKEN`).
+- **User deletion cleanup**: a background `OrphanSweeper` runs at orchestrator startup and every 10 minutes; it reads the auth DB's user table and prunes any per-user `env-vars.json` row, `<DATA_DIR>/users/<userId>/` directory, and usage-state entry whose user is no longer present. Implemented as a timer rather than a middleware so nothing touches better-auth's request pipeline.
 
 ### 24.16 Logs
 - `GET /api/logs` — query log entries with filters (sources, sourceIds, levels, since, until, limit, search). `since` is **inclusive** (`>=`) and `until` is **exclusive** (`<`) — paginate older by passing the oldest entry's timestamp as `until` to the next call. Returns `{ entries, hasMore }`.
@@ -847,18 +876,18 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 
 A dedicated set of routes mounted at `/api/worker-self/*` is **public to the auth middleware** (listed in `PUBLIC_API_PREFIXES`) but identifies the calling worker by source IP via `requireWorkerSelf()` (`server/utils/worker-auth.ts`). The orchestrator joins the same `agentor-net` Docker bridge that workers join, so each worker's source IP is unique and can be matched against the `agentor.managed=true` containers. Calls from outside the Docker bridge (e.g. host `localhost:3000`) return 401 because the source IP doesn't resolve to any managed worker.
 
-Every mutation is scoped to the calling worker only — `workerId` / `workerName` body fields are not accepted, list endpoints filter by the caller's `containerName`, and delete endpoints return 403 if the targeted mapping belongs to a different worker.
+Every mutation is scoped to the calling worker only — a `workerId` body field is not accepted, list endpoints filter by the caller's `containerName`, and delete endpoints return 403 if the targeted mapping belongs to a different worker.
 
 | Method | Path | Behaviour |
 |--------|------|-----------|
-| `GET`  | `/api/worker-self/info` | `{ workerName, containerName, userId, status, displayName }` — `workerName` is the worker UUID (`container.name`); `displayName` is always a real, editable label |
+| `GET`  | `/api/worker-self/info` | `{ workerId, containerName, userId, status, displayName }` — `workerId` is the worker UUID (`container.id`); `displayName` is always a real, editable label |
 | `GET`  | `/api/worker-self/port-mapper/status` | Total port-mapping counts |
 | `GET`  | `/api/worker-self/port-mappings` | Mappings owned by the calling worker only |
 | `POST` | `/api/worker-self/port-mappings` | Body: `{ externalPort, type, internalPort, appType?, instanceId? }`. Returns the created mapping with `containerName` populated from the caller. |
 | `DELETE` | `/api/worker-self/port-mappings/:port` | Idempotent. 403 if the mapping is owned by a different worker. |
 | `GET`  | `/api/worker-self/domain-mapper/status` | `enabled`, `baseDomains`, `baseDomainConfigs`, `totalMappings`, `hasSelfSignedCa`, `dashboardUrl` |
 | `GET`  | `/api/worker-self/domain-mappings` | Mappings owned by the calling worker only |
-| `POST` | `/api/worker-self/domain-mappings` | Body: `{ subdomain?, baseDomain, path?, protocol, wildcard?, internalPort, basicAuth? }`. Same validation as `/api/domain-mappings` minus `workerId`/`workerName`. |
+| `POST` | `/api/worker-self/domain-mappings` | Body: `{ subdomain?, baseDomain, path?, protocol, wildcard?, internalPort, basicAuth? }`. Same validation as `/api/domain-mappings` minus `workerId` (the caller IP determines the target worker). |
 | `POST` | `/api/worker-self/domain-mappings/batch` | Same per-item shape; single Traefik reconcile |
 | `DELETE` | `/api/worker-self/domain-mappings/:id` | Idempotent. 403 if the mapping is owned by a different worker. |
 | `GET`  | `/api/worker-self/usage` | Usage status scoped to the worker's owning userId |
@@ -905,11 +934,10 @@ The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/ap
 ## 27. Git Identity
 
 ### 27.1 Per-User Git Config
-- When a user creates a worker, the worker's `git config --global user.name` and `user.email` are set from the creating user's profile (name and email from the auth system)
-- The `WORKER` JSON env var includes `gitName` and `gitEmail` fields
+- A worker's `git config --global user.name` and `user.email` are the **owning user's** profile (name and email from the auth system), **resolved live at build time** from the worker's `userId` (`getUserById`) — NOT stored on the worker
+- The `WORKER` JSON env var includes `gitName` and `gitEmail` fields (populated with the resolved values at create/rebuild/unarchive)
 - The entrypoint reads these fields via `jq` and calls `git config --global`
-- `ContainerInfo` and `WorkerRecord` include `gitName` and `gitEmail` fields
-- Git identity persists across rebuild (stored in WorkerRecord, re-passed in WORKER JSON)
-- Git identity persists across archive/unarchive (same mechanism)
+- `ContainerInfo` and `WorkerRecord` do **NOT** carry `gitName`/`gitEmail` — they reference the owner by `userId` only, and the identity is resolved live (normalization). The API response never exposes `gitName`/`gitEmail`.
+- Git identity survives rebuild and archive/unarchive automatically (re-resolved from `userId` and re-passed in WORKER JSON), and always reflects the user's current profile
 - No per-agent git wrapper — agent CLIs add `Co-authored-by` trailers to their commits for attribution
 - No `/usr/local/bin/git` wrapper installed — `git` resolves to `/usr/bin/git` directly

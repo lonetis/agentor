@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { PREDEFINED_ENV_VAR_KEYS } from '../../shared/types';
+import type { UserSshKey } from '../../shared/types';
+
 const open = defineModel<boolean>('open', { default: false });
 
 const { client, user: currentUser } = useAuth();
@@ -34,26 +37,18 @@ const passkeySuccess = ref('');
 const passkeyAddName = ref('');
 const passkeyAddLoading = ref(false);
 
-// API keys + custom env vars (per-user, injected into every worker the user creates)
-interface EnvVarsForm {
-  githubToken: string;
-  anthropicApiKey: string;
-  claudeCodeOauthToken: string;
-  openaiApiKey: string;
-  geminiApiKey: string;
-  sshPublicKey: string;
-  customEnvVars: { key: string; value: string }[];
-}
-const envForm = reactive<EnvVarsForm>({
-  githubToken: '',
-  anthropicApiKey: '',
-  claudeCodeOauthToken: '',
-  openaiApiKey: '',
-  geminiApiKey: '',
-  sshPublicKey: '',
-  customEnvVars: [],
-});
+// Per-user env vars (predefined slots + custom), injected into every worker the
+// user creates. All are stored uniformly, keyed by env var name — the predefined
+// list is just a UI affordance and is trivially extended by adding a key to
+// PREDEFINED_ENV_VAR_KEYS. The SSH public key is NOT an env var (separate file).
+const predefinedKeys = PREDEFINED_ENV_VAR_KEYS;
+const predefinedEnv = reactive<Record<string, string>>(
+  Object.fromEntries(predefinedKeys.map((k) => [k, ''])),
+);
+const customEnv = ref<{ key: string; value: string }[]>([]);
+const sshKey = ref('');
 const envLoading = ref(false);
+const sshLoading = ref(false);
 const envError = ref('');
 const envSuccess = ref('');
 const sshError = ref('');
@@ -128,21 +123,31 @@ async function refreshPasskeysEnabled() {
 async function loadEnvVars() {
   envLoading.value = true;
   try {
-    await fetchEnvAndCreds();
+    await Promise.all([fetchEnvAndCreds(), loadSshKey()]);
     const v = _envVarsRef.value;
     if (v) {
-      envForm.githubToken = v.githubToken;
-      envForm.anthropicApiKey = v.anthropicApiKey;
-      envForm.claudeCodeOauthToken = v.claudeCodeOauthToken;
-      envForm.openaiApiKey = v.openaiApiKey;
-      envForm.geminiApiKey = v.geminiApiKey;
-      envForm.sshPublicKey = v.sshPublicKey || '';
-      envForm.customEnvVars = v.customEnvVars.map((e) => ({ ...e }));
+      const known = predefinedKeys as readonly string[];
+      for (const k of predefinedKeys) predefinedEnv[k] = '';
+      const custom: { key: string; value: string }[] = [];
+      for (const { key, value } of v.envVars) {
+        if (known.includes(key)) predefinedEnv[key] = value;
+        else custom.push({ key, value });
+      }
+      customEnv.value = custom;
     }
   } catch (err: any) {
     envError.value = err?.data?.statusMessage || err?.message || 'Failed to load env vars';
   } finally {
     envLoading.value = false;
+  }
+}
+
+async function loadSshKey() {
+  try {
+    const { sshPublicKey } = await $fetch<UserSshKey>('/api/account/ssh-key');
+    sshKey.value = sshPublicKey || '';
+  } catch {
+    sshKey.value = '';
   }
 }
 
@@ -173,46 +178,56 @@ watch(open, async (v) => {
 });
 
 function addCustomEnvVar() {
-  envForm.customEnvVars.push({ key: '', value: '' });
+  customEnv.value.push({ key: '', value: '' });
 }
 
 function removeCustomEnvVar(index: number) {
-  envForm.customEnvVars.splice(index, 1);
+  customEnv.value.splice(index, 1);
 }
 
 function toggleVisible(field: string) {
   envVisible[field] = !envVisible[field];
 }
 
-async function handleEnvSave(context: 'env' | 'ssh' = 'env') {
+// Save all env vars (predefined slots with a value + custom rows with a key) as
+// one uniform list. Empty predefined values are omitted so they don't clutter
+// the stored list.
+async function handleEnvSave() {
   resetMessages();
   envLoading.value = true;
   try {
-    await saveEnvVars({
-      githubToken: envForm.githubToken,
-      anthropicApiKey: envForm.anthropicApiKey,
-      claudeCodeOauthToken: envForm.claudeCodeOauthToken,
-      openaiApiKey: envForm.openaiApiKey,
-      geminiApiKey: envForm.geminiApiKey,
-      sshPublicKey: envForm.sshPublicKey,
-      customEnvVars: envForm.customEnvVars
+    const envVars = [
+      ...predefinedKeys
+        .map((key) => ({ key, value: predefinedEnv[key] ?? '' }))
+        .filter((e) => e.value.length > 0),
+      ...customEnv.value
         .map((e) => ({ key: e.key.trim(), value: e.value }))
         .filter((e) => e.key.length > 0),
-    });
-    if (context === 'ssh') {
-      sshSuccess.value = 'SSH public key saved';
-    } else {
-      envSuccess.value = 'Env vars saved';
-    }
+    ];
+    await saveEnvVars({ envVars });
+    envSuccess.value = 'Env vars saved';
   } catch (err: any) {
-    const message = err?.data?.statusMessage || err?.message || 'Failed to save';
-    if (context === 'ssh') {
-      sshError.value = message;
-    } else {
-      envError.value = message;
-    }
+    envError.value = err?.data?.statusMessage || err?.message || 'Failed to save';
   } finally {
     envLoading.value = false;
+  }
+}
+
+// SSH key lives only in the authorized_keys file — its own endpoint, 1:1 field.
+async function handleSshSave() {
+  resetMessages();
+  sshLoading.value = true;
+  try {
+    const { sshPublicKey } = await $fetch<UserSshKey>('/api/account/ssh-key', {
+      method: 'PUT',
+      body: { sshPublicKey: sshKey.value },
+    });
+    sshKey.value = sshPublicKey || '';
+    sshSuccess.value = 'SSH public key saved';
+  } catch (err: any) {
+    sshError.value = err?.data?.statusMessage || err?.message || 'Failed to save';
+  } finally {
+    sshLoading.value = false;
   }
 }
 
@@ -562,106 +577,31 @@ async function handleDeletePasskey(p: PasskeyRow) {
 
         <div class="border-t border-gray-200 dark:border-gray-800"></div>
 
-        <!-- API keys & tokens section — well-known slots for agent API keys and
-             the GitHub token. Injected as env vars into every worker this user
-             creates. -->
+        <!-- Predefined env vars — well-known slots (agent API/OAuth keys, GitHub
+             token), labeled by their env var NAME. Stored uniformly with the
+             custom env vars below; extend by adding a key to
+             PREDEFINED_ENV_VAR_KEYS in shared/types. -->
         <section class="space-y-3" data-testid="account-api-keys">
-          <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">API keys & tokens</h3>
+          <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">Predefined environment variables</h3>
           <p class="text-xs text-gray-500 dark:text-gray-400">
             Injected as environment variables into every worker you create. Values are only visible to you.
           </p>
 
-          <UFormField label="GitHub token" :hint="'GITHUB_TOKEN'">
+          <UFormField v-for="key in predefinedKeys" :key="key" :label="key">
             <div class="flex gap-2">
               <UInput
-                v-model="envForm.githubToken"
-                :type="envVisible.githubToken ? 'text' : 'password'"
+                v-model="predefinedEnv[key]"
+                :type="envVisible[key] ? 'text' : 'password'"
                 autocomplete="off"
-                class="flex-1"
-                data-testid="env-githubToken"
+                class="flex-1 font-mono"
+                :data-testid="`env-${key}`"
               />
               <UButton
                 size="sm"
                 color="neutral"
                 variant="ghost"
-                :icon="envVisible.githubToken ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                @click="toggleVisible('githubToken')"
-              />
-            </div>
-          </UFormField>
-
-          <UFormField label="Anthropic API key" :hint="'ANTHROPIC_API_KEY'">
-            <div class="flex gap-2">
-              <UInput
-                v-model="envForm.anthropicApiKey"
-                :type="envVisible.anthropicApiKey ? 'text' : 'password'"
-                autocomplete="off"
-                class="flex-1"
-                data-testid="env-anthropicApiKey"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                :icon="envVisible.anthropicApiKey ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                @click="toggleVisible('anthropicApiKey')"
-              />
-            </div>
-          </UFormField>
-
-          <UFormField label="Claude Code OAuth token" :hint="'CLAUDE_CODE_OAUTH_TOKEN'">
-            <div class="flex gap-2">
-              <UInput
-                v-model="envForm.claudeCodeOauthToken"
-                :type="envVisible.claudeCodeOauthToken ? 'text' : 'password'"
-                autocomplete="off"
-                class="flex-1"
-                data-testid="env-claudeCodeOauthToken"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                :icon="envVisible.claudeCodeOauthToken ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                @click="toggleVisible('claudeCodeOauthToken')"
-              />
-            </div>
-          </UFormField>
-
-          <UFormField label="OpenAI API key" :hint="'OPENAI_API_KEY'">
-            <div class="flex gap-2">
-              <UInput
-                v-model="envForm.openaiApiKey"
-                :type="envVisible.openaiApiKey ? 'text' : 'password'"
-                autocomplete="off"
-                class="flex-1"
-                data-testid="env-openaiApiKey"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                :icon="envVisible.openaiApiKey ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                @click="toggleVisible('openaiApiKey')"
-              />
-            </div>
-          </UFormField>
-
-          <UFormField label="Gemini API key" :hint="'GEMINI_API_KEY'">
-            <div class="flex gap-2">
-              <UInput
-                v-model="envForm.geminiApiKey"
-                :type="envVisible.geminiApiKey ? 'text' : 'password'"
-                autocomplete="off"
-                class="flex-1"
-                data-testid="env-geminiApiKey"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                :icon="envVisible.geminiApiKey ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                @click="toggleVisible('geminiApiKey')"
+                :icon="envVisible[key] ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                @click="toggleVisible(key)"
               />
             </div>
           </UFormField>
@@ -678,11 +618,11 @@ async function handleDeletePasskey(p: PasskeyRow) {
             Keys must match <code class="font-mono">[A-Z_][A-Z0-9_]*</code>.
           </p>
 
-          <div v-if="envForm.customEnvVars.length === 0" class="text-sm text-gray-500 dark:text-gray-400 italic">
+          <div v-if="customEnv.length === 0" class="text-sm text-gray-500 dark:text-gray-400 italic">
             None configured.
           </div>
           <div
-            v-for="(row, idx) in envForm.customEnvVars"
+            v-for="(row, idx) in customEnv"
             :key="idx"
             class="flex items-center gap-2"
             data-testid="custom-env-row"
@@ -714,7 +654,7 @@ async function handleDeletePasskey(p: PasskeyRow) {
           <p v-if="envError" class="text-sm text-red-600 dark:text-red-400" data-testid="env-error">{{ envError }}</p>
           <p v-if="envSuccess" class="text-sm text-emerald-600 dark:text-emerald-400" data-testid="env-success">{{ envSuccess }}</p>
           <div class="flex justify-end">
-            <UButton size="sm" :loading="envLoading" @click="() => handleEnvSave('env')" data-testid="env-save">Save env vars</UButton>
+            <UButton size="sm" :loading="envLoading" @click="handleEnvSave" data-testid="env-save">Save env vars</UButton>
           </div>
         </section>
 
@@ -731,7 +671,7 @@ async function handleDeletePasskey(p: PasskeyRow) {
           </p>
           <UFormField label="Public key" hint="ssh-ed25519 / ssh-rsa / ecdsa-sha2-*" class="w-full">
             <UTextarea
-              v-model="envForm.sshPublicKey"
+              v-model="sshKey"
               :rows="4"
               autocomplete="off"
               spellcheck="false"
@@ -743,7 +683,7 @@ async function handleDeletePasskey(p: PasskeyRow) {
           <p v-if="sshError" class="text-sm text-red-600 dark:text-red-400" data-testid="ssh-error">{{ sshError }}</p>
           <p v-if="sshSuccess" class="text-sm text-emerald-600 dark:text-emerald-400" data-testid="ssh-success">{{ sshSuccess }}</p>
           <div class="flex justify-end">
-            <UButton size="sm" :loading="envLoading" @click="() => handleEnvSave('ssh')" data-testid="env-save-ssh">Save SSH key</UButton>
+            <UButton size="sm" :loading="sshLoading" @click="handleSshSave" data-testid="env-save-ssh">Save SSH key</UButton>
           </div>
         </section>
 

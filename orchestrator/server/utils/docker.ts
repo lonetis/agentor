@@ -26,7 +26,7 @@ export interface InstructionJsonEntry {
 }
 
 export interface WorkerJsonPayload {
-  name: string;
+  id: string;
   displayName: string;
   repos: { provider: string; url: string; branch?: string }[];
   initScript: string;
@@ -35,8 +35,9 @@ export interface WorkerJsonPayload {
 }
 
 const MANAGED_LABEL = 'agentor.managed';
-const USER_ID_LABEL = 'agentor.user-id';
-const WORKER_NAME_LABEL = 'agentor.worker-name';
+/** The worker's UUID `id` — the only identifying label on a worker container.
+ * Owner + config live in the WorkerStore record, not in labels. */
+const ID_LABEL = 'agentor.id';
 
 export class DockerService {
   private docker: Docker;
@@ -61,14 +62,14 @@ export class DockerService {
   }
 
   async createWorkerContainer(opts: {
-    /** Owner user id — used for labels, directory paths, and env var injection. */
+    /** Owner user id — used for directory paths and env var injection. */
     userId: string;
-    /** Worker UUID (immutable internal identity) — used for the hostname, the
-     * `agentor.worker-name` label, and the workspace/agents dir leaf. */
-    name: string;
-    /** Globally unique Docker container name (`<prefix>-<name>`, the worker UUID). */
+    /** Worker UUID `id` (immutable internal identity) — used for the `agentor.id`
+     * label and the workspace/agents dir leaf. The container's hostname is left
+     * to Docker's default (the short container id). */
+    id: string;
+    /** Globally unique Docker container name (`<prefix>-<id>`). */
     containerName: string;
-    displayName?: string;
     cpuLimit?: number;
     memoryLimit?: string;
     mounts?: MountConfig[];
@@ -110,9 +111,9 @@ export class DockerService {
     // Persistent workspace — named volume (volume mode) or host directory under
     // the user's data dir (directory mode).
     if (opts.storageManager) {
-      await opts.storageManager.ensureWorkerDirs(opts.userId, opts.name);
-      binds.push(opts.storageManager.getWorkerWorkspaceBind(opts.userId, opts.name, opts.containerName));
-      binds.push(opts.storageManager.getWorkerAgentsBind(opts.userId, opts.name, opts.containerName));
+      await opts.storageManager.ensureWorkerDirs(opts.userId, opts.id);
+      binds.push(opts.storageManager.getWorkerWorkspaceBind(opts.userId, opts.id, opts.containerName));
+      binds.push(opts.storageManager.getWorkerAgentsBind(opts.userId, opts.id, opts.containerName));
       if (opts.dockerEnabled) {
         binds.push(opts.storageManager.getWorkerDockerBind(opts.containerName));
       }
@@ -140,17 +141,15 @@ export class DockerService {
     const container = await this.docker.createContainer({
       Image: image,
       name: opts.containerName,
-      // Hostname is the worker's UUID (its immutable internal identity). The
-      // shell prompt shows the UUID; the friendly, editable name lives in the
-      // dashboard as `displayName`.
-      Hostname: opts.name,
+      // Hostname is left unset — Docker defaults it to the short container id
+      // (e.g. `16b082a7681b`), so the in-container prompt looks like a normal
+      // Docker container. The worker's identity lives in the `agentor.id` label.
       Env: env,
       Tty: true,
       OpenStdin: true,
       Labels: {
         [MANAGED_LABEL]: 'true',
-        [USER_ID_LABEL]: opts.userId,
-        [WORKER_NAME_LABEL]: opts.name,
+        [ID_LABEL]: opts.id,
       },
       HostConfig: {
         NetworkMode: this.config.dockerNetwork,

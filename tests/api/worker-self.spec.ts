@@ -62,12 +62,12 @@ async function curlInside(ws: TerminalWsClient, path: string, opts: { method?: s
 test.describe.serial('Worker-self API', () => {
   let containerId: string;
   let containerName: string;
-  let workerName: string;
+  let workerId: string;
 
   test.beforeAll(async ({ request }) => {
     const container = await createWorker(request);
     containerId = container.id;
-    workerName = container.name;
+    workerId = container.id;
     containerName = container.containerName as string;
 
     // Give the worker a moment to settle into a shell prompt
@@ -95,7 +95,7 @@ test.describe.serial('Worker-self API', () => {
       const { status, body } = await curlInside(ws, '/api/worker-self/info');
       expect(status).toBe(200);
       const json = JSON.parse(body);
-      expect(json.workerName).toBe(workerName);
+      expect(json.workerId).toBe(workerId);
       expect(json.containerName).toBe(containerName);
       expect(json.userId).toBeTruthy();
       expect(json.status).toBe('running');
@@ -126,7 +126,7 @@ test.describe.serial('Worker-self API', () => {
       expect(json.externalPort).toBe(port);
       expect(json.internalPort).toBe(9999);
       expect(json.type).toBe('localhost');
-      expect(json.workerName).toBe(workerName);
+      expect(json.workerId).toBe(workerId);
       expect(json.containerName).toBe(containerName);
 
       const list = await curlInside(ws, '/api/worker-self/port-mappings');
@@ -145,21 +145,21 @@ test.describe.serial('Worker-self API', () => {
     }
   });
 
-  test('POST /api/worker-self/port-mappings rejects body with workerName ignored', async ({ request }) => {
+  test('POST /api/worker-self/port-mappings rejects body with workerId ignored', async ({ request }) => {
     const port = uniquePort();
     const ws = new TerminalWsClient(containerId);
     try {
       await ws.connect();
       await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
-      // Even if the caller tries to specify a different workerName in the body,
+      // Even if the caller tries to specify a different workerId in the body,
       // the worker-self route ignores it and uses the resolved caller.
       const { status, body } = await curlInside(ws, '/api/worker-self/port-mappings', {
         method: 'POST',
-        data: { externalPort: port, type: 'localhost', internalPort: 9998, workerName: 'evil-target' },
+        data: { externalPort: port, type: 'localhost', internalPort: 9998, workerId: 'evil-target' },
       });
       expect(status).toBe(201);
       const json = JSON.parse(body);
-      expect(json.workerName).toBe(workerName);
+      expect(json.workerId).toBe(workerId);
       expect(json.containerName).toBe(containerName);
     } finally {
       ws.close();
@@ -178,7 +178,7 @@ test.describe.serial('Worker-self API', () => {
         externalPort: otherPort,
         type: 'localhost',
         internalPort: 9000,
-        workerName: second.name,
+        workerId: second.id,
       });
       expect(createStatus).toBe(201);
 
@@ -208,7 +208,7 @@ test.describe.serial('Worker-self API', () => {
         externalPort: otherPort,
         type: 'localhost',
         internalPort: 9000,
-        workerName: second.name,
+        workerId: second.id,
       });
       const ws = new TerminalWsClient(containerId);
       try {
