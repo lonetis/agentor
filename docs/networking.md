@@ -23,7 +23,7 @@ linkage is re-resolved automatically via `reassignWorkerMappings`.
 - `PortMappingStore` (`port-mapping-store.ts`): Persists mappings to disk, extends `JsonStore<number, PortMapping>`
 - `TraefikManager` (`traefik-manager.ts`): Handles both port and domain mappings on the same container. For each port mapping it emits:
   - A dedicated TCP entrypoint in `buildCmd()`: `--entrypoints.pm-<port>.address=:<port>` (static config — adding or removing a mapping triggers a container recreate via drift detection)
-  - A catch-all TCP router (`HostSNI(*)`) in `traefik-config.json` pointing at `<containerName>:<internalPort>` via Docker DNS (dynamic config — the file provider watch picks up router changes hot, though entrypoint changes still need a recreate)
+  - A catch-all TCP router (`HostSNI(*)`) in `traefik-config.yml` pointing at `<containerName>:<internalPort>` via Docker DNS (dynamic config — the file provider watch picks up router changes hot, though entrypoint changes still need a recreate)
   - A Docker `PortBindings` entry with the appropriate `HostIp` (`127.0.0.1` or `0.0.0.0`) matching the mapping type
 
 **Container recreation triggers:**
@@ -85,7 +85,7 @@ Domains configured with `:selfsigned` use a locally generated CA to issue wildca
 - `SelfSignedCertManager` (`selfsigned-certs.ts`): Generates and stores a root CA certificate + per-domain wildcard certificates using `node-forge`
 - CA cert (10-year validity) + domain certs (5-year) stored in `<DATA_DIR>/selfsigned-certs/`
 - Certs are generated on first startup and reused across restarts (persisted in data directory)
-- Traefik loads certs via its file provider config (`tls.certificates` section in `traefik-config.json`)
+- Traefik loads certs via its file provider config (`tls.certificates` section in `traefik-config.yml`)
 - Self-signed routers use `tls: {}` (empty — Traefik auto-matches the certificate by SNI from loaded certs)
 - CA cert downloadable via `GET /api/domain-mapper/ca-cert` and from the dashboard UI ("CA cert" button)
 - Each domain gets a wildcard cert with SANs: `domain.com` + `*.domain.com`
@@ -98,7 +98,7 @@ On reconcile, `TraefikManager` compares the running container's `Cmd` and DNS-re
 ### Traefik Container Architecture
 
 - `DomainMappingStore` (`domain-mapping-store.ts`): Persists mappings to `<DATA_DIR>/domain-mappings.json`, extends `JsonStore<string, DomainMapping>`. Each mapping includes `baseDomain` and optional `path` fields. Uniqueness checked on `subdomain + baseDomain + path` per protocol (same subdomain can exist on different base domains; same domain can have different path prefixes).
-- `TraefikManager` (`traefik-manager.ts`): Manages the `agentor-traefik` container lifecycle. On mapping changes, writes a Traefik file provider config (`traefik-config.json`), then ensures the Traefik container exists. Uses `providers.file.watch=true` so config changes are picked up without container restart. Serialized via promise queue. Routes use per-mapping `baseDomain` + `getTlsConfig()` for per-domain cert resolver selection. Dashboard uses `dashboardBaseDomain` from config. `buildCmd()` constructs Traefik CLI args with per-challenge-type resolvers. `buildEnv()` collects DNS provider env vars. `hasContainerConfigDrift()` detects when running container config diverges from expected.
+- `TraefikManager` (`traefik-manager.ts`): Manages the `agentor-traefik` container lifecycle. On mapping changes, writes a Traefik file provider config (`traefik-config.yml`), then ensures the Traefik container exists. Uses `providers.file.watch=true` so config changes are picked up without container restart. Serialized via promise queue. Routes use per-mapping `baseDomain` + `getTlsConfig()` for per-domain cert resolver selection. Dashboard uses `dashboardBaseDomain` from config. `buildCmd()` constructs Traefik CLI args with per-challenge-type resolvers. `buildEnv()` collects DNS provider env vars. `hasContainerConfigDrift()` detects when running container config diverges from expected.
 - Traefik container: publishes ports 80 and 443, receives DNS provider env vars, uses Let's Encrypt ACME with challenge-specific resolvers
 - Dashboard subdomain: if `DASHBOARD_SUBDOMAIN` is set, the orchestrator dashboard is accessible at `<DASHBOARD_SUBDOMAIN>.<DASHBOARD_BASE_DOMAIN>` (defaults to first domain in `BASE_DOMAINS`). Uses the dashboard domain's challenge type for TLS (or plain HTTP if no challenge).
 
@@ -107,7 +107,7 @@ On reconcile, `TraefikManager` compares the running container's `Cmd` and DNS-re
 - Domain-mapping-only updates are hot-reloaded via the Traefik file provider (no container restart)
 - Container recreated on Cmd/Env/PortBindings drift — e.g. adding a DNS provider, adding or removing a port mapping (entrypoint list changes), or switching a port mapping between `localhost`/`external`
 - Labeled `agentor.managed=traefik`
-- Shares the data volume read-only (`DATA_VOLUME:/data:ro`) for reading `port-mappings.json`, `domain-mappings.json`, `traefik-config.json`, and self-signed certs
+- Shares the data volume read-only (`DATA_VOLUME:/data:ro`) for reading `port-mappings.json`, `domain-mappings.json`, `traefik-config.yml`, and self-signed certs
 - Uses a separate named volume (`agentor-traefik-certs`) for Let's Encrypt certificate storage
 - Connected to `agentor-net` for Docker DNS resolution of worker container names
 

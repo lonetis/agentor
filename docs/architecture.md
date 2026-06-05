@@ -44,7 +44,7 @@ The orchestrator supports two storage modes, auto-detected from how `/data` is m
 | **Volume** | `agentor-data:/data` | `Type: "volume"` | Docker named volumes (`<containerName>-workspace`, `<containerName>-agents`, `<containerName>-docker`, `agentor-traefik-certs`) |
 | **Directory** | `./data:/data` | `Type: "bind"` | Per-user subdirectories under the data directory on the host |
 
-Switch modes by changing one line in the compose file — no env vars needed. `StorageManager` (`orchestrator/server/utils/storage.ts`) self-inspects the orchestrator container on startup to determine the mount type. Traefik shares the data volume/directory read-only to pick up `traefik-config.json` and self-signed certs.
+Switch modes by changing one line in the compose file — no env vars needed. `StorageManager` (`orchestrator/server/utils/storage.ts`) self-inspects the orchestrator container on startup to determine the mount type. Traefik shares the data volume/directory read-only to pick up `traefik-config.yml` and self-signed certs.
 
 ### Directory Layout
 
@@ -52,7 +52,7 @@ Switch modes by changing one line in the compose file — no env vars needed. `S
 /data/
 ├── auth.db                         ← better-auth SQLite DB
 ├── auth.secret                     ← BETTER_AUTH_SECRET (auto-generated if unset)
-├── traefik-config.json             ← dynamic Traefik config (written by orchestrator)
+├── traefik-config.yml              ← dynamic Traefik config (written by orchestrator)
 ├── logs/                           ← orchestrator + worker + traefik logs (NDJSON + rotations)
 ├── traefik-certs/                  ← ACME / self-signed cert storage
 │   └── acme.json

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { writeFile, mkdir, access } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import Docker from 'dockerode';
+import { stringify as stringifyYaml } from 'yaml';
 import type { Config, BaseDomainConfig } from './config';
 import type { DomainMappingStore, DomainMapping } from './domain-mapping-store';
 import type { PortMappingStore, PortMapping } from './port-mapping-store';
@@ -11,6 +12,10 @@ import type { SelfSignedCertManager } from './selfsigned-certs';
 const TRAEFIK_CONTAINER_NAME = 'agentor-traefik';
 const TRAEFIK_LABEL = 'agentor.managed';
 const TRAEFIK_LABEL_VALUE = 'traefik';
+// Traefik detects the dynamic-config format from the file extension, so the
+// `.yml` name and the YAML body written below must stay in sync (and match the
+// `--providers.file.filename` flag in buildCmd()).
+const TRAEFIK_CONFIG_FILENAME = 'traefik-config.yml';
 
 type PortBindings = Record<string, { HostIp: string; HostPort: string }[]>;
 
@@ -52,12 +57,12 @@ export class TraefikManager {
   }
 
   private async ensureConfigFile(): Promise<void> {
-    const configPath = join(this.config.dataDir, 'traefik-config.json');
+    const configPath = join(this.config.dataDir, TRAEFIK_CONFIG_FILENAME);
     try {
       await access(configPath);
     } catch {
       await mkdir(dirname(configPath), { recursive: true });
-      await writeFile(configPath, '{}');
+      await writeFile(configPath, '{}\n');
       this.configFileJustCreated = true;
       useLogger().info('[traefik-manager] created empty config file');
     }
@@ -338,14 +343,16 @@ export class TraefikManager {
       if (Object.keys(filtered).length > 0) clean[proto] = filtered;
     }
 
-    const configPath = join(this.config.dataDir, 'traefik-config.json');
+    const configPath = join(this.config.dataDir, TRAEFIK_CONFIG_FILENAME);
     await mkdir(dirname(configPath), { recursive: true });
-    await writeFile(configPath, JSON.stringify(clean, null, 2));
+    // lineWidth: 0 disables line folding so each Traefik rule stays on a single
+    // line — long router rules with `||`/`&&` are far more readable unwrapped.
+    await writeFile(configPath, stringifyYaml(clean, { lineWidth: 0 }));
   }
 
   buildCmd(): string[] {
     const cmd: string[] = [
-      '--providers.file.filename=/data/traefik-config.json',
+      `--providers.file.filename=/data/${TRAEFIK_CONFIG_FILENAME}`,
       '--providers.file.watch=true',
       '--ping=true',
     ];
