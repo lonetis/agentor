@@ -6,6 +6,7 @@ const props = defineProps<{
   providers: GitProviderInfo[];
   githubRepos?: GitHubRepoInfo[];
   githubReposLoading?: boolean;
+  githubReposError?: string;
   githubBranches?: GitHubBranchInfo[];
   githubBranchesLoading?: boolean;
   githubDefaultBranch?: string;
@@ -185,11 +186,20 @@ function handleCreate(isPrivate: boolean) {
         @keydown.enter.prevent="selectHighlighted"
       />
       <div
-        v-if="showDropdown && (filteredRepos.length || createTarget)"
+        v-if="showDropdown && (filteredRepos.length || createTarget || githubReposError)"
         ref="dropdownRef"
         class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-[calc(var(--ui-radius)*2)] bg-[var(--ui-bg-elevated)] ring ring-[var(--ui-border-accented)] shadow-lg py-1"
         @mousedown.prevent
       >
+        <!-- GitHub error (token set but request failed) -->
+        <div
+          v-if="githubReposError"
+          class="px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 flex items-center gap-2"
+        >
+          <UIcon name="i-lucide-alert-triangle" class="shrink-0 size-3.5" />
+          <span class="truncate" :title="githubReposError">{{ githubReposError }}</span>
+        </div>
+
         <!-- Existing repos -->
         <button
           v-for="(repo, i) in filteredRepos"

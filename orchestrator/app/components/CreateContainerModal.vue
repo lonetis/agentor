@@ -21,6 +21,7 @@ const {
   reposLoading: githubReposLoading,
   username: githubUser,
   orgs: githubOrgs,
+  error: githubReposError,
   fetchRepos,
   addRepoToList,
 } = useGitHubRepos();
@@ -228,6 +229,7 @@ function reset() {
               :providers="gitProviders"
               :github-repos="githubRepos"
               :github-repos-loading="githubReposLoading"
+              :github-repos-error="githubReposError"
               :github-branches="getBranchData(idx)?.branches"
               :github-branches-loading="getBranchData(idx)?.loading"
               :github-default-branch="getBranchData(idx)?.defaultBranch"
