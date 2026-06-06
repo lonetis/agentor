@@ -44,7 +44,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ### 0.6 Admin-only Endpoints
 - `GET /api/settings` — 403 for non-admin
-- `GET /api/logs`, `DELETE /api/logs`, `WS /ws/logs` — admin-only
+- `GET /api/logs`, `DELETE /api/logs`, `GET /api/log-sources`, `WS /ws/logs` — admin-only (log sources expose worker container names)
 - `POST /api/updates/apply`, `/check`, `/prune` — admin-only
 
 ### 0.7 System Tab (Admin Only)
@@ -413,7 +413,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 - "No active mappings" message
 
 ### 12.2 Create Form (toggled by "+ Map" button)
-- Type dropdown: "local" / "ext"
+- Type dropdown: "internal" / "external" (the stored values are `localhost` / `external`)
 - Worker dropdown (only running containers, disabled placeholder "Worker")
 - External port input (placeholder "Ext port")
 - Arrow indicator (→)
@@ -422,7 +422,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 - "Cancel" button (hides form)
 
 ### 12.3 Mapping List
-- Per-mapping row: type badge (blue "local" / orange "ext") + external port (monospace) + arrow + worker label:internal port + remove (X) button. The worker label is resolved from the live container list by `containerName` to show the worker's `displayName` (fallback `shortName(m.workerId)`); the raw UUID `workerId` is not printed.
+- Per-mapping row: type badge (blue "internal" / orange "external") + external port (monospace) + arrow + worker label:internal port + remove (X) button. The worker label is resolved from the live container list by `containerName` to show the worker's `displayName` (fallback `shortName(m.workerId)`); the raw UUID `workerId` is not printed.
 - Delete removes mapping immediately
 
 ---
@@ -748,7 +748,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - **Normalized — references, not copies.** `ContainerInfo`/`WorkerRecord` store ONLY the worker's own settings (`displayName`, `repos`, `mounts`, `initScript`) plus foreign keys: `userId` (owner) and `environmentId` (assigned environment). They do NOT carry the environment's config (`environmentName`, `cpuLimit`, `memoryLimit`, `networkMode`, `dockerEnabled`, `allowedDomains`, `includePackageManagerDomains`, `setupScript`, `envVars`, `exposeApis`, `capabilityNames`, `instructionNames`) nor the git identity (`gitName`, `gitEmail`) — those are resolved live from the `EnvironmentStore` / the owning user at build time. The create/list/PATCH/rebuild/unarchive responses for a worker therefore expose none of those fields (they are `undefined`). Resource limits (`cpuLimit`/`memoryLimit`) are an environment property — `POST /api/containers` no longer accepts them, and there is no per-worker override.
 - **Persisted record vs runtime view.** The *persisted* `WorkerRecord` (workers.json) additionally omits everything the Docker API can re-discover: `containerId`, `containerName`, `imageName`, and `imageId` are NOT stored on disk. They are resolved at runtime in `ContainerManager.sync()` by matching the `agentor.id` label (and the container name is just recomputed as `agentor-worker-<id>`), then merged onto the *runtime* `ContainerInfo` that the API returns. So `GET /api/containers` items carry those four fields, but a `GET /api/archived` item (the raw stored record) does not.
 - `GET /api/containers` — list all workers. Each `ContainerInfo.id` is the immutable worker UUID; `.containerId` is the current Docker container id; `.imageName` is the image reference; `.displayName` is always populated.
-- `POST /api/containers` — create worker. Body NO LONGER accepts `id` (or `name`). Accepts optional `displayName` (string, trimmed, ≤100 chars else HTTP 400) plus environmentId, initScript, repos, mounts. The orchestrator mints the UUID `id` itself; the response `ContainerInfo.id` is that UUID, `.containerId`/`.containerName`/`.imageName` are populated, and `.displayName` is always populated (defaults to an adjective-animal slug when omitted).
+- `POST /api/containers` — create worker. Body NO LONGER accepts `id` (or `name`). Accepts optional `displayName` (string, trimmed, ≤100 chars else HTTP 400) plus environmentId, initScript, repos, mounts. The orchestrator mints the UUID `id` itself; the response `ContainerInfo.id` is that UUID, `.containerId`/`.containerName`/`.imageName` are populated, and `.displayName` is always populated (defaults to an adjective-animal slug when omitted). **Host bind-mount `source`/`target` are validated** (on both create and PATCH): a value containing `:` (Docker mount-option injection), the Docker socket (`/var/run/docker.sock`), or the orchestrator data dir is rejected with 400.
 - `PATCH /api/containers/:id` — update editable worker settings WITHOUT recreating the container (`:id` is the worker UUID). Body is a partial `{ displayName?, environmentId?, initScript?, repos?, mounts? }` — only the present keys change. Returns the updated `ContainerInfo`. The internal identity (`id`, `containerName`, volumes, mappings) is always unchanged; `updatedAt` is bumped.
   - **`displayName` applies immediately (no rebuild needed)** — applied to the running worker immediately. Backward compatible with the old rename: `PATCH { displayName }` works exactly as before.
   - **`environmentId`, `initScript`, `repos`, `mounts` are rebuild-requiring** — the new value is stored (for `environmentId`, only the FK is stored, after validating it exists in the EnvironmentStore) and the worker is flagged `pendingRebuild: true` in the response and the container list. The running container is NOT changed until the next `POST /api/containers/:id/rebuild`, which re-resolves the environment config + git identity live from the stored FKs and clears the flag.
@@ -836,8 +836,8 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 
 ### 24.11 Archived Workers
 - `GET /api/archived` — list. Each entry is the raw persisted `WorkerRecord`: `id` is the worker UUID (the WorkerStore key), `displayName` is the editable label, `status` is `archived`, plus `createdAt`/`updatedAt`/`archivedAt` and the config (`environmentId`, `repos`, `mounts`, `initScript`). It deliberately does NOT include the Docker-derived `containerId`/`containerName`/`imageName`/`imageId` (those exist only on the live `ContainerInfo`, discovered at runtime).
-- `POST /api/archived/:id/unarchive` — restore. The `:id` segment is the worker UUID. Returns a `ContainerInfo` whose `.id` is that same UUID (stable across unarchive); `displayName` is preserved while `containerId` is the freshly created container's id.
-- `DELETE /api/archived/:id` — permanently delete (`:id` is the worker UUID)
+- `POST /api/archived/:id/unarchive` — restore. The `:id` segment is the worker UUID. Returns a `ContainerInfo` whose `.id` is that same UUID (stable across unarchive); `displayName` is preserved while `containerId` is the freshly created container's id. The worker is resolved globally by `id` (via `WorkerStore.findById`) and ownership-checked: an **admin may unarchive any user's** archived worker, a regular user only their own (else 403). There is no `?userId=` query (the legacy `[name]` route folder + admin query were removed).
+- `DELETE /api/archived/:id` — permanently delete (`:id` is the worker UUID). Same global-resolve + admin-or-owner ownership check as unarchive.
 
 ### 24.12 Updates
 - `GET /api/updates` — status for 4 images
@@ -882,7 +882,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 ### 24.16 Logs
 - `GET /api/logs` — query log entries with filters (sources, sourceIds, levels, since, until, limit, search). `since` is **inclusive** (`>=`) and `until` is **exclusive** (`<`) — paginate older by passing the oldest entry's timestamp as `until` to the next call. Returns `{ entries, hasMore }`.
 - `DELETE /api/logs` — clear all log files
-- `GET /api/log-sources` — list known container log sources
+- `GET /api/log-sources` — list known container log sources (**admin-only**, like the rest of the Logs group — it leaks worker container/display names)
 - `WS /ws/logs` — live log stream (JSON-encoded LogEntry per message, read-only)
 - The orchestrator's *own* container stdout (Nuxt/Nitro/Vite, framework warnings, unhandled errors) is captured into `orchestrator.log` with `source: 'orchestrator'` and `sourceId` set to the orchestrator container name. Intentional `useLogger()` entries also live in the same file but carry no `sourceId`.
 - `since` is inclusive (`>=`); `until` is exclusive (`<`). The asymmetry guarantees that paginating older with `until = currentOldest` never re-returns the boundary entry.
@@ -903,6 +903,8 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 A dedicated set of routes mounted at `/api/worker-self/*` is **public to the auth middleware** (listed in `PUBLIC_API_PREFIXES`) but identifies the calling worker by source IP via `requireWorkerSelf()` (`server/utils/worker-auth.ts`). The orchestrator joins the same `agentor-net` Docker bridge that workers join, so each worker's source IP is unique and can be matched against the `agentor.managed=true` containers. Calls from outside the Docker bridge (e.g. host `localhost:3000`) return 401 because the source IP doesn't resolve to any managed worker.
 
 Every mutation is scoped to the calling worker only — a `workerId` body field is not accepted, list endpoints filter by the caller's `containerName`, and delete endpoints return 403 if the targeted mapping belongs to a different worker.
+
+The port-mapping / domain-mapping / usage routes additionally **enforce the calling worker's environment `exposeApis` flags**: the handler resolves the worker's environment and returns **403** when the relevant flag (`portMappings` / `domainMappings` / `usage`) is false. `info` and the `*-mapper/status` routes are always reachable. (This was previously documentation-only — disabling a flag now actually blocks the endpoint, not just the capability doc.)
 
 | Method | Path | Behaviour |
 |--------|------|-----------|

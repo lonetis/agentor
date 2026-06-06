@@ -20,7 +20,7 @@ Traefik DNS backend; on rebuild and unarchive the mapping's `containerId`/`worke
 linkage is re-resolved automatically via `reassignWorkerMappings`.
 
 **Architecture:**
-- `PortMappingStore` (`port-mapping-store.ts`): Persists mappings to disk, extends `JsonStore<number, PortMapping>`
+- `PortMappingStore` (`port-mapping-store.ts`): Persists mappings per user at `<DATA_DIR>/users/<userId>/port-mappings.json`, extends `UserScopedJsonStore<string, PortMapping>` (keyed by the UUID `id`)
 - `TraefikManager` (`traefik-manager.ts`): Handles both port and domain mappings on the same container. For each port mapping it emits:
   - A dedicated TCP entrypoint in `buildCmd()`: `--entrypoints.pm-<port>.address=:<port>` (static config — adding or removing a mapping triggers a container recreate via drift detection)
   - A catch-all TCP router (`HostSNI(*)`) in `traefik-config.yml` pointing at `<containerName>:<internalPort>` via Docker DNS (dynamic config — the file provider watch picks up router changes hot, though entrypoint changes still need a recreate)
@@ -97,7 +97,7 @@ On reconcile, `TraefikManager` compares the running container's `Cmd` and DNS-re
 
 ### Traefik Container Architecture
 
-- `DomainMappingStore` (`domain-mapping-store.ts`): Persists mappings to `<DATA_DIR>/domain-mappings.json`, extends `JsonStore<string, DomainMapping>`. Each mapping includes `baseDomain` and optional `path` fields. Uniqueness checked on `subdomain + baseDomain + path` per protocol (same subdomain can exist on different base domains; same domain can have different path prefixes).
+- `DomainMappingStore` (`domain-mapping-store.ts`): Persists mappings per user at `<DATA_DIR>/users/<userId>/domain-mappings.json`, extends `UserScopedJsonStore<string, DomainMapping>` (keyed by the UUID `id`). Each mapping includes `baseDomain` and optional `path` fields. Uniqueness checked on `subdomain + baseDomain + path` per protocol (same subdomain can exist on different base domains; same domain can have different path prefixes).
 - `TraefikManager` (`traefik-manager.ts`): Manages the `agentor-traefik` container lifecycle. On mapping changes, writes a Traefik file provider config (`traefik-config.yml`), then ensures the Traefik container exists. Uses `providers.file.watch=true` so config changes are picked up without container restart. Serialized via promise queue. Routes use per-mapping `baseDomain` + `getTlsConfig()` for per-domain cert resolver selection. Dashboard uses `dashboardBaseDomain` from config. `buildCmd()` constructs Traefik CLI args with per-challenge-type resolvers. `buildEnv()` collects DNS provider env vars. `hasContainerConfigDrift()` detects when running container config diverges from expected.
 - Traefik container: publishes ports 80 and 443, receives DNS provider env vars, uses Let's Encrypt ACME with challenge-specific resolvers
 - Dashboard subdomain: if `DASHBOARD_SUBDOMAIN` is set, the orchestrator dashboard is accessible at `<DASHBOARD_SUBDOMAIN>.<DASHBOARD_BASE_DOMAIN>` (defaults to first domain in `BASE_DOMAINS`). Uses the dashboard domain's challenge type for TLS (or plain HTTP if no challenge).

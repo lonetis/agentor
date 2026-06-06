@@ -26,7 +26,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 - **App system** — launch Chromium (with CDP), SOCKS5 proxy, VS Code Tunnel (native VS Code client via Microsoft's relay, GitHub device-code auth), or OpenSSH server (port 22, public-key auth from each user's Account settings; Start auto-allocates an external `22xxx` port mapping) from the Apps pane
 - **Port & domain mapping** — unified Traefik reverse proxy handling both TCP port forwarding (localhost- or network-bound) and subdomain-based HTTP/HTTPS/TCP routing with TLS (Let's Encrypt HTTP-01/DNS-01 or self-signed CA), optional HTTP basic auth
 - **Auto-updates** — per-image or bulk image updates in production mode with registry-agnostic digest comparison (GHCR + Docker Hub), orchestrator self-replaces
-- **Resource limits** — per-worker CPU and memory constraints
+- **Resource limits** — per-environment CPU and memory constraints applied to every worker on that environment (plus a global default)
 - **Volume mounts** — bind-mount host directories into workers
 - **Persistent workspaces** — workspace data survives container stops, restarts, and archiving via named Docker volumes
 - **Worker archiving** — archive workers to free resources while preserving workspace data; unarchive to restore
@@ -159,7 +159,7 @@ By default, all persistent data lives in `./data/` on the host — easy to brows
 - agentor-data:/data
 ```
 
-The storage mode is auto-detected from the mount type — no env var changes needed. In directory mode, worker workspaces live at `./data/workspaces/` and can be accessed directly from the host.
+The storage mode is auto-detected from the mount type — no env var changes needed. In directory mode, each worker's workspace lives at `./data/users/<userId>/workspaces/<workerId>/` and can be accessed directly from the host.
 
 ## Ports
 

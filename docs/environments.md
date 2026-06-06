@@ -52,7 +52,7 @@ Instruction entries are merged into a single markdown document and written to:
 ## Environment Integration
 
 Both capabilities and instructions are selected per-environment:
-- `exposeApis: { portMappings, domainMappings, usage }` — Controls which API capabilities are included (default all true)
+- `exposeApis: { portMappings, domainMappings, usage }` — Controls both which API capability docs are written into the worker **and** whether the corresponding `/api/worker-self/*` routes are reachable: each worker-self port-mapping/domain-mapping/usage handler resolves the calling worker's environment and returns **403** when the relevant flag is false. `worker-self/info` and the `*-mapper/status` routes are always available. Default all true.
 - `enabledCapabilityIds: string[] | null` — `null` = all, `[]` = none, or specific IDs
 - `enabledInstructionIds: string[] | null` — Same semantics
 

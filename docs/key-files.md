@@ -47,7 +47,7 @@
 - `orchestrator/server/utils/agent-config.ts` - Static agent configuration registry (API domains, env var mappings per agent)
 - `orchestrator/server/utils/git-providers.ts` - Git provider registry (GIT_PROVIDER_REGISTRY)
 - `orchestrator/server/utils/apps.ts` - App type registry (APP_REGISTRY)
-- `orchestrator/server/utils/json-store.ts` - Generic JsonStore<K, V> base class (Map + JSON file + saveQueue pattern)
+- `orchestrator/server/utils/package-manager-domains.ts` - Package-manager domain allowlist + `getPackageManagerDomains()` (the firewall allowlist for the `package-managers`/`custom` network modes)
 - `orchestrator/server/utils/docker.ts` - DockerService class (dockerode wrapper)
 - `orchestrator/server/utils/container.ts` - ContainerManager class (container lifecycle, archive/unarchive)
 - `orchestrator/server/utils/port-mapping-store.ts` - PortMappingStore class (extends JsonStore)
