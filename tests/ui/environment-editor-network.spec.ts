@@ -64,8 +64,9 @@ test.describe('Environment Editor — Network Mode', () => {
 
     await selectNetworkMode(dialog, 'Custom');
 
-    // Allowed domains label should be visible
-    await expect(dialog.getByText('Allowed domains')).toBeVisible({ timeout: 10_000 });
+    // Allowed domains label should be visible (exact — the read-only worker
+    // env-var list also mentions "allowed domains" in a description).
+    await expect(dialog.getByText('Allowed domains', { exact: true })).toBeVisible({ timeout: 10_000 });
     // The textarea with wildcard placeholder should appear
     const textarea = dialog.locator('textarea').filter({ has: dialog.page().locator(':scope') });
     // Just check the Allowed domains label and a textarea is visible after switching

@@ -84,7 +84,7 @@ test.describe('Environments Modal', () => {
     await openEnvironmentsModal(page);
     const dialog = page.locator('[role="dialog"]');
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
-    await expect(dialog.getByText('Setup Script')).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Setup Script', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('environment form has Create button', async ({ page }) => {
@@ -144,7 +144,7 @@ test.describe('Environments Modal', () => {
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
 
     // The "Expose APIs" fieldset legend
-    await expect(dialog.getByText('Expose APIs')).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Expose APIs', { exact: true })).toBeVisible({ timeout: 10_000 });
 
     // Three checkboxes: Port Mappings, Domain Mappings, Usage Monitoring
     await expect(dialog.getByText('Port Mappings')).toBeVisible();
@@ -194,7 +194,7 @@ test.describe('Environments Modal', () => {
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
 
     // Setup Script label
-    await expect(dialog.getByText('Setup Script')).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Setup Script', { exact: true })).toBeVisible({ timeout: 10_000 });
 
     // Textarea with bash placeholder
     const scriptTextarea = dialog.locator('textarea[placeholder*="#!/bin/bash"]');
@@ -208,14 +208,14 @@ test.describe('Environments Modal', () => {
 
     // Open editor
     await dialog.getByRole('button', { name: 'New', exact: true }).click();
-    await expect(dialog.getByText('Expose APIs')).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Expose APIs', { exact: true })).toBeVisible({ timeout: 10_000 });
 
     // Click Cancel
     await dialog.locator('button:has-text("Cancel")').click();
 
     // Should return to list view: "New" button visible again, editor sections gone
     await expect(dialog.locator('button:has-text("New")').first()).toBeVisible({ timeout: 10_000 });
-    await expect(dialog.getByText('Expose APIs')).toBeHidden();
+    await expect(dialog.getByText('Expose APIs', { exact: true })).toBeHidden();
   });
 
   test('View on built-in environment shows read-only form without Create/Update buttons', async ({ page }) => {
