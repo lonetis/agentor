@@ -42,7 +42,7 @@ The unified worker image (`worker/`) provides:
 
 1. Install the CLI in `worker/Dockerfile`
 2. Create `worker/agents/<agent-id>/setup.sh` (auth/settings + capabilities/instructions writing — reads from `CAPABILITIES` and `INSTRUCTIONS` JSON env vars)
-3. Add an agent config entry in `orchestrator/server/utils/agent-config.ts` (API domains, env vars referencing fields on `UserEnvVars`)
+3. Add an agent config entry in `orchestrator/server/utils/agent-config.ts` (the agent's API domains for the firewall allowlist — env vars are not configured here; they flow from the user's `UserEnvVars` via `renderUserEnvVars()`)
 4. Add a built-in init script file in `orchestrator/server/built-in/init-scripts/`
 5. Add a credential mapping in `orchestrator/server/utils/user-credentials.ts` (`AGENT_CREDENTIAL_MAPPINGS`) — fileName + container path. The file lives under `<DATA_DIR>/users/<userId>/credentials/` and is bind-mounted into each of that user's workers.
 6. Rebuild the worker image
