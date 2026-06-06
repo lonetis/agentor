@@ -41,11 +41,27 @@ export default defineEventHandler(async (event) => {
   // hashes the password and writes it to the user's `account` row. The
   // session must be present (verified by the `sensitiveSessionMiddleware`
   // inside that endpoint), so we forward the original event headers.
-  const auth = useAuth() as any;
-  await auth.api.setPassword({
-    body: { newPassword },
-    headers: event.headers,
-  });
+  //
+  // setPassword throws an APIError (e.g. PASSWORD_ALREADY_SET → 400) when the
+  // user already has a password. Catch it explicitly so the contract stays a
+  // 4xx even if better-auth changes its internal error shape, rather than
+  // surfacing a raw 500.
+  const auth = useAuth();
+  try {
+    await auth.api.setPassword({
+      body: { newPassword },
+      headers: event.headers,
+    });
+  } catch (err) {
+    // better-auth's APIError carries a numeric `statusCode`; fall back to 400
+    // (the password-already-set case) for any other error shape.
+    const e = err as { statusCode?: number; message?: string };
+    const code = typeof e?.statusCode === 'number' ? e.statusCode : 400;
+    throw createError({
+      statusCode: code,
+      statusMessage: e?.message ?? 'Failed to set password',
+    });
+  }
 
   return { ok: true };
 });

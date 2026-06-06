@@ -8,6 +8,10 @@ interface ImageRef {
   tag: string;
 }
 
+/** Timeout for every outbound registry call (token + manifest fetch). A hung
+ * registry socket must never pin a poll/check promise forever. */
+const FETCH_TIMEOUT_MS = 30_000;
+
 export class UpdateChecker {
   private docker: Docker;
   private config: Config;
@@ -29,14 +33,30 @@ export class UpdateChecker {
     // Always populate local digests so the UI can show image versions
     await this.getLocalImages();
 
-    // In production mode, also check remote digests and start polling
+    // In production mode, also check remote digests and start polling. The
+    // first remote check must NOT block startup — a slow/hung registry would
+    // otherwise delay the orchestrator coming up. Kick it off detached; the UI
+    // already has the local digests.
     if (this.config.workerImagePrefix || this.config.baseDomains.length > 0) {
-      await this.check();
+      void this.check().catch((err) => {
+        useLogger().error(`[update-checker] initial check error: ${err instanceof Error ? err.message : err}`);
+      });
       this.pollInterval = setInterval(() => {
         this.check().catch((err) => {
-          useLogger().error(`[update-checker] poll error: ${err.message || err}`);
+          useLogger().error(`[update-checker] poll error: ${err instanceof Error ? err.message : err}`);
         });
       }, 5 * 60 * 1000);
+      // Don't keep the event loop alive solely for update polling (matches
+      // ResourceMonitor / OrphanSweeper).
+      if (typeof this.pollInterval.unref === 'function') this.pollInterval.unref();
+    }
+  }
+
+  /** Stop the polling interval (graceful shutdown / dev hot-reload cleanup). */
+  stop(): void {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
     }
   }
 
@@ -112,8 +132,12 @@ export class UpdateChecker {
 
   private async checkImage(fullImageName: string): Promise<ImageUpdateInfo> {
     const now = new Date().toISOString();
+    // Resolve the local digest first and outside the remote try/catch so a
+    // registry failure (now thrown by getRemoteDigest) still preserves the real
+    // local digest in the status — the UI shows "check failed" rather than
+    // both losing the version AND falsely showing the image as current.
+    const localDigest = await this.getLocalDigest(fullImageName);
     try {
-      const localDigest = await this.getLocalDigest(fullImageName);
       const remoteDigest = await this.getRemoteDigest(fullImageName);
 
       return {
@@ -126,7 +150,7 @@ export class UpdateChecker {
     } catch (err: unknown) {
       return {
         name: fullImageName,
-        localDigest: '',
+        localDigest,
         remoteDigest: '',
         updateAvailable: false,
         lastChecked: now,
@@ -136,6 +160,12 @@ export class UpdateChecker {
   }
 
   private parseImageRef(fullImageName: string): ImageRef {
+    // Precedence: ghcr → explicit-registry (host contains a dot) → Docker Hub
+    // user/repo → official (bare name) → bare name without tag. This is only
+    // ever fed the three known images (orchestrator/worker = GHCR-prefixed,
+    // traefik = official), so the rare edge of a dotted Docker Hub username
+    // (`user.name/repo`) being misrouted to the explicit-registry branch does
+    // not occur in practice.
     // ghcr.io/org/repo:tag
     const ghcrMatch = fullImageName.match(/^(ghcr\.io)\/(.+):(.+)$/);
     if (ghcrMatch) {
@@ -165,33 +195,25 @@ export class UpdateChecker {
   }
 
   private async getRegistryToken(ref: ImageRef): Promise<string> {
-    if (ref.registry === 'ghcr.io') {
-      // Anonymous token is sufficient for public images. Private GHCR images
-      // are out of scope for the orchestrator's self-update — deploy via
-      // `docker login ghcr.io` on the host instead.
-      const tokenUrl = `https://ghcr.io/token?scope=repository:${ref.repo}:pull`;
-      try {
-        const resp = await fetch(tokenUrl);
-        if (resp.ok) {
-          const data = await resp.json() as { token?: string };
-          return data.token || '';
-        }
-      } catch {
-        // Fall through
-      }
-      return '';
-    }
+    // Anonymous token is sufficient for public images on both registries.
+    // Private GHCR images are out of scope for the orchestrator's self-update —
+    // deploy via `docker login ghcr.io` on the host instead.
+    const tokenUrl = ref.registry === 'ghcr.io'
+      ? `https://ghcr.io/token?scope=repository:${ref.repo}:pull`
+      : `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${ref.repo}:pull`;
+    return this.fetchBearerToken(tokenUrl);
+  }
 
-    // Docker Hub (registry-1.docker.io)
-    const tokenUrl = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${ref.repo}:pull`;
+  private async fetchBearerToken(tokenUrl: string): Promise<string> {
     try {
-      const resp = await fetch(tokenUrl);
+      const resp = await fetch(tokenUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (resp.ok) {
         const data = await resp.json() as { token?: string };
         return data.token || '';
       }
     } catch {
-      // Fall through
+      // Fall through — an anonymous token may not be required, and the
+      // manifest fetch will surface any real auth failure.
     }
     return '';
   }
@@ -245,10 +267,16 @@ export class UpdateChecker {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const resp = await fetch(url, { headers });
-    if (!resp.ok) return '';
+    const resp = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    // Throw on a registry error (outage, rate limit, private/unknown image) so
+    // `checkImage`'s catch records it as an `error`. Returning '' here would be
+    // indistinguishable from "no update" and silently show the image as
+    // current during a transient registry hiccup.
+    if (!resp.ok) throw new Error(`registry manifest fetch failed: HTTP ${resp.status}`);
 
-    return resp.headers.get('docker-content-digest') || '';
+    const digest = resp.headers.get('docker-content-digest');
+    if (!digest) throw new Error('registry response missing docker-content-digest header');
+    return digest;
   }
 
   async pullImage(imageName: string): Promise<void> {
@@ -417,7 +445,13 @@ export class UpdateChecker {
     try {
       await this.docker.getContainer(name).remove({ force: true });
     } catch (err: unknown) {
-      if ((err as { statusCode?: number }).statusCode !== 404) throw err;
+      const status = (err as { statusCode?: number }).statusCode;
+      if (status === 404) return; // already gone — nothing to clean up
+      // Best-effort cleanup: a transient daemon error or an in-progress removal
+      // (409) shouldn't abort the whole self-replace. The subsequent
+      // createContainer(tempName) will surface a real name conflict if the
+      // leftover is genuinely still present.
+      useLogger().warn(`[update-checker] could not remove leftover container ${name}: ${err instanceof Error ? err.message : err}`);
     }
   }
 

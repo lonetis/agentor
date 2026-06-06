@@ -74,8 +74,11 @@ export default defineEventHandler(async (event) => {
 
   const containerManager = useContainerManager();
   const store = useDomainMappingStore();
-  const created = [];
 
+  // Phase 1 — validate + resolve EVERY item up front, building the input list.
+  // No `store.add` happens here, so a validation/ownership/not-running failure on
+  // any item leaves nothing persisted (atomic: all-or-nothing).
+  const inputs = [];
   for (const item of body.items) {
     if (!item.protocol || (!item.workerId && !item.workerName) || !item.internalPort || !item.baseDomain) {
       throw createError({
@@ -183,7 +186,7 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    const input = {
+    inputs.push({
       subdomain: item.subdomain,
       baseDomain: item.baseDomain,
       path: item.path || '',
@@ -196,19 +199,23 @@ export default defineEventHandler(async (event) => {
       ...(hasUser && hasPass
         ? { basicAuth: { username: item.basicAuth.username, password: item.basicAuth.password } }
         : {}),
-    };
+    });
+  }
 
-    let createdMapping;
-    try {
-      createdMapping = await store.add(input);
-    } catch (err) {
-      throw createError({
-        statusCode: 409,
-        statusMessage: err instanceof Error ? err.message : 'Subdomain conflict',
-      });
+  // Phase 2 — persist all validated inputs. A conflict surfaced by `store.add`
+  // (e.g. duplicate route, or two items in the same batch colliding) rolls back
+  // every mapping already created in this batch so the operation is atomic.
+  const created = [];
+  try {
+    for (const input of inputs) {
+      created.push(await store.add(input));
     }
-
-    created.push(createdMapping);
+  } catch (err) {
+    await Promise.allSettled(created.map((m) => store.remove(m.id)));
+    throw createError({
+      statusCode: 409,
+      statusMessage: err instanceof Error ? err.message : 'Subdomain conflict',
+    });
   }
 
   await useTraefikManager().reconcile();

@@ -13,7 +13,7 @@ defineRouteMeta({
   },
 });
 
-import { getPackageManagerDomains } from '../utils/environments';
+import { getPackageManagerDomains } from '../utils/package-manager-domains';
 
 export default defineEventHandler(() => {
   return getPackageManagerDomains();

@@ -20,13 +20,15 @@ import { requireContainerAccess } from '../../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
+  // Ownership check first — don't leak validation feedback to a non-owner.
+  const containerManager = useContainerManager();
+  requireContainerAccess(event, containerManager.get(id));
+
   const windowIndex = parseInt(getRouterParam(event, 'windowIndex')!, 10);
   if (Number.isNaN(windowIndex) || windowIndex < 0) {
     throw createError({ statusCode: 400, statusMessage: 'windowIndex must be a non-negative integer' });
   }
 
-  const containerManager = useContainerManager();
-  requireContainerAccess(event, containerManager.get(id));
   try {
     await containerManager.killTmuxWindow(id, windowIndex);
   } catch (err: unknown) {

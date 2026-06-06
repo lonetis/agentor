@@ -8,7 +8,7 @@ export function getPeerId(peer: Peer): string {
 }
 
 export function getPeerUrl(peer: Peer): string | undefined {
-  try { return peer.request?.url; } catch { return undefined; }
+  return peer.request?.url;
 }
 
 export function toBuffer(message: unknown): Buffer | null {
@@ -28,34 +28,43 @@ export function toBuffer(message: unknown): Buffer | null {
 interface RelayContext {
   containerWs?: WebSocket;
   bufferedMessages: Buffer[];
+  bufferedBytes: number;
   closed: boolean;
 }
 
 const relayContexts = new Map<string, RelayContext>();
 
+// Cap how much a client may buffer while the backend WS finishes its handshake
+// (normally sub-second). A flood of pre-handshake data must not grow unbounded.
+const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+
 /**
  * Creates crossws WebSocket handlers that relay to a backend WebSocket.
  * Buffers messages while the backend connection is still opening.
+ *
+ * The route segment captured by `workerIdPattern` is the worker's UUID `id`
+ * (passed to `get()`), NOT the Docker container id — the relay forwards to the
+ * worker by its stable `containerName` via Docker DNS.
  */
 export function createWsRelayHandlers(
-  containerIdPattern: RegExp,
-  getTargetWsUrl: (containerName: string, containerId: string, peer: Peer) => string,
+  workerIdPattern: RegExp,
+  getTargetWsUrl: (containerName: string, workerId: string, peer: Peer) => string,
 ) {
   return {
     open(peer: Peer) {
       const id = getPeerId(peer);
-      const ctx: RelayContext = { bufferedMessages: [], closed: false };
+      const ctx: RelayContext = { bufferedMessages: [], bufferedBytes: 0, closed: false };
       relayContexts.set(id, ctx);
 
       const url = getPeerUrl(peer);
-      const containerId = url ? containerIdPattern.exec(url)?.[1] : null;
-      if (!containerId) {
+      const workerId = url ? workerIdPattern.exec(url)?.[1] : null;
+      if (!workerId) {
         relayContexts.delete(id);
         try { peer.close(); } catch {}
         return;
       }
 
-      const info = useContainerManager().get(containerId);
+      const info = useContainerManager().get(workerId);
       if (!info || info.status !== 'running') {
         relayContexts.delete(id);
         try { peer.close(); } catch {}
@@ -78,12 +87,13 @@ export function createWsRelayHandlers(
           return;
         }
 
-        const ws = new WebSocket(getTargetWsUrl(info.containerName, containerId, peer));
+        const ws = new WebSocket(getTargetWsUrl(info.containerName, workerId, peer));
         ctx.containerWs = ws;
 
         ws.on('open', () => {
           for (const msg of ctx.bufferedMessages) ws.send(msg);
           ctx.bufferedMessages = [];
+          ctx.bufferedBytes = 0;
         });
 
         ws.on('message', (data: Buffer) => {
@@ -121,8 +131,18 @@ export function createWsRelayHandlers(
 
       if (ctx.containerWs?.readyState === WebSocket.OPEN) {
         ctx.containerWs.send(raw);
-      } else if (ctx.containerWs?.readyState === WebSocket.CONNECTING) {
+      } else if (!ctx.containerWs || ctx.containerWs.readyState === WebSocket.CONNECTING) {
+        // Backend WS not open yet (still resolving auth or mid-handshake) —
+        // buffer, but bail out if a flood blows past the cap.
+        if (ctx.bufferedBytes + raw.length > MAX_BUFFERED_BYTES) {
+          ctx.closed = true;
+          relayContexts.delete(id);
+          try { ctx.containerWs?.close(); } catch {}
+          try { peer.close(); } catch {}
+          return;
+        }
         ctx.bufferedMessages.push(raw);
+        ctx.bufferedBytes += raw.length;
       }
     },
 

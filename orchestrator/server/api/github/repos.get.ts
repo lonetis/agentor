@@ -6,8 +6,21 @@ defineRouteMeta({
     operationId: 'listGitHubRepos',
     responses: {
       200: {
-        description: 'Array of GitHub repositories',
-        content: { 'application/json': { schema: { type: 'array', items: { type: 'object', properties: { full_name: { type: 'string' }, private: { type: 'boolean' }, default_branch: { type: 'string' } } } } } },
+        description: 'GitHub repositories plus token/account context',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                repos: { type: 'array', items: { type: 'object', properties: { fullName: { type: 'string' }, private: { type: 'boolean' }, defaultBranch: { type: 'string' } } } },
+                tokenConfigured: { type: 'boolean' },
+                username: { type: 'string' },
+                orgs: { type: 'array', items: { type: 'string' } },
+                error: { type: 'string', description: 'Set when a token IS configured but the GitHub request failed (bad token, missing scopes, rate limit)' },
+              },
+            },
+          },
+        },
       },
       401: { description: 'Unauthorized' },
     },

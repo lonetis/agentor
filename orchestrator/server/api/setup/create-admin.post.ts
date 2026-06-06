@@ -43,10 +43,10 @@ defineRouteMeta({
   },
 });
 
-import { hasAnyUsers, useAuth, setUserRoleDirect } from '../../utils/auth';
+import { hasAnyUsers, useAuth, setUserRoleDirect, getAuthDb } from '../../utils/auth';
 
 export default defineEventHandler(async (event) => {
-  const auth = useAuth() as any;
+  const auth = useAuth();
 
   if (hasAnyUsers()) {
     throw createError({ statusCode: 409, statusMessage: 'Setup already completed' });
@@ -68,13 +68,19 @@ export default defineEventHandler(async (event) => {
   }
 
   // Create the user via better-auth's sign-up flow (this also auto-signs-in)
-  const result = await auth.api.signUpEmail({
+  await auth.api.signUpEmail({
     body: { email, password, name },
     asResponse: false,
     headers: event.headers,
   });
 
-  const userId = (result as any)?.user?.id ?? (result as any)?.id;
+  // Resolve the new user's id authoritatively by email rather than probing the
+  // (unpinned) better-auth signUp return shape — the email is unique and this
+  // path is independent of any future change to the response type.
+  const row = getAuthDb()
+    .prepare('SELECT id FROM user WHERE email = ?')
+    .get(email) as { id?: string } | undefined;
+  const userId = row?.id;
   if (!userId) {
     throw createError({ statusCode: 500, statusMessage: 'Failed to create admin user' });
   }

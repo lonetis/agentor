@@ -20,6 +20,11 @@ export interface PortMapping extends UserOwnedResource {
  * are minted by the store. */
 export type PortMappingInput = Omit<PortMapping, 'id' | 'createdAt' | 'updatedAt'>;
 
+/** Per-user store of TCP port mappings (`<DATA_DIR>/users/<userId>/port-mappings.json`,
+ * keyed by UUID `id`). Removal of a non-existent mapping is intentionally
+ * idempotent (logs at `debug`, returns `false`) to support the worker-self
+ * DELETE-is-idempotent contract — unlike `WorkerStore`, which throws on a
+ * missing worker. */
 export class PortMappingStore extends UserScopedJsonStore<string, PortMapping> {
   constructor(dataDir: string) {
     super(dataDir, 'port-mappings.json', (m) => m.id);
@@ -43,23 +48,40 @@ export class PortMappingStore extends UserScopedJsonStore<string, PortMapping> {
 
   /** Finds an existing mapping that belongs to a specific worker + app instance.
    * Used by auto-port-mapping apps (e.g. ssh) to reuse the same external port
-   * across stop/start so the connection string stays stable. */
+   * across stop/start so the connection string stays stable.
+   *
+   * `containerName` is globally unique (`agentor-worker-<uuid>`), so the match is
+   * already unambiguous; `expectedUserId`, when provided, is a defense-in-depth
+   * guard that refuses to return a mapping owned by a different user. Iterates
+   * the internal maps directly (no `list()` allocation/sort). */
   findByWorkerAndAppType(
     containerName: string,
     appType: string,
     instanceId?: string,
+    expectedUserId?: string,
   ): PortMapping | undefined {
-    return this.list().find(
+    const match = this.findWithOwner(
       (m) =>
         m.containerName === containerName &&
         m.appType === appType &&
         (instanceId === undefined || m.instanceId === instanceId),
     );
+    if (!match) return undefined;
+    if (expectedUserId !== undefined && match.item.userId !== expectedUserId) {
+      useLogger().warn(
+        `[port-mappings] refused cross-user reuse of ${appType} mapping on ${containerName} (owner ${match.userId} != ${expectedUserId})`,
+      );
+      return undefined;
+    }
+    return match.item;
   }
 
   /** Returns the lowest unused external port in `[rangeStart, rangeEnd]`, or null. */
   findFreeExternalPort(rangeStart: number, rangeEnd: number): number | null {
-    const used = new Set(this.list().map((m) => m.externalPort));
+    const used = new Set<number>();
+    for (const map of this.items.values()) {
+      for (const m of map.values()) used.add(m.externalPort);
+    }
     for (let p = rangeStart; p <= rangeEnd; p++) {
       if (!used.has(p)) return p;
     }

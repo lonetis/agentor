@@ -14,10 +14,15 @@ defineRouteMeta({
 });
 
 import { useDomainMappingStore, useConfig } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
-export default defineEventHandler(() => {
+export default defineEventHandler((event) => {
+  const { user } = requireAuth(event);
   const config = useConfig();
-  const mappings = useDomainMappingStore().list();
+  const all = useDomainMappingStore().list();
+  // Scope the mapping count to the caller (admins keep the global total); the
+  // config-level fields below are fine to expose to any authenticated user.
+  const mappings = user.role === 'admin' ? all : all.filter((m) => m.userId === user.id);
 
   const dashboardDomainConfig = config.baseDomainConfigs.find((c) => c.domain === config.dashboardBaseDomain);
   const dashboardHasTls = dashboardDomainConfig ? dashboardDomainConfig.challengeType !== 'none' : false;

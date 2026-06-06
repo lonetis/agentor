@@ -5,7 +5,22 @@ defineRouteMeta({
     description: 'Triggers an immediate check for image updates.',
     operationId: 'triggerUpdateCheck',
     responses: {
-      200: { description: 'Check triggered', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
+      200: {
+        description: 'Update status after the check',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                orchestrator: { $ref: '#/components/schemas/ImageUpdateInfo' },
+                worker: { $ref: '#/components/schemas/ImageUpdateInfo' },
+                traefik: { $ref: '#/components/schemas/ImageUpdateInfo' },
+                isProductionMode: { type: 'boolean' },
+              },
+            },
+          },
+        },
+      },
     },
   },
 });

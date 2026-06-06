@@ -1,12 +1,27 @@
 import { useDockerService, useContainerManager, usePortMappingStore, useDomainMappingStore, useTraefikManager, useEnvironmentStore, useWorkerStore, useUpdateChecker, useUsageChecker, useResourceMonitor, useUserCredentialManager, useUserEnvStore, useOrphanSweeper, useStorageManager, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogger, useLogCollector } from '../utils/services';
 import { loadBuiltInCapabilities, loadBuiltInInstructions, loadBuiltInInitScripts, loadBuiltInEnvironments } from '../utils/built-in-content';
-import { useAuth, migrateAuth } from '../utils/auth';
+import { migrateAuth, getAuthDb } from '../utils/auth';
 
-export default defineNitroPlugin(async () => {
+export default defineNitroPlugin(async (nitroApp) => {
   // Initialize logging infrastructure first
   const logStore = useLogStore();
   await logStore.init();
   const logger = useLogger();
+
+  // Surface stray promise rejections / uncaught exceptions in the centralized
+  // log instead of relying on the stdout self-capture (which may not flush in
+  // time, e.g. if the process is exiting). Registered once, guarded so the
+  // dev-mode hot reload doesn't stack duplicate listeners.
+  if (!(globalThis as any).__agentorProcessHandlers) {
+    (globalThis as any).__agentorProcessHandlers = true;
+    process.on('unhandledRejection', (reason: unknown) => {
+      const msg = reason instanceof Error ? (reason.stack || reason.message) : String(reason);
+      try { useLogger().error(`[process] unhandledRejection: ${msg}`); } catch {}
+    });
+    process.on('uncaughtException', (err: Error) => {
+      try { useLogger().error(`[process] uncaughtException: ${err.stack || err.message}`); } catch {}
+    });
+  }
 
   // Attach the log collector to our own container as early as possible so
   // framework/runtime stdout (Nuxt, Nitro, Vite, console.warn outside
@@ -17,8 +32,9 @@ export default defineNitroPlugin(async () => {
   const logCollector = useLogCollector();
   await logCollector.attachSelf();
 
-  // Auth DB + Docker network are independent of each other.
-  useAuth();
+  // Auth DB + Docker network are independent of each other. `migrateAuth()`
+  // builds (and memoizes) the auth instance internally, so no standalone
+  // `useAuth()` is needed here.
   const dockerService = useDockerService();
   await Promise.all([migrateAuth(), dockerService.ensureNetwork()]);
   logger.info('[agentor] auth initialized');
@@ -117,4 +133,19 @@ export default defineNitroPlugin(async () => {
   // top of this plugin so orchestrator stdout is being captured.
   logger.setReady();
   await logCollector.init();
+
+  // Graceful shutdown: on a normal container stop / redeploy (the update
+  // mechanism stops the orchestrator container), tear down long-lived
+  // resources so the SQLite WAL isn't left mid-write and the in-flight log
+  // write-queue flushes its last buffered lines. Nitro fires `close` on
+  // SIGTERM/SIGINT.
+  nitroApp.hooks.hook('close', async () => {
+    try { useOrphanSweeper().stop(); } catch {}
+    try { useUpdateChecker().stop?.(); } catch {}
+    try { useUsageChecker().stop?.(); } catch {}
+    try { useResourceMonitor().stop?.(); } catch {}
+    try { useLogCollector().detachAll(); } catch {}
+    try { await useLogStore().destroy(); } catch {}
+    try { getAuthDb().close(); } catch {}
+  });
 });

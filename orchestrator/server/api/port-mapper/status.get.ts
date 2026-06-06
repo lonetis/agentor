@@ -14,9 +14,14 @@ defineRouteMeta({
 });
 
 import { usePortMappingStore } from '../../utils/services';
+import { requireAuth } from '../../utils/auth-helpers';
 
-export default defineEventHandler(() => {
-  const mappings = usePortMappingStore().list();
+export default defineEventHandler((event) => {
+  const { user } = requireAuth(event);
+  const all = usePortMappingStore().list();
+  // Scope counts to the caller (admins keep the global totals) so a regular user
+  // can't probe how many mappings exist across the whole deployment.
+  const mappings = user.role === 'admin' ? all : all.filter((m) => m.userId === user.id);
   let localhostCount = 0;
   let externalCount = 0;
 

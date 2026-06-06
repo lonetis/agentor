@@ -1,6 +1,9 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, request as playwrightRequest } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
+import { createTestUser, deleteTestUser } from '../helpers/test-users';
+
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 test.describe('Logs API', () => {
   test('GET /api/logs returns 200 with entries array', async ({ request }) => {
@@ -203,6 +206,48 @@ test.describe('Logs API', () => {
     }
   });
 
+  test('GET /api/log-sources is admin-only (403 for a regular user)', async ({ request }) => {
+    // Sibling endpoints (logs.get / logs.delete) are admin-only; log sources
+    // leak worker container + display names, so they must be gated too.
+    const user = await createTestUser('Log Sources Denied');
+    try {
+      const ctx = await playwrightRequest.newContext({
+        baseURL: BASE_URL,
+        extraHTTPHeaders: { Origin: BASE_URL },
+        storageState: { cookies: [], origins: [] },
+      });
+      try {
+        await ctx.post('/api/auth/sign-in/email', {
+          data: { email: user.email, password: user.password },
+        });
+        const res = await ctx.get('/api/log-sources');
+        expect(res.status()).toBe(403);
+      } finally {
+        await ctx.dispose();
+      }
+    } finally {
+      await deleteTestUser(user.id);
+    }
+
+    // The admin (project storageState) is still allowed.
+    const api = new ApiClient(request);
+    const { status } = await api.getLogSources();
+    expect(status).toBe(200);
+  });
+
+  test('GET /api/log-sources without a session is rejected (401)', async () => {
+    const ctx = await playwrightRequest.newContext({
+      baseURL: BASE_URL,
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      const res = await ctx.get('/api/log-sources');
+      expect(res.status()).toBe(401);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
   test('container log messages do not contain leading Docker timestamps', async ({ request }) => {
     const api = new ApiClient(request);
 
@@ -225,6 +270,25 @@ test.describe('Logs API', () => {
       for (const entry of body.entries) {
         expect(entry.message, `entry: ${JSON.stringify(entry)}`).not.toMatch(tsRe);
       }
+    } finally {
+      await cleanupWorker(request, worker.id);
+    }
+  });
+
+  test('worker log entries carry the worker display name as sourceName', async ({ request }) => {
+    // The LogCollector resolves the friendly display name (workers carry no
+    // `agentor.display-name` label) so worker log entries get a `sourceName`.
+    // This is the contract behind FEATURES §23.3 ("display name or container
+    // name") and guards the dead-label regression.
+    const displayName = `LogName-${Date.now()}`;
+    const worker = await createWorker(request, { displayName });
+    try {
+      await new Promise((r) => setTimeout(r, 1500));
+      const api = new ApiClient(request);
+      const { body } = await api.queryLogs({ sources: 'worker', sourceIds: String(worker.containerName), limit: 500 });
+      test.skip(body.entries.length === 0, 'No worker log entries captured yet');
+      const named = body.entries.filter((e: { sourceName?: string }) => e.sourceName === displayName);
+      expect(named.length).toBeGreaterThan(0);
     } finally {
       await cleanupWorker(request, worker.id);
     }

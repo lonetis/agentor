@@ -1,3 +1,9 @@
+/** A source of outbound API domains that must stay reachable in restricted
+ * network modes. This is purely a firewall-domain allowlist grouped by source —
+ * only `apiDomains` is consumed (via `getAllAgentApiDomains`); `id` /
+ * `displayName` are descriptive labels, not lookup keys. Env vars are NOT
+ * configured here — they flow through the per-user uniform env-var list
+ * (`renderUserEnvVars`). */
 interface AgentConfig {
   id: string;
   displayName: string;
@@ -43,7 +49,9 @@ const AGENT_CONFIGS: AgentConfig[] = [
     ],
   },
   {
-    id: 'vscode-tunnel',
+    // Matches the app registry id (`apps.ts` → `vscode`) so the same component
+    // isn't referred to by two different identifiers across files.
+    id: 'vscode',
     displayName: 'VS Code Tunnel',
     apiDomains: [
       '*.tunnels.api.visualstudio.com',

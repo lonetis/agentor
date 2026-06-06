@@ -13,9 +13,8 @@ defineRouteMeta({
   },
 });
 
-import { useContainerManager } from '../../../utils/services';
 import { createWsRelayHandlers } from '../../../utils/ws-utils';
-import { requireAuthFromEvent } from '../../../utils/auth-helpers';
+import { resolveOwnedRunningContainer } from '../../../utils/auth-helpers';
 
 const wsHandlers = createWsRelayHandlers(
   // The worker id is a UUID (with hyphens) — match the whole segment, not just hex.
@@ -27,21 +26,16 @@ export default defineEventHandler({
   handler: async (event) => {
     const containerId = getRouterParam(event, 'containerId')!;
 
+    // Authenticate + ownership-check BEFORE the trailing-slash redirect so an
+    // unauthenticated/unowned caller never gets a 301 (which would double as a
+    // route-existence oracle). Mirrors the [...path] handler's ordering.
+    const info = await resolveOwnedRunningContainer(event, containerId);
+
     // Redirect to trailing-slash URL so relative paths resolve correctly
     // (e.g., ./static/foo → /editor/{id}/static/foo instead of /editor/static/foo)
     const url = getRequestURL(event);
     if (!url.pathname.endsWith('/')) {
       return sendRedirect(event, `${url.pathname}/${url.search}`, 301);
-    }
-
-    const info = useContainerManager().get(containerId);
-    if (!info || info.status !== 'running') {
-      throw createError({ statusCode: 404, statusMessage: 'Container not found or not running' });
-    }
-
-    const ctx = await requireAuthFromEvent(event);
-    if (ctx.user.role !== 'admin' && info.userId !== ctx.user.id) {
-      throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
     }
 
     const target = `http://${info.containerName}:8443/${url.search}`;

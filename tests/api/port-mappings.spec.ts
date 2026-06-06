@@ -442,3 +442,55 @@ test.describe('Port Mappings API', () => {
     });
   });
 });
+
+import { request as playwrightRequest, type APIRequestContext } from '@playwright/test';
+import { createTestUser, deleteTestUser, type CreatedUser } from '../helpers/test-users';
+
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const UNAUTH_OPTS = {
+  baseURL: BASE_URL,
+  extraHTTPHeaders: { Origin: BASE_URL },
+  storageState: { cookies: [], origins: [] },
+};
+
+test.describe('GET /api/port-mapper/status — per-user scoping', () => {
+  let user: CreatedUser;
+  let userCtx: APIRequestContext;
+
+  test.beforeAll(async () => {
+    user = await createTestUser('PortStatus Scope');
+    userCtx = await playwrightRequest.newContext(UNAUTH_OPTS);
+    const api = new ApiClient(userCtx);
+    const signIn = await api.signInEmail(user.email, user.password);
+    if (signIn.status !== 200) {
+      await userCtx.dispose();
+      throw new Error(`Failed to sign in: ${signIn.status}`);
+    }
+  });
+
+  test.afterAll(async () => {
+    await userCtx?.dispose();
+    if (user) await deleteTestUser(user.id);
+  });
+
+  test('a fresh user with no mappings sees totalMappings === 0 even if the deployment has mappings', async () => {
+    const api = new ApiClient(userCtx);
+    const { status, body } = await api.getPortMapperStatus();
+    expect(status).toBe(200);
+    // Counts are scoped to the caller — a regular user can't probe how many
+    // mappings exist across the whole deployment.
+    expect(body.totalMappings).toBe(0);
+    expect(body.localhostCount).toBe(0);
+    expect(body.externalCount).toBe(0);
+  });
+
+  test('status endpoint requires a session (401 unauthenticated)', async () => {
+    const ctx = await playwrightRequest.newContext(UNAUTH_OPTS);
+    try {
+      const res = await ctx.get('/api/port-mapper/status');
+      expect(res.status()).toBe(401);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+});

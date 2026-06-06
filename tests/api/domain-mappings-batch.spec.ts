@@ -453,15 +453,20 @@ test.describe('Domain Mappings Batch API', () => {
               },
             ],
           });
-          // The second item should cause a conflict since the first was already added
+          // The second item conflicts with the first; the batch rolls back the
+          // already-created first item, so the whole request fails atomically.
           expect(status).toBe(409);
 
-          // Clean up any partial creates
+          // Atomic: nothing persisted (the first item was rolled back).
           const { body: list } = await api.listDomainMappings();
-          for (const m of list) {
-            if (m.subdomain === uniqueSub && m.baseDomain === baseDomain) {
-              await api.deleteDomainMapping(m.id);
-            }
+          const persisted = list.filter(
+            (m: { subdomain: string; baseDomain: string }) =>
+              m.subdomain === uniqueSub && m.baseDomain === baseDomain,
+          );
+          expect(persisted).toHaveLength(0);
+
+          for (const m of persisted) {
+            await api.deleteDomainMapping(m.id);
           }
         } finally {
           await cleanupWorker(request, container.id);
@@ -619,13 +624,18 @@ test.describe('Domain Mappings Batch API', () => {
           // Should fail validation for the second item
           expect(status).toBe(400);
 
-          // Clean up any partial creates (the first item may have been stored
-          // before the second failed, depending on implementation)
+          // Batch is atomic: the valid first item must NOT have been persisted
+          // when a later item fails validation (no orphaned, un-reconciled rows).
           const { body: list } = await api.listDomainMappings();
-          for (const m of list) {
-            if (m.subdomain === validSub && m.baseDomain === baseDomain) {
-              await api.deleteDomainMapping(m.id);
-            }
+          const persisted = list.filter(
+            (m: { subdomain: string; baseDomain: string }) =>
+              m.subdomain === validSub && m.baseDomain === baseDomain,
+          );
+          expect(persisted).toHaveLength(0);
+
+          // Defensive cleanup in case the assertion above is ever relaxed.
+          for (const m of persisted) {
+            await api.deleteDomainMapping(m.id);
           }
         } finally {
           await cleanupWorker(request, container.id);

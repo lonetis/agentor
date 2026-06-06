@@ -194,6 +194,38 @@ test.describe('Instructions API', () => {
       const { status } = await api.updateInstruction(created.id, { name: '' });
       expect(status).toBe(400);
     });
+
+    test('rejects empty content on update (no silent wipe)', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: created } = await api.createInstruction({
+        name: `Empty Content Update ${Date.now()}`,
+        content: '# Original\nKeep me.',
+      });
+      createdIds.push(created.id);
+
+      const { status } = await api.updateInstruction(created.id, { content: '' });
+      expect(status).toBe(400);
+
+      // Content must be unchanged after the rejected update.
+      const { body: after } = await api.getInstruction(created.id);
+      expect(after.content).toContain('Keep me.');
+    });
+
+    test('updates content with a non-empty value', async ({ request }) => {
+      const api = new ApiClient(request);
+      const ts = Date.now();
+      const { body: created } = await api.createInstruction({
+        name: `Content Update ${ts}`,
+        content: '# Original\nOld.',
+      });
+      createdIds.push(created.id);
+
+      const { status, body } = await api.updateInstruction(created.id, {
+        content: `# New\nUpdated ${ts}.`,
+      });
+      expect(status).toBe(200);
+      expect(body.content).toContain(`Updated ${ts}.`);
+    });
   });
 
   test.describe('DELETE /api/instructions/:id', () => {

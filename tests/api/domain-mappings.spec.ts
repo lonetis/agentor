@@ -1527,3 +1527,55 @@ test.describe('Domain Mappings API', () => {
     });
   });
 });
+
+import { request as playwrightRequest, type APIRequestContext } from '@playwright/test';
+import { createTestUser, deleteTestUser, type CreatedUser } from '../helpers/test-users';
+
+const SCOPE_BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const SCOPE_UNAUTH_OPTS = {
+  baseURL: SCOPE_BASE_URL,
+  extraHTTPHeaders: { Origin: SCOPE_BASE_URL },
+  storageState: { cookies: [], origins: [] },
+};
+
+test.describe('GET /api/domain-mapper/status — per-user scoping', () => {
+  let user: CreatedUser;
+  let userCtx: APIRequestContext;
+
+  test.beforeAll(async () => {
+    user = await createTestUser('DomainStatus Scope');
+    userCtx = await playwrightRequest.newContext(SCOPE_UNAUTH_OPTS);
+    const api = new ApiClient(userCtx);
+    const signIn = await api.signInEmail(user.email, user.password);
+    if (signIn.status !== 200) {
+      await userCtx.dispose();
+      throw new Error(`Failed to sign in: ${signIn.status}`);
+    }
+  });
+
+  test.afterAll(async () => {
+    await userCtx?.dispose();
+    if (user) await deleteTestUser(user.id);
+  });
+
+  test('a fresh user with no mappings sees totalMappings === 0; config fields still present', async () => {
+    const api = new ApiClient(userCtx);
+    const { status, body } = await api.getDomainMapperStatus();
+    expect(status).toBe(200);
+    // The mapping count is scoped to the caller (no cross-user count leak)...
+    expect(body.totalMappings).toBe(0);
+    // ...while the deployment-level config fields stay visible to any user.
+    expect(typeof body.enabled).toBe('boolean');
+    expect(Array.isArray(body.baseDomains)).toBe(true);
+  });
+
+  test('status endpoint requires a session (401 unauthenticated)', async () => {
+    const ctx = await playwrightRequest.newContext(SCOPE_UNAUTH_OPTS);
+    try {
+      const res = await ctx.get('/api/domain-mapper/status');
+      expect(res.status()).toBe(401);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+});

@@ -10,18 +10,18 @@ defineRouteMeta({
         'application/json': {
           schema: {
             type: 'object',
-            required: ['name'],
+            required: ['owner', 'name'],
             properties: {
+              owner: { type: 'string', description: 'Repository owner (user or org login)' },
               name: { type: 'string', description: 'Repository name' },
               private: { type: 'boolean', description: 'Whether the repo is private' },
-              description: { type: 'string', description: 'Repository description' },
             },
           },
         },
       },
     },
     responses: {
-      201: { description: 'Created repository', content: { 'application/json': { schema: { type: 'object', properties: { full_name: { type: 'string' }, html_url: { type: 'string' } } } } } },
+      200: { description: 'Created repository', content: { 'application/json': { schema: { type: 'object', properties: { repo: { type: 'object', properties: { fullName: { type: 'string' }, private: { type: 'boolean' }, defaultBranch: { type: 'string' } } } } } } } },
       400: { description: 'Error creating repo', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
       401: { description: 'Unauthorized' },
     },

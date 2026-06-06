@@ -9,7 +9,13 @@ defineRouteMeta({
   },
 });
 
-export default defineEventHandler(async () => {
+import { requireAdmin } from '../utils/auth-helpers';
+
+export default defineEventHandler(async (event) => {
+  // Admin-only, matching `logs.get`/`logs.delete` — log sources leak worker
+  // container + display names, and the System tab that consumes them is
+  // admin-only.
+  requireAdmin(event);
   const logStore = useLogStore();
   const sources = await logStore.getLogSources();
   return { sources };

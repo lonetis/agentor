@@ -45,10 +45,13 @@ export interface ImageConfigOverride {
   Env?: string[];
 }
 
-/** Subset of the Docker container stats payload the resource monitor reads. */
+/** Subset of the Docker container stats payload the resource monitor reads.
+ * CPU% is derived from `total_usage`/`system_cpu_usage`/`online_cpus`; the
+ * unused `percpu_usage` array is omitted. `cache` is read as a fallback for
+ * `inactive_file` in the memory accounting. */
 export interface RawContainerStats {
   cpu_stats: {
-    cpu_usage: { total_usage: number; percpu_usage?: number[] };
+    cpu_usage: { total_usage: number };
     system_cpu_usage?: number;
     online_cpus?: number;
   };
@@ -69,6 +72,38 @@ const MANAGED_LABEL = 'agentor.managed';
 /** The worker's UUID `id` — the only identifying label on a worker container.
  * Owner + config live in the WorkerStore record, not in labels. */
 const ID_LABEL = 'agentor.id';
+
+/** Validate a list of host bind mounts before they are concatenated into Docker
+ * `${source}:${target}[:ro]` bind strings. Returns an error message string on
+ * the first invalid mount, or `null` when all are safe. Rejects:
+ * - a `:` in either side (would inject extra Docker mount options like `:Z`,
+ *   `:rshared`, or an arbitrary mode segment);
+ * - mounting the Docker socket (full host control) or the orchestrator's data
+ *   directory (other users' workspaces, credentials, auth.db, …) into a worker
+ *   that runs user code.
+ * Caller-supplied `dataDir` is the orchestrator's data root. */
+export function validateMounts(
+  mounts: MountConfig[] | undefined,
+  dataDir: string,
+): string | null {
+  const norm = (p: string) => p.replace(/\/+$/, '') || '/';
+  const normalisedDataDir = norm(dataDir);
+  for (const m of mounts || []) {
+    const source = typeof m?.source === 'string' ? m.source : '';
+    const target = typeof m?.target === 'string' ? m.target : '';
+    if (source.includes(':') || target.includes(':')) {
+      return 'mount source/target must not contain ":"';
+    }
+    const src = norm(source);
+    if (src === '/var/run/docker.sock' || src === '/run/docker.sock') {
+      return 'mounting the Docker socket is not allowed';
+    }
+    if (src === normalisedDataDir || src.startsWith(`${normalisedDataDir}/`)) {
+      return 'mounting the orchestrator data directory is not allowed';
+    }
+  }
+  return null;
+}
 
 export class DockerService {
   private docker: Docker;
@@ -147,6 +182,17 @@ export class DockerService {
 
     const memBytes = opts.memoryLimit ? this.parseMemoryLimit(opts.memoryLimit) : 0;
     const nanoCpus = opts.cpuLimit ? Math.floor(opts.cpuLimit * 1e9) : 0;
+
+    // Defense in depth — the API boundary already validates mounts, but
+    // re-check here so import/rebuild paths can never build an unsafe bind
+    // string (a `:` in either side could inject extra Docker mount options;
+    // the Docker socket / data dir are off-limits).
+    const mountError = validateMounts(opts.mounts, this.config.dataDir);
+    if (mountError) {
+      const err = new Error(mountError) as Error & { statusCode?: number };
+      err.statusCode = 400;
+      throw err;
+    }
 
     const binds = (opts.mounts || []).map(
       (m) => `${m.source}:${m.target}${m.readOnly ? ':ro' : ''}`
@@ -271,12 +317,11 @@ export class DockerService {
       AttachStderr: true,
     });
     const stream = await exec.start({ Detach: false, Tty: false });
-    // Consume stream and wait for it to close (ensures tmux command completes)
-    await new Promise<void>((resolve, reject) => {
-      (stream as NodeJS.ReadableStream).on('data', () => {});
-      (stream as NodeJS.ReadableStream).on('end', resolve);
-      (stream as NodeJS.ReadableStream).on('error', reject);
-    });
+    // Drain the stream so the command has completed before we resolve. tmux
+    // rename/kill of a non-existent window is intentionally idempotent (a silent
+    // no-op returning 200), so we deliberately do NOT fail on a non-zero exit
+    // here; createTmuxWindow verifies success by re-listing windows instead.
+    await this.streamToString(stream);
   }
 
   async execListTmuxWindows(containerId: string): Promise<TmuxWindow[]> {
@@ -316,6 +361,10 @@ export class DockerService {
     await exec.resize({ h: rows, w: cols });
   }
 
+  /** Read the tail of a container's logs as a single string. Assumes a TTY
+   * container (raw stream) — worker containers always run with `Tty: true`, so
+   * the output has no 8-byte multiplex framing. The centralized `LogCollector`
+   * handles non-TTY demuxing separately. */
   async getLogs(
     containerId: string,
     tail: number = 200
@@ -472,11 +521,22 @@ export class DockerService {
   }
 
   /** Create a local image from a filesystem tar (`docker import`; gzip auto-
-   * detected). Returns once the import progress stream completes. */
+   * detected). Returns once the import progress stream completes. Rejects if any
+   * progress event carries an error (Docker can report `errorDetail` inside an
+   * otherwise-successful stream — followProgress alone would not surface it). */
   async importImage(src: Buffer | NodeJS.ReadableStream, repo: string, tag: string): Promise<string> {
+    // dockerode's importImage overloads don't cleanly accept a stream union, so
+    // the source is cast — the runtime accepts both a Buffer and a readable.
     const stream = (await this.docker.importImage(src as never, { repo, tag })) as NodeJS.ReadableStream;
     await new Promise<void>((resolve, reject) => {
-      this.docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()));
+      this.docker.modem.followProgress(
+        stream,
+        (err: Error | null) => (err ? reject(err) : resolve()),
+        (event: { error?: string; errorDetail?: { message?: string } }) => {
+          const message = event?.errorDetail?.message || event?.error;
+          if (message) reject(new Error(message));
+        },
+      );
     });
     return `${repo}:${tag}`;
   }

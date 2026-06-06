@@ -353,12 +353,36 @@ test.describe('Environments API', () => {
         name: `NegCpu-${Date.now()}`,
         cpuLimit: -1,
       });
-      // Server may accept and treat as no limit, or reject
-      if (status === 201) {
-        // If accepted, clean up — the API is lenient
-      } else {
-        expect(status).toBe(400);
-      }
+      expect(status).toBe(400);
+    });
+
+    test('rejects non-array enabledCapabilityIds', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status } = await api.createEnvironment({
+        name: `BadCaps-${Date.now()}`,
+        enabledCapabilityIds: 'not-an-array',
+      });
+      expect(status).toBe(400);
+    });
+
+    test('rejects non-array enabledInstructionIds', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status } = await api.createEnvironment({
+        name: `BadInstr-${Date.now()}`,
+        enabledInstructionIds: 'not-an-array',
+      });
+      expect(status).toBe(400);
+    });
+
+    test('accepts null enabledCapabilityIds (all enabled)', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status, body } = await api.createEnvironment({
+        name: `NullCaps-${Date.now()}`,
+        enabledCapabilityIds: null,
+      });
+      expect(status).toBe(201);
+      createdEnvIds.push(body.id);
+      expect(body.enabledCapabilityIds).toBeNull();
     });
   });
 

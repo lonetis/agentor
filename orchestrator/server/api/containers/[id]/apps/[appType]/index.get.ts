@@ -24,7 +24,10 @@ export default defineEventHandler(async (event) => {
   requireContainerAccess(event, containerManager.get(id));
   try {
     return await containerManager.listAppInstances(id, appType);
-  } catch {
+  } catch (err) {
+    // Container might be stopped or the app script missing — degrade to an
+    // empty list, but log so the failure is observable.
+    useLogger().debug(`[apps] list failed for ${id}/${appType}: ${err instanceof Error ? err.message : err}`);
     return [];
   }
 });

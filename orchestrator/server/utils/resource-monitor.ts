@@ -11,6 +11,25 @@ const POLL_INTERVAL_MS = 3_000;
  * and slow-changing, so it samples on a much slower cadence. */
 const DISK_POLL_INTERVAL_MS = 60_000;
 
+/** Hard cap on a single per-worker Docker stats call. Without it, a hung stats
+ * stream would never settle, the `Promise.all` in `pollWorkers` would never
+ * resolve, and the `polling` overlap guard would stay `true` forever — silently
+ * wedging all future metric samples. */
+const STATS_TIMEOUT_MS = 10_000;
+
+/** Reject after `ms` if `p` hasn't settled, so a single stuck container can't
+ * deadlock the poller. */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    if (typeof timer.unref === 'function') timer.unref();
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 interface WorkerSample {
   rx: number;
   tx: number;
@@ -65,6 +84,18 @@ export class ResourceMonitor {
     if (typeof this.pollInterval.unref === 'function') this.pollInterval.unref();
     if (typeof this.diskInterval.unref === 'function') this.diskInterval.unref();
     useLogger().info('[resource-monitor] started');
+  }
+
+  /** Stop both polling intervals (graceful shutdown / dev hot-reload cleanup). */
+  stop(): void {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = undefined;
+    }
+    if (this.diskInterval) {
+      clearInterval(this.diskInterval);
+      this.diskInterval = undefined;
+    }
   }
 
   getWorkerMetricsStatus(): WorkerMetricsStatus {
@@ -122,7 +153,11 @@ export class ResourceMonitor {
       running.map(async (c) => {
         const now = new Date().toISOString();
         try {
-          const stats = await this.docker.getContainerStats(c.containerId);
+          const stats = await withTimeout(
+            this.docker.getContainerStats(c.containerId),
+            STATS_TIMEOUT_MS,
+            `stats(${c.containerName})`,
+          );
           this.workers.set(c.containerName, this.computeWorkerMetrics(c, stats, now));
         } catch (err) {
           this.workers.set(c.containerName, {

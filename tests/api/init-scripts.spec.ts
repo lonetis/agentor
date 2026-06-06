@@ -204,6 +204,22 @@ test.describe('Init Scripts API', () => {
       expect(status).toBe(400);
     });
 
+    test('rejects empty content on update (no silent wipe)', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body: created } = await api.createInitScript({
+        name: `EmptyContentUpdate-${Date.now()}`,
+        content: '#!/bin/bash\necho keep',
+      });
+      createdIds.push(created.id);
+
+      const { status } = await api.updateInitScript(created.id, { content: '' });
+      expect(status).toBe(400);
+
+      // Content must be unchanged after the rejected update.
+      const { body: after } = await api.getInitScript(created.id);
+      expect(after.content).toBe('#!/bin/bash\necho keep');
+    });
+
     test('update with only content field preserves name', async ({ request }) => {
       const api = new ApiClient(request);
       const { body: created } = await api.createInitScript({

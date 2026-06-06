@@ -7,7 +7,8 @@ import { authenticateWsPeer } from './auth-helpers';
 interface TerminalContext {
   dockerStream?: Duplex;
   execId?: string;
-  containerId?: string;
+  /** The Docker container id (resolved from the worker UUID) for tmux cleanup. */
+  dockerContainerId?: string;
   tmuxSession?: string;
   closed: boolean;
 }
@@ -28,21 +29,23 @@ function cleanupPeerContext(peer: Peer): void {
   peerContexts.delete(getPeerId(peer));
 }
 
-function parseWsParams(url: string | undefined): { containerId: string; windowIndex: number } | null {
+// The first capture is the worker's UUID `id` (the route segment), NOT a Docker
+// container id — the handler resolves the live Docker container id from it.
+function parseWsParams(url: string | undefined): { workerId: string; windowIndex: number } | null {
   if (!url) return null;
   const match = url.match(/\/ws\/terminal\/([^/?]+)(?:\/([^/?]+))?/);
   if (!match?.[1]) return null;
   const rawIndex = match[2];
   const windowIndex = rawIndex != null ? parseInt(rawIndex, 10) : 0;
-  return { containerId: match[1], windowIndex: Number.isNaN(windowIndex) ? 0 : windowIndex };
+  return { workerId: match[1], windowIndex: Number.isNaN(windowIndex) ? 0 : windowIndex };
 }
 
 function cleanupTerminal(ctx: TerminalContext, peer: Peer): void {
   if (ctx.closed) return;
   ctx.closed = true;
   ctx.dockerStream?.end();
-  if (ctx.containerId && ctx.tmuxSession) {
-    useDockerService().killTmuxSession(ctx.containerId, ctx.tmuxSession);
+  if (ctx.dockerContainerId && ctx.tmuxSession) {
+    useDockerService().killTmuxSession(ctx.dockerContainerId, ctx.tmuxSession);
   }
   cleanupPeerContext(peer);
 }
@@ -66,7 +69,7 @@ function handleTerminalOpen(peer: Peer): void {
       try { peer.close(); } catch {}
       return;
     }
-    const info = useContainerManager().get(params.containerId);
+    const info = useContainerManager().get(params.workerId);
     if (!info) {
       try { peer.send('\r\nContainer not found\r\n'); } catch {}
       try { peer.close(); } catch {}
@@ -78,7 +81,7 @@ function handleTerminalOpen(peer: Peer): void {
       return;
     }
 
-    // `params.containerId` is the worker's UUID `id` (the route segment); Docker
+    // `params.workerId` is the worker's UUID `id` (the route segment); Docker
     // exec needs the actual Docker container id, which lives on the resolved info.
     const dockerContainerId = info.containerId;
     dockerService
@@ -92,7 +95,7 @@ function handleTerminalOpen(peer: Peer): void {
 
       ctx.dockerStream = stream;
       ctx.execId = exec.id;
-      ctx.containerId = dockerContainerId;
+      ctx.dockerContainerId = dockerContainerId;
       ctx.tmuxSession = tmuxSession;
 
       stream.on('data', (chunk: Buffer) => {
@@ -147,7 +150,10 @@ function handleTerminalMessage(peer: Peer, message: unknown): void {
     }
   } catch {}
 
-  if (text && text.length < 200) {
+  // Only attempt a JSON parse when the frame actually looks like a resize
+  // object (`{...}`). Interactive keystrokes are the hot path and never start
+  // with `{`, so this avoids a throw-and-catch on every character typed.
+  if (text && text.length < 200 && text.charCodeAt(0) === 0x7b /* '{' */) {
     try {
       const parsed = JSON.parse(text);
       if (parsed.type === 'resize' && parsed.cols && parsed.rows && ctx.execId) {

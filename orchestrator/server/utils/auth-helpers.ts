@@ -1,6 +1,8 @@
 import type { H3Event } from 'h3';
-import { createError, getRequestHeaders } from 'h3';
+import { createError } from 'h3';
 import { useAuth } from './auth';
+import { useContainerManager } from './services';
+import type { ContainerInfo } from '../../shared/types';
 
 export interface AuthContext {
   user: {
@@ -39,15 +41,6 @@ export function requireAdmin(event: H3Event): AuthContext {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden: admin role required' });
   }
   return ctx;
-}
-
-/**
- * Returns the auth context if present, or null if not authenticated.
- * Used by routes that treat admins and regular users differently but do not
- * require auth (e.g., public status endpoints).
- */
-export function getAuthOptional(event: H3Event): AuthContext | null {
-  return ((event.context as any).auth as AuthContext | undefined) ?? null;
 }
 
 /**
@@ -149,14 +142,43 @@ export async function requireAuthFromEvent(event: H3Event): Promise<AuthContext>
 }
 
 /**
+ * Shared preamble for the `/editor/*` and `/desktop/*` reverse proxies (which
+ * live outside `/api/` and so are not covered by the global auth middleware).
+ *
+ * Order matters: authenticate FIRST, then resolve the worker (404), then
+ * ownership-check (403). Authenticating first means an unauthenticated probe
+ * always gets 401 regardless of whether the worker id exists, so the route
+ * never doubles as a worker-existence oracle for unauthenticated callers.
+ *
+ * `workerId` is the worker's UUID `id` (the route's `:containerId` segment),
+ * not the Docker container id.
+ */
+export async function resolveOwnedRunningContainer(
+  event: H3Event,
+  workerId: string,
+): Promise<ContainerInfo> {
+  const ctx = await requireAuthFromEvent(event);
+  const info = useContainerManager().get(workerId);
+  if (!info || info.status !== 'running') {
+    throw createError({ statusCode: 404, statusMessage: 'Container not found or not running' });
+  }
+  if (ctx.user.role !== 'admin' && info.userId !== ctx.user.id) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
+  }
+  return info;
+}
+
+/**
  * Validates a WebSocket peer by checking its upgrade request's cookies.
  * Returns the auth context if valid, null otherwise.
  * Used in crossws `open` handlers to reject unauthenticated connections.
  */
 export async function authenticateWsPeer(peer: any): Promise<AuthContext | null> {
   try {
+    // `peer.ctx` is documented-dead in Nitro's bundled crossws (see CLAUDE.md
+    // gotchas), so only the Headers `.get('cookie')` path and the plain-property
+    // fallback (for any non-Headers peer shape) are used.
     const cookieHeader = peer?.request?.headers?.get?.('cookie')
-      ?? peer?.ctx?.request?.headers?.cookie
       ?? peer?.request?.headers?.cookie
       ?? '';
     if (!cookieHeader) return null;

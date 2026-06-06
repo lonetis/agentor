@@ -8,6 +8,17 @@ type StorageMode = 'volume' | 'directory';
 const AGENT_UID = 1000;
 const AGENT_GID = 1000;
 
+/** A `userId` is always a better-auth-minted UUID (no path separators). Assert
+ * its shape before it is interpolated into a filesystem path so the destructive
+ * `removeUserDir` (and every per-user path builder) can never traverse outside
+ * the `users/` tree via a `../`-laced id. */
+const SAFE_USER_ID_RE = /^[a-zA-Z0-9_-]+$/;
+function assertSafeUserId(userId: string): void {
+  if (typeof userId !== 'string' || !SAFE_USER_ID_RE.test(userId)) {
+    throw new Error(`[storage] unsafe userId: ${JSON.stringify(userId)}`);
+  }
+}
+
 /** Relative paths inside a worker's agents directory where the orchestrator
  * pre-creates empty mountpoint files. Docker Desktop's virtiofs refuses to
  * nest a file bind mount inside a directory bind mount unless the target
@@ -95,6 +106,7 @@ export class StorageManager {
    * the user's data dir so per-user name collisions do not clash on disk. */
   getWorkerWorkspaceBind(userId: string, name: string, containerName: string): string {
     if (this.mode === 'directory') {
+      assertSafeUserId(userId);
       return `${join(this.dataRef, 'users', userId, 'workspaces', name)}:/workspace`;
     }
     return `${containerName}-workspace:/workspace`;
@@ -108,6 +120,7 @@ export class StorageManager {
   /** Bind string for a worker's persistent agent config data (~/.claude, ~/.gemini, ~/.codex, ~/.agents) */
   getWorkerAgentsBind(userId: string, name: string, containerName: string): string {
     if (this.mode === 'directory') {
+      assertSafeUserId(userId);
       return `${join(this.dataRef, 'users', userId, 'agents', name)}:/home/agent/.agent-data`;
     }
     return `${containerName}-agents:/home/agent/.agent-data`;
@@ -128,21 +141,23 @@ export class StorageManager {
     if (this.mode !== 'directory') return;
 
     const userDir = this.getUserDir(userId);
-    await mkdir(userDir, { recursive: true });
+    // Explicit 0o700 on per-user dirs so on a shared host another user's process
+    // can't traverse/read into them (the entrypoint re-chowns to the agent uid).
+    await mkdir(userDir, { recursive: true, mode: 0o700 });
     await this.chownDir(userDir);
 
     const workspaceDir = join(userDir, 'workspaces', name);
-    await mkdir(workspaceDir, { recursive: true });
+    await mkdir(workspaceDir, { recursive: true, mode: 0o700 });
     await this.chownDir(workspaceDir);
 
     const agentsDir = join(userDir, 'agents', name);
-    await mkdir(agentsDir, { recursive: true });
+    await mkdir(agentsDir, { recursive: true, mode: 0o700 });
     await this.chownDir(agentsDir);
 
     for (const relPath of CREDENTIAL_MOUNT_POINTS) {
       const mountpoint = join(agentsDir, relPath);
       const parent = dirname(mountpoint);
-      await mkdir(parent, { recursive: true });
+      await mkdir(parent, { recursive: true, mode: 0o700 });
       await this.chownDir(parent);
       try {
         await stat(mountpoint);
@@ -163,9 +178,15 @@ export class StorageManager {
    * the file surfaces on the host at `<dataHostPath>/users/<userId>/ssh/…`,
    * which is what the Docker bind string references. */
   async ensureUserSshDir(userId: string): Promise<void> {
-    const sshDir = join(this.dataDir, 'users', userId, 'ssh');
+    const sshDir = join(this.getUserDir(userId), 'ssh');
     const keyFile = join(sshDir, 'authorized_keys');
-    await mkdir(sshDir, { recursive: true });
+    // A tight `ssh/` dir (0o700) keeps a co-located process from tampering with
+    // another user's keys. The file itself stays world-readable (0o644): it is a
+    // public key, and it is bind-mounted read-only into the worker where the
+    // unprivileged `agent` uid (1000, ≠ the orchestrator's uid) must read it for
+    // sshd. A 0o600 file owned by the orchestrator uid is unreadable across that
+    // bind mount and breaks pubkey auth.
+    await mkdir(sshDir, { recursive: true, mode: 0o700 });
     try {
       await stat(keyFile);
     } catch {
@@ -177,7 +198,7 @@ export class StorageManager {
    * 1:1 with this file). Returns '' if not configured. Trailing whitespace is
    * trimmed so the value round-trips with what the UI submitted. */
   async readSshAuthorizedKeys(userId: string): Promise<string> {
-    const keyFile = join(this.dataDir, 'users', userId, 'ssh', 'authorized_keys');
+    const keyFile = join(this.getUserDir(userId), 'ssh', 'authorized_keys');
     try {
       return (await readFile(keyFile, 'utf-8')).trimEnd();
     } catch (err) {
@@ -191,9 +212,11 @@ export class StorageManager {
    * Empty → empty file (no logins accepted). Bind-mounted into every worker the
    * user owns, so updates are visible live. */
   async writeSshAuthorizedKeys(userId: string, content: string): Promise<void> {
-    const sshDir = join(this.dataDir, 'users', userId, 'ssh');
-    await mkdir(sshDir, { recursive: true });
+    const sshDir = join(this.getUserDir(userId), 'ssh');
+    await mkdir(sshDir, { recursive: true, mode: 0o700 });
     const trimmed = (content ?? '').trimEnd();
+    // 0o644: bind-mounted read-only into the worker; the agent uid must read it
+    // for sshd (see ensureUserSshDir). It is a public key, not a secret.
     await writeFile(join(sshDir, 'authorized_keys'), trimmed ? `${trimmed}\n` : '', { mode: 0o644 });
   }
 
@@ -204,18 +227,20 @@ export class StorageManager {
     if (!this.dataHostPath) {
       throw new Error('[storage] dataHostPath not resolved — cannot build ssh bind');
     }
-    const hostFile = join(this.dataHostPath, 'users', userId, 'ssh', 'authorized_keys');
+    const hostFile = join(this.getUserHostDir(userId), 'ssh', 'authorized_keys');
     return `${hostFile}:/home/agent/.ssh/authorized_keys:ro`;
   }
 
   /** In-container path of a user's private data directory (`/data/users/<userId>/`). */
   getUserDir(userId: string): string {
+    assertSafeUserId(userId);
     return join(this.dataDir, 'users', userId);
   }
 
   /** Host path of a user's data directory, for constructing Docker bind strings.
    * Only valid when `dataHostPath` was resolved successfully at init. */
   getUserHostDir(userId: string): string {
+    assertSafeUserId(userId);
     if (!this.dataHostPath) {
       throw new Error('[storage] dataHostPath not resolved — cannot build per-user host path');
     }
@@ -227,7 +252,7 @@ export class StorageManager {
   async ensureUserDir(userId: string): Promise<void> {
     const userDir = this.getUserDir(userId);
     const credDir = join(userDir, 'credentials');
-    await mkdir(credDir, { recursive: true });
+    await mkdir(credDir, { recursive: true, mode: 0o700 });
     if (this.mode === 'directory') {
       await this.chownDir(userDir);
       await this.chownDir(credDir);
@@ -245,7 +270,7 @@ export class StorageManager {
    * unique containerName. */
   async removeWorkerWorkspace(userId: string, name: string, containerName: string): Promise<void> {
     if (this.mode === 'directory') {
-      await rm(join(this.dataDir, 'users', userId, 'workspaces', name), { recursive: true, force: true });
+      await rm(join(this.getUserDir(userId), 'workspaces', name), { recursive: true, force: true });
     } else {
       await this.removeVolume(`${containerName}-workspace`);
     }
@@ -259,7 +284,7 @@ export class StorageManager {
   /** Remove a worker's persistent agent config data (volume or directory). */
   async removeWorkerAgents(userId: string, name: string, containerName: string): Promise<void> {
     if (this.mode === 'directory') {
-      await rm(join(this.dataDir, 'users', userId, 'agents', name), { recursive: true, force: true });
+      await rm(join(this.getUserDir(userId), 'agents', name), { recursive: true, force: true });
     } else {
       await this.removeVolume(`${containerName}-agents`);
     }

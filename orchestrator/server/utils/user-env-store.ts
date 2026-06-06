@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { UserEnvVars, UserEnvVarsInput, UserEnvVar } from '../../shared/types';
 
@@ -74,34 +74,51 @@ export class UserEnvVarStore {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
       throw err;
     }
-    await Promise.all(
+    // Load each user independently — a single corrupt env-vars file must not
+    // crash the boot for everyone else (mirrors UserScopedJsonStore.init).
+    const results = await Promise.allSettled(
       userIds
         .filter((userId) => !userId.startsWith('.'))
         .map((userId) => this.loadUser(userId)),
     );
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        useLogger().error(
+          `[user-env-store] skipped a corrupt/unreadable ${FILENAME} during init: ${result.reason instanceof Error ? result.reason.message : result.reason}`,
+        );
+      }
+    }
   }
 
   async loadUser(userId: string): Promise<void> {
     const filePath = this.filePath(userId);
+    let raw: string;
     try {
-      const raw = await readFile(filePath, 'utf-8');
-      const parsed = JSON.parse(raw) as Partial<UserEnvVars>;
-      const now = new Date().toISOString();
-      // Coerce to the current shape: tolerate files written before env-vars
-      // became a uniform `envVars` list (older shapes have no `envVars`, so they
-      // load as an empty list rather than crashing the renderer). `userId` is
-      // always taken from the directory name, not the file.
-      this.items.set(userId, {
-        userId,
-        createdAt: parsed.createdAt ?? now,
-        updatedAt: parsed.updatedAt ?? now,
-        envVars: Array.isArray(parsed.envVars) ? parsed.envVars : [],
-      });
+      raw = await readFile(filePath, 'utf-8');
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
       useLogger().error(`[user-env-store] failed to load ${filePath}: ${err instanceof Error ? err.message : err}`);
       throw err;
     }
+    let parsed: Partial<UserEnvVars>;
+    try {
+      parsed = JSON.parse(raw) as Partial<UserEnvVars>;
+    } catch (err: unknown) {
+      // Corrupt JSON (e.g. truncated write). Quarantine (log + skip) rather than
+      // crash the load for every other user.
+      useLogger().error(`[user-env-store] corrupt ${filePath} — skipping this user: ${err instanceof Error ? err.message : err}`);
+      return;
+    }
+    const now = new Date().toISOString();
+    // Tolerate a (valid-JSON) file that predates the uniform `envVars` list — a
+    // missing/non-array `envVars` loads as an empty list rather than breaking the
+    // renderer. `userId` is always taken from the directory name, not the file.
+    this.items.set(userId, {
+      userId,
+      createdAt: parsed.createdAt ?? now,
+      updatedAt: parsed.updatedAt ?? now,
+      envVars: Array.isArray(parsed.envVars) ? parsed.envVars : [],
+    });
   }
 
   list(): UserEnvVars[] {
@@ -161,7 +178,11 @@ export class UserEnvVarStore {
     try {
       await mkdir(join(this.dataDir, 'users', userId), { recursive: true });
       // Persist the full record (incl. `userId`) like every user-scoped resource.
-      await writeFile(filePath, JSON.stringify(entry, null, 2));
+      // Atomic write — temp file + rename, so a hard kill mid-write can't leave a
+      // truncated file that crashes the next boot's parse.
+      const tmpPath = `${filePath}.tmp.${process.pid}`;
+      await writeFile(tmpPath, JSON.stringify(entry, null, 2));
+      await rename(tmpPath, filePath);
     } catch (err) {
       useLogger().error(`[user-env-store] failed to save ${filePath}: ${err instanceof Error ? err.message : err}`);
       throw err;

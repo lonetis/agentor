@@ -13,6 +13,7 @@ defineRouteMeta({
 });
 
 import { createGzip } from 'node:zlib';
+import { useContainerManager } from '../../../utils/services';
 import { requireContainerAccess } from '../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {

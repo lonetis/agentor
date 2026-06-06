@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
@@ -32,15 +32,26 @@ export class UserScopedJsonStore<K, V> {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
       throw err;
     }
-    await Promise.all(
+    // A single corrupt or unreadable per-user file must NOT take down the whole
+    // orchestrator for every other user — load each user independently and
+    // quarantine (log + skip) any that fail rather than rejecting the boot.
+    const results = await Promise.allSettled(
       userIds
         .filter((userId) => !userId.startsWith('.'))
         .map((userId) => this.loadUser(userId)),
     );
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        useLogger().error(
+          `[user-scoped-store] skipped a corrupt/unreadable ${this.filename} during init: ${result.reason instanceof Error ? result.reason.message : result.reason}`,
+        );
+      }
+    }
   }
 
   /** Load (or reload) a single user's file. Useful after a user dir is created
-   * mid-run by some other subsystem. */
+   * mid-run by some other subsystem. A corrupt (unparseable) file is logged and
+   * skipped rather than thrown, so one bad file never blocks the rest. */
   async loadUser(userId: string): Promise<void> {
     const filePath = this.filePathForUser(userId);
     let raw: string;
@@ -51,7 +62,15 @@ export class UserScopedJsonStore<K, V> {
       useLogger().error(`[user-scoped-store] failed to load ${filePath}: ${err instanceof Error ? err.message : err}`);
       throw err;
     }
-    const parsed = JSON.parse(raw) as V[];
+    let parsed: V[];
+    try {
+      parsed = JSON.parse(raw) as V[];
+    } catch (err: unknown) {
+      // Corrupt JSON (e.g. a truncated write from a hard kill). Quarantine the
+      // user (log + skip) instead of crashing every user's load.
+      useLogger().error(`[user-scoped-store] corrupt ${filePath} — skipping this user: ${err instanceof Error ? err.message : err}`);
+      return;
+    }
     const map = new Map<K, V>();
     for (const item of parsed) map.set(this.keyFn(item), item);
     if (map.size > 0) this.items.set(userId, map);
@@ -67,7 +86,7 @@ export class UserScopedJsonStore<K, V> {
   }
 
   /** User ids that currently have at least one item in this store. Cheaper
-   * than iterating `listWithOwners()` when the caller only needs the key set. */
+   * than iterating the whole dataset when the caller only needs the key set. */
   listUserIds(): string[] {
     return Array.from(this.items.keys());
   }
@@ -92,15 +111,6 @@ export class UserScopedJsonStore<K, V> {
       }
     }
     return undefined;
-  }
-
-  /** Flat `[(userId, item)]` pairs across every user. */
-  listWithOwners(): Array<{ userId: string; item: V }> {
-    const out: Array<{ userId: string; item: V }> = [];
-    for (const [userId, map] of this.items) {
-      for (const item of map.values()) out.push({ userId, item });
-    }
-    return out;
   }
 
   protected async setItem(userId: string, item: V): Promise<void> {
@@ -177,7 +187,13 @@ export class UserScopedJsonStore<K, V> {
         return;
       }
       await mkdir(join(this.dataDir, 'users', userId), { recursive: true });
-      await writeFile(filePath, JSON.stringify(items, null, 2));
+      // Write to a temp file in the same directory, then atomically rename it
+      // into place. A hard kill mid-write (OOM, container stop, self-update
+      // swap) can then only leave a stray `.tmp` file, never a truncated store
+      // that crashes the next boot's parse.
+      const tmpPath = `${filePath}.tmp.${process.pid}`;
+      await writeFile(tmpPath, JSON.stringify(items, null, 2));
+      await rename(tmpPath, filePath);
     } catch (err) {
       useLogger().error(`[user-scoped-store] failed to save ${filePath}: ${err instanceof Error ? err.message : err}`);
       throw err;

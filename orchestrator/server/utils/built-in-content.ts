@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { NetworkMode, ExposeApis } from '../../shared/types';
 
 /** Fixed namespace UUID for Agentor built-in resource ids.
  *
@@ -48,13 +49,13 @@ export interface BuiltInEnvironment {
   name: string;
   cpuLimit: number;
   memoryLimit: string;
-  networkMode: string;
+  networkMode: NetworkMode;
   allowedDomains: string[];
   includePackageManagerDomains: boolean;
   dockerEnabled: boolean;
   envVars: string;
   setupScript: string;
-  exposeApis: { portMappings: boolean; domainMappings: boolean; usage: boolean };
+  exposeApis: ExposeApis;
   enabledCapabilityIds: string[] | null;
   enabledInstructionIds: string[] | null;
 }
@@ -137,7 +138,11 @@ export async function loadBuiltInEnvironments(): Promise<BuiltInEnvironment[]> {
     if (!raw) continue;
     const slug = key.replace(/\.json$/, '');
     const data = typeof raw === 'object' && !(raw instanceof Uint8Array) ? raw : JSON.parse(toText(raw));
-    environments.push({ id: builtInId('environment', slug), name: slug, ...data });
+    // Spread the file data FIRST so a stray `id`/`name` key in the JSON can never
+    // override the deterministically-derived stable id / slug name — that
+    // contract (stable across the every-startup re-seed) is what keeps stored
+    // `environmentId` references from orphaning.
+    environments.push({ ...data, id: builtInId('environment', slug), name: slug });
   }
   return environments;
 }

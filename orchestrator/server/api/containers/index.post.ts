@@ -28,8 +28,9 @@ defineRouteMeta({
   },
 });
 
-import { useContainerManager } from '../../utils/services';
+import { useContainerManager, useConfig } from '../../utils/services';
 import { MAX_DISPLAY_NAME_LENGTH } from '../../utils/validation';
+import { validateMounts } from '../../utils/docker';
 import { requireAuth } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
@@ -54,6 +55,14 @@ export default defineEventHandler(async (event) => {
     } else {
       parsedMounts = body.mounts;
     }
+  }
+
+  if (parsedMounts != null && !Array.isArray(parsedMounts)) {
+    throw createError({ statusCode: 400, statusMessage: 'mounts must be an array' });
+  }
+  const mountError = validateMounts(parsedMounts, useConfig().dataDir);
+  if (mountError) {
+    throw createError({ statusCode: 400, statusMessage: mountError });
   }
 
   let parsedRepos;

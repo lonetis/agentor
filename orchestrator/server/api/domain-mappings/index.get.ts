@@ -35,8 +35,14 @@ defineRouteMeta({
               workerId: { type: 'string', description: "Owning worker's UUID id" },
               containerName: { type: 'string', description: 'Globally unique Docker container name' },
               internalPort: { type: 'integer' },
-              authUser: { type: 'string' },
-              authPassword: { type: 'string' },
+              basicAuth: {
+                type: 'object',
+                description: 'Optional HTTP basic auth credentials (omitted when not set)',
+                properties: {
+                  username: { type: 'string' },
+                  password: { type: 'string' },
+                },
+              },
             },
           },
         },

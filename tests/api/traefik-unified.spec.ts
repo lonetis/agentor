@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
-import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
+import { createWorker, cleanupWorker, uniquePort } from '../helpers/worker-lifecycle';
 
 /**
  * Regression tests for the unified Traefik architecture. Port mappings used to
@@ -133,6 +133,94 @@ test.describe('Unified Traefik (merged mapper)', () => {
         for (const item of section.items) {
           expect(item.key).not.toBe('MAPPER_IMAGE');
         }
+      }
+    });
+  });
+
+  /**
+   * Port mappings drive the Traefik container's static config (one dedicated
+   * entrypoint per external port) and its PortBindings (HostIp depends on
+   * localhost vs external). Adding/removing a mapping is a Cmd-drift recreate;
+   * toggling localhost↔external on the same external port is a PortBindings
+   * drift recreate. The internals (`hasContainerConfigDrift`, `buildCmd`/
+   * `buildPortBindings` ordering) are not observable over the public API, but
+   * these tests exercise the create→toggle→delete reconcile path end-to-end so a
+   * regression in the predicate dedup or the recreate path surfaces as a failed
+   * mapping operation. Works without BASE_DOMAINS (port mappings don't need it).
+   */
+  test.describe('Port mapping reconcile / drift recreate path', () => {
+    test('a localhost port mapping toggled to external keeps working on the same port', async ({ request }) => {
+      const api = new ApiClient(request);
+      const worker = await createWorker(request, { displayName: `traefik-drift-${Date.now()}` });
+      const port = uniquePort();
+
+      try {
+        // Create as localhost — first port mapping triggers Traefik create with a
+        // pm-<port> entrypoint.
+        const { status: c1 } = await api.createPortMapping({
+          externalPort: port,
+          type: 'localhost',
+          workerId: worker.id,
+          internalPort: 8443,
+        });
+        expect(c1).toBe(201);
+
+        const { body: listed } = await api.listPortMappings();
+        const found = listed.find((m: { externalPort: number }) => m.externalPort === port);
+        expect(found).toBeTruthy();
+        expect(found.type).toBe('localhost');
+
+        // Toggle localhost → external on the same external port. The store keys by
+        // external port, so this is delete + recreate; Traefik re-binds the
+        // entrypoint with HostIp 0.0.0.0 (PortBindings drift recreate).
+        const { status: del } = await api.deletePortMapping(port);
+        expect(del).toBe(200);
+
+        const { status: c2 } = await api.createPortMapping({
+          externalPort: port,
+          type: 'external',
+          workerId: worker.id,
+          internalPort: 8443,
+        });
+        expect(c2).toBe(201);
+
+        const { body: relisted } = await api.listPortMappings();
+        const reFound = relisted.find((m: { externalPort: number }) => m.externalPort === port);
+        expect(reFound).toBeTruthy();
+        expect(reFound.type).toBe('external');
+      } finally {
+        try { await api.deletePortMapping(port); } catch { /* idempotent */ }
+        await cleanupWorker(request, worker.id);
+      }
+    });
+
+    test('removing the only port mapping cleanly tears down without wedging later reconciles', async ({ request }) => {
+      const api = new ApiClient(request);
+      const worker = await createWorker(request, { displayName: `traefik-teardown-${Date.now()}` });
+      const portA = uniquePort();
+      const portB = uniquePort();
+
+      try {
+        // Two distinct external ports → two pm-<port> entrypoints (Cmd drift on add).
+        expect((await api.createPortMapping({ externalPort: portA, type: 'localhost', workerId: worker.id, internalPort: 3000 })).status).toBe(201);
+        expect((await api.createPortMapping({ externalPort: portB, type: 'localhost', workerId: worker.id, internalPort: 3001 })).status).toBe(201);
+
+        // Remove both — exercises Cmd-drift recreate (entrypoint list shrinks),
+        // and the full teardown when nothing (domain/dashboard) keeps Traefik up.
+        expect((await api.deletePortMapping(portA)).status).toBe(200);
+        expect((await api.deletePortMapping(portB)).status).toBe(200);
+
+        // A subsequent reconcile must still work (the image-pull-timeout guard
+        // ensures the reconcile queue is never wedged) — proven by creating a
+        // fresh mapping after the teardown.
+        const portC = uniquePort();
+        const { status: c3 } = await api.createPortMapping({ externalPort: portC, type: 'localhost', workerId: worker.id, internalPort: 3000 });
+        expect(c3).toBe(201);
+        await api.deletePortMapping(portC);
+      } finally {
+        try { await api.deletePortMapping(portA); } catch { /* idempotent */ }
+        try { await api.deletePortMapping(portB); } catch { /* idempotent */ }
+        await cleanupWorker(request, worker.id);
       }
     });
   });

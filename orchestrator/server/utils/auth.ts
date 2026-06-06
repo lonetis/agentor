@@ -5,7 +5,7 @@ import { getMigrations } from 'better-auth/db/migration';
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { loadConfig } from './config';
 import { consumeSetupToken } from './setup-token-store';
 
@@ -16,12 +16,15 @@ let _db: Database.Database | null = null;
 
 /**
  * Resolves the BETTER_AUTH_SECRET.
- * Reads from env var first, otherwise generates one and persists it to
- * `<dataDir>/auth.secret` on first run so the secret survives restarts.
+ * Reads from the parsed config first (`BETTER_AUTH_SECRET`), otherwise
+ * generates one and persists it to `<dataDir>/auth.secret` on first run so the
+ * secret survives restarts.
  */
-function resolveAuthSecret(dataDir: string): string {
-  const envSecret = process.env.BETTER_AUTH_SECRET?.trim();
+function resolveAuthSecret(config: ReturnType<typeof loadConfig>): string {
+  const envSecret = config.betterAuthSecret?.trim();
   if (envSecret) return envSecret;
+
+  const dataDir = config.dataDir;
 
   const secretPath = join(dataDir, 'auth.secret');
   if (existsSync(secretPath)) {
@@ -54,8 +57,8 @@ function buildTrustedOrigins(config: ReturnType<typeof loadConfig>): string[] {
     'http://127.0.0.1:3000',
   ]);
 
-  if (process.env.BETTER_AUTH_URL) {
-    origins.add(process.env.BETTER_AUTH_URL);
+  if (config.betterAuthUrl) {
+    origins.add(config.betterAuthUrl);
   }
 
   if (config.dashboardSubdomain && config.dashboardBaseDomain) {
@@ -67,11 +70,9 @@ function buildTrustedOrigins(config: ReturnType<typeof loadConfig>): string[] {
     origins.add(`https://${host}`);
   }
 
-  const extra = process.env.BETTER_AUTH_TRUSTED_ORIGINS?.trim();
-  if (extra) {
-    for (const o of extra.split(',').map((s) => s.trim()).filter(Boolean)) {
-      origins.add(o);
-    }
+  // `config.betterAuthTrustedOrigins` is already trimmed/split/filtered.
+  for (const o of config.betterAuthTrustedOrigins) {
+    origins.add(o);
   }
 
   return Array.from(origins);
@@ -110,7 +111,7 @@ function resolvePasskeyConfig(config: ReturnType<typeof loadConfig>): PasskeyCon
 
   const host = `${sub}.${base}`;
   const origin = `https://${host}`;
-  const rpID = process.env.BETTER_AUTH_RP_ID?.trim() || host;
+  const rpID = config.betterAuthRpId || host;
   return { enabled: true, rpID, origin };
 }
 
@@ -119,16 +120,22 @@ function buildAuth(): any {
   const dbPath = join(config.dataDir, 'auth.db');
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+  // Wait up to 5s for a write lock instead of failing immediately with
+  // SQLITE_BUSY. During the update/swap flow (docs/production.md) the `-next`
+  // and old orchestrator containers briefly run concurrently against the same
+  // auth.db; migrations are idempotent, so a short busy-wait avoids a spurious
+  // failure if both run getMigrations().runMigrations() at the same instant.
+  db.pragma('busy_timeout = 5000');
   _db = db;
 
-  const baseURL = process.env.BETTER_AUTH_URL || 'http://localhost:3000';
+  const baseURL = config.betterAuthUrl || 'http://localhost:3000';
   const passkeyCfg = resolvePasskeyConfig(config);
 
   return betterAuth({
     database: db,
     basePath: '/api/auth',
     baseURL,
-    secret: resolveAuthSecret(config.dataDir),
+    secret: resolveAuthSecret(config),
     trustedOrigins: buildTrustedOrigins(config),
     emailAndPassword: {
       enabled: true,
@@ -149,6 +156,15 @@ function buildAuth(): any {
     },
     advanced: {
       cookiePrefix: 'agentor',
+      // The dashboard is served through Traefik (DASHBOARD_SUBDOMAIN), so the
+      // socket source IP is Traefik's container IP for every request. Derive
+      // the real client IP from the `X-Forwarded-For` header (which Traefik
+      // sets by default) so rate limiting / brute-force protection is keyed
+      // per client, not per proxy. This is also better-auth's default header,
+      // but we set it explicitly to document the Traefik dependency.
+      ipAddress: {
+        ipAddressHeaders: ['x-forwarded-for'],
+      },
       database: {
         // Mint UUID v4 ids for all auth models (user, session, account, …) so
         // userIds are UUIDs — matching every other resource in the system.
@@ -197,8 +213,13 @@ function buildAuth(): any {
                   // SQL (faster than the plugin's full insert pipeline, and
                   // the passkey row is written by the plugin right after
                   // this callback returns).
+                  //
+                  // Use a UUID v4 to match `advanced.database.generateId: 'uuid'`
+                  // so a passkey-first admin gets the same id shape as every
+                  // password-created user (per-user data dirs, worker userId
+                  // FKs, and ownership checks all key off this id).
                   const now = new Date();
-                  const id = randomBytes(12).toString('base64url');
+                  const id = randomUUID();
                   db.prepare(
                     `INSERT INTO user (id, email, name, emailVerified, role, createdAt, updatedAt)
                      VALUES (?, ?, ?, ?, ?, ?, ?)`,

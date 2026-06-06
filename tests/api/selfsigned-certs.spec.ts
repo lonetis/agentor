@@ -172,6 +172,89 @@ test.describe('Self-Signed Certificates', () => {
       }
     });
 
+    test('wildcard HTTPS mapping on a selfsigned subdomain creates a per-host cert without error', async ({ request }) => {
+      // Exercises SelfSignedCertManager.ensureWildcardCertForHost for a
+      // *subdomain* host (the lazy selfSignedWildcardHosts path in
+      // writeTraefikConfig). Creating the mapping triggers a Traefik reconcile
+      // that must generate the per-host wildcard cert on disk — if that path
+      // threw, the create would surface a 500 rather than a 201.
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (!mapperStatus.enabled) return;
+
+      const selfSignedDomain = mapperStatus.baseDomainConfigs?.find(
+        (c: { challengeType: string }) => c.challengeType === 'selfsigned'
+      );
+
+      if (!selfSignedDomain) return;
+
+      const container = await createWorker(request);
+      try {
+        const uniqueSub = `ss-wc-${Date.now()}`;
+        const { status, body } = await api.createDomainMapping({
+          subdomain: uniqueSub,
+          baseDomain: selfSignedDomain.domain,
+          protocol: 'https',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 8443,
+        });
+        expect(status).toBe(201);
+        expect(body.wildcard).toBe(true);
+        expect(body.protocol).toBe('https');
+
+        // Round-trip through the list — wildcard flag must survive the store.
+        const { body: list } = await api.listDomainMappings();
+        const found = list.find((m: { id: string }) => m.id === body.id);
+        expect(found).toBeTruthy();
+        expect(found.wildcard).toBe(true);
+
+        await api.deleteDomainMapping(body.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('wildcard HTTPS mapping on the bare selfsigned base domain succeeds', async ({ request }) => {
+      // After the fix, a wildcard mapping on the *bare* base domain (empty
+      // subdomain) also flows through the selfSignedWildcardHosts ensure loop
+      // (previously it `continue`d past the cert-ensure). The base-domain cert is
+      // idempotently ensured, and the cert list dedupes so it isn't emitted
+      // twice. Creating + listing must succeed.
+      const api = new ApiClient(request);
+      const { body: mapperStatus } = await api.getDomainMapperStatus();
+
+      if (!mapperStatus.enabled) return;
+
+      const selfSignedDomain = mapperStatus.baseDomainConfigs?.find(
+        (c: { challengeType: string }) => c.challengeType === 'selfsigned'
+      );
+
+      if (!selfSignedDomain) return;
+
+      const container = await createWorker(request);
+      try {
+        const { status, body } = await api.createDomainMapping({
+          subdomain: '',
+          baseDomain: selfSignedDomain.domain,
+          protocol: 'https',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 8443,
+        });
+        expect(status).toBe(201);
+        expect(body.wildcard).toBe(true);
+
+        const { body: list } = await api.listDomainMappings();
+        expect(list.find((m: { id: string }) => m.id === body.id)).toBeTruthy();
+
+        await api.deleteDomainMapping(body.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
     test('creates and deletes mapping on selfsigned domain with basicAuth', async ({ request }) => {
       const api = new ApiClient(request);
       const { body: mapperStatus } = await api.getDomainMapperStatus();

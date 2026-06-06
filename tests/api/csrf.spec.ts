@@ -91,4 +91,19 @@ test.describe('CSRF / Origin enforcement', () => {
     });
     expect(res.status).toBe(403);
   });
+
+  test('sign-in from an untrusted Origin is rejected', async () => {
+    // Locks the trusted-origins allowlist (now built from parsed config rather
+    // than re-read process.env): an origin that is not localhost / the
+    // configured dashboard domain / BETTER_AUTH_* must be rejected with 403.
+    const res = await fetch(`${BASE_URL}/api/auth/sign-in/email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'https://evil.example.com',
+      },
+      body: JSON.stringify({ email: 'someone@test.example', password: 'whatever' }),
+    });
+    expect(res.status).toBe(403);
+  });
 });

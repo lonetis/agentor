@@ -32,6 +32,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid networkMode' });
   }
 
+  if (body.cpuLimit !== undefined && (typeof body.cpuLimit !== 'number' || body.cpuLimit < 0)) {
+    throw createError({ statusCode: 400, statusMessage: 'cpuLimit must be a non-negative number (0 = unrestricted)' });
+  }
+  if (body.enabledCapabilityIds != null && !Array.isArray(body.enabledCapabilityIds)) {
+    throw createError({ statusCode: 400, statusMessage: 'enabledCapabilityIds must be null or an array of ids' });
+  }
+  if (body.enabledInstructionIds != null && !Array.isArray(body.enabledInstructionIds)) {
+    throw createError({ statusCode: 400, statusMessage: 'enabledInstructionIds must be null or an array of ids' });
+  }
+
   const store = useEnvironmentStore();
   const env = await store.create({
     name: body.name,

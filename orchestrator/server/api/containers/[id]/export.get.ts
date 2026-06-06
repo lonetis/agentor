@@ -14,12 +14,14 @@ defineRouteMeta({
       401: { description: 'Unauthorized' },
       403: { description: 'Forbidden' },
       404: { description: 'Worker not found' },
+      409: { description: 'Worker not in an exportable state (must be running or stopped)' },
     },
   },
 });
 
 import { useContainerManager } from '../../../utils/services';
 import { requireContainerAccess } from '../../../utils/auth-helpers';
+import { rethrowAsHttpError } from '../../../utils/http-errors';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
@@ -31,7 +33,15 @@ export default defineEventHandler(async (event) => {
   // Default to including the full filesystem snapshot (the user-chosen behavior).
   const includeRootfs = q.includeRootfs !== 'false' && q.includeRootfs !== '0';
 
-  const { stream, filename } = await mgr.exportWorker(id, { includeRootfs });
+  // Materialise the bundle before streaming — a bad-state worker throws a 409
+  // here (mapped from the manager's statusCode-tagged error) rather than a 500.
+  let stream: Awaited<ReturnType<typeof mgr.exportWorker>>['stream'];
+  let filename: string;
+  try {
+    ({ stream, filename } = await mgr.exportWorker(id, { includeRootfs }));
+  } catch (err) {
+    rethrowAsHttpError(err);
+  }
 
   // If the client disconnects before the bundle is fully sent, destroy the
   // stream so its 'close' handler fires and the temp dir is cleaned up.

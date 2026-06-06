@@ -8,6 +8,12 @@ import type { UserCredentialManager } from './user-credentials';
 
 const POLL_INTERVAL_MS = 300_000;
 const USAGE_FILENAME = 'usage.json';
+/** Timeout for every outbound usage / token fetch. A hung upstream socket must
+ * never pin a poll promise forever (which would also stall the serialized
+ * fetch queue). */
+const FETCH_TIMEOUT_MS = 30_000;
+/** Fallback backoff when a 429 carries no usable `retry-after` header. */
+const DEFAULT_BACKOFF_SEC = 600;
 
 interface AgentState {
   info: AgentUsageInfo;
@@ -78,15 +84,28 @@ export class UsageChecker {
   async init(): Promise<void> {
     await this.loadState();
 
-    // Kick off a background poll for every user that has OAuth creds. If none
-    // do (fresh install) we still start the interval so new users are picked
-    // up on the next tick.
-    await this.fetchAll();
+    // Persisted state is already loaded and served synchronously, so the first
+    // network poll must NOT block startup — a slow/hung third-party API would
+    // otherwise delay the whole dashboard coming up. Kick it off detached.
+    void this.fetchAll().catch((err) => {
+      useLogger().error(`[usage-checker] initial poll error: ${err instanceof Error ? err.message : err}`);
+    });
     this.pollInterval = setInterval(() => {
       this.fetchAll().catch((err) => {
         useLogger().error(`[usage-checker] poll error: ${err instanceof Error ? err.message : err}`);
       });
     }, POLL_INTERVAL_MS);
+    // Don't keep the event loop alive solely for usage polling (matches
+    // ResourceMonitor / OrphanSweeper).
+    if (typeof this.pollInterval.unref === 'function') this.pollInterval.unref();
+  }
+
+  /** Stop the polling interval (graceful shutdown / dev hot-reload cleanup). */
+  stop(): void {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
   }
 
   async refresh(userId: string): Promise<AgentUsageStatus> {
@@ -292,6 +311,45 @@ export class UsageChecker {
     return 'none';
   }
 
+  // ─── Rate-limit backoff ─────────────────────────────────────
+
+  /** Returns true (and sets `base.error`) when the agent is inside an active
+   * 429 backoff window, so the caller should short-circuit without any upstream
+   * work at all. */
+  private inBackoff(userId: string, agentId: string, base: AgentUsageInfo): boolean {
+    const backoffUntil = this.rateLimitBackoff.get(`${userId}:${agentId}`);
+    if (backoffUntil && Date.now() < backoffUntil) {
+      base.error = `Rate limited — retrying after ${new Date(backoffUntil).toISOString()}`;
+      return true;
+    }
+    return false;
+  }
+
+  /** Run a usage `fetch` and uniformly handle the 429 backoff bookkeeping:
+   * on 429 it parses `retry-after`, persists the backoff window, sets
+   * `base.error`, and returns `null`; on any other response it clears any
+   * stale backoff and returns the `Response` for the caller to parse. */
+  private async fetchWithBackoff(
+    userId: string,
+    agentId: string,
+    base: AgentUsageInfo,
+    doFetch: () => Promise<Response>,
+  ): Promise<Response | null> {
+    const backoffKey = `${userId}:${agentId}`;
+    const resp = await doFetch();
+    if (resp.status === 429) {
+      const retryAfter = resp.headers.get('retry-after');
+      const parsed = retryAfter ? parseInt(retryAfter, 10) : DEFAULT_BACKOFF_SEC;
+      const delaySec = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_BACKOFF_SEC;
+      this.rateLimitBackoff.set(backoffKey, Date.now() + delaySec * 1000);
+      await this.saveUser(userId);
+      base.error = `Rate limited — retry after ${delaySec}s`;
+      return null;
+    }
+    if (this.rateLimitBackoff.delete(backoffKey)) await this.saveUser(userId);
+    return resp;
+  }
+
   // ─── Claude ─────────────────────────────────────────────────
 
   private async fetchClaudeUsage(userId: string): Promise<AgentUsageInfo> {
@@ -316,30 +374,19 @@ export class UsageChecker {
     };
     if (!token) return base;
 
-    const backoffKey = `${userId}:claude`;
-    const backoffUntil = this.rateLimitBackoff.get(backoffKey);
-    if (backoffUntil && Date.now() < backoffUntil) {
-      base.error = `Rate limited — retrying after ${new Date(backoffUntil).toISOString()}`;
-      return base;
-    }
+    if (this.inBackoff(userId, 'claude', base)) return base;
 
     try {
-      const resp = await fetch('https://api.anthropic.com/api/oauth/usage', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'anthropic-beta': 'oauth-2025-04-20',
-        },
-      });
-      if (resp.status === 429) {
-        const retryAfter = resp.headers.get('retry-after');
-        const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
-        const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
-        this.rateLimitBackoff.set(backoffKey, Date.now() + delayMs);
-        await this.saveUser(userId);
-        base.error = `Rate limited — retry after ${delaySec}s`;
-        return base;
-      }
-      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveUser(userId);
+      const resp = await this.fetchWithBackoff(userId, 'claude', base, () =>
+        fetch('https://api.anthropic.com/api/oauth/usage', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'anthropic-beta': 'oauth-2025-04-20',
+          },
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        }),
+      );
+      if (!resp) return base;
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
         return base;
@@ -379,6 +426,11 @@ export class UsageChecker {
     };
     if (!token) return base;
 
+    // Short-circuit while rate-limited BEFORE doing any upstream work — that
+    // includes the OAuth token refresh below, so a 429-backed-off agent never
+    // hits OpenAI's token endpoint either.
+    if (this.inBackoff(userId, 'codex', base)) return base;
+
     if (refreshToken && cred?.last_refresh) {
       const lastRefresh = new Date(cred.last_refresh).getTime();
       const eightDays = 8 * 24 * 60 * 60 * 1000;
@@ -392,27 +444,13 @@ export class UsageChecker {
       }
     }
 
-    const backoffKey = `${userId}:codex`;
-    const backoffUntil = this.rateLimitBackoff.get(backoffKey);
-    if (backoffUntil && Date.now() < backoffUntil) {
-      base.error = `Rate limited — retrying after ${new Date(backoffUntil).toISOString()}`;
-      return base;
-    }
-
     try {
       const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
       if (cred?.tokens?.account_id) headers['ChatGPT-Account-Id'] = cred.tokens.account_id;
-      const resp = await fetch('https://chatgpt.com/backend-api/wham/usage', { headers });
-      if (resp.status === 429) {
-        const retryAfter = resp.headers.get('retry-after');
-        const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
-        const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
-        this.rateLimitBackoff.set(backoffKey, Date.now() + delayMs);
-        await this.saveUser(userId);
-        base.error = `Rate limited — retry after ${delaySec}s`;
-        return base;
-      }
-      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveUser(userId);
+      const resp = await this.fetchWithBackoff(userId, 'codex', base, () =>
+        fetch('https://chatgpt.com/backend-api/wham/usage', { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }),
+      );
+      if (!resp) return base;
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
         return base;
@@ -457,6 +495,7 @@ export class UsageChecker {
         refresh_token: refreshToken,
         scope: 'openid profile email',
       }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = (await resp.json()) as { access_token: string; refresh_token?: string; id_token?: string };
@@ -500,29 +539,18 @@ export class UsageChecker {
       return base;
     }
 
-    const backoffKey = `${userId}:gemini`;
-    const backoffUntil = this.rateLimitBackoff.get(backoffKey);
-    if (backoffUntil && Date.now() < backoffUntil) {
-      base.error = `Rate limited — retrying after ${new Date(backoffUntil).toISOString()}`;
-      return base;
-    }
+    if (this.inBackoff(userId, 'gemini', base)) return base;
 
     try {
-      const resp = await fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-      if (resp.status === 429) {
-        const retryAfter = resp.headers.get('retry-after');
-        const delaySec = retryAfter ? parseInt(retryAfter, 10) : 600;
-        const delayMs = (Number.isFinite(delaySec) && delaySec > 0 ? delaySec : 600) * 1000;
-        this.rateLimitBackoff.set(backoffKey, Date.now() + delayMs);
-        await this.saveUser(userId);
-        base.error = `Rate limited — retry after ${delaySec}s`;
-        return base;
-      }
-      if (this.rateLimitBackoff.delete(backoffKey)) await this.saveUser(userId);
+      const resp = await this.fetchWithBackoff(userId, 'gemini', base, () =>
+        fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: '{}',
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        }),
+      );
+      if (!resp) return base;
       if (!resp.ok) {
         base.error = `HTTP ${resp.status}`;
         return base;

@@ -1,5 +1,13 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, request as playwrightRequest } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
+import { createTestUser, deleteTestUser } from '../helpers/test-users';
+
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const FRESH_OPTS = {
+  baseURL: BASE_URL,
+  extraHTTPHeaders: { Origin: BASE_URL },
+  storageState: { cookies: [], origins: [] },
+};
 
 test.describe('Updates API', () => {
   test.describe('GET /api/updates', () => {
@@ -16,6 +24,37 @@ test.describe('Updates API', () => {
           expect(typeof val.updateAvailable).toBe('boolean');
           expect(typeof val.lastChecked).toBe('string');
         }
+      }
+    });
+
+    test('is reachable by a regular (non-admin) user — only the mutating update routes are admin-gated', async () => {
+      // The Images panel lives in the admin-only System tab, but the GET status
+      // route itself is intentionally not admin-gated (only logged-in). Pin that
+      // policy so a future change is a conscious one.
+      const user = await createTestUser('Updates GET User');
+      const ctx = await playwrightRequest.newContext(FRESH_OPTS);
+      try {
+        await ctx.post('/api/auth/sign-in/email', {
+          headers: { Origin: BASE_URL, 'Content-Type': 'application/json' },
+          data: { email: user.email, password: user.password },
+        });
+        const res = await ctx.get('/api/updates');
+        expect(res.status()).toBe(200);
+        const body = await res.json();
+        expect('isProductionMode' in body).toBe(true);
+      } finally {
+        await ctx.dispose();
+        await deleteTestUser(user.id);
+      }
+    });
+
+    test('requires a session (401 when unauthenticated)', async () => {
+      const ctx = await playwrightRequest.newContext(FRESH_OPTS);
+      try {
+        const res = await ctx.get('/api/updates');
+        expect(res.status()).toBe(401);
+      } finally {
+        await ctx.dispose();
       }
     });
   });

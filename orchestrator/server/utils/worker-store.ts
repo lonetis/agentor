@@ -46,8 +46,7 @@ export class WorkerStore extends UserScopedJsonStore<string, WorkerRecord> {
   }
 
   /** Flat list of every worker across every user, sorted by the immutable UUID
-   * `id` (stable global ordering — the old containerName sort was equivalent
-   * since containerName is just `<prefix>-<id>`). */
+   * `id` for a stable global ordering. */
   override list(): WorkerRecord[] {
     return super.list().sort((a, b) => a.id.localeCompare(b.id));
   }

@@ -42,9 +42,20 @@ export interface Config {
   betterAuthRpId: string;
 }
 
+const DEFAULT_LOG_MAX_SIZE = 50 * 1024 * 1024;
+
 function parseLogSize(raw: string): number {
-  const match = raw.trim().match(/^(\d+(?:\.\d+)?)\s*([kmg])?$/i);
-  if (!match) return 50 * 1024 * 1024;
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*([kmg])?$/i);
+  if (!match) {
+    if (trimmed) {
+      // Logger may not be initialized yet during config loading — mirror the
+      // DNS-provider warning and surface the misconfig instead of silently
+      // falling back to the default.
+      console.warn(`[config] LOG_MAX_SIZE='${trimmed}' is not parseable (expected e.g. 50m, 512k, 1g) — falling back to 50m`);
+    }
+    return DEFAULT_LOG_MAX_SIZE;
+  }
   const num = parseFloat(match[1]!);
   const unit = (match[2] || '').toLowerCase();
   if (unit === 'k') return Math.floor(num * 1024);

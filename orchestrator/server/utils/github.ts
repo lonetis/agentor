@@ -14,10 +14,14 @@ interface CacheEntry<T> {
 }
 
 const CACHE_TTL = 60_000; // 60s
+/** Timeout for every outbound GitHub API call so a hung socket can't pin a
+ * request handler forever. */
+const FETCH_TIMEOUT_MS = 30_000;
 
-/** Per-token GitHub API wrapper. Tokens come from individual users'
- * `UserEnvVars.githubToken`. Instances are cached by token so repeated calls
- * within 60s reuse the same upstream data. */
+/** Per-token GitHub API wrapper. Tokens come from each user's per-user env
+ * vars, resolved by the provider's `tokenEnvVar` (e.g. `GITHUB_TOKEN`).
+ * Instances are cached by token so repeated calls within 60s reuse the same
+ * upstream data. */
 export class GitHubService {
   private token: string;
   private cache = new Map<string, CacheEntry<unknown>>();
@@ -83,6 +87,7 @@ export class GitHubService {
       method: 'POST',
       headers: { ...this.headers(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, private: isPrivate }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     if (!res.ok) {
@@ -136,7 +141,7 @@ export class GitHubService {
   }
 
   private async apiFetch<T>(url: string): Promise<T> {
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) {
       useLogger().error(`[github] API request failed: ${res.status} ${res.statusText} (${url})`);
       throw createError({ statusCode: res.status, statusMessage: `GitHub API error: ${res.statusText}` });
@@ -149,7 +154,7 @@ export class GitHubService {
     let nextUrl: string | null = url;
 
     while (nextUrl) {
-      const res = await fetch(nextUrl, { headers: this.headers() });
+      const res = await fetch(nextUrl, { headers: this.headers(), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (!res.ok) {
         useLogger().error(`[github] paginated request failed: ${res.status} ${res.statusText} (${nextUrl})`);
         throw createError({ statusCode: res.status, statusMessage: `GitHub API error: ${res.statusText}` });
@@ -188,15 +193,46 @@ export class GitHubService {
   }
 }
 
-const instances = new Map<string, GitHubService>();
+/** Evict cached instances idle longer than this so rotated tokens (and their
+ * 60s repo caches) don't stay resident — and the plaintext token isn't retained
+ * as a Map key for the whole process lifetime. */
+const INSTANCE_IDLE_TTL_MS = 5 * 60_000;
+/** Hard cap on distinct cached instances. Guards against unbounded growth from
+ * many users / frequent token rotation; the least-recently-used is evicted. */
+const MAX_INSTANCES = 256;
+
+interface InstanceEntry {
+  service: GitHubService;
+  lastUsed: number;
+}
+
+const instances = new Map<string, InstanceEntry>();
 
 /** Returns a GitHubService bound to the given token, reusing instances so
- * their per-token caches persist across requests. */
+ * their per-token caches persist across requests. Idle instances are evicted
+ * after `INSTANCE_IDLE_TTL_MS` (and the map is LRU-capped) so rotated tokens
+ * are not retained in memory indefinitely. */
 export function getGitHubServiceForToken(token: string): GitHubService {
-  let inst = instances.get(token);
-  if (!inst) {
-    inst = new GitHubService(token);
-    instances.set(token, inst);
+  const now = Date.now();
+
+  // Drop instances that haven't been used recently — frees the token + its repo cache.
+  for (const [key, entry] of instances) {
+    if (now - entry.lastUsed > INSTANCE_IDLE_TTL_MS) instances.delete(key);
   }
-  return inst;
+
+  let entry = instances.get(token);
+  if (!entry) {
+    entry = { service: new GitHubService(token), lastUsed: now };
+    instances.set(token, entry);
+    // LRU cap: if over the limit, evict the oldest entries first.
+    if (instances.size > MAX_INSTANCES) {
+      const sorted = [...instances.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+      for (let i = 0; i < sorted.length - MAX_INSTANCES; i++) {
+        instances.delete(sorted[i]![0]);
+      }
+    }
+  } else {
+    entry.lastUsed = now;
+  }
+  return entry.service;
 }

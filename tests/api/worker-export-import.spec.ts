@@ -45,6 +45,33 @@ test.describe('Worker export', () => {
     expect(status).toBe(404);
   });
 
+  test('export of a stopped worker still succeeds (running or stopped)', async ({ request }) => {
+    const api = new ApiClient(request);
+    const worker = await createWorker(request);
+    try {
+      await api.stopContainer(worker.id);
+      const { status } = await api.exportWorker(worker.id, false);
+      expect(status).toBe(200);
+    } finally {
+      await cleanupWorker(request, worker.id);
+    }
+  });
+
+  test('export of an archived worker is a client error (never a 500)', async ({ request }) => {
+    const api = new ApiClient(request);
+    const worker = await createWorker(request);
+    await api.archiveContainer(worker.id);
+    try {
+      // An archived worker has no live container — the export endpoint must
+      // reject it with a 4xx, not surface a raw 500.
+      const { status } = await api.exportWorker(worker.id, false);
+      expect(status).toBeGreaterThanOrEqual(400);
+      expect(status).toBeLessThan(500);
+    } finally {
+      await api.deleteArchivedWorker(worker.id);
+    }
+  });
+
   test('export requires auth', async () => {
     const ctx = await playwrightRequest.newContext(UNAUTH_OPTS);
     try {

@@ -85,9 +85,16 @@ export default defineEventHandler(async (event) => {
     }, 2000);
   }
 
-  // Re-check status after pulls (non-orchestrator images will show as up-to-date)
+  // Re-check status after pulls (non-orchestrator images will show as
+  // up-to-date). Guarded: the pulls already succeeded, so a failing remote
+  // re-check (registry unreachable) must not reject the whole request and lose
+  // the result the client needs to display.
   if (!result.orchestratorRestarting) {
-    await checker.check();
+    try {
+      await checker.check();
+    } catch (err: unknown) {
+      result.errors.push(`Post-update status re-check failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   return result;

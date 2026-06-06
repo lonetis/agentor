@@ -2,7 +2,7 @@ defineRouteMeta({
   openAPI: {
     tags: ['Containers'],
     summary: 'Delete container',
-    description: 'Removes a worker container and its workspace volume.',
+    description: 'Removes a worker container and all of its volumes (workspace, agents, and DinD), plus its port/domain mappings.',
     operationId: 'deleteContainer',
     parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' }],
     responses: {

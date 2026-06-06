@@ -14,7 +14,7 @@ defineRouteMeta({
 import { useUsageChecker } from '../../utils/services';
 import { requireAuth } from '../../utils/auth-helpers';
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler((event) => {
   const { user } = requireAuth(event);
   return useUsageChecker().refresh(user.id);
 });

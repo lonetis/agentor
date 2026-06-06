@@ -17,6 +17,7 @@ defineRouteMeta({
 });
 
 import * as tar from 'tar-stream';
+import { useContainerManager } from '../../../utils/services';
 import { requireContainerAccess } from '../../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {

@@ -5,6 +5,7 @@ import type { LogBroadcaster } from './log-broadcaster';
 import type { Config } from './config';
 import type { LogLevel, LogSource, LogEntry } from '../../shared/types';
 import { shouldLog } from './log-levels';
+import { useContainerManager } from './services';
 
 interface AttachedStream {
   stream: NodeJS.ReadableStream;
@@ -66,7 +67,14 @@ export class LogCollector {
       if (labelValue === 'traefik') source = 'traefik';
       else source = 'worker';
 
-      const displayName = info.Labels['agentor.display-name'] || undefined;
+      // Workers carry no `agentor.display-name` label (labels are deliberately
+      // minimal — only `agentor.managed` + `agentor.id`). Resolve the friendly
+      // display name from the container manager, which `reconcileWorkers()` has
+      // already populated by the time this runs, so re-attached worker logs
+      // keep their `sourceName` after an orchestrator restart.
+      const displayName = source === 'worker'
+        ? useContainerManager().findByContainerName(name)?.displayName
+        : undefined;
       await this.attach(name, info.Id, source, displayName, { sinceNow: true });
     }
   }

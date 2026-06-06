@@ -28,6 +28,9 @@ export default defineEventHandler(async (event) => {
   if (body.name !== undefined && (!body.name || typeof body.name !== 'string')) {
     throw createError({ statusCode: 400, statusMessage: 'name must be a non-empty string' });
   }
+  if (body.content !== undefined && (typeof body.content !== 'string' || !body.content)) {
+    throw createError({ statusCode: 400, statusMessage: 'content must be a non-empty string' });
+  }
 
   const store = useInitScriptStore();
 

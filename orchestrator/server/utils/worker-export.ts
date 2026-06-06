@@ -9,6 +9,7 @@ import type { Environment } from './environments';
 import type { PortMapping } from './port-mapping-store';
 import type { DomainMapping } from './domain-mapping-store';
 import type { RepoConfig, MountConfig } from '../../shared/types';
+import { AGENT_CREDENTIAL_MAPPINGS } from './user-credentials';
 
 /** Bumped when the bundle layout changes incompatibly. */
 export const WORKER_EXPORT_VERSION = 1;
@@ -24,12 +25,20 @@ export const RESTORE_AGENTS_PARENT = '/home/agent';
 
 /** Per-user OAuth credential files that live inside the agents dir as bind
  * mounts (the worker owner's secrets) — stripped from the agents tar on export
- * so an export never leaks another user's tokens. */
-export const CREDENTIAL_EXCLUDE_SUFFIXES = [
-  '.claude/.credentials.json',
-  '.codex/auth.json',
-  '.gemini/oauth_creds.json',
-];
+ * so an export never leaks another user's tokens.
+ *
+ * Derived from the single `AGENT_CREDENTIAL_MAPPINGS` registry (the source of
+ * truth for credential paths) so adding a new agent there automatically extends
+ * the export strip list — the two can never drift. Each entry is the agent's
+ * container credential path with the agents-volume prefix removed, e.g.
+ * `/home/agent/.agent-data/.claude/.credentials.json` → `.claude/.credentials.json`.
+ * The export tars `/home/agent/.agent-data`, so tar entries are prefixed with
+ * the `.agent-data/` basename and these suffixes match via `endsWith`. */
+export const CREDENTIAL_EXCLUDE_SUFFIXES = AGENT_CREDENTIAL_MAPPINGS.map((m) =>
+  m.containerPath.startsWith(`${EXPORT_AGENTS_PATH}/`)
+    ? m.containerPath.slice(EXPORT_AGENTS_PATH.length + 1)
+    : m.containerPath,
+);
 
 /** File names inside the outer bundle tar. */
 export const BUNDLE_FILES = {
@@ -163,6 +172,18 @@ export async function extractBundle(bundlePath: string, destDir: string): Promis
   }
   const manifestRaw = await readFile(join(destDir, BUNDLE_FILES.manifest), 'utf8');
   const manifest = JSON.parse(manifestRaw) as WorkerExportManifest;
+
+  // Enforce the version gate the constant promises: reject a bundle produced by
+  // a newer, incompatible exporter rather than silently restoring it with
+  // mismatched semantics. Older versions (<= current) are still accepted.
+  if (typeof manifest.version !== 'number') {
+    throw new Error('Invalid worker export: manifest.version is missing or not a number');
+  }
+  if (manifest.version > WORKER_EXPORT_VERSION) {
+    throw new Error(
+      `Unsupported worker export: bundle version ${manifest.version} is newer than supported version ${WORKER_EXPORT_VERSION}`,
+    );
+  }
 
   return {
     manifest,

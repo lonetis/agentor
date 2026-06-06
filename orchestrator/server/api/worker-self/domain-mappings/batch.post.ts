@@ -42,11 +42,26 @@ defineRouteMeta({
   },
 });
 
-import { useDomainMappingStore, useTraefikManager, useConfig } from '../../../utils/services';
+import { useDomainMappingStore, useTraefikManager, useConfig, useEnvironmentStore } from '../../../utils/services';
+import { DEFAULT_ENVIRONMENT_ID } from '../../../utils/environments';
 import { requireWorkerSelf } from '../../../utils/worker-auth';
+import type { ExposeApis } from '../../../../shared/types';
+import type { WorkerSelfContext } from '../../../utils/worker-auth';
+
+// exposeApis gate — see port-mappings/index.post.ts for the full rationale.
+function requireExposedApi(ctx: WorkerSelfContext, api: keyof ExposeApis): void {
+  const env = useEnvironmentStore().getById(ctx.container.environmentId || DEFAULT_ENVIRONMENT_ID);
+  if (env && env.exposeApis?.[api] === false) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: `This worker's environment does not expose the ${api} API (exposeApis.${api} is disabled).`,
+    });
+  }
+}
 
 export default defineEventHandler(async (event) => {
   const ctx = await requireWorkerSelf(event);
+  requireExposedApi(ctx, 'domainMappings');
   const body = await readBody(event);
   const config = useConfig();
 
@@ -59,9 +74,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const store = useDomainMappingStore();
-  const created = [];
 
-  for (const item of body.items) {
+  // Validate ALL items up front (pure, no side effects) so a bad item never
+  // leaves earlier items persisted. Only after every item passes do we add
+  // them, rolling back already-added mappings if any add() conflicts mid-loop.
+  const inputs = body.items.map((item: Record<string, unknown>) => {
     if (!item.protocol || !item.internalPort || !item.baseDomain) {
       throw createError({
         statusCode: 400,
@@ -69,17 +86,17 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    if (item.subdomain === undefined || item.subdomain === null) item.subdomain = '';
-    if (!item.path || item.path === '/') item.path = '';
+    const subdomain = (item.subdomain === undefined || item.subdomain === null) ? '' : item.subdomain as string;
+    let path = (!item.path || item.path === '/') ? '' : item.path as string;
 
-    if (!config.baseDomains.includes(item.baseDomain)) {
+    if (!config.baseDomains.includes(item.baseDomain as string)) {
       throw createError({
         statusCode: 400,
         statusMessage: `baseDomain must be one of: ${config.baseDomains.join(', ')}`,
       });
     }
 
-    if (!['http', 'https', 'tcp'].includes(item.protocol)) {
+    if (!['http', 'https', 'tcp'].includes(item.protocol as string)) {
       throw createError({ statusCode: 400, statusMessage: 'protocol must be "http", "https", or "tcp"' });
     }
 
@@ -88,7 +105,7 @@ export default defineEventHandler(async (event) => {
       if (!domainConfig || domainConfig.challengeType === 'none') {
         throw createError({
           statusCode: 400,
-          statusMessage: `${item.protocol.toUpperCase()} requires TLS but '${item.baseDomain}' has no TLS configured`,
+          statusMessage: `${(item.protocol as string).toUpperCase()} requires TLS but '${item.baseDomain}' has no TLS configured`,
         });
       }
     }
@@ -104,18 +121,18 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    if (item.subdomain && !/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(item.subdomain)) {
+    if (subdomain && !/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(subdomain)) {
       throw createError({ statusCode: 400, statusMessage: 'subdomain must be a valid DNS label' });
     }
 
-    if (item.path) {
+    if (path) {
       if (item.protocol === 'tcp') {
         throw createError({ statusCode: 400, statusMessage: 'path is not supported for TCP protocol' });
       }
-      if (!/^\/[a-zA-Z0-9\/_.-]+$/.test(item.path)) {
+      if (!/^\/[a-zA-Z0-9\/_.-]+$/.test(path)) {
         throw createError({ statusCode: 400, statusMessage: 'path must start with / and contain only valid characters' });
       }
-      item.path = item.path.replace(/\/+$/, '') || '';
+      path = path.replace(/\/+$/, '') || '';
     }
 
     const intPort = Number(item.internalPort);
@@ -123,38 +140,44 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'internalPort must be an integer between 1 and 65535' });
     }
 
-    const hasUser = !!item.basicAuth?.username;
-    const hasPass = !!item.basicAuth?.password;
+    const basicAuth = item.basicAuth as { username?: string; password?: string } | undefined;
+    const hasUser = !!basicAuth?.username;
+    const hasPass = !!basicAuth?.password;
     if (hasUser !== hasPass) {
       throw createError({ statusCode: 400, statusMessage: 'basicAuth requires both username and password' });
     }
 
-    const input = {
-      subdomain: item.subdomain,
-      baseDomain: item.baseDomain,
-      path: item.path || '',
-      protocol: item.protocol,
+    return {
+      subdomain,
+      baseDomain: item.baseDomain as string,
+      path,
+      protocol: item.protocol as 'http' | 'https' | 'tcp',
       wildcard: itemWildcard,
       workerId: ctx.container.id,
       containerName: ctx.containerName,
       internalPort: intPort,
       userId: ctx.userId,
       ...(hasUser && hasPass
-        ? { basicAuth: { username: item.basicAuth.username, password: item.basicAuth.password } }
+        ? { basicAuth: { username: basicAuth!.username as string, password: basicAuth!.password as string } }
         : {}),
     };
+  });
 
-    let createdMapping;
-    try {
-      createdMapping = await store.add(input);
-    } catch (err) {
-      throw createError({
-        statusCode: 409,
-        statusMessage: err instanceof Error ? err.message : 'Subdomain conflict',
-      });
+  const created = [];
+  try {
+    for (const input of inputs) {
+      created.push(await store.add(input));
     }
-
-    created.push(createdMapping);
+  } catch (err) {
+    // Roll back any mappings already persisted in this batch so a partial
+    // failure does not leave orphan mappings behind.
+    for (const m of created) {
+      await store.remove(m.id).catch(() => undefined);
+    }
+    throw createError({
+      statusCode: 409,
+      statusMessage: err instanceof Error ? err.message : 'Subdomain conflict',
+    });
   }
 
   await useTraefikManager().reconcile();

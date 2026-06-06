@@ -20,6 +20,8 @@ export default defineEventHandler(async (event) => {
     containerName: ctx.containerName,
     userId: ctx.userId,
     status: ctx.container.status,
-    displayName: ctx.container.displayName ?? null,
+    // displayName is always populated for a running worker (defaulted to the
+    // container name when no label was set), so no `?? null` is needed.
+    displayName: ctx.container.displayName,
   };
 });

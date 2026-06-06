@@ -35,8 +35,9 @@ defineRouteMeta({
 });
 
 import type { RepoConfig, MountConfig, UpdateContainerSettingsRequest } from '../../../../shared/types';
-import { useContainerManager, useEnvironmentStore } from '../../../utils/services';
+import { useContainerManager, useEnvironmentStore, useConfig } from '../../../utils/services';
 import { MAX_DISPLAY_NAME_LENGTH } from '../../../utils/validation';
+import { validateMounts } from '../../../utils/docker';
 import { requireContainerAccess } from '../../../utils/auth-helpers';
 
 function bad(message: string): never {
@@ -60,6 +61,17 @@ function parseArray(value: unknown, label: string): unknown[] {
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!;
+
+  // Resolve the worker and check ownership BEFORE parsing/validating the body,
+  // so a non-owner probing a foreign worker id can't learn anything from
+  // body-validation errors (and we do no work for unauthorized callers).
+  const containerManager = useContainerManager();
+  const container = containerManager.get(id);
+  if (!container) {
+    throw createError({ statusCode: 404, statusMessage: 'Container not found' });
+  }
+  requireContainerAccess(event, container);
+
   const body = (await readBody(event)) ?? {};
 
   const patch: UpdateContainerSettingsRequest = {};
@@ -125,16 +137,10 @@ export default defineEventHandler(async (event) => {
         ...(mount.readOnly ? { readOnly: true } : {}),
       });
     }
+    const mountError = validateMounts(mounts, useConfig().dataDir);
+    if (mountError) bad(mountError);
     patch.mounts = mounts;
   }
-
-  const containerManager = useContainerManager();
-  const container = containerManager.get(id);
-  if (!container) {
-    throw createError({ statusCode: 404, statusMessage: 'Container not found' });
-  }
-
-  requireContainerAccess(event, container);
 
   return containerManager.updateSettings(id, patch);
 });

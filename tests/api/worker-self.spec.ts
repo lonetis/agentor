@@ -228,6 +228,48 @@ test.describe.serial('Worker-self API', () => {
     }
   });
 
+  test('POST /api/worker-self/port-mappings rejects a duplicate external port with 409 (not 500)', async ({ request }) => {
+    const port = uniquePort();
+    const ws = new TerminalWsClient(containerId);
+    try {
+      await ws.connect();
+      await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
+      const first = await curlInside(ws, '/api/worker-self/port-mappings', {
+        method: 'POST',
+        data: { externalPort: port, type: 'localhost', internalPort: 9997 },
+      });
+      expect(first.status).toBe(201);
+
+      // Re-creating the same external port must surface a 4xx (409), not an
+      // unhandled 500 from the store's "already mapped" throw.
+      const dup = await curlInside(ws, '/api/worker-self/port-mappings', {
+        method: 'POST',
+        data: { externalPort: port, type: 'localhost', internalPort: 9996 },
+      });
+      // The key contract is the 4xx (not a raw 500). 409 specifically signals
+      // the duplicate, mirroring the domain-mapping handlers.
+      expect(dup.status).toBe(409);
+    } finally {
+      ws.close();
+      const api = new ApiClient(request);
+      await api.deletePortMapping(port).catch(() => undefined);
+    }
+  });
+
+  test('DELETE /api/worker-self/port-mappings/:port rejects a garbage-suffixed port with 400', async () => {
+    const ws = new TerminalWsClient(containerId);
+    try {
+      await ws.connect();
+      await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
+      // Strict integer parse: "8080abc" must be rejected, not silently parsed
+      // to 8080 (which a tolerant parseInt would do).
+      const del = await curlInside(ws, '/api/worker-self/port-mappings/8080abc', { method: 'DELETE' });
+      expect(del.status).toBe(400);
+    } finally {
+      ws.close();
+    }
+  });
+
   test('GET /api/worker-self/port-mapper/status returns counts', async () => {
     const ws = new TerminalWsClient(containerId);
     try {
@@ -277,6 +319,96 @@ test.describe.serial('Worker-self API', () => {
       expect(ids).toContain('claude');
       expect(ids).toContain('codex');
       expect(ids).toContain('gemini');
+    } finally {
+      ws.close();
+    }
+  });
+});
+
+/**
+ * The worker environment's `exposeApis` flags must actually gate the matching
+ * `/api/worker-self/*` routes (403 when disabled), not merely hide capability
+ * docs. This worker runs in a custom environment that disables port-mappings
+ * and usage but keeps domain-mappings on, so we can assert both the gated 403
+ * and the still-allowed 200 paths from inside one worker.
+ */
+test.describe.serial('Worker-self exposeApis gate', () => {
+  let containerId: string;
+  let environmentId: string;
+
+  test.beforeAll(async ({ request }) => {
+    const api = new ApiClient(request);
+    const { status, body: env } = await api.createEnvironment({
+      name: `expose-gate-${Date.now()}`,
+      networkMode: 'full',
+      exposeApis: { portMappings: false, domainMappings: true, usage: false },
+    });
+    expect(status).toBe(201);
+    environmentId = env.id;
+
+    const container = await createWorker(request, { environmentId });
+    containerId = container.id;
+
+    // Wait for a shell prompt to be available.
+    const start = Date.now();
+    while (Date.now() - start < 60_000) {
+      const { status: createStatus, body } = await api.createPane(containerId, 'readiness-probe');
+      if (createStatus === 201) {
+        await api.deletePane(containerId, body.index);
+        break;
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  });
+
+  test.afterAll(async ({ request }) => {
+    const api = new ApiClient(request);
+    if (containerId) await cleanupWorker(request, containerId);
+    if (environmentId) await api.deleteEnvironment(environmentId).catch(() => undefined);
+  });
+
+  test('a disabled exposeApis flag refuses the matching route with 403 while info stays reachable', async () => {
+    const ws = new TerminalWsClient(containerId);
+    try {
+      await ws.connect();
+      await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
+
+      // info is never gated.
+      const info = await curlInside(ws, '/api/worker-self/info');
+      expect(info.status).toBe(200);
+
+      // portMappings disabled → 403 on every port-mapping route.
+      const listPorts = await curlInside(ws, '/api/worker-self/port-mappings');
+      expect(listPorts.status).toBe(403);
+
+      const createPort = await curlInside(ws, '/api/worker-self/port-mappings', {
+        method: 'POST',
+        data: { externalPort: uniquePort(), type: 'localhost', internalPort: 9001 },
+      });
+      expect(createPort.status).toBe(403);
+
+      // usage disabled → 403 on usage routes.
+      const usage = await curlInside(ws, '/api/worker-self/usage');
+      expect(usage.status).toBe(403);
+      const usageRefresh = await curlInside(ws, '/api/worker-self/usage/refresh', { method: 'POST' });
+      expect(usageRefresh.status).toBe(403);
+    } finally {
+      ws.close();
+    }
+  });
+
+  test('an enabled exposeApis flag still allows its routes (domain-mappings list)', async () => {
+    const ws = new TerminalWsClient(containerId);
+    try {
+      await ws.connect();
+      await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
+      // domainMappings is enabled — the list route must not be gated. It
+      // returns 200 (an array) regardless of whether BASE_DOMAINS is set, since
+      // the GET list never checks the mapper-enabled flag.
+      const list = await curlInside(ws, '/api/worker-self/domain-mappings');
+      expect(list.status).toBe(200);
+      const arr = JSON.parse(list.body);
+      expect(Array.isArray(arr)).toBe(true);
     } finally {
       ws.close();
     }

@@ -174,6 +174,16 @@ test.describe.serial('Worker settings — PATCH metadata & validation', () => {
     expect((await api.updateContainerSettings(worker.id, { mounts: [{ source: 123, target: '/x' }] })).status).toBe(400);
   });
 
+  test('unsafe mounts are rejected with 400 on PATCH', async ({ request }) => {
+    const api = new ApiClient(request);
+    // colon in source/target (Docker mount-option injection)
+    expect((await api.updateContainerSettings(worker.id, { mounts: [{ source: '/tmp:rshared', target: '/x' }] })).status).toBe(400);
+    expect((await api.updateContainerSettings(worker.id, { mounts: [{ source: '/tmp', target: '/x:Z' }] })).status).toBe(400);
+    // the Docker socket and the data directory are off-limits
+    expect((await api.updateContainerSettings(worker.id, { mounts: [{ source: '/var/run/docker.sock', target: '/sock' }] })).status).toBe(400);
+    expect((await api.updateContainerSettings(worker.id, { mounts: [{ source: '/data/users', target: '/steal' }] })).status).toBe(400);
+  });
+
   test('PATCH on a non-existent container returns 404', async ({ request }) => {
     const api = new ApiClient(request);
     const { status } = await api.updateContainerSettings('non-existent-id', { displayName: 'whatever' });

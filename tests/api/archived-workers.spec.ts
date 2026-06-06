@@ -1,6 +1,9 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test';
 import { ApiClient } from '../helpers/api-client';
 import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
+import { createTestUser, deleteTestUser, type CreatedUser } from '../helpers/test-users';
+
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 test.describe('Archived Workers API', () => {
   test.describe('GET /api/archived', () => {
@@ -273,6 +276,84 @@ test.describe('Archived Workers API', () => {
       const { body: mappings } = await api.listPortMappings();
       const found = mappings.find((m: { externalPort: number }) => m.externalPort === port);
       expect(found).toBeUndefined();
+    });
+  });
+
+  // Admin acting on another user's archived worker. The archived list returns
+  // every user's workers to an admin; the unarchive/delete routes must resolve
+  // the worker globally by id and allow admin access (no ?userId= hack). This is
+  // a regression guard for the authz bug where the admin's action silently 404'd.
+  test.describe('Admin acts on another user\'s archived worker', () => {
+    let user: CreatedUser;
+    let userCtx: APIRequestContext;
+
+    test.beforeAll(async () => {
+      user = await createTestUser('Archived Owner');
+      userCtx = await playwrightRequest.newContext({
+        baseURL: BASE_URL,
+        extraHTTPHeaders: { Origin: BASE_URL },
+        storageState: { cookies: [], origins: [] },
+      });
+      const userApi = new ApiClient(userCtx);
+      const signIn = await userApi.signInEmail(user.email, user.password);
+      if (signIn.status !== 200) throw new Error(`sign-in failed: ${signIn.status}`);
+    });
+
+    test.afterAll(async () => {
+      await userCtx?.dispose();
+      if (user) await deleteTestUser(user.id);
+    });
+
+    test('admin can unarchive a regular user\'s worker via /api/archived/:id', async ({ request }) => {
+      const userApi = new ApiClient(userCtx);
+      // The regular user creates + archives their own worker.
+      const worker = await createWorker(userCtx);
+      await userApi.archiveContainer(worker.id);
+
+      // Admin (default project context) sees it in the global archived list.
+      const adminApi = new ApiClient(request);
+      const { body: adminList } = await adminApi.listArchived();
+      expect(adminList.some((w: { id: string }) => w.id === worker.id)).toBe(true);
+
+      // Admin unarchives it with NO ?userId= — resolves globally by id.
+      const { status, body } = await adminApi.unarchiveWorker(worker.id);
+      expect(status).toBe(200);
+      expect(body.id).toBe(worker.id);
+      // Ownership is preserved — the restored worker still belongs to the user.
+      expect(body.userId).toBe(user.id);
+
+      await cleanupWorker(userCtx, worker.id);
+    });
+
+    test('admin can delete a regular user\'s archived worker via /api/archived/:id', async ({ request }) => {
+      const userApi = new ApiClient(userCtx);
+      const worker = await createWorker(userCtx);
+      await userApi.archiveContainer(worker.id);
+
+      const adminApi = new ApiClient(request);
+      const { status, body } = await adminApi.deleteArchivedWorker(worker.id);
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+
+      // Gone from the user's archived list too.
+      const { body: userList } = await userApi.listArchived();
+      expect(userList.some((w: { id: string }) => w.id === worker.id)).toBe(false);
+    });
+
+    test('a regular user cannot unarchive another user\'s archived worker (403)', async ({ request }) => {
+      // Admin creates + archives a worker (owned by admin).
+      const adminApi = new ApiClient(request);
+      const worker = await createWorker(request);
+      await adminApi.archiveContainer(worker.id);
+
+      try {
+        // The regular user must NOT be able to act on it.
+        const userApi = new ApiClient(userCtx);
+        const { status } = await userApi.unarchiveWorker(worker.id);
+        expect(status).toBe(403);
+      } finally {
+        await adminApi.deleteArchivedWorker(worker.id);
+      }
     });
   });
 });

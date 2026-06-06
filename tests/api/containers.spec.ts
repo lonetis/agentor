@@ -113,6 +113,43 @@ test.describe('Containers API', () => {
       expect(container.id).toBeTruthy();
     });
 
+    test('rejects a mount source containing a colon (option injection)', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status, body } = await api.createContainer({
+        mounts: [{ source: '/tmp/test-agentor:rshared', target: '/mnt/test' }],
+      });
+      expect(status).toBe(400);
+      expect(body.statusMessage).toContain(':');
+    });
+
+    test('rejects a mount target containing a colon (option injection)', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status, body } = await api.createContainer({
+        mounts: [{ source: '/tmp/test-agentor', target: '/mnt/test:Z' }],
+      });
+      expect(status).toBe(400);
+      expect(body.statusMessage).toContain(':');
+    });
+
+    test('rejects mounting the Docker socket', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status, body } = await api.createContainer({
+        mounts: [{ source: '/var/run/docker.sock', target: '/var/run/docker.sock' }],
+      });
+      expect(status).toBe(400);
+      expect(body.statusMessage).toContain('Docker socket');
+    });
+
+    test('rejects mounting the orchestrator data directory', async ({ request }) => {
+      const api = new ApiClient(request);
+      // /data is the default DATA_DIR — its subtree holds other users' data.
+      const { status, body } = await api.createContainer({
+        mounts: [{ source: '/data/users', target: '/mnt/steal' }],
+      });
+      expect(status).toBe(400);
+      expect(body.statusMessage).toContain('data directory');
+    });
+
     test('accepts repos as object array', async ({ request }) => {
       const container = await createWorker(request, {
         repos: [{ provider: 'github', url: 'https://github.com/octocat/Hello-World' }],

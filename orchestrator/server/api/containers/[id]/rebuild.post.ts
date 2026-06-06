@@ -2,7 +2,7 @@ defineRouteMeta({
   openAPI: {
     tags: ['Containers'],
     summary: 'Rebuild container',
-    description: 'Destroys and recreates a worker container with the latest image, preserving workspace data. Useful after pulling a new worker image.',
+    description: 'Destroys and recreates a worker container with the latest image, preserving the workspace, agents, and DinD volumes (plus port/domain mappings). Applies any pending settings edits. Useful after pulling a new worker image.',
     operationId: 'rebuildContainer',
     parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' }],
     responses: {

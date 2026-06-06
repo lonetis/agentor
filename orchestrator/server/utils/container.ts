@@ -40,9 +40,9 @@ interface ResolvedEnvConfig {
   instructionsJson: InstructionJsonEntry[];
 }
 
-const WORKER_MANAGED_LABEL = 'agentor.managed';
 /** The worker's UUID `id` — the only identifying label on a worker container.
- * Everything else (userId, config) lives in the WorkerStore record. */
+ * Everything else (userId, config) lives in the WorkerStore record. The
+ * `agentor.managed` label string is owned by `docker.ts` (read/written there). */
 const WORKER_ID_LABEL = 'agentor.id';
 /** Repo prefix for per-worker images created by `docker import` on restore. */
 const IMPORT_IMAGE_PREFIX = 'agentor-import-';
@@ -241,6 +241,18 @@ export class ContainerManager {
     };
   }
 
+  /** Derive the effective resource limits + DinD flag for a worker from its
+   * resolved environment config, falling back to the orchestrator defaults.
+   * Identical across create/rebuild/unarchive/import — extracted so the four
+   * lifecycle paths can never drift. */
+  private deriveLimits(env: ResolvedEnvConfig): { cpuLimit?: number; memoryLimit?: string; dockerEnabled: boolean } {
+    return {
+      cpuLimit: env.cpuLimit ?? this.config.defaultCpuLimit ?? undefined,
+      memoryLimit: env.memoryLimit || this.config.defaultMemoryLimit || undefined,
+      dockerEnabled: env.dockerEnabled ?? true,
+    };
+  }
+
   private static readonly STATE_MAP: Record<string, ContainerStatus> = {
     running: 'running',
     exited: 'stopped',
@@ -353,9 +365,7 @@ export class ContainerManager {
     const repos = request.repos?.filter((r) => r.url) || [];
 
     // Resource limits are an environment property (no per-worker override).
-    const cpuLimit = envConfig.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
-    const memoryLimit = envConfig.memoryLimit || this.config.defaultMemoryLimit || undefined;
-    const dockerEnabled = envConfig.dockerEnabled ?? true;
+    const { cpuLimit, memoryLimit, dockerEnabled } = this.deriveLimits(envConfig);
 
     // Git identity resolved live from the owner — never stored on the worker.
     const { gitName, gitEmail } = this.resolveGitIdentity(userId);
@@ -414,8 +424,23 @@ export class ContainerManager {
 
     this.containers.set(id, containerInfo);
 
-    if (this.workerStore) {
-      await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
+    // If persisting the record fails (disk full, EACCES on the per-user
+    // workers.json, …), the container is already created + started — roll it
+    // back (container, in-memory entry, volumes) so a failed create doesn't
+    // leak an orphan worker the store doesn't know about. Mirrors importWorker.
+    try {
+      if (this.workerStore) {
+        await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
+      }
+    } catch (err) {
+      this.containers.delete(id);
+      await this.dockerService.removeContainer(container.id).catch(() => {});
+      if (this.storageManager) {
+        await this.storageManager.removeWorkerWorkspace(userId, id, containerName).catch(() => {});
+        await this.storageManager.removeWorkerAgents(userId, id, containerName).catch(() => {});
+        if (dockerEnabled) await this.storageManager.removeWorkerDocker(containerName).catch(() => {});
+      }
+      throw err;
     }
 
     // Attach log collector to the new container
@@ -572,26 +597,33 @@ export class ContainerManager {
   async remove(id: string): Promise<void> {
     const info = this.containers.get(id);
     if (info) useLogCollector().detach(info.containerId);
-    await this.dockerService.removeContainer(info?.containerId ?? id);
-    if (info) {
-      await cleanupWorkerMappings(info.containerName);
-      if (this.storageManager) {
-        await this.storageManager.removeWorkerDocker(info.containerName);
-        await this.storageManager.removeWorkerWorkspace(info.userId, info.id, info.containerName);
-        await this.storageManager.removeWorkerAgents(info.userId, info.id, info.containerName);
+    try {
+      await this.dockerService.removeContainer(info?.containerId ?? id);
+      if (info) {
+        // Each cleanup is best-effort: one failure (e.g. EACCES on a directory-mode
+        // rm -rf, an in-use image) must not abort the rest or leave a half-removed
+        // worker in memory. Log and continue.
+        const warn = (what: string) => (err: unknown) =>
+          useLogger().warn(`[container] remove ${info.containerName}: ${what} failed: ${err instanceof Error ? err.message : err}`);
+        await cleanupWorkerMappings(info.containerName).catch(warn('mapping cleanup'));
+        if (this.storageManager) {
+          await this.storageManager.removeWorkerDocker(info.containerName).catch(warn('docker volume'));
+          await this.storageManager.removeWorkerWorkspace(info.userId, info.id, info.containerName).catch(warn('workspace'));
+          await this.storageManager.removeWorkerAgents(info.userId, info.id, info.containerName).catch(warn('agents'));
+        }
+        // Per-worker imported image (from restore) is owned by this worker — drop it.
+        if (info.importedImage?.startsWith(IMPORT_IMAGE_PREFIX)) {
+          await this.dockerService.removeImage(info.importedImage).catch(warn('imported image'));
+        }
+        if (this.workerStore) {
+          await this.workerStore.delete(info.userId, info.id).catch(warn('worker record'));
+        }
+        useLogger().info(`[container] removed ${info.containerName}`);
       }
-      // Per-worker imported image (from restore) is owned by this worker — drop it.
-      if (info.importedImage?.startsWith(IMPORT_IMAGE_PREFIX)) {
-        await this.dockerService.removeImage(info.importedImage);
-      }
-      if (this.workerStore) {
-        await this.workerStore.delete(info.userId, info.id).catch((err) => {
-          useLogger().error(`[container] failed to delete worker record '${info.containerName}': ${err instanceof Error ? err.message : err}`);
-        });
-      }
-      useLogger().info(`[container] removed ${info.containerName}`);
+    } finally {
+      // Always drop the in-memory entry so the UI never shows a removed worker.
+      this.containers.delete(id);
     }
-    this.containers.delete(id);
   }
 
   async archive(id: string): Promise<void> {
@@ -640,9 +672,7 @@ export class ContainerManager {
       envConfig = this.resolveEnvironmentConfig(undefined); // deleted env → default
     }
 
-    const cpuLimit = envConfig.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
-    const memoryLimit = envConfig.memoryLimit || this.config.defaultMemoryLimit || undefined;
-    const dockerEnabled = envConfig.dockerEnabled ?? true;
+    const { cpuLimit, memoryLimit, dockerEnabled } = this.deriveLimits(envConfig);
 
     const { gitName, gitEmail } = this.resolveGitIdentity(info.userId);
 
@@ -708,8 +738,13 @@ export class ContainerManager {
       await this.workerStore.upsert(this.containerInfoToWorkerRecord(containerInfo));
     }
 
-    // Mappings reconcile on Traefik restart — they key by containerName which is unchanged.
-    await reassignWorkerMappings(info.containerName);
+    // Refresh Traefik config so the new container is picked up by DNS (no
+    // restart needed — hot-reloaded via the file provider when mappings exist).
+    // Best-effort: the rebuild already succeeded, so a transient Traefik error
+    // must not turn it into a 500 (routing self-heals on the next reconcile).
+    await reassignWorkerMappings(info.containerName).catch((err) => {
+      useLogger().error(`[container] rebuild ${info.containerName}: traefik reconcile failed: ${err instanceof Error ? err.message : err}`);
+    });
 
     useLogCollector().attach(info.containerName, container.id, 'worker', info.displayName).catch(() => {});
 
@@ -738,9 +773,7 @@ export class ContainerManager {
       envConfig = this.resolveEnvironmentConfig(undefined); // deleted env → default
     }
 
-    const cpuLimit = envConfig.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
-    const memoryLimit = envConfig.memoryLimit || this.config.defaultMemoryLimit || undefined;
-    const dockerEnabled = envConfig.dockerEnabled ?? true;
+    const { cpuLimit, memoryLimit, dockerEnabled } = this.deriveLimits(envConfig);
 
     const { gitName, gitEmail } = this.resolveGitIdentity(worker.userId);
 
@@ -802,7 +835,11 @@ export class ContainerManager {
 
     this.containers.set(worker.id, containerInfo);
 
-    await reassignWorkerMappings(containerName);
+    // Best-effort Traefik refresh — unarchive already succeeded; a reconcile
+    // blip must not fail it (routing self-heals on the next reconcile).
+    await reassignWorkerMappings(containerName).catch((err) => {
+      useLogger().error(`[container] unarchive ${containerName}: traefik reconcile failed: ${err instanceof Error ? err.message : err}`);
+    });
 
     useLogCollector().attach(containerName, container.id, 'worker', worker.displayName).catch(() => {});
 
@@ -822,15 +859,18 @@ export class ContainerManager {
     // containerName is derived from the stable UUID `id`, not stored on the record.
     const containerName = this.buildContainerName(worker.id);
 
-    await cleanupWorkerMappings(containerName);
-
+    // Best-effort cleanups — one failure must not block the others or the final
+    // store delete (which is the source of truth for "this worker is gone").
+    const warn = (what: string) => (err: unknown) =>
+      useLogger().warn(`[container] deleteArchived ${containerName}: ${what} failed: ${err instanceof Error ? err.message : err}`);
+    await cleanupWorkerMappings(containerName).catch(warn('mapping cleanup'));
     if (this.storageManager) {
-      await this.storageManager.removeWorkerWorkspace(worker.userId, worker.id, containerName);
-      await this.storageManager.removeWorkerDocker(containerName);
-      await this.storageManager.removeWorkerAgents(worker.userId, worker.id, containerName);
+      await this.storageManager.removeWorkerWorkspace(worker.userId, worker.id, containerName).catch(warn('workspace'));
+      await this.storageManager.removeWorkerDocker(containerName).catch(warn('docker volume'));
+      await this.storageManager.removeWorkerAgents(worker.userId, worker.id, containerName).catch(warn('agents'));
     }
     if (worker.importedImage?.startsWith(IMPORT_IMAGE_PREFIX)) {
-      await this.dockerService.removeImage(worker.importedImage);
+      await this.dockerService.removeImage(worker.importedImage).catch(warn('imported image'));
     }
     await this.workerStore.delete(worker.userId, worker.id);
   }
@@ -849,14 +889,18 @@ export class ContainerManager {
       return {};
     }
     const standard = this.config.workerImagePrefix + this.config.workerImage;
-    let imageConfig: ImageConfigOverride | undefined;
     try {
       await this.dockerService.ensureImage(standard);
-      imageConfig = await this.dockerService.inspectImageConfig(standard);
+      const imageConfig = await this.dockerService.inspectImageConfig(standard);
+      return { image: importedImage, imageConfig };
     } catch (err) {
-      useLogger().warn(`[container] could not read standard image config: ${err instanceof Error ? err.message : err}`);
+      // A `docker import`ed image has no entrypoint/env of its own, so running
+      // it without the replicated standard-image config produces an unbootable
+      // worker. If we can't read that config, fall back to the standard image
+      // (loses the captured rootfs but boots) — mirroring the import path.
+      useLogger().warn(`[container] could not read standard image config for imported worker — using standard image: ${err instanceof Error ? err.message : err}`);
+      return {};
     }
-    return { image: importedImage, imageConfig };
   }
 
   /** Stream a complete worker export bundle (manifest + workspace + agents, and
@@ -866,7 +910,11 @@ export class ContainerManager {
     const info = this.containers.get(id);
     if (!info) throw new Error('Container not found');
     if (info.status !== 'running' && info.status !== 'stopped') {
-      throw new Error('Worker must be running or stopped to export');
+      // A worker that is creating/removing/error has no exportable container —
+      // surface this as a client error (409), not a 500.
+      const err = new Error('Worker must be running or stopped to export') as Error & { statusCode?: number };
+      err.statusCode = 409;
+      throw err;
     }
 
     const env = this.environmentStore?.getById(info.environmentId || DEFAULT_ENVIRONMENT_ID)
@@ -982,9 +1030,7 @@ export class ContainerManager {
       const initScript = manifest.worker?.initScript || '';
 
       const envConfig = this.resolveEnvironmentConfig(environmentId);
-      const cpuLimit = envConfig.cpuLimit ?? this.config.defaultCpuLimit ?? undefined;
-      const memoryLimit = envConfig.memoryLimit || this.config.defaultMemoryLimit || undefined;
-      const dockerEnabled = envConfig.dockerEnabled ?? true;
+      const { cpuLimit, memoryLimit, dockerEnabled } = this.deriveLimits(envConfig);
       const { gitName, gitEmail } = this.resolveGitIdentity(userId);
       const workerJson: WorkerJsonPayload = { id, displayName, repos, initScript, gitName, gitEmail };
       const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(userId);

@@ -74,10 +74,12 @@ export class LogStore {
   }
 
   private async rotate(file: string): Promise<void> {
-    // Close existing stream
+    // Close existing stream — await the flush so all buffered bytes land in the
+    // file BEFORE we rename it (renaming an open fd mid-flush is not guaranteed
+    // safe across platforms / virtiofs bind mounts).
     const existing = this.streams.get(file);
     if (existing) {
-      existing.end();
+      await new Promise<void>((resolve) => existing.end(resolve));
       this.streams.delete(file);
     }
 
@@ -165,10 +167,12 @@ export class LogStore {
   }
 
   async clear(): Promise<void> {
-    // Close all streams
-    for (const [, stream] of this.streams) {
-      stream.end();
-    }
+    // Close all streams, awaiting each flush before unlinking the files.
+    await Promise.all(
+      Array.from(this.streams.values()).map(
+        (stream) => new Promise<void>((resolve) => stream.end(resolve)),
+      ),
+    );
     this.streams.clear();
 
     try {
@@ -203,10 +207,14 @@ export class LogStore {
     return Array.from(sources.values());
   }
 
-  destroy(): void {
-    for (const [, stream] of this.streams) {
-      stream.end();
-    }
+  async destroy(): Promise<void> {
+    // Flush all write streams before resolving so a graceful shutdown does not
+    // drop the last buffered lines.
+    await Promise.all(
+      Array.from(this.streams.values()).map(
+        (stream) => new Promise<void>((resolve) => stream.end(resolve)),
+      ),
+    );
     this.streams.clear();
   }
 }

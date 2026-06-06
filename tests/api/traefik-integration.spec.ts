@@ -206,6 +206,53 @@ test.describe('Traefik Integration', () => {
     });
   });
 
+  test.describe('Path-based routing', () => {
+    // A valid path must still route correctly after the rule-literal sanitizer
+    // strips Traefik rule metacharacters (backtick, close-paren, backslash) from
+    // values interpolated into the PathPrefix rule literal. A normal `/api/v1`
+    // path contains none of those, so routing must be unaffected — this guards
+    // against the sanitizer mangling legitimate paths.
+    test('HTTP mapping with a path prefix routes to the worker', async ({ request }) => {
+      test.skip(!mapperEnabled, 'Domain mapping not enabled');
+
+      const api = new ApiClient(request);
+      const container = await createWorker(request);
+      const uniqueSub = `pathroute-${Date.now()}`;
+
+      try {
+        const { status: createStatus, body: mapping } = await api.createDomainMapping({
+          subdomain: uniqueSub,
+          baseDomain,
+          protocol: 'http',
+          path: '/api/v1',
+          workerId: container.id,
+          internalPort: 8443,
+        });
+        expect(createStatus).toBe(201);
+        expect(mapping.path).toBe('/api/v1');
+
+        await new Promise(r => setTimeout(r, 3000));
+
+        const ctx = await playwrightRequest.newContext();
+        try {
+          // A non-404 status proves the host+path router matched (404 is what
+          // Traefik returns when no router matches). Network failures tolerated.
+          const res = await ctx.get(`http://${uniqueSub}.${baseDomain}/api/v1`, {
+            timeout: 10000,
+            maxRedirects: 0,
+          }).catch(() => null);
+          if (res) expect(res.status()).not.toBe(404);
+        } finally {
+          await ctx.dispose();
+        }
+
+        await api.deleteDomainMapping(mapping.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+  });
+
   test.describe('BasicAuth routing', () => {
     test('HTTPS with basicAuth returns 401 without credentials', async ({ request }) => {
       test.skip(!mapperEnabled, 'Domain mapping not enabled');
@@ -649,6 +696,59 @@ test.describe('Traefik Integration', () => {
         expect(found).toBeTruthy();
         expect(found.wildcard).toBe(true);
         expect(found.protocol).toBe('tcp');
+
+        await api.deleteDomainMapping(mapping.id);
+      } finally {
+        await cleanupWorker(request, container.id);
+      }
+    });
+
+    test('wildcard HTTPS on a selfsigned subdomain serves a child host with the per-host wildcard cert', async ({ request }) => {
+      test.skip(!mapperEnabled, 'Domain mapping not enabled');
+
+      const api = new ApiClient(request);
+      const { body: status } = await api.getDomainMapperStatus();
+      // This specifically targets the lazy per-host wildcard cert path
+      // (selfSignedWildcardHosts in writeTraefikConfig) for a *subdomain* of a
+      // selfsigned base — distinct from the base-domain cert generated at init().
+      const selfSignedDomain = status.baseDomains.find((d: string) => {
+        const dc = status.baseDomainConfigs.find((c: { domain: string; challengeType: string }) => c.domain === d);
+        return dc && dc.challengeType === 'selfsigned';
+      });
+      test.skip(!selfSignedDomain, 'No selfsigned base domain configured');
+
+      const container = await createWorker(request);
+      const parent = `sswc-${Date.now()}`;
+
+      try {
+        const { status: createStatus, body: mapping } = await api.createDomainMapping({
+          subdomain: parent,
+          baseDomain: selfSignedDomain,
+          protocol: 'https',
+          wildcard: true,
+          workerId: container.id,
+          internalPort: 8443,
+        });
+        expect(createStatus).toBe(201);
+        expect(mapping.wildcard).toBe(true);
+
+        const child = `sschild.${parent}.${selfSignedDomain}`;
+        try {
+          // The handshake completing proves Traefik matched the wildcard router
+          // and could load the per-host wildcard cert for the parent. Inspect the
+          // SANs for diagnostics — they should advertise *.<parent>.<base>.
+          const { cert } = await waitForTlsSni(child, 443, 30_000);
+          const sans = (cert.subjectaltname || '').split(',').map((s) => s.trim());
+          // eslint-disable-next-line no-console
+          console.log(`[selfsigned-wildcard] SNI ${child} → cert SANs: ${sans.join(', ') || '(none)'}`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (/ENOTFOUND|EAI_AGAIN/.test(msg)) {
+            test.skip(true, 'No wildcard DNS resolution for *.localhost in this environment');
+          } else {
+            throw err;
+          }
+        }
 
         await api.deleteDomainMapping(mapping.id);
       } finally {

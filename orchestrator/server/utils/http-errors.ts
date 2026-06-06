@@ -12,7 +12,10 @@ import { createError } from 'h3';
  */
 export function rethrowAsHttpError(err: unknown, fallbackMessage = 'Operation failed'): never {
   const maybe = err as { statusCode?: unknown } | null;
-  if (maybe && typeof maybe.statusCode === 'number') throw err;
+  // Only preserve genuine HTTP error codes (4xx/5xx) from `createError`. A
+  // library error carrying a non-error status — e.g. dockerode's 304 "container
+  // already stopped" — must not surface as a bodyless HTTP 304; wrap it in a 500.
+  if (maybe && typeof maybe.statusCode === 'number' && maybe.statusCode >= 400) throw err;
   const message = err instanceof Error ? err.message : fallbackMessage;
   throw createError({ statusCode: 500, statusMessage: message });
 }

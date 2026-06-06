@@ -7,9 +7,45 @@ defineRouteMeta({
     responses: {
       200: {
         description: 'Agent usage status',
-        content: { 'application/json': { schema: { type: 'object', properties: { agents: { type: 'array', items: { type: 'object', properties: { agentId: { type: 'string' }, displayName: { type: 'string' }, authType: { type: 'string', enum: ['oauth', 'api-key', 'none'] }, usageAvailable: { type: 'boolean' }, windows: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, utilization: { type: 'number' }, resetsAt: { type: 'string', nullable: true } } } }, error: { type: 'string' }, lastFetchTime: { type: 'string', description: 'ISO 8601 timestamp of last successful fetch for this agent' } } } } } } } },
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/AgentUsageStatus' } } },
       },
       401: { description: 'Unauthorized' },
+    },
+    $global: {
+      components: {
+        schemas: {
+          AgentUsageInfo: {
+            type: 'object',
+            properties: {
+              agentId: { type: 'string' },
+              displayName: { type: 'string' },
+              authType: { type: 'string', enum: ['oauth', 'api-key', 'none'] },
+              usageAvailable: { type: 'boolean' },
+              planType: { type: 'string', description: 'Plan/tier label when the upstream reports one (e.g. Codex)' },
+              windows: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    label: { type: 'string' },
+                    utilization: { type: 'number' },
+                    resetsAt: { type: 'string', nullable: true },
+                  },
+                },
+              },
+              error: { type: 'string' },
+              lastChecked: { type: 'string', description: 'ISO 8601 timestamp of the last fetch attempt' },
+              lastFetchTime: { type: 'string', description: 'ISO 8601 timestamp of last successful fetch for this agent' },
+            },
+          },
+          AgentUsageStatus: {
+            type: 'object',
+            properties: {
+              agents: { type: 'array', items: { $ref: '#/components/schemas/AgentUsageInfo' } },
+            },
+          },
+        },
+      },
     },
   },
 });

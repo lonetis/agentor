@@ -15,16 +15,15 @@ defineRouteMeta({
   },
 });
 
-import { useContainerManager } from '../../../utils/services';
 import { createWsRelayHandlers, getPeerUrl } from '../../../utils/ws-utils';
-import { requireAuthFromEvent } from '../../../utils/auth-helpers';
+import { resolveOwnedRunningContainer } from '../../../utils/auth-helpers';
 
 const wsHandlers = createWsRelayHandlers(
   // The worker id is a UUID (with hyphens) — match the whole segment, not just hex.
   /\/editor\/([^/?]+)/,
-  (containerName, containerId, peer) => {
+  (containerName, workerId, peer) => {
     const url = getPeerUrl(peer);
-    const prefix = `/editor/${containerId}`;
+    const prefix = `/editor/${workerId}`;
     const idx = url?.indexOf(prefix) ?? -1;
     const targetPath = idx !== -1 ? url!.slice(idx + prefix.length) || '/' : '/';
     return `ws://${containerName}:8443${targetPath}`;
@@ -36,15 +35,7 @@ export default defineEventHandler({
     const containerId = getRouterParam(event, 'containerId')!;
     const path = getRouterParam(event, 'path') || '';
 
-    const info = useContainerManager().get(containerId);
-    if (!info || info.status !== 'running') {
-      throw createError({ statusCode: 404, statusMessage: 'Container not found or not running' });
-    }
-
-    const ctx = await requireAuthFromEvent(event);
-    if (ctx.user.role !== 'admin' && info.userId !== ctx.user.id) {
-      throw createError({ statusCode: 403, statusMessage: 'Forbidden' });
-    }
+    const info = await resolveOwnedRunningContainer(event, containerId);
 
     const url = getRequestURL(event);
     const target = `http://${info.containerName}:8443/${path}${url.search}`;

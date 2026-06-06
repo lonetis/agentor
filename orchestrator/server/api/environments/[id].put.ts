@@ -33,6 +33,15 @@ export default defineEventHandler(async (event) => {
   if (body.name !== undefined && (!body.name || typeof body.name !== 'string')) {
     throw createError({ statusCode: 400, statusMessage: 'name must be a non-empty string' });
   }
+  if (body.cpuLimit !== undefined && (typeof body.cpuLimit !== 'number' || body.cpuLimit < 0)) {
+    throw createError({ statusCode: 400, statusMessage: 'cpuLimit must be a non-negative number (0 = unrestricted)' });
+  }
+  if (body.enabledCapabilityIds !== undefined && body.enabledCapabilityIds !== null && !Array.isArray(body.enabledCapabilityIds)) {
+    throw createError({ statusCode: 400, statusMessage: 'enabledCapabilityIds must be null or an array of ids' });
+  }
+  if (body.enabledInstructionIds !== undefined && body.enabledInstructionIds !== null && !Array.isArray(body.enabledInstructionIds)) {
+    throw createError({ statusCode: 400, statusMessage: 'enabledInstructionIds must be null or an array of ids' });
+  }
 
   const update: Partial<Record<string, unknown>> = {};
   if (body.name !== undefined) update.name = body.name;

@@ -8,6 +8,11 @@ const CA_CERT_FILE = 'ca.crt';
 const CA_VALIDITY_YEARS = 10;
 const DOMAIN_CERT_VALIDITY_YEARS = 5;
 
+/**
+ * Issues self-signed TLS material for `:selfsigned` base domains. Every cert
+ * this manager produces is a **wildcard** cert (CN `*.<host>`, SANs `<host>` +
+ * `*.<host>`) signed by a single local CA — there is no non-wildcard variant.
+ */
 export class SelfSignedCertManager {
   private dataDir: string;
   private certDir: string;
@@ -24,7 +29,7 @@ export class SelfSignedCertManager {
     await this.ensureCaCert();
 
     for (const domain of selfSignedDomains) {
-      await this.ensureDomainCert(domain);
+      await this.ensureWildcardCert(domain);
     }
 
     useLogger().info(`[selfsigned-certs] initialized CA + ${selfSignedDomains.length} domain cert(s)`);
@@ -39,7 +44,7 @@ export class SelfSignedCertManager {
   async ensureWildcardCertForHost(host: string): Promise<void> {
     await mkdir(this.certDir, { recursive: true });
     await this.ensureCaCert();
-    await this.ensureDomainCert(host);
+    await this.ensureWildcardCert(host);
   }
 
   async getCaCertPem(): Promise<string> {
@@ -99,7 +104,13 @@ export class SelfSignedCertManager {
     useLogger().info('[selfsigned-certs] CA certificate generated');
   }
 
-  private async ensureDomainCert(domain: string): Promise<void> {
+  /**
+   * Generate (idempotently) the wildcard leaf cert for `domain`: CN `*.<domain>`
+   * with SANs `<domain>` + `*.<domain>`, signed by the local CA. Skips if both
+   * the cert and key already exist on disk. Callers must have ensured the CA via
+   * `ensureCaCert()` first (init()/ensureWildcardCertForHost both do).
+   */
+  private async ensureWildcardCert(domain: string): Promise<void> {
     const certPath = this.getCertPath(domain);
     const keyPath = this.getKeyPath(domain);
 

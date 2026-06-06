@@ -30,6 +30,11 @@ export interface DomainMapping extends UserOwnedResource {
  * are minted by the store. */
 export type DomainMappingInput = Omit<DomainMapping, 'id' | 'createdAt' | 'updatedAt'>;
 
+/** Per-user store of Traefik domain mappings
+ * (`<DATA_DIR>/users/<userId>/domain-mappings.json`, keyed by UUID `id`). Removal
+ * of a non-existent mapping is intentionally idempotent (logs at `debug`, returns
+ * `false`) to support the worker-self DELETE-is-idempotent contract — unlike
+ * `WorkerStore`, which throws on a missing worker. */
 export class DomainMappingStore extends UserScopedJsonStore<string, DomainMapping> {
   constructor(dataDir: string) {
     super(dataDir, 'domain-mappings.json', (m) => m.id);
@@ -41,7 +46,12 @@ export class DomainMappingStore extends UserScopedJsonStore<string, DomainMappin
   }
 
   /** Create a mapping, minting its UUID `id` and timestamps. Runs uniqueness /
-   * protocol-conflict checks. Returns the created mapping. */
+   * protocol-conflict checks. Returns the created mapping.
+   *
+   * Domain routes are a GLOBAL namespace (a hostname can only route to one
+   * backend on the single shared Traefik), so the uniqueness check spans every
+   * user. The error messages are deliberately generic — they confirm the route
+   * the caller supplied is taken, but do not reveal whose mapping owns it. */
   async add(input: DomainMappingInput): Promise<DomainMapping> {
     const fullDomain = input.subdomain ? `${input.subdomain}.${input.baseDomain}` : input.baseDomain;
     const fullRoute = input.path ? `${fullDomain}${input.path}` : fullDomain;
@@ -61,7 +71,7 @@ export class DomainMappingStore extends UserScopedJsonStore<string, DomainMappin
       // Same domain + path + protocol = duplicate
       if ((existing.path || '') === (input.path || '') && existing.protocol === input.protocol) {
         useLogger().warn(`[domain-mappings] duplicate ${input.protocol} mapping for '${fullRoute}' rejected`);
-        throw new Error(`'${fullRoute}' is already mapped for protocol '${input.protocol}'`);
+        throw new Error(`'${fullRoute}' is already in use for protocol '${input.protocol}'`);
       }
     }
     const now = new Date().toISOString();

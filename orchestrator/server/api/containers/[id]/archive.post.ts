@@ -2,7 +2,7 @@ defineRouteMeta({
   openAPI: {
     tags: ['Containers'],
     summary: 'Archive container',
-    description: 'Archives a worker container, keeping its workspace volume.',
+    description: 'Archives a worker container, keeping its workspace, agents, and DinD volumes for unarchiving.',
     operationId: 'archiveContainer',
     parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Container ID' }],
     responses: {

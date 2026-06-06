@@ -20,7 +20,11 @@ defineRouteMeta({
               id: { type: 'string' },
               appType: { type: 'string' },
               port: { type: 'integer' },
-              status: { type: 'string', enum: ['running', 'stopped'] },
+              status: { type: 'string', enum: ['running', 'stopped', 'auth_required'] },
+              externalPort: { type: 'integer', description: 'Mapped external port (e.g. ssh)' },
+              machineName: { type: 'string', description: 'Microsoft tunnel machine name (vscode)' },
+              authUrl: { type: 'string', description: 'GitHub device-code URL while authenticating (vscode)' },
+              authCode: { type: 'string', description: 'GitHub device code while authenticating (vscode)' },
             },
           },
         },
@@ -39,16 +43,24 @@ export default defineEventHandler(async (event) => {
   const containerManager = useContainerManager();
   requireContainerAccess(event, containerManager.get(id));
 
-  const allInstances: AppInstanceInfo[] = [];
+  // Each app type is an independent docker-exec round trip — run them
+  // concurrently rather than serially.
+  const appTypes = listAppTypes();
+  const results = await Promise.allSettled(
+    appTypes.map((appType) => containerManager.listAppInstances(id, appType.id)),
+  );
 
-  for (const appType of listAppTypes()) {
-    try {
-      const instances = await containerManager.listAppInstances(id, appType.id);
-      allInstances.push(...instances);
-    } catch {
-      // Container might be stopped or app script missing
+  const allInstances: AppInstanceInfo[] = [];
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled') {
+      allInstances.push(...result.value);
+    } else {
+      // The container might be stopped or the app script missing — degrade to an
+      // empty list, but make the failure observable in the centralized log.
+      const reason = result.reason instanceof Error ? result.reason.message : result.reason;
+      useLogger().debug(`[apps] list failed for ${id}/${appTypes[i]?.id}: ${reason}`);
     }
-  }
+  });
 
   return allInstances;
 });

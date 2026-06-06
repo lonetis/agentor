@@ -26,15 +26,39 @@ defineRouteMeta({
       201: { description: 'Created port mapping', content: { 'application/json': { schema: { $ref: '#/components/schemas/PortMapping' } } } },
       400: { description: 'Validation error' },
       401: { description: 'Caller IP did not resolve to a managed worker' },
+      403: { description: 'Worker environment does not expose the port-mappings API' },
+      409: { description: 'External port already mapped' },
     },
   },
 });
 
-import { usePortMappingStore, useTraefikManager } from '../../../utils/services';
+import { usePortMappingStore, useTraefikManager, useEnvironmentStore } from '../../../utils/services';
+import { DEFAULT_ENVIRONMENT_ID } from '../../../utils/environments';
 import { requireWorkerSelf } from '../../../utils/worker-auth';
+import type { ExposeApis } from '../../../../shared/types';
+import type { WorkerSelfContext } from '../../../utils/worker-auth';
+
+// Enforces the worker environment's `exposeApis` gate. `requireWorkerSelf` only
+// proves WHICH worker is calling — it does not consult the environment. This
+// makes the server actually refuse a route (403) the operator disabled via
+// `exposeApis`, instead of the flag being documentation-only. Inlined per
+// handler because every file under server/api/** is registered as a route, so
+// a shared helper file here cannot exist. See the sibling worker-self handlers
+// for the same block (domain-mappings/*, usage/*). Fails open on an
+// unresolvable environment (the default config exposes all APIs).
+function requireExposedApi(ctx: WorkerSelfContext, api: keyof ExposeApis): void {
+  const env = useEnvironmentStore().getById(ctx.container.environmentId || DEFAULT_ENVIRONMENT_ID);
+  if (env && env.exposeApis?.[api] === false) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: `This worker's environment does not expose the ${api} API (exposeApis.${api} is disabled).`,
+    });
+  }
+}
 
 export default defineEventHandler(async (event) => {
   const ctx = await requireWorkerSelf(event);
+  requireExposedApi(ctx, 'portMappings');
   const body = await readBody(event);
 
   if (!body.externalPort || !body.type || !body.internalPort) {
@@ -61,16 +85,26 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const created = await usePortMappingStore().add({
-    externalPort: extPort,
-    type: body.type as 'localhost' | 'external',
-    workerId: ctx.container.id,
-    containerName: ctx.containerName,
-    internalPort: intPort,
-    appType: body.appType as string | undefined,
-    instanceId: body.instanceId as string | undefined,
-    userId: ctx.userId,
-  });
+  let created;
+  try {
+    created = await usePortMappingStore().add({
+      externalPort: extPort,
+      type: body.type as 'localhost' | 'external',
+      workerId: ctx.container.id,
+      containerName: ctx.containerName,
+      internalPort: intPort,
+      appType: body.appType as string | undefined,
+      instanceId: body.instanceId as string | undefined,
+      userId: ctx.userId,
+    });
+  } catch (err) {
+    // `add()` throws on a duplicate external port — surface a 409, mirroring
+    // the domain-mapping handlers (previously this leaked as a 500).
+    throw createError({
+      statusCode: 409,
+      statusMessage: err instanceof Error ? err.message : 'Port is already mapped',
+    });
+  }
   await useTraefikManager().reconcile();
 
   setResponseStatus(event, 201);

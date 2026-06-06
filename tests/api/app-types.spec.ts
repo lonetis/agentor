@@ -44,4 +44,44 @@ test.describe('App Types API', () => {
       }
     }
   });
+
+  test('every app type carries the documented base fields', async ({ request }) => {
+    // The OpenAPI item schema declares id/displayName/description/ports/
+    // maxInstances/singleton — assert the handler actually emits all of them.
+    const api = new ApiClient(request);
+    const { body } = await api.listAppTypes();
+    for (const appType of body) {
+      expect(typeof appType.id).toBe('string');
+      expect(typeof appType.displayName).toBe('string');
+      expect(typeof appType.description).toBe('string');
+      expect(Array.isArray(appType.ports)).toBe(true);
+      expect(typeof appType.maxInstances).toBe('number');
+      expect(typeof appType.singleton).toBe('boolean');
+    }
+  });
+
+  test('SSH app type exposes fixedInternalPort + autoPortMapping', async ({ request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.listAppTypes();
+    const ssh = body.find((t: { id: string }) => t.id === 'ssh');
+    expect(ssh).toBeTruthy();
+    expect(ssh.singleton).toBe(true);
+    expect(ssh.fixedInternalPort).toBe(22);
+    expect(ssh.autoPortMapping).toBeTruthy();
+    expect(ssh.autoPortMapping.type).toBe('external');
+    expect(typeof ssh.autoPortMapping.externalPortStart).toBe('number');
+    expect(typeof ssh.autoPortMapping.externalPortEnd).toBe('number');
+    expect(ssh.autoPortMapping.externalPortStart).toBeLessThanOrEqual(ssh.autoPortMapping.externalPortEnd);
+  });
+
+  test('VS Code Tunnel app type is a singleton with no ports + no autoPortMapping', async ({ request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.listAppTypes();
+    const vscode = body.find((t: { id: string }) => t.id === 'vscode');
+    expect(vscode).toBeTruthy();
+    expect(vscode.singleton).toBe(true);
+    expect(vscode.ports.length).toBe(0);
+    expect(vscode.autoPortMapping).toBeUndefined();
+    expect(vscode.fixedInternalPort).toBeUndefined();
+  });
 });
