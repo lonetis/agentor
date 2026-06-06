@@ -445,9 +445,28 @@ export function useSplitPanes() {
       // Check min fraction
       const futureCount = parent.children.length + 1;
       if (1 / futureCount < MIN_FRACTION) {
-        // Undo: put tab back
-        sourceLeaf.tabs.splice(tabIdx, 0, movedTab);
-        if (sourceLeaf.activeTabId === null) sourceLeaf.activeTabId = tabId;
+        // Undo: put the tab back. If the source leaf was emptied above it was
+        // detached from the tree (removeLeafFromTree), so re-inserting into it
+        // would orphan the tab. In that case fall back to the still-reachable
+        // reference leaf so the tab is never silently lost.
+        if (!sourceWasEmpty) {
+          // Source leaf is still in the tree — restore exactly as before.
+          sourceLeaf.tabs.splice(tabIdx, 0, movedTab);
+          if (sourceLeaf.activeTabId === null) sourceLeaf.activeTabId = tabId;
+        } else {
+          // Source leaf was removed; attach to the reachable reference leaf so
+          // the tab is never silently lost.
+          const restoreTarget = collectLeaves(currentRefNode)[0] ?? null;
+          if (restoreTarget) {
+            restoreTarget.tabs.push(movedTab);
+            restoreTarget.activeTabId = tabId;
+          } else {
+            // Degenerate fallback — make the tab a new root leaf.
+            newLeaf.sizeFraction = 1;
+            rootNode.value = newLeaf;
+            focusedNodeId.value = newLeaf.id;
+          }
+        }
         return;
       }
 

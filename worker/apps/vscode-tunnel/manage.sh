@@ -11,15 +11,12 @@
 # with a rich status — `auth_required` with authUrl+authCode while waiting for
 # GitHub device-code auth, `running` with machineName once connected.
 
+source "$(dirname "$0")/../lib.sh"
+
 PIDS_DIR="/home/agent/pids"
 PID_FILE="$PIDS_DIR/vscode.pid"
 LOG_FILE="/tmp/vscode-tunnel.log"
 mkdir -p "$PIDS_DIR"
-
-emit_err() {
-  printf '{"status":"error","message":%s}\n' "$(printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
-  exit 1
-}
 
 case "$1" in
   start)
@@ -64,19 +61,7 @@ case "$1" in
     fi
 
     PID=$(cat "$PID_FILE")
-
-    if kill -0 "$PID" 2>/dev/null; then
-      kill "$PID" 2>/dev/null
-      for i in $(seq 1 10); do
-        if ! kill -0 "$PID" 2>/dev/null; then
-          break
-        fi
-        sleep 0.5
-      done
-      if kill -0 "$PID" 2>/dev/null; then
-        kill -9 "$PID" 2>/dev/null
-      fi
-    fi
+    kill_pid_graceful "$PID"
 
     rm -f "$PID_FILE"
     printf '{"id":"%s","status":"stopped"}\n' "$ID"

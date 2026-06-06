@@ -11,7 +11,10 @@ export function useUpdates() {
   const lastPruneResult = ref<PruneResult | null>(null);
 
   let pollTimer: ReturnType<typeof setInterval> | null = null;
-  let healthPollTimer: ReturnType<typeof setInterval> | null = null;
+  // Self-rescheduling setTimeout (not setInterval) so a slow /api/health — likely
+  // during the orchestrator restart this exact loop is waiting on — cannot stack
+  // overlapping in-flight requests and burn through the retry budget early.
+  let healthPollTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function fetchStatus() {
     try {
@@ -46,8 +49,7 @@ export function useUpdates() {
         await fetchStatus();
       }
     } catch (err: unknown) {
-      const fetchErr = err as { data?: { statusMessage?: string }; message?: string };
-      applyErrors.value = [fetchErr.data?.statusMessage || fetchErr.message || 'Update failed'];
+      applyErrors.value = [fetchErrorMessage(err, 'Update failed')];
     } finally {
       isApplying.value = false;
     }
@@ -70,8 +72,7 @@ export function useUpdates() {
         await fetchStatus();
       }
     } catch (err: unknown) {
-      const fetchErr = err as { data?: { statusMessage?: string }; message?: string };
-      applyErrors.value = [fetchErr.data?.statusMessage || fetchErr.message || 'Update failed'];
+      applyErrors.value = [fetchErrorMessage(err, 'Update failed')];
     } finally {
       applyingImages.value.delete(image);
     }
@@ -84,8 +85,7 @@ export function useUpdates() {
       lastPruneResult.value = await $fetch<PruneResult>('/api/updates/prune', { method: 'POST' });
       await fetchStatus();
     } catch (err: unknown) {
-      const fetchErr = err as { data?: { statusMessage?: string }; message?: string };
-      applyErrors.value = [fetchErr.data?.statusMessage || fetchErr.message || 'Prune failed'];
+      applyErrors.value = [fetchErrorMessage(err, 'Prune failed')];
     } finally {
       isPruning.value = false;
     }
@@ -95,29 +95,29 @@ export function useUpdates() {
     if (healthPollTimer) return;
     const maxRetries = 150; // 150 * 2s = 5 minutes
     let retries = 0;
-    healthPollTimer = setInterval(async () => {
+
+    const tick = async () => {
+      healthPollTimer = null;
       retries++;
       try {
         await $fetch('/api/health');
         // Server is back
-        if (healthPollTimer) {
-          clearInterval(healthPollTimer);
-          healthPollTimer = null;
-        }
         isRestarting.value = false;
         await fetchStatus();
+        return;
       } catch {
-        // Still down — check if max retries exceeded
+        // Still down — give up after the retry budget is exhausted.
         if (retries >= maxRetries) {
-          if (healthPollTimer) {
-            clearInterval(healthPollTimer);
-            healthPollTimer = null;
-          }
           isRestarting.value = false;
           applyErrors.value = [...applyErrors.value, 'Server did not come back after 5 minutes'];
+          return;
         }
       }
-    }, 2000);
+      // Schedule the next probe only after this one settled — no overlap.
+      healthPollTimer = setTimeout(tick, 2000);
+    };
+
+    healthPollTimer = setTimeout(tick, 2000);
   }
 
   function startPolling() {
@@ -131,7 +131,7 @@ export function useUpdates() {
       pollTimer = null;
     }
     if (healthPollTimer) {
-      clearInterval(healthPollTimer);
+      clearTimeout(healthPollTimer);
       healthPollTimer = null;
     }
   }

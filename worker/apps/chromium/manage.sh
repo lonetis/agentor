@@ -7,14 +7,11 @@
 # Output is NDJSON. Failures exit non-zero and emit
 # `{"status":"error","message":"…"}`.
 
+source "$(dirname "$0")/../lib.sh"
+
 PIDS_DIR="/home/agent/pids"
 PROFILES_DIR="/home/agent/profiles"
 mkdir -p "$PIDS_DIR" "$PROFILES_DIR"
-
-emit_err() {
-  printf '{"status":"error","message":%s}\n' "$(printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
-  exit 1
-}
 
 case "$1" in
   start)
@@ -66,19 +63,7 @@ case "$1" in
     fi
 
     PID=$(cat "$PIDS_DIR/$ID.pid")
-
-    if kill -0 "$PID" 2>/dev/null; then
-      kill "$PID" 2>/dev/null
-      for i in $(seq 1 10); do
-        if ! kill -0 "$PID" 2>/dev/null; then
-          break
-        fi
-        sleep 0.5
-      done
-      if kill -0 "$PID" 2>/dev/null; then
-        kill -9 "$PID" 2>/dev/null
-      fi
-    fi
+    kill_pid_graceful "$PID"
 
     rm -f "$PIDS_DIR/$ID.pid" "$PIDS_DIR/$ID.port"
     printf '{"id":"%s","status":"stopped"}\n' "$ID"

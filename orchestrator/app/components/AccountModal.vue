@@ -54,7 +54,7 @@ const envSuccess = ref('');
 const sshError = ref('');
 const sshSuccess = ref('');
 const envVisible = reactive<Record<string, boolean>>({});
-const { envVars: _envVarsRef, credentials: agentCreds, fetchAll: fetchEnvAndCreds, save: saveEnvVars, resetCredential } = useUserEnvVars();
+const { envVars: envVarsRef, credentials: agentCreds, fetchAll: fetchEnvAndCreds, save: saveEnvVars, resetCredential } = useUserEnvVars();
 const credResetConfirmId = ref<string | null>(null);
 const credResetError = ref('');
 const credResetSuccess = ref('');
@@ -122,9 +122,16 @@ async function refreshPasskeysEnabled() {
 
 async function loadEnvVars() {
   envLoading.value = true;
+  // allSettled so an env-vars fetch failure doesn't also blank the SSH key field
+  // (and vice versa) — each section owns its own error/empty state independently.
   try {
-    await Promise.all([fetchEnvAndCreds(), loadSshKey()]);
-    const v = _envVarsRef.value;
+    const [envResult] = await Promise.allSettled([fetchEnvAndCreds(), loadSshKey()]);
+    if (envResult.status === 'rejected') {
+      const err = envResult.reason as { data?: { statusMessage?: string }; message?: string };
+      envError.value = err?.data?.statusMessage || err?.message || 'Failed to load env vars';
+      return;
+    }
+    const v = envVarsRef.value;
     if (v) {
       const known = predefinedKeys as readonly string[];
       for (const k of predefinedKeys) predefinedEnv[k] = '';
@@ -135,8 +142,6 @@ async function loadEnvVars() {
       }
       customEnv.value = custom;
     }
-  } catch (err: any) {
-    envError.value = err?.data?.statusMessage || err?.message || 'Failed to load env vars';
   } finally {
     envLoading.value = false;
   }
@@ -153,7 +158,7 @@ async function loadSshKey() {
 
 watch(open, async (v) => {
   if (v) {
-    const u = currentUser.value as any;
+    const u = currentUser.value;
     profile.name = u?.name || '';
     profile.email = u?.email || '';
     password.current = '';
@@ -256,7 +261,7 @@ function cancelResetCredential() {
 
 async function handleProfileSave() {
   resetMessages();
-  const u = currentUser.value as any;
+  const u = currentUser.value;
   if (!u) return;
 
   const newName = profile.name.trim();

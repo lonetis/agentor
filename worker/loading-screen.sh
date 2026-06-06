@@ -36,6 +36,12 @@ now_ms() {
 parse() {
     local -A seen=()
     IDS=()
+    # Clear per-step state each frame so a re-emitted step never carries a stale
+    # status/label from a previous parse (the events file is append-only today,
+    # but rebuilding from scratch keeps this independent of that invariant).
+    STATUS=()
+    LABEL=()
+    ELAPSED=()
 
     while IFS='|' read -r id rest; do
         [ -z "$id" ] && continue
@@ -59,6 +65,9 @@ parse() {
 
 fmt_time() {
     local cs=$1
+    # Defensive: a malformed/empty event field must not abort the render loop's
+    # arithmetic (the loop has no `set -e` but `[ "" -ge 100 ]` still errors).
+    [[ "$cs" =~ ^[0-9]+$ ]] || cs=0
     if [ "$cs" -ge 100 ]; then
         printf '%d.%ds' $((cs / 100)) $(( (cs % 100) / 10 ))
     else

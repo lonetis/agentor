@@ -132,9 +132,13 @@ fi
 # EXPOSE_* flags are needed by capabilities at runtime; custom env vars from the
 # environment config are exported so they're available in all subsequent phases.
 # ==========================================================================
-export EXPOSE_PORT_MAPPINGS=$(echo "$ENVIRONMENT" | jq -r 'if .exposeApis.portMappings == null then true else .exposeApis.portMappings end')
-export EXPOSE_DOMAIN_MAPPINGS=$(echo "$ENVIRONMENT" | jq -r 'if .exposeApis.domainMappings == null then true else .exposeApis.domainMappings end')
-export EXPOSE_USAGE=$(echo "$ENVIRONMENT" | jq -r 'if .exposeApis.usage == null then true else .exposeApis.usage end')
+# An exposeApis flag defaults to true when the environment leaves it unset.
+expose_flag() {
+    echo "$ENVIRONMENT" | jq -r "if .exposeApis.$1 == null then true else .exposeApis.$1 end"
+}
+export EXPOSE_PORT_MAPPINGS=$(expose_flag portMappings)
+export EXPOSE_DOMAIN_MAPPINGS=$(expose_flag domainMappings)
+export EXPOSE_USAGE=$(expose_flag usage)
 tmux set-environment -g EXPOSE_PORT_MAPPINGS "$EXPOSE_PORT_MAPPINGS"
 tmux set-environment -g EXPOSE_DOMAIN_MAPPINGS "$EXPOSE_DOMAIN_MAPPINGS"
 tmux set-environment -g EXPOSE_USAGE "$EXPOSE_USAGE"
@@ -189,7 +193,7 @@ DOCKERCONF
     # collector captures it). The "[dockerd] " prefix tags entries so they
     # are distinguishable from other entrypoint output.
     ( sudo dockerd 2>&1 | stdbuf -oL -eL sed -u 's/^/[dockerd] /' | tee -a /tmp/dockerd.log ) &
-    tries=300
+    tries=300  # 300 * 0.1s = 30s (matches the "within 30s" warn message below)
     while [ ! -S /var/run/docker.sock ] && [ $tries -gt 0 ]; do
         sleep 0.1
         tries=$((tries - 1))
@@ -227,10 +231,17 @@ wait_for_file /tmp/.X11-unix/X99
 xrdb -merge /home/agent/.Xresources 2>/dev/null || true
 fluxbox &
 x11vnc -display :99 -nopw -shared -forever -rfbport 5900 -cursor most -xkb -noxdamage &
-wait_for_port 5900
+wait_for_port 5900 || _log "Display: WARNING — x11vnc (5900) not listening"
 websockify --web /usr/share/novnc/ 6080 localhost:5900 &
-_done display "Display stack"
-_log "Display: ready"
+# Verify the browser-facing noVNC endpoint actually came up, not just x11vnc —
+# if websockify died the desktop pane would be dead while the step showed ✓.
+if wait_for_port 6080; then
+    _done display "Display stack"
+    _log "Display: ready"
+else
+    _warn display "Display stack (noVNC not ready)"
+    _log "Display: WARNING — websockify (6080) failed to start"
+fi
 
 # ==========================================================================
 # Phase 3b: Code editor (code-server)
@@ -238,9 +249,13 @@ _log "Display: ready"
 _step editor "Code editor"
 _log "Code-server: starting..."
 ( code-server --auth none --bind-addr 0.0.0.0:8443 --disable-telemetry /workspace 2>&1 | stdbuf -oL -eL sed -u 's/^/[code-server] /' | tee -a /tmp/code-server.log ) &
-wait_for_port 8443
-_done editor "Code editor"
-_log "Code-server: ready"
+if wait_for_port 8443; then
+    _done editor "Code editor"
+    _log "Code-server: ready"
+else
+    _warn editor "Code editor (not ready)"
+    _log "Code-server: WARNING — port 8443 not listening"
+fi
 
 # ==========================================================================
 # Phase 4: Git identity + auth
@@ -295,13 +310,22 @@ clone_repo() {
 
     case "$PROVIDER" in
         github)
-            gh repo clone "$URL" "/workspace/$REPO_NAME" -- "${CLONE_ARGS[@]}" 2>&1 || {
+            # Only forward `-- --branch X` to the underlying git clone when a
+            # branch is set — a trailing bare `--` is fragile across gh versions.
+            local gh_extra=()
+            [ -n "$BRANCH" ] && gh_extra=(-- --branch "$BRANCH")
+            # `return 1` on failure so the caller's `wait` sees a non-zero exit
+            # and records the repo in FAILED_REPOS (otherwise the echo's exit 0
+            # masks the failure and clones silently appear to succeed).
+            gh repo clone "$URL" "/workspace/$REPO_NAME" "${gh_extra[@]}" 2>&1 || {
                 echo "Failed to clone $URL via gh, skipping"
+                return 1
             }
             ;;
         *)
             git clone "${CLONE_ARGS[@]}" "$URL" "/workspace/$REPO_NAME" 2>&1 || {
                 echo "Failed to clone $URL, skipping"
+                return 1
             }
             ;;
     esac
@@ -391,14 +415,20 @@ DNSCONF
 
         sudo systemctl stop dnsmasq 2>/dev/null || sudo killall dnsmasq 2>/dev/null || true
         sudo dnsmasq --conf-dir=/etc/dnsmasq.d --no-daemon --log-facility=/dev/null &
-        wait_for_port 53
-
-        echo "nameserver 127.0.0.53" | sudo tee /etc/resolv.conf > /dev/null
-        sudo iptables -A OUTPUT -m set --match-set allowed_ips dst -j ACCEPT
 
         DOMAIN_COUNT=$(echo "$ALLOWED_DOMAINS" | jq -r 'length' 2>/dev/null || echo 0)
-        _done firewall "Network firewall ($DOMAIN_COUNT domains)"
-        _log "Firewall: dnsmasq + ipset active — $DOMAIN_COUNT domains"
+        # Only point resolv.conf at dnsmasq once it has actually bound :53.
+        # If it failed to start, rewriting resolv.conf to a dead resolver would
+        # blackhole ALL DNS in the container — warn and leave DNS working instead.
+        if wait_for_port 53; then
+            echo "nameserver 127.0.0.53" | sudo tee /etc/resolv.conf > /dev/null
+            sudo iptables -A OUTPUT -m set --match-set allowed_ips dst -j ACCEPT
+            _done firewall "Network firewall ($DOMAIN_COUNT domains)"
+            _log "Firewall: dnsmasq + ipset active — $DOMAIN_COUNT domains"
+        else
+            _warn firewall "Network firewall (dnsmasq failed — DNS left intact)"
+            _log "Firewall: WARNING — dnsmasq failed to bind :53; skipping resolv.conf swap to avoid blackholing DNS"
+        fi
     fi
 else
     _skip firewall "Network firewall"

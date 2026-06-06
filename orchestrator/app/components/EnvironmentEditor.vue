@@ -39,7 +39,7 @@ const allCapabilitiesSelected = computed({
     form.enabledCapabilityIds = v ? null : allCapabilities.value.map((s) => s.id);
   },
 });
-const allEntriesSelected = computed({
+const allInstructionsSelected = computed({
   get: () => form.enabledInstructionIds === null,
   set: (v: boolean) => {
     form.enabledInstructionIds = v ? null : allInstructions.value.map((i) => i.id);
@@ -62,10 +62,10 @@ function toggleCapability(id: string) {
   }
 }
 
-function isEntryEnabled(id: string): boolean {
+function isInstructionEnabled(id: string): boolean {
   return form.enabledInstructionIds === null || form.enabledInstructionIds.includes(id);
 }
-function toggleEntry(id: string) {
+function toggleInstruction(id: string) {
   if (form.enabledInstructionIds === null) {
     form.enabledInstructionIds = allInstructions.value.map((i) => i.id).filter((iid) => iid !== id);
   } else if (form.enabledInstructionIds.includes(id)) {
@@ -115,10 +115,14 @@ function initForm() {
     form.enabledCapabilityIds = props.environment.enabledCapabilityIds ?? null;
     form.enabledInstructionIds = props.environment.enabledInstructionIds ?? null;
   }
-  fetchSystemEnvVars();
 }
 
 watch(() => props.environment, () => initForm(), { immediate: true });
+
+// The read-only worker system env var list is the same regardless of which
+// environment is being edited, so fetch it once when the editor mounts rather
+// than on every props.environment change.
+onMounted(fetchSystemEnvVars);
 
 function handleSave() {
   if (!form.name.trim()) return;
@@ -360,7 +364,7 @@ function handleSave() {
       </p>
       <div class="mb-2">
         <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
-          <UCheckbox :model-value="allEntriesSelected" @update:model-value="allEntriesSelected = !!$event" :disabled="readOnly" />
+          <UCheckbox :model-value="allInstructionsSelected" @update:model-value="allInstructionsSelected = !!$event" :disabled="readOnly" />
           Select All
         </label>
       </div>
@@ -371,7 +375,7 @@ function handleSave() {
           class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
           :class="readOnly ? 'cursor-default' : 'cursor-pointer'"
         >
-          <UCheckbox :model-value="isEntryEnabled(entry.id)" @update:model-value="toggleEntry(entry.id)" :disabled="readOnly" />
+          <UCheckbox :model-value="isInstructionEnabled(entry.id)" @update:model-value="toggleInstruction(entry.id)" :disabled="readOnly" />
           {{ entry.name }}
           <span
             v-if="entry.builtIn"

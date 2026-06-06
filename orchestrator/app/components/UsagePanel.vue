@@ -26,9 +26,9 @@ function textColor(utilization: number): string {
   return 'text-green-600 dark:text-green-400';
 }
 
-function relativeTime(iso: string | null): string {
+function relativeTime(iso: string | null, nowMs: number = Date.now()): string {
   if (!iso) return '';
-  const diff = new Date(iso).getTime() - Date.now();
+  const diff = new Date(iso).getTime() - nowMs;
   if (diff <= 0) return 'now';
   const minutes = Math.floor(diff / 60_000);
   if (minutes < 60) return `${minutes}m`;
@@ -107,7 +107,7 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
               class="text-[9px] text-gray-400 dark:text-gray-500 w-10 text-right flex-shrink-0"
               :title="w.resetsAt"
             >
-              {{ relativeTime(w.resetsAt) }}
+              {{ relativeTime(w.resetsAt, now) }}
             </span>
             <span v-else class="w-10 flex-shrink-0" />
           </div>

@@ -27,6 +27,9 @@ fi
 
 [ -f ~/.codex/AGENTS.md ] || write_instructions ~/.codex/AGENTS.md
 
+# Codex reads skills from ~/.agents/skills (NOT ~/.codex/skills) — its config
+# lives in ~/.codex but skills are shared via the ~/.agents tree. Do not "fix"
+# this path or skill loading silently breaks.
 if ! ls -d ~/.agents/skills/agentor-* >/dev/null 2>&1; then
     write_capabilities_md ~/.agents/skills
 fi

@@ -238,6 +238,10 @@ export interface UserEnvVars {
   envVars: UserEnvVar[];
 }
 
+/** Body of `PUT /api/account/env-vars`. A PUT REPLACES the whole list, so a
+ * present `envVars` is the complete new set (and `[]` clears it). `envVars` is
+ * optional only for backward compatibility — an omitted/`{}` body is treated by
+ * the route as "no env vars supplied", not a partial merge. */
 export type UserEnvVarsInput = { envVars?: UserEnvVar[] };
 
 /** Well-known env var names the Account UI surfaces with dedicated inputs (in

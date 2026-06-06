@@ -11,16 +11,13 @@
 #
 # Output is NDJSON.
 
+source "$(dirname "$0")/../lib.sh"
+
 PIDS_DIR="/home/agent/pids"
 PID_FILE="$PIDS_DIR/ssh.pid"
 LOG_FILE="/tmp/sshd.log"
 SSHD_CONFIG="/etc/ssh/sshd_config"
 mkdir -p "$PIDS_DIR"
-
-emit_err() {
-  printf '{"status":"error","message":%s}\n' "$(printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
-  exit 1
-}
 
 case "$1" in
   start)
@@ -103,19 +100,8 @@ case "$1" in
     fi
 
     PID=$(cat "$PID_FILE")
-
-    if kill -0 "$PID" 2>/dev/null; then
-      sudo kill "$PID" 2>/dev/null
-      for i in $(seq 1 10); do
-        if ! kill -0 "$PID" 2>/dev/null; then
-          break
-        fi
-        sleep 0.5
-      done
-      if kill -0 "$PID" 2>/dev/null; then
-        sudo kill -9 "$PID" 2>/dev/null
-      fi
-    fi
+    # sshd runs under sudo, so the TERM/KILL must too.
+    kill_pid_graceful "$PID" sudo
 
     rm -f "$PID_FILE"
     printf '{"id":"%s","status":"stopped"}\n' "$ID"

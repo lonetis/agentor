@@ -43,8 +43,16 @@ const { workers: workerMetrics } = useWorkerMetrics();
 const { mappings: portMappings } = usePortMappings();
 const { mappings: domainMappings } = useDomainMappings();
 
+// O(1) lookup of a worker's metrics, rebuilt only when the metrics list changes
+// (avoids a linear scan per card per render in the worker v-for).
+const metricByWorkerId = computed(() => {
+  const map = new Map<string, (typeof workerMetrics.value)[number]>();
+  for (const m of workerMetrics.value) map.set(m.workerId, m);
+  return map;
+});
+
 function metricFor(containerId: string) {
-  return workerMetrics.value.find((m) => m.workerId === containerId);
+  return metricByWorkerId.value.get(containerId);
 }
 
 const { data: domainMapperStatus } = useFetch<{ enabled: boolean }>('/api/domain-mapper/status', {
@@ -467,12 +475,12 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5">
               <span class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                {{ (currentUser as any)?.name || 'User' }}
+                {{ currentUser?.name || 'User' }}
               </span>
               <UBadge v-if="isAdmin" size="xs" color="warning">admin</UBadge>
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {{ (currentUser as any)?.email }}
+              {{ currentUser?.email }}
             </div>
           </div>
         </button>

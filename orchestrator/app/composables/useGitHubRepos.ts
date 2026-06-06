@@ -29,7 +29,7 @@ export function useGitHubRepos() {
         error.value = data.error || '';
       } catch (err) {
         repos.value = [];
-        error.value = err instanceof Error ? err.message : 'Failed to load repositories';
+        error.value = fetchErrorMessage(err, 'Failed to load repositories');
       } finally {
         fetchPromise = null;
         reposLoading.value = false;

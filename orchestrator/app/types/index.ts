@@ -32,6 +32,11 @@ export type {
   LogEntry,
 } from '../../shared/types';
 
+// Client-local API view types. PortMapping, DomainMapping, and EnvironmentInfo
+// below are defined here (not re-exported from shared/types) and must be kept in
+// field-parity with their server-side counterparts by hand until they are
+// consolidated into shared/types.
+
 export interface GitProviderInfo {
   id: string;
   displayName: string;

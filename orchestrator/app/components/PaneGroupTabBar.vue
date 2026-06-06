@@ -19,7 +19,6 @@ const typeIcons: Record<string, string> = {
   desktop: 'i-lucide-monitor',
   apps: 'i-lucide-layout-grid',
   editor: 'i-lucide-code',
-  vscode: 'i-lucide-radio-tower',
   logs: 'i-lucide-scroll-text',
 };
 
@@ -28,7 +27,6 @@ const typeLabels: Record<string, string> = {
   desktop: 'Desktop',
   apps: 'Apps',
   editor: 'Editor',
-  vscode: 'VS Code Tunnel',
   logs: 'Logs',
 };
 

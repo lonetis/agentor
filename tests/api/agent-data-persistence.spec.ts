@@ -130,6 +130,21 @@ test.describe.serial('Agent data persistence — mount verification', () => {
     expect(output).toContain('chrome-devtools');
     expect(output).toContain('chrome-devtools-mcp@latest');
   });
+
+  test('built-in capability SKILL.md is written with real (non-empty) content', async () => {
+    // Regression guard for the common.sh capability writer: the streaming jq
+    // pass must reproduce the full markdown content (YAML frontmatter + body),
+    // not an empty/truncated file. The `tmux` capability is always written by
+    // the default environment. Assert the file is non-trivial and carries its
+    // frontmatter `name:` line plus multi-word body text.
+    const skill = '~/.claude/skills/agentor-tmux/SKILL.md';
+    const size = await execInWorker(containerId, `wc -c < ${skill} 2>/dev/null`);
+    // A real capability doc is well over a few hundred bytes.
+    expect(parseInt(size.match(/\b(\d{3,})\b/)?.[1] ?? '0', 10)).toBeGreaterThan(200);
+    const head = await execInWorker(containerId, `head -5 ${skill}`);
+    expect(head).toContain('---');
+    expect(head.toLowerCase()).toContain('name:');
+  });
 });
 
 // -- Persistence across restart (serial, single worker) --

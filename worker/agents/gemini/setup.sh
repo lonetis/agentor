@@ -27,8 +27,11 @@ if [ ! -f ~/.gemini/settings.json ]; then
     fi
 fi
 
-# API key env file — always written (not user-editable config, just passes the key)
-if [ -n "$GEMINI_API_KEY" ]; then
+# API key env file — only when the user has NOT logged in via OAuth. Writing it
+# unconditionally would (a) shadow the user's OAuth selection with API-key auth
+# and (b) persist the secret as a plaintext file in the agent-data volume on
+# every restart. Gated on the same OAuth detection as the settings.json block.
+if [ -n "$GEMINI_API_KEY" ] && ! { [ -f ~/.gemini/oauth_creds.json ] && [ "$(wc -c < ~/.gemini/oauth_creds.json)" -gt 3 ]; }; then
     echo "GEMINI_API_KEY=$GEMINI_API_KEY" > ~/.gemini/.env
 fi
 

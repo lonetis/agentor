@@ -2,6 +2,9 @@
 import type { AppInstanceInfo, AppTypeInfo } from '~/types';
 import type { UserSshKey } from '../../shared/types';
 
+// `appType` / `containerName` are part of the shared app-row prop contract
+// (AppsPane passes them uniformly via `<component :is>`); this specialised row
+// does not read them — SSH connects via the window host + the external port.
 const props = defineProps<{
   instance: AppInstanceInfo;
   appType?: AppTypeInfo;

@@ -27,6 +27,10 @@ const hasMoreOlder = ref(true);
 const liveTick = ref(0);
 
 let ws: WebSocket | null = null;
+// Single pending reconnect handle so a flurry of onclose/onerror events cannot
+// queue several overlapping reconnect timers (which would each spawn a fresh
+// socket → reconnect storm).
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let initialized = false;
 // Bumped on every filter change so an in-flight loadMore from the previous
 // filter set cannot mutate the freshly-rebuilt entries array.
@@ -46,8 +50,25 @@ function buildQuery(extra: Record<string, string | number> = {}): URLSearchParam
 }
 
 export function useLogs() {
+  function scheduleReconnect() {
+    if (reconnectTimer) return; // a reconnect is already pending
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (!connected.value) connect();
+    }, 3000);
+  }
+
   function connect() {
     if (ws && ws.readyState <= WebSocket.OPEN) return;
+
+    // Detach handlers from any dying socket before replacing it, so its late
+    // onclose/onerror cannot schedule a second reconnect.
+    if (ws) {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
+    }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${protocol}//${window.location.host}/ws/logs`);
@@ -79,24 +100,14 @@ export function useLogs() {
 
     ws.onclose = () => {
       connected.value = false;
-      // Auto-reconnect after 3s
-      setTimeout(() => {
-        if (!connected.value) connect();
-      }, 3000);
+      // Auto-reconnect after 3s (onerror is followed by onclose, and the single
+      // reconnectTimer guard collapses both into one attempt).
+      scheduleReconnect();
     };
 
     ws.onerror = () => {
       connected.value = false;
     };
-  }
-
-  function disconnect() {
-    if (ws) {
-      ws.onclose = null;
-      ws.close();
-      ws = null;
-    }
-    connected.value = false;
   }
 
   // Fetch the most recent page. Used on first mount and whenever the active
@@ -206,8 +217,6 @@ export function useLogs() {
     loadingInitial,
     hasMoreOlder,
     liveTick,
-    connect,
-    disconnect,
     fetchHistory,
     loadMore,
     clearLogs,

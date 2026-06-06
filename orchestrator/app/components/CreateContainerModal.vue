@@ -121,8 +121,13 @@ async function onCreateRepo(idx: number, payload: { owner: string; name: string;
     });
 
     addRepoToList(data.repo);
-    form.repos[idx] = { ...form.repos[idx]!, url: data.repo.fullName };
-    await onRepoSelected(idx, data.repo.fullName);
+    // The await above may have outlived this row — the user can remove a repo
+    // mid-flight, which re-indexes `repoRowIds`. Resolve the live index from the
+    // stable rowId before writing so we never mutate the wrong (or a gone) row.
+    const liveIdx = [...repoRowIds].find(([, id]) => id === rowId)?.[0];
+    if (liveIdx === undefined || !form.repos[liveIdx]) return;
+    form.repos[liveIdx] = { ...form.repos[liveIdx]!, url: data.repo.fullName };
+    await onRepoSelected(liveIdx, data.repo.fullName);
   } catch {
     // API error — leave the URL as-is so the user can retry
   } finally {
@@ -149,7 +154,7 @@ function removeMount(idx: number) {
 }
 
 function submit() {
-  // The internal worker identity is a Docker-style hex id minted server-side; the form only
+  // The internal worker identity is a UUID v4 minted server-side; the form only
   // collects the editable, free-form display name. Send the suggested name when
   // the user leaves the field blank so the worker keeps the friendly label they
   // saw in the placeholder.

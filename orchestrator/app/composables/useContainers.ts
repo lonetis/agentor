@@ -37,10 +37,6 @@ export function useContainers() {
     await refresh();
   }
 
-  async function renameContainer(id: string, displayName: string): Promise<ContainerInfo> {
-    return updateContainerSettings(id, { displayName });
-  }
-
   async function updateContainerSettings(
     id: string,
     patch: UpdateContainerSettingsRequest,
@@ -74,7 +70,6 @@ export function useContainers() {
     restartContainer,
     rebuildContainer,
     removeContainer,
-    renameContainer,
     updateContainerSettings,
     importContainer,
   };

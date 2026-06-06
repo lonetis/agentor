@@ -32,26 +32,19 @@ function imageName(fullName: string): string {
   return segments[segments.length - 1]!;
 }
 
-function imageKey(info: ImageUpdateInfo): UpdatableImage | null {
-  if (status.value?.orchestrator === info) return 'orchestrator';
-  if (status.value?.worker === info) return 'worker';
-  if (status.value?.traefik === info) return 'traefik';
-  return null;
-}
-
-const imageList = computed(() =>
-  [status.value?.orchestrator, status.value?.worker, status.value?.traefik]
-    .filter((i): i is ImageUpdateInfo => !!i)
+// Pair each image with its update key once per render (instead of recomputing
+// the identity compare three times per row in the template).
+const imageList = computed<{ info: ImageUpdateInfo; key: UpdatableImage }[]>(() =>
+  ([
+    ['orchestrator', status.value?.orchestrator],
+    ['worker', status.value?.worker],
+    ['traefik', status.value?.traefik],
+  ] as const)
+    .filter((pair): pair is [UpdatableImage, ImageUpdateInfo] => !!pair[1])
+    .map(([key, info]) => ({ info, key }))
 );
 
 const anyApplyingImage = computed(() => applyingImages.value.size > 0);
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / 1024 ** i).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
-}
 </script>
 
 <template>
@@ -71,7 +64,7 @@ function formatBytes(bytes: number): string {
     <template v-else>
       <!-- Image list (grid: name column auto-sizes, hash column left-aligned) -->
       <div class="grid gap-x-3 gap-y-1.5 text-xs items-center" style="grid-template-columns: auto 1fr">
-        <template v-for="info in imageList" :key="info.name">
+        <template v-for="{ info, key } in imageList" :key="info.name">
           <span class="font-medium text-gray-600 dark:text-gray-400">{{ imageName(info.name) }}</span>
           <div class="flex items-center gap-1.5">
             <template v-if="isProductionMode && info.updateAvailable">
@@ -80,12 +73,11 @@ function formatBytes(bytes: number): string {
                 {{ shortDigest(info.localDigest) }} &rarr; {{ shortDigest(info.remoteDigest) }}
               </span>
               <button
-                v-if="imageKey(info)"
                 class="ml-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 hover:bg-amber-300 dark:hover:bg-amber-700 disabled:opacity-50"
                 :disabled="isApplying || anyApplyingImage || isChecking"
-                @click="applyImage(imageKey(info)!)"
+                @click="applyImage(key)"
               >
-                <template v-if="applyingImages.has(imageKey(info)!)">...</template>
+                <template v-if="applyingImages.has(key)">...</template>
                 <template v-else>Update</template>
               </button>
             </template>

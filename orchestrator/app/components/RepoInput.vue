@@ -144,7 +144,7 @@ function extractFullName(url: string): string | null {
   return match?.[1]?.replace(/\.git$/, '') ?? null;
 }
 
-function update(field: keyof RepoConfig, value: string) {
+function update<K extends keyof RepoConfig>(field: K, value: RepoConfig[K]) {
   emit('update:modelValue', { ...props.modelValue, [field]: value });
 }
 

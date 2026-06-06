@@ -22,6 +22,8 @@ const emit = defineEmits<{
   downloadWorkspace: [id: string];
 }>();
 
+const toast = useToast();
+
 const showDetail = ref(false);
 const showUpload = ref(false);
 
@@ -49,6 +51,12 @@ async function doExport() {
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   } catch (err) {
     console.error('[export] failed', err);
+    toast.add({
+      title: 'Export failed',
+      description: err instanceof Error ? err.message : 'Could not export this worker.',
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
   } finally {
     exporting.value = false;
   }

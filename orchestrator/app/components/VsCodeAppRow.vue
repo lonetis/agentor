@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { AppInstanceInfo, AppTypeInfo } from '~/types';
 
+// `appType` / `containerName` are part of the shared app-row prop contract
+// (AppsPane passes them uniformly via `<component :is>`); this specialised row
+// does not read them — VS Code Tunnel has no port and is reached via the relay.
 const props = defineProps<{
   instance: AppInstanceInfo;
   appType?: AppTypeInfo;

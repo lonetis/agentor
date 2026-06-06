@@ -28,7 +28,9 @@ export function useUsage() {
     initialized = true;
     fetchStatus();
   }
-  usePolling(() => fetchStatus(), 600_000);
+  // Match the server-side UsageChecker cadence (5 min) so the sidebar never
+  // lags the polled usage state by more than one server cycle.
+  usePolling(() => fetchStatus(), 300_000);
 
   return { status, refreshing, refresh };
 }

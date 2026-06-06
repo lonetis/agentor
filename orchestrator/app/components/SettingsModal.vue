@@ -6,7 +6,6 @@ interface SettingItem {
   label: string;
   value: string | number | boolean | string[] | null;
   type: 'string' | 'number' | 'boolean' | 'list' | 'status';
-  sensitive?: boolean;
 }
 
 interface SettingSection {

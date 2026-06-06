@@ -18,8 +18,8 @@ export function useUserEnvVars() {
       ]);
       envVars.value = env;
       credentials.value = creds;
-    } catch (err: any) {
-      error.value = err?.data?.statusMessage || err?.message || 'Failed to load env vars';
+    } catch (err: unknown) {
+      error.value = fetchErrorMessage(err, 'Failed to load env vars');
     } finally {
       loading.value = false;
     }

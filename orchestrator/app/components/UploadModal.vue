@@ -8,10 +8,12 @@ const open = defineModel<boolean>('open', { default: false });
 
 const files = ref<File[]>([]);
 const isUploading = ref(false);
+const uploadError = ref('');
 
 watch(open, (isOpen) => {
   if (!isOpen) {
     files.value = [];
+    uploadError.value = '';
   }
 });
 
@@ -19,6 +21,7 @@ async function upload() {
   if (files.value.length === 0) return;
 
   isUploading.value = true;
+  uploadError.value = '';
   try {
     const formData = new FormData();
     for (const file of files.value) {
@@ -29,6 +32,9 @@ async function upload() {
       body: formData,
     });
     open.value = false;
+  } catch (err: any) {
+    // Keep the modal open and surface the failure rather than silently closing.
+    uploadError.value = err?.data?.statusMessage || err?.statusMessage || 'Upload failed';
   } finally {
     isUploading.value = false;
   }
@@ -47,6 +53,8 @@ async function upload() {
         </p>
 
         <FileDropZone v-model="files" />
+
+        <p v-if="uploadError" class="text-red-500 dark:text-red-400 text-xs">{{ uploadError }}</p>
 
         <div class="flex gap-3 pt-2">
           <UButton

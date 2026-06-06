@@ -90,7 +90,10 @@ function buildPatch(): UpdateContainerSettingsRequest {
   return {
     displayName: form.displayName.trim(),
     environmentId: form.environmentId,
-    initScript: form.initScript,
+    // Trim to match the `initDirty` baseline — the dirty-check compares
+    // `form.initScript.trim()`, so persist the same trimmed value (trailing
+    // whitespace in a bash script is harmless) instead of drifting.
+    initScript: form.initScript.trim(),
     repos: form.repos
       .filter((r) => r.url)
       .map((r) => ({ provider: r.provider, url: r.url, ...(r.branch ? { branch: r.branch } : {}) })),

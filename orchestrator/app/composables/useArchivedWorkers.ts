@@ -12,13 +12,13 @@ export function useArchivedWorkers() {
     await refresh();
   }
 
-  async function unarchiveWorker(name: string) {
-    await $fetch(`/api/archived/${name}/unarchive`, { method: 'POST' });
+  async function unarchiveWorker(id: string) {
+    await $fetch(`/api/archived/${id}/unarchive`, { method: 'POST' });
     await refresh();
   }
 
-  async function deleteArchivedWorker(name: string) {
-    await $fetch(`/api/archived/${name}`, { method: 'DELETE' });
+  async function deleteArchivedWorker(id: string) {
+    await $fetch(`/api/archived/${id}`, { method: 'DELETE' });
     await refresh();
   }
 

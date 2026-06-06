@@ -19,6 +19,7 @@ const formAuthEnabled = ref(false);
 const formAuthUsername = ref('');
 const formAuthPassword = ref('');
 const formWildcard = ref(false);
+const formError = ref('');
 
 const multiDomain = computed(() => status.value.baseDomains.length > 1);
 
@@ -33,24 +34,31 @@ const runningContainers = computed(() =>
 );
 
 // Mappings store the worker id in `workerId`; resolve the friendly display
-// name from it. Keyed by the `name` id so it covers active (running/stopped)
-// AND archived workers — mappings persist across archive, and an archived
-// worker would otherwise render its raw id.
-const workerLabelByName = computed(() => {
+// name from it. Keyed by the worker UUID `id` so it covers active
+// (running/stopped) AND archived workers — mappings persist across archive,
+// and an archived worker would otherwise render its raw id.
+const workerLabelById = computed(() => {
   const map = new Map<string, string>();
   for (const c of props.containers) map.set(c.id, c.displayName || shortName(c.id));
   for (const w of props.archivedWorkers ?? []) map.set(w.id, w.displayName || shortName(w.id));
   return map;
 });
 
+// O(1) lookup of a base domain's TLS challenge config, rebuilt only when the
+// status changes (avoids a linear scan per call, and each mapping row calls
+// these several times per render).
+const baseDomainConfigByDomain = computed(() => {
+  const map = new Map<string, (typeof status.value.baseDomainConfigs)[number]>();
+  for (const dc of status.value.baseDomainConfigs) map.set(dc.domain, dc);
+  return map;
+});
+
 function getChallengeType(baseDomain: string): ChallengeType {
-  const dc = status.value.baseDomainConfigs.find((c) => c.domain === baseDomain);
-  return dc?.challengeType ?? 'none';
+  return baseDomainConfigByDomain.value.get(baseDomain)?.challengeType ?? 'none';
 }
 
 function getDnsProvider(baseDomain: string): string | undefined {
-  const dc = status.value.baseDomainConfigs.find((c) => c.domain === baseDomain);
-  return dc?.dnsProvider;
+  return baseDomainConfigByDomain.value.get(baseDomain)?.dnsProvider;
 }
 
 const selectedDomainsAllHaveTls = computed(() => {
@@ -133,11 +141,16 @@ function resetForm() {
   formAuthUsername.value = '';
   formAuthPassword.value = '';
   formWildcard.value = false;
+  formError.value = '';
   showForm.value = false;
 }
 
 async function handleCreate() {
-  if (!formWorkerId.value || !formInternalPort.value || formBaseDomains.value.size === 0 || formProtocols.value.size === 0) return;
+  formError.value = '';
+  if (!formWorkerId.value || !formInternalPort.value || formBaseDomains.value.size === 0 || formProtocols.value.size === 0) {
+    formError.value = 'Select a worker, internal port, base domain, and protocol.';
+    return;
+  }
   const protocols = [...formProtocols.value];
   const domains = [...formBaseDomains.value];
   const useWildcard = formWildcard.value && wildcardAllowed.value;
@@ -155,8 +168,13 @@ async function handleCreate() {
         : {}),
     })),
   );
-  await createMappings(items);
-  resetForm();
+  try {
+    await createMappings(items);
+    resetForm();
+  } catch (err) {
+    const e = err as { data?: { statusMessage?: string; message?: string }; statusMessage?: string };
+    formError.value = e?.data?.statusMessage || e?.data?.message || e?.statusMessage || 'Failed to create domain mapping';
+  }
 }
 
 const protocolColors: Record<string, string> = {
@@ -327,6 +345,14 @@ function downloadCaCert() {
           </span>
         </span>
       </div>
+      <p
+        v-if="formError"
+        class="text-red-600 dark:text-red-400 text-[10px] flex items-start gap-1"
+        data-testid="domain-mapping-error"
+      >
+        <UIcon name="i-lucide-alert-circle" class="size-3 mt-px shrink-0" />
+        <span class="flex-1 min-w-0">{{ formError }}</span>
+      </p>
       <div class="flex gap-1.5 justify-end">
         <UButton size="xs" color="neutral" variant="ghost" @click="showForm = false">
           Cancel
@@ -390,7 +416,7 @@ function downloadCaCert() {
         class="size-3 text-amber-500 shrink-0"
       />
       <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>
-      <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ workerLabelByName.get(m.workerId) || shortName(m.workerId) }}:{{ m.internalPort }}</span>
+      <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ workerLabelById.get(m.workerId) || shortName(m.workerId) }}:{{ m.internalPort }}</span>
       <button
         class="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5"
         title="Remove mapping"

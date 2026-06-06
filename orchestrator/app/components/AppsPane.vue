@@ -11,7 +11,13 @@ const props = defineProps<{
 const containerIdRef = toRef(props, 'containerId');
 const { appTypes, instances, createInstance, stopInstance } = useApps(containerIdRef as Ref<string>);
 
-const containerName = computed(() => props.containerId.slice(0, 12));
+// Resolve the real Docker container name (`agentor-worker-<id>`) for the
+// app-row network hostname tooltip. `containerId` is the worker UUID, not the
+// on-network DNS name, so a raw slice would advertise a host that does not resolve.
+const { containers } = useContainers();
+const containerName = computed(
+  () => containers.value.find((c) => c.id === props.containerId)?.containerName ?? '',
+);
 
 function instancesForType(appTypeId: string) {
   return instances.value.filter((i) => i.appType === appTypeId);
@@ -73,7 +79,7 @@ async function handleStart(appTypeId: string) {
             size="xs"
             color="primary"
             variant="solid"
-            @click="createInstance(at.id)"
+            @click="handleStart(at.id)"
           >
             + New Instance
           </UButton>

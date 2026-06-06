@@ -13,16 +13,17 @@ const formType = ref<'localhost' | 'external'>('localhost');
 const formExternalPort = ref<number | undefined>();
 const formWorkerId = ref('');
 const formInternalPort = ref<number | undefined>();
+const formError = ref('');
 
 const runningContainers = computed(() =>
   props.containers.filter((c) => c.status === 'running')
 );
 
 // Mappings store the worker id in `workerId`; resolve the friendly display
-// name from it. Keyed by the `name` id so it covers active (running/stopped)
-// AND archived workers — mappings persist across archive, and an archived
-// worker would otherwise render its raw id.
-const workerLabelByName = computed(() => {
+// name from it. Keyed by the worker UUID `id` so it covers active
+// (running/stopped) AND archived workers — mappings persist across archive,
+// and an archived worker would otherwise render its raw id.
+const workerLabelById = computed(() => {
   const map = new Map<string, string>();
   for (const c of props.containers) map.set(c.id, c.displayName || shortName(c.id));
   for (const w of props.archivedWorkers ?? []) map.set(w.id, w.displayName || shortName(w.id));
@@ -34,17 +35,26 @@ function resetForm() {
   formExternalPort.value = undefined;
   formWorkerId.value = '';
   formInternalPort.value = undefined;
+  formError.value = '';
   showForm.value = false;
 }
 
 async function handleCreate() {
   if (!formExternalPort.value || !formWorkerId.value || !formInternalPort.value) return;
-  await createMapping({
-    externalPort: formExternalPort.value,
-    type: formType.value,
-    workerId: formWorkerId.value,
-    internalPort: formInternalPort.value,
-  });
+  formError.value = '';
+  try {
+    await createMapping({
+      externalPort: formExternalPort.value,
+      type: formType.value,
+      workerId: formWorkerId.value,
+      internalPort: formInternalPort.value,
+    });
+  } catch (err: any) {
+    // Keep the form open and the entered values intact so the user can correct
+    // a rejected mapping (duplicate port 409, stopped worker, validation 400).
+    formError.value = err?.data?.statusMessage || err?.statusMessage || 'Failed to create port mapping';
+    return;
+  }
   resetForm();
 }
 </script>
@@ -89,6 +99,7 @@ async function handleCreate() {
           Add
         </UButton>
       </div>
+      <p v-if="formError" class="text-red-500 dark:text-red-400 text-[11px]">{{ formError }}</p>
       <UButton size="xs" color="neutral" variant="ghost" class="self-end" @click="showForm = false">
         Cancel
       </UButton>
@@ -115,7 +126,7 @@ async function handleCreate() {
       </span>
       <span class="text-gray-700 dark:text-gray-300 font-mono shrink-0">:{{ m.externalPort }}</span>
       <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>
-      <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ workerLabelByName.get(m.workerId) || shortName(m.workerId) }}:{{ m.internalPort }}</span>
+      <span class="text-gray-500 dark:text-gray-400 truncate min-w-0 flex-1">{{ workerLabelById.get(m.workerId) || shortName(m.workerId) }}:{{ m.internalPort }}</span>
       <button
         class="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5"
         title="Remove mapping"

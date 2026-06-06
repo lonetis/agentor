@@ -8,6 +8,11 @@ safe_name() {
     echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//'
 }
 
+# The three writers below stream their JSON array one compact object per line
+# (`jq -c '.[]'`, the same idiom the entrypoint uses for repos) and extract
+# name/content per object — one `jq` per entry rather than two. `.content` is a
+# single JSON string, so a compact object is always exactly one line.
+
 # Merge INSTRUCTIONS JSON entries and write to a single markdown file.
 # Always overwrites — on rebuild, we want fresh Agentor content (not duplicated appends).
 # Usage: write_instructions ~/.claude/CLAUDE.md
@@ -18,23 +23,21 @@ write_instructions() {
     count=$(echo "$INSTRUCTIONS" | jq -r 'length' 2>/dev/null || echo 0)
     [ "$count" -eq 0 ] && return
 
-    local merged=""
-    for i in $(seq 0 $((count - 1))); do
-        local name content
-        name=$(echo "$INSTRUCTIONS" | jq -r ".[$i].name")
-        content=$(echo "$INSTRUCTIONS" | jq -r ".[$i].content")
+    local merged="" entry name content underline
+    while IFS= read -r entry; do
+        name=$(echo "$entry" | jq -r '.name')
+        content=$(echo "$entry" | jq -r '.content')
         [ -n "$merged" ] && merged="${merged}
 
 ---
 
 "
-        local underline
         underline=$(printf '=%.0s' $(seq 1 ${#name}))
         merged="${merged}${name}
 ${underline}
 
 ${content}"
-    done
+    done < <(echo "$INSTRUCTIONS" | jq -c '.[]')
 
     mkdir -p "$(dirname "$output_path")"
     echo "$merged" > "$output_path"
@@ -50,15 +53,15 @@ write_capabilities_md() {
     count=$(echo "$CAPABILITIES" | jq -r 'length' 2>/dev/null || echo 0)
     [ "$count" -eq 0 ] && return
 
-    for i in $(seq 0 $((count - 1))); do
-        local name content safe skill_dir
-        name=$(echo "$CAPABILITIES" | jq -r ".[$i].name")
-        content=$(echo "$CAPABILITIES" | jq -r ".[$i].content")
+    local entry name content safe skill_dir
+    while IFS= read -r entry; do
+        name=$(echo "$entry" | jq -r '.name')
+        content=$(echo "$entry" | jq -r '.content')
         safe=$(safe_name "$name")
         skill_dir="${base_dir}/agentor-${safe}"
         mkdir -p "$skill_dir"
         echo "$content" > "$skill_dir/SKILL.md"
-    done
+    done < <(echo "$CAPABILITIES" | jq -c '.[]')
 }
 
 # Write each CAPABILITIES JSON entry as a Gemini TOML command file.
@@ -73,10 +76,10 @@ write_capabilities_toml() {
     [ "$count" -eq 0 ] && return
 
     mkdir -p "$dir"
-    for i in $(seq 0 $((count - 1))); do
-        local name content safe body escaped
-        name=$(echo "$CAPABILITIES" | jq -r ".[$i].name")
-        content=$(echo "$CAPABILITIES" | jq -r ".[$i].content")
+    local entry name content safe body escaped
+    while IFS= read -r entry; do
+        name=$(echo "$entry" | jq -r '.name')
+        content=$(echo "$entry" | jq -r '.content')
         safe=$(safe_name "$name")
         body=$(echo "$content" | sed -n '/^---$/,/^---$/!p' | sed '/./,$!d')
         escaped=$(echo "$body" | sed 's/\\/\\\\/g')
@@ -86,5 +89,5 @@ prompt = """
 ${escaped}
 """
 TOMLEOF
-    done
+    done < <(echo "$CAPABILITIES" | jq -c '.[]')
 }

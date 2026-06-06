@@ -68,46 +68,26 @@ function handleClear() {
   }
 }
 
-// Anchor scroll position when older entries are prepended so the user's
-// view does not jump. Records the scrollHeight before prepend; the watcher
-// below applies the delta after Vue has re-rendered.
-let pendingAnchor: { prevHeight: number; prevTop: number } | null = null;
-
+// Anchor scroll position when older entries are prepended so the user's view
+// does not jump. The anchor is captured and restored entirely within this
+// flow (capture height/top → await loadMore → wait for the prepend to render →
+// apply the delta), so a live append or filter change arriving mid-load can no
+// longer consume the anchor against the wrong scrollHeight.
 async function maybeLoadMore() {
   if (loadingMore.value || !hasMoreOlder.value) return;
   const el = scrollContainer.value;
   if (!el) return;
-  pendingAnchor = { prevHeight: el.scrollHeight, prevTop: el.scrollTop };
+  const prevHeight = el.scrollHeight;
+  const prevTop = el.scrollTop;
   const added = await loadMore();
-  if (added === 0) {
-    pendingAnchor = null;
-  }
-  // Re-check immediately in case the visible viewport is still near the
-  // top after loading (small page or fast scroll). The watcher anchors
-  // first, then this fires again if the user is still near the top.
+  if (added === 0) return;
+  // Wait for the prepended entries to render before measuring the new height.
+  await nextTick();
+  const cur = scrollContainer.value;
+  if (!cur) return;
+  const delta = cur.scrollHeight - prevHeight;
+  cur.scrollTop = prevTop + delta;
 }
-
-// Restore scroll anchor after the prepended entries have rendered. We watch
-// filteredEntries.length so the anchor is applied even if filters drop a
-// few of the freshly-loaded entries.
-watch(
-  () => filteredEntries.value.length,
-  () => {
-    if (!pendingAnchor) return;
-    const el = scrollContainer.value;
-    if (!el) {
-      pendingAnchor = null;
-      return;
-    }
-    nextTick(() => {
-      const anchor = pendingAnchor;
-      if (!anchor || !scrollContainer.value) return;
-      const delta = scrollContainer.value.scrollHeight - anchor.prevHeight;
-      scrollContainer.value.scrollTop = anchor.prevTop + delta;
-      pendingAnchor = null;
-    });
-  },
-);
 
 // Auto-scroll on live append only — driven by a tick the composable bumps
 // when the WebSocket pushes a new entry. Pagination prepends never bump
