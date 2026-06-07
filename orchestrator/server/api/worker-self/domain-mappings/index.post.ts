@@ -159,7 +159,19 @@ export default defineEventHandler(async (event) => {
       statusMessage: err instanceof Error ? err.message : 'Subdomain conflict',
     });
   }
-  await useTraefikManager().reconcile();
+
+  // Apply transactionally — on a failed Traefik apply (e.g. the first web
+  // entrypoints can't bind 80/443) the reconcile rolls back to last-good and
+  // rejects, so we drop the just-persisted mapping and return 409.
+  try {
+    await useTraefikManager().reconcileStrict();
+  } catch (err) {
+    await store.remove(created.id).catch(() => {});
+    throw createError({
+      statusCode: 409,
+      statusMessage: err instanceof Error ? err.message : 'Failed to apply domain mapping',
+    });
+  }
 
   setResponseStatus(event, 201);
   return created;

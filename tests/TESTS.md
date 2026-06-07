@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1362 tests** across 99 test files (~826 API + ~536 UI)
+- **~1366 tests** across 100 test files (~830 API + ~536 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -104,7 +104,7 @@ tests/
 
 ## Test Categories
 
-### API Tests (~778 tests, 56 files)
+### API Tests (~782 tests, 57 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -151,6 +151,7 @@ tests/
 | `github.spec.ts` | 14 | Repos list, username, orgs, repo field validation, branches, branch field validation, create repo validation (missing owner/name, empty owner/name, no token), response shape validation, non-existent repo branches |
 | `updates.spec.ts` | 11 | Update status, manual check trigger, apply rejection, response structure (3 image keys — orchestrator/worker/traefik, no mapper), check consistency |
 | `traefik-unified.spec.ts` | 8 | Merged-mapper regression tests: `/api/log-sources` never returns `mapper`; `/api/updates` has no `mapper` key; `UpdatableImage` enum is 3 values; port mapping create/delete works while Traefik is up for domain mappings; port + domain mapping can coexist on the same worker; settings expose no `MAPPER_IMAGE` |
+| `traefik-robustness.spec.ts` | 4 | Misconfig safety (the "a bad port/domain mapping wedges Traefik and locks me out" regression): reserved web-entrypoint ports 80/443 rejected with 409 (gated on dashboard/web entrypoints active) with no store leak; a reserved-port rejection does NOT wedge Traefik (health stays ok, the earlier valid mapping survives, and a NEW valid mapping still applies — proving the recreate path is intact); duplicate external port returns 409 (session handler now matches worker-self) and leaves Traefik healthy |
 | `usage.spec.ts` | 7 | Per-user usage: GET/POST require auth (401 unauth), refresh populates 3 agents for the caller, refresh-then-get returns the same list, agent shape after refresh, per-user isolation (user B's OAuth token doesn't show up in user A's status) |
 | `logs.spec.ts` | 36 | Log query response shape, entry fields, valid levels/sources, source/level/multi-level/search filtering, limit control/default/max clamping, newest-first ordering, ISO timestamps, combined filters, log-sources endpoint, container messages have no leading Docker timestamp (regression for the TTY \r split bug), orchestrator self-stdout captured with sourceId, until is exclusive (boundary entry not duplicated), backwards pagination via until walks contiguously without skipping, hasMore reports remaining matches, clear logs (serialized), clear idempotency |
 | `terminal-exec.spec.ts` | 14 | WebSocket connect, initial output, echo command, pwd /workspace, HOME /home/agent, exit codes, named tmux window, resize, concurrent window isolation, multiline output, whoami agent user, non-existent container, ws-* tmux session cleanup on disconnect, multiple connections cleanup |

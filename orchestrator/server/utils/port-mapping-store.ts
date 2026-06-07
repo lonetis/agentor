@@ -76,14 +76,17 @@ export class PortMappingStore extends UserScopedJsonStore<string, PortMapping> {
     return match.item;
   }
 
-  /** Returns the lowest unused external port in `[rangeStart, rangeEnd]`, or null. */
-  findFreeExternalPort(rangeStart: number, rangeEnd: number): number | null {
+  /** Returns the lowest unused external port in `[rangeStart, rangeEnd]`, or
+   * null. `exclude` is an optional set of additional ports to skip — used by
+   * auto-allocating apps to retry past a candidate that turned out to be
+   * occupied on the host (and so couldn't be bound by Traefik). */
+  findFreeExternalPort(rangeStart: number, rangeEnd: number, exclude?: Set<number>): number | null {
     const used = new Set<number>();
     for (const map of this.items.values()) {
       for (const m of map.values()) used.add(m.externalPort);
     }
     for (let p = rangeStart; p <= rangeEnd; p++) {
-      if (!used.has(p)) return p;
+      if (!used.has(p) && !exclude?.has(p)) return p;
     }
     return null;
   }

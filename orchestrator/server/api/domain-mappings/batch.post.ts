@@ -218,7 +218,19 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  await useTraefikManager().reconcile();
+  // Apply transactionally — if the resulting Traefik config can't be bound
+  // (e.g. the batch introduces the first web entrypoints on occupied 80/443),
+  // the strict reconcile rolls Traefik back and rejects, and we undo every
+  // mapping created in this batch so the operation stays atomic.
+  try {
+    await useTraefikManager().reconcileStrict();
+  } catch (err) {
+    await Promise.allSettled(created.map((m) => store.remove(m.id)));
+    throw createError({
+      statusCode: 409,
+      statusMessage: err instanceof Error ? err.message : 'Failed to apply domain mappings',
+    });
+  }
 
   setResponseStatus(event, 201);
   return created;

@@ -631,6 +631,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 
 ### 19.3 SSH auto port mapping
 - Starting the SSH app creates a port mapping `type: external`, `internalPort: 22`, `externalPort` chosen from the unused ports in `[22000, 22999]`, stamped with `appType: 'ssh'`, `instanceId: 'ssh'`.
+- The chosen external port is applied with a strict Traefik reconcile; if it turns out to be occupied on the host (Traefik can't bind it), that candidate is dropped from the store and the **next free port is tried** (bounded retry), so the SSH app never persists an unbindable mapping.
 - If a mapping already exists for the same `(containerName, appType='ssh', instanceId='ssh')` it is reused — external port stays stable across stop/start, restart, archive/unarchive, and rebuild.
 - Stopping the SSH app does **not** remove the port mapping. Only permanent worker deletion does (via `cleanupWorkerMappings`).
 - Users can also delete the mapping manually from the Port Mappings panel.
@@ -791,6 +792,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `DELETE /api/port-mappings/:port` — remove
 - `GET /api/port-mapper/status` — counts by type
 - Validations: port range 1-65535, type localhost/external, worker must exist and be running, duplicate port 409
+- **Misconfig safety (no Traefik wedge)**: external **80/443 are rejected with 409** when domain routing/the dashboard is active (reserved for Traefik's web entrypoints). The mapping is applied with a **strict, transactional** Traefik reconcile — if the host port can't be bound (occupied by another container/process), Traefik rolls back to its last-good config (the dashboard is never left unreachable) and the just-persisted mapping is **rolled back out of the store**, returning 409. The same reserved-port + transactional-rollback path guards the worker-self port-mapping route and the SSH auto-port-mapping allocator (which retries the next free port on conflict). See `docs/networking.md` → **Reconcile Robustness**.
 
 ### 24.6 Domain Mappings
 - Every `DomainMapping` carries the standard base-resource fields: `id` (UUID), `userId`, `createdAt`, `updatedAt` — plus `workerId`, `containerName`, and the routing fields.
@@ -801,6 +803,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/domain-mapper/status` — enabled flag, baseDomains list, baseDomainConfigs (domain + challengeType + optional dnsProvider), hasSelfSignedCa flag, dashboard URL
 - `GET /api/domain-mapper/ca-cert` — download self-signed CA certificate PEM (404 when no selfsigned domains)
 - Validations: protocol http/https/tcp, HTTPS/TCP require TLS, subdomain format, path format (must start with /), path not allowed for TCP, port range, duplicate 409 (subdomain+baseDomain+path+protocol), protocol conflict 409, wildcard rejected 400 when base domain uses HTTP-01 ACME (`challengeType === 'http'`)
+- **Misconfig safety**: domain mappings apply with a **strict, transactional** Traefik reconcile (single + batch, dashboard + worker-self). The first domain mapping/dashboard binds host 80/443; if those can't be bound, Traefik rolls back to its last-good config and the just-persisted mapping(s) are **rolled back out of the store**, returning 409 — so a bad mapping never wedges Traefik or takes the dashboard down. See `docs/networking.md` → **Reconcile Robustness**.
 
 ### 24.7 Environments
 - `GET /api/environments` — list all

@@ -1404,34 +1404,50 @@ export class ContainerManager {
   ): Promise<number> {
     const cfg = appType.autoPortMapping!;
     const store = usePortMappingStore();
+    const traefik = useTraefikManager();
     const existing = store.findByWorkerAndAppType(info.containerName, appType.id, instanceId);
     if (existing) {
       return existing.externalPort;
     }
-    const externalPort = store.findFreeExternalPort(cfg.externalPortStart, cfg.externalPortEnd);
-    if (externalPort === null) {
-      throw new Error(
-        `No available external ports for ${appType.displayName} in ${cfg.externalPortStart}-${cfg.externalPortEnd}`,
-      );
+
+    // Allocate a port and apply it transactionally. If the chosen external port
+    // turns out to be occupied on the host, the strict reconcile rolls Traefik
+    // back and rejects; we drop that candidate and try the next free port rather
+    // than leaving a mapping that Traefik can't bind. Bounded so a fully blocked
+    // range fails fast instead of scanning thousands of ports.
+    const tried = new Set<number>();
+    const MAX_ATTEMPTS = 20;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const externalPort = store.findFreeExternalPort(cfg.externalPortStart, cfg.externalPortEnd, tried);
+      if (externalPort === null) {
+        throw new Error(
+          `No available external ports for ${appType.displayName} in ${cfg.externalPortStart}-${cfg.externalPortEnd}`,
+        );
+      }
+      tried.add(externalPort);
+      await store.add({
+        externalPort,
+        type: cfg.type,
+        workerId: info.id,
+        containerName: info.containerName,
+        internalPort,
+        appType: appType.id,
+        instanceId,
+        userId: info.userId,
+      });
+      try {
+        await traefik.reconcileStrict();
+        return externalPort;
+      } catch (err) {
+        await store.remove(externalPort).catch(() => {});
+        useLogger().warn(
+          `[container] auto port mapping :${externalPort} for ${appType.displayName} could not be bound (${err instanceof Error ? err.message : err}) — trying next port`,
+        );
+      }
     }
-    await store.add({
-      externalPort,
-      type: cfg.type,
-      workerId: info.id,
-      containerName: info.containerName,
-      internalPort,
-      appType: appType.id,
-      instanceId,
-      userId: info.userId,
-    });
-    try {
-      await useTraefikManager().reconcile();
-    } catch (err) {
-      useLogger().error(
-        `[container] traefik reconcile after auto port mapping failed: ${err instanceof Error ? err.message : err}`,
-      );
-    }
-    return externalPort;
+    throw new Error(
+      `Could not allocate a bindable external port for ${appType.displayName} after ${MAX_ATTEMPTS} attempts`,
+    );
   }
 
   async stopAppInstance(id: string, appTypeId: string, instanceId: string): Promise<void> {

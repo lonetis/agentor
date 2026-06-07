@@ -180,7 +180,19 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  await useTraefikManager().reconcile();
+  // Apply transactionally — on a failed Traefik apply the reconcile rolls back
+  // to last-good and rejects, so we undo every mapping created in this batch.
+  try {
+    await useTraefikManager().reconcileStrict();
+  } catch (err) {
+    for (const m of created) {
+      await store.remove(m.id).catch(() => undefined);
+    }
+    throw createError({
+      statusCode: 409,
+      statusMessage: err instanceof Error ? err.message : 'Failed to apply domain mappings',
+    });
+  }
 
   setResponseStatus(event, 201);
   return created;

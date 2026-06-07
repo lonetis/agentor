@@ -33,6 +33,7 @@ defineRouteMeta({
 });
 
 import { usePortMappingStore, useTraefikManager, useEnvironmentStore } from '../../../utils/services';
+import { TraefikPortConflictError } from '../../../utils/traefik-manager';
 import { DEFAULT_ENVIRONMENT_ID } from '../../../utils/environments';
 import { requireWorkerSelf } from '../../../utils/worker-auth';
 import type { ExposeApis } from '../../../../shared/types';
@@ -85,9 +86,22 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  const store = usePortMappingStore();
+  const traefik = useTraefikManager();
+
+  // Reject ports reserved for Traefik's 80/443 web entrypoints up front.
+  try {
+    traefik.assertPortAcceptable(extPort);
+  } catch (err) {
+    if (err instanceof TraefikPortConflictError) {
+      throw createError({ statusCode: 409, statusMessage: err.message });
+    }
+    throw err;
+  }
+
   let created;
   try {
-    created = await usePortMappingStore().add({
+    created = await store.add({
       externalPort: extPort,
       type: body.type as 'localhost' | 'external',
       workerId: ctx.container.id,
@@ -105,7 +119,19 @@ export default defineEventHandler(async (event) => {
       statusMessage: err instanceof Error ? err.message : 'Port is already mapped',
     });
   }
-  await useTraefikManager().reconcile();
+
+  // Apply transactionally — on a host-port bind failure, Traefik rolls back to
+  // its last-good config and rejects, so we drop the just-persisted mapping and
+  // return 409 instead of wedging Traefik on a port that can't be bound.
+  try {
+    await traefik.reconcileStrict();
+  } catch (err) {
+    await store.remove(created.externalPort).catch(() => {});
+    throw createError({
+      statusCode: 409,
+      statusMessage: err instanceof Error ? err.message : 'Failed to apply port mapping',
+    });
+  }
 
   setResponseStatus(event, 201);
   return created;

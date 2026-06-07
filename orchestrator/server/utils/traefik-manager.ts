@@ -22,6 +22,37 @@ const TRAEFIK_IMAGE_PULL_TIMEOUT_MS = 5 * 60 * 1000;
 
 type PortBindings = Record<string, { HostIp: string; HostPort: string }[]>;
 
+/** The mapping inputs that fully determine a Traefik container's shape
+ * (entrypoints, host port bindings, dynamic config). Passed explicitly through
+ * the build/create path so a reconcile can be replayed against a previous
+ * snapshot (rollback / self-heal) without mutating the stores. */
+interface Mappings {
+  domain: DomainMapping[];
+  port: PortMapping[];
+}
+
+/** Thrown when a requested/persisted external port cannot back a Traefik
+ * binding — either it is reserved for Traefik's own 80/443 web entrypoints, or
+ * it is already occupied on the host by another container. Mapping-create
+ * handlers translate this into HTTP 409 so a misconfiguration is rejected
+ * cleanly instead of wedging Traefik. */
+export class TraefikPortConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TraefikPortConflictError';
+  }
+}
+
+/** Thrown when (re)creating the Traefik container failed and the previous
+ * working container was restored (or could not be). Surfaced to strict callers
+ * so they can roll back the persisted mapping that triggered the failed apply. */
+export class TraefikReconcileError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TraefikReconcileError';
+  }
+}
+
 export class TraefikManager {
   private docker: Docker;
   private config: Config;
@@ -31,6 +62,10 @@ export class TraefikManager {
   private selfSignedCertManager: SelfSignedCertManager;
   private reconcileQueue: Promise<void> = Promise.resolve();
   private configFileJustCreated = false;
+  /** Snapshot of the mappings that last produced a *running* Traefik container.
+   * On a failed (re)create the reconcile rolls back to this so the dashboard
+   * (served through Traefik) always comes back. Null until the first success. */
+  private lastGoodMappings: Mappings | null = null;
 
   constructor(
     config: Config,
@@ -71,25 +106,64 @@ export class TraefikManager {
     }
   }
 
+  /** Serialize `fn` after any in-flight reconcile, but return a promise tied to
+   * THIS invocation so the caller can observe its success/failure. The queue
+   * itself is kept rejection-free (errors are swallowed for chaining) — only the
+   * returned promise carries the outcome. */
+  private enqueue(fn: () => Promise<void>): Promise<void> {
+    // `then(fn, fn)` runs `fn` regardless of whether the previous task settled
+    // fulfilled or rejected, so one failing reconcile never stalls the queue.
+    const run = this.reconcileQueue.then(fn, fn);
+    this.reconcileQueue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  /** Fire-and-forget reconcile — never rejects (failures are logged and rolled
+   * back internally). Used by lifecycle callers (rebuild/unarchive/import/
+   * startup) where a transient Traefik blip must not fail the larger operation. */
   reconcile(): Promise<void> {
-    this.reconcileQueue = this.reconcileQueue.then(() => this.reconcileNow()).catch((err) => {
+    return this.enqueue(() => this.reconcileNow()).catch((err) => {
       useLogger().error(`[traefik-manager] reconcile failed: ${err instanceof Error ? err.message : err}`);
     });
-    return this.reconcileQueue;
+  }
+
+  /** Reconcile that REJECTS if the apply it triggered failed. Used by the
+   * mapping-create handlers so a mapping that cannot be applied (occupied host
+   * port, reserved 80/443, etc.) is rolled back out of the store and reported as
+   * a 409, instead of being silently persisted while Traefik wedges. */
+  reconcileStrict(): Promise<void> {
+    return this.enqueue(() => this.reconcileNow());
   }
 
   forceRecreate(): Promise<void> {
-    this.reconcileQueue = this.reconcileQueue.then(() => this.forceRecreateNow()).catch((err) => {
+    return this.enqueue(() => this.forceRecreateNow()).catch((err) => {
       useLogger().error(`[traefik-manager] force recreate failed: ${err instanceof Error ? err.message : err}`);
     });
-    return this.reconcileQueue;
   }
 
-  private shouldRun(): boolean {
-    const hasDomainMappings = this.domainStore.list().length > 0;
-    const hasPortMappings = this.portStore.list().length > 0;
+  /** Layer 1 — reject a port that structurally cannot be a mapping because
+   * Traefik binds it on the host for its own web entrypoints. 80/443 are the
+   * `web`/`websecure` entrypoints that domain routing and the dashboard
+   * subdomain depend on; a `pm-<port>` entrypoint on the same number would make
+   * Traefik fail to boot. Called synchronously by create handlers BEFORE the
+   * mapping is persisted, so the common misconfig is refused with zero
+   * disruption. Throws {@link TraefikPortConflictError}. */
+  assertPortAcceptable(externalPort: number): void {
+    if ((externalPort === 80 || externalPort === 443) && this.needsWebEntrypoints(this.currentMappings())) {
+      const which = externalPort === 80 ? 'HTTP (web)' : 'HTTPS (websecure)';
+      throw new TraefikPortConflictError(
+        `Port ${externalPort} is reserved for the Traefik ${which} entrypoint used by domain routing and the dashboard. Choose a different external port.`,
+      );
+    }
+  }
+
+  private currentMappings(): Mappings {
+    return { domain: this.domainStore.list(), port: this.portStore.list() };
+  }
+
+  private shouldRun(m: Mappings): boolean {
     const hasDashboard = !!this.config.dashboardSubdomain && this.config.baseDomains.length > 0;
-    return hasDomainMappings || hasPortMappings || hasDashboard;
+    return m.domain.length > 0 || m.port.length > 0 || hasDashboard;
   }
 
   /**
@@ -98,49 +172,191 @@ export class TraefikManager {
    * that nothing will serve. Kept in one place so buildCmd/buildExposedPorts/
    * buildPortBindings can never drift on the predicate.
    */
-  private needsWebEntrypoints(): boolean {
-    return this.domainStore.list().length > 0
+  private needsWebEntrypoints(m: Mappings): boolean {
+    return m.domain.length > 0
       || (!!this.config.dashboardSubdomain && this.config.baseDomains.length > 0);
   }
 
   private async forceRecreateNow(): Promise<void> {
-    if (!this.shouldRun()) return;
-
+    const m = this.currentMappings();
+    if (!this.shouldRun(m)) {
+      await this.removeTraefik();
+      this.lastGoodMappings = null;
+      return;
+    }
     await this.removeTraefik();
-    await this.writeTraefikConfig(this.domainStore.list(), this.portStore.list());
-    await this.createTraefik();
+    await this.writeTraefikConfig(m);
+    await this.createOrRollback(m);
   }
 
   private async reconcileNow(): Promise<void> {
-    const domainMappings = this.domainStore.list();
-    const portMappings = this.portStore.list();
+    const m = this.currentMappings();
 
-    if (!this.shouldRun()) {
+    if (!this.shouldRun(m)) {
       await this.removeTraefik();
+      this.lastGoodMappings = null;
       return;
     }
-
-    await this.writeTraefikConfig(domainMappings, portMappings);
 
     const container = await this.findTraefik();
-    if (container) {
-      const c = this.docker.getContainer(container.Id);
-      const info = await c.inspect();
-      if (!info.State.Running) {
-        await c.start();
-      } else if (this.configFileJustCreated) {
-        this.configFileJustCreated = false;
-        await c.restart();
-        useLogger().info('[traefik-manager] restarted Traefik (config file was recreated)');
-      } else if (this.hasContainerConfigDrift(info)) {
-        useLogger().info('[traefik-manager] config drift detected — recreating Traefik container');
-        await this.removeTraefik();
-        await this.createTraefik();
-      }
+
+    // No Traefik yet — first create. Pre-flight every host port we are about to
+    // bind so the very first domain/port mapping can't silently fail to start.
+    if (!container) {
+      await this.preflightHostPorts(this.hostPortsFor(m));
+      await this.writeTraefikConfig(m);
+      await this.createOrRollback(m);
       return;
     }
 
-    await this.createTraefik();
+    const c = this.docker.getContainer(container.Id);
+    const info = await c.inspect();
+
+    // The container exists but isn't running (crashed, or a previously-persisted
+    // mapping couldn't bind its host port). Self-heal so the dashboard returns.
+    if (!info.State.Running) {
+      await this.writeTraefikConfig(m);
+      await this.startOrSelfHeal(c, m);
+      return;
+    }
+
+    if (this.configFileJustCreated) {
+      this.configFileJustCreated = false;
+      await this.writeTraefikConfig(m);
+      await c.restart();
+      useLogger().info('[traefik-manager] restarted Traefik (config file was recreated)');
+      this.lastGoodMappings = m;
+      return;
+    }
+
+    if (this.hasContainerConfigDrift(info, m)) {
+      // The dangerous path: a recreate drops the running Traefik (and the
+      // dashboard). Pre-flight only the NEW host ports (those the running
+      // container doesn't already hold) BEFORE removing it, so a conflict is
+      // refused without any disruption. (Layer 2)
+      const running = this.runningHostPorts(info);
+      const newPorts = this.hostPortsFor(m).filter((p) => !running.has(p));
+      await this.preflightHostPorts(newPorts);
+
+      useLogger().info('[traefik-manager] config drift detected — recreating Traefik container');
+      await this.writeTraefikConfig(m);
+      await this.removeTraefik();
+      await this.createOrRollback(m);
+      return;
+    }
+
+    // No drift — apply via the file provider (hot reload, no restart/recreate).
+    await this.writeTraefikConfig(m);
+    this.lastGoodMappings = m;
+  }
+
+  /** Create Traefik for `m`; on a failed start, roll back to the last-known-good
+   * config so the dashboard returns, then re-throw so strict callers can undo
+   * the persisted mapping that triggered the failure. (Layer 3) */
+  private async createOrRollback(m: Mappings): Promise<void> {
+    try {
+      await this.createTraefik(m);
+      this.lastGoodMappings = m;
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      useLogger().error(`[traefik-manager] Traefik create failed: ${msg}`);
+      if (this.lastGoodMappings) {
+        useLogger().warn('[traefik-manager] rolling back Traefik to last-good config');
+        await this.removeTraefik().catch(() => {});
+        await this.writeTraefikConfig(this.lastGoodMappings);
+        try {
+          await this.createTraefik(this.lastGoodMappings);
+          useLogger().info('[traefik-manager] rollback succeeded — Traefik restored');
+        } catch (rbErr) {
+          useLogger().error(`[traefik-manager] rollback ALSO failed: ${rbErr instanceof Error ? rbErr.message : rbErr}`);
+        }
+      }
+      throw new TraefikReconcileError(msg);
+    }
+  }
+
+  /** Start an existing-but-stopped Traefik; if it can't bind its ports, recreate
+   * with a reduced config (drop port mappings whose host port is occupied, or
+   * fall back to last-good) so the dashboard is restored. The offending mapping
+   * is left in the store — unrouted — so the operator can reach the dashboard
+   * and remove it. (Layer 5) */
+  private async startOrSelfHeal(c: Docker.Container, m: Mappings): Promise<void> {
+    try {
+      await c.start();
+      this.lastGoodMappings = m;
+      return;
+    } catch (err) {
+      useLogger().error(`[traefik-manager] Traefik start failed: ${err instanceof Error ? err.message : err}`);
+    }
+    const occupied = await this.occupiedHostPorts();
+    const keptPorts = m.port.filter((pm) => !occupied.has(pm.externalPort));
+    const fallback: Mappings = this.lastGoodMappings ?? { domain: m.domain, port: keptPorts };
+    const dropped = m.port.length - fallback.port.length;
+    await this.removeTraefik().catch(() => {});
+    await this.writeTraefikConfig(fallback);
+    try {
+      await this.createTraefik(fallback);
+      this.lastGoodMappings = fallback;
+      useLogger().warn(
+        `[traefik-manager] self-healed Traefik (dropped ${dropped} unbindable port mapping(s)) — dashboard restored`,
+      );
+    } catch (healErr) {
+      useLogger().error(`[traefik-manager] self-heal failed: ${healErr instanceof Error ? healErr.message : healErr}`);
+    }
+  }
+
+  /** Host ports the Traefik container for `m` will publish (80/443 web
+   * entrypoints when needed, plus one per port mapping). */
+  private hostPortsFor(m: Mappings): number[] {
+    const ports: number[] = [];
+    if (this.needsWebEntrypoints(m)) ports.push(80, 443);
+    for (const pm of m.port) ports.push(pm.externalPort);
+    return ports;
+  }
+
+  /** Host ports the currently-running Traefik already binds (from its inspect
+   * data) — the baseline against which a reconcile's NEW ports are computed. */
+  private runningHostPorts(info: Docker.ContainerInspectInfo): Set<number> {
+    const ports = new Set<number>();
+    for (const arr of Object.values(info.HostConfig?.PortBindings || {})) {
+      for (const b of (arr as { HostPort?: string }[] | undefined) || []) {
+        const n = Number(b?.HostPort);
+        if (Number.isInteger(n)) ports.add(n);
+      }
+    }
+    return ports;
+  }
+
+  /** Host ports currently published by some OTHER container (Traefik itself is
+   * excluded — it is the one being recreated). Used to detect a conflict before
+   * tearing down the working Traefik. */
+  private async occupiedHostPorts(): Promise<Set<number>> {
+    const ports = new Set<number>();
+    const containers = await this.docker.listContainers({ all: false });
+    for (const c of containers) {
+      const names = (c.Names || []).map((n) => n.replace(/^\//, ''));
+      if (names.includes(TRAEFIK_CONTAINER_NAME)) continue;
+      for (const p of c.Ports || []) {
+        if (p.PublicPort) ports.add(p.PublicPort);
+      }
+    }
+    return ports;
+  }
+
+  /** Throw {@link TraefikPortConflictError} if any of `ports` is already taken
+   * on the host by another container. Caught before any destructive action so
+   * the running Traefik is never disturbed. (Layer 2) */
+  private async preflightHostPorts(ports: number[]): Promise<void> {
+    if (ports.length === 0) return;
+    const occupied = await this.occupiedHostPorts();
+    const clashes = [...new Set(ports.filter((p) => occupied.has(p)))];
+    if (clashes.length > 0) {
+      throw new TraefikPortConflictError(
+        `Host port${clashes.length > 1 ? 's' : ''} ${clashes.join(', ')} already in use by another container — `
+        + 'refusing to (re)create Traefik. Free the port or choose a different external port.',
+      );
+    }
   }
 
   private getDomainConfig(baseDomain: string): BaseDomainConfig | undefined {
@@ -209,10 +425,8 @@ export class TraefikManager {
     return value.replace(/[`)\\]/g, '');
   }
 
-  private async writeTraefikConfig(
-    domainMappings: DomainMapping[],
-    portMappings: PortMapping[],
-  ): Promise<void> {
+  private async writeTraefikConfig(m: Mappings): Promise<void> {
+    const { domain: domainMappings, port: portMappings } = m;
     const config = {
       http: { routers: {} as Record<string, unknown>, services: {} as Record<string, unknown>, middlewares: {} as Record<string, unknown> },
       tcp: { routers: {} as Record<string, unknown>, services: {} as Record<string, unknown> },
@@ -402,22 +616,22 @@ export class TraefikManager {
     await writeFile(configPath, stringifyYaml(clean, { lineWidth: 0 }));
   }
 
-  buildCmd(): string[] {
+  buildCmd(m: Mappings): string[] {
     const cmd: string[] = [
       `--providers.file.filename=/data/${TRAEFIK_CONFIG_FILENAME}`,
       '--providers.file.watch=true',
       '--ping=true',
     ];
 
-    if (this.needsWebEntrypoints()) {
+    if (this.needsWebEntrypoints(m)) {
       cmd.push('--entrypoints.web.address=:80', '--entrypoints.websecure.address=:443');
     }
 
     // One entrypoint per port mapping, deterministically ordered by external
     // port. The order must match createTraefik()'s PortBindings construction
     // so drift detection does not thrash.
-    for (const m of this.sortedPortMappings()) {
-      cmd.push(`--entrypoints.pm-${m.externalPort}.address=:${m.externalPort}`);
+    for (const pm of this.sortedPortMappings(m)) {
+      cmd.push(`--entrypoints.pm-${pm.externalPort}.address=:${pm.externalPort}`);
     }
 
     const hasHttp = this.config.baseDomainConfigs.some((c) => c.challengeType === 'http');
@@ -458,41 +672,41 @@ export class TraefikManager {
     return env;
   }
 
-  private sortedPortMappings(): PortMapping[] {
-    return [...this.portStore.list()].sort((a, b) => a.externalPort - b.externalPort);
+  private sortedPortMappings(m: Mappings): PortMapping[] {
+    return [...m.port].sort((a, b) => a.externalPort - b.externalPort);
   }
 
-  private buildExposedPorts(): Record<string, object> {
+  private buildExposedPorts(m: Mappings): Record<string, object> {
     const exposed: Record<string, object> = {};
-    if (this.needsWebEntrypoints()) {
+    if (this.needsWebEntrypoints(m)) {
       exposed['80/tcp'] = {};
       exposed['443/tcp'] = {};
     }
-    for (const m of this.sortedPortMappings()) {
-      exposed[`${m.externalPort}/tcp`] = {};
+    for (const pm of this.sortedPortMappings(m)) {
+      exposed[`${pm.externalPort}/tcp`] = {};
     }
     return exposed;
   }
 
-  private buildPortBindings(): PortBindings {
+  private buildPortBindings(m: Mappings): PortBindings {
     const bindings: PortBindings = {};
-    if (this.needsWebEntrypoints()) {
+    if (this.needsWebEntrypoints(m)) {
       bindings['80/tcp'] = [{ HostIp: '0.0.0.0', HostPort: '80' }];
       bindings['443/tcp'] = [{ HostIp: '0.0.0.0', HostPort: '443' }];
     }
-    for (const m of this.sortedPortMappings()) {
-      const hostIp = m.type === 'localhost' ? '127.0.0.1' : '0.0.0.0';
-      bindings[`${m.externalPort}/tcp`] = [{ HostIp: hostIp, HostPort: String(m.externalPort) }];
+    for (const pm of this.sortedPortMappings(m)) {
+      const hostIp = pm.type === 'localhost' ? '127.0.0.1' : '0.0.0.0';
+      bindings[`${pm.externalPort}/tcp`] = [{ HostIp: hostIp, HostPort: String(pm.externalPort) }];
     }
     return bindings;
   }
 
-  private hasContainerConfigDrift(info: Docker.ContainerInspectInfo): boolean {
-    const expectedCmd = this.buildCmd();
+  private hasContainerConfigDrift(info: Docker.ContainerInspectInfo, m: Mappings): boolean {
+    const expectedCmd = this.buildCmd(m);
     const actualCmd = info.Config?.Cmd || [];
     if (JSON.stringify(expectedCmd) !== JSON.stringify(actualCmd)) return true;
 
-    const expectedBindings = this.buildPortBindings();
+    const expectedBindings = this.buildPortBindings(m);
     const actualBindings = info.HostConfig?.PortBindings || {};
     if (!portBindingsMatch(expectedBindings, actualBindings)) return true;
 
@@ -506,7 +720,7 @@ export class TraefikManager {
     return false;
   }
 
-  private async createTraefik(): Promise<void> {
+  private async createTraefik(m: Mappings): Promise<void> {
     // A freshly created container always reads the current config file, so the
     // "config was just created" restart hint no longer applies — clear it so a
     // later reconcile that finds the running container does not trigger a
@@ -524,10 +738,10 @@ export class TraefikManager {
 
     await this.ensureImage(image);
 
-    const cmd = this.buildCmd();
+    const cmd = this.buildCmd(m);
     const env = this.buildEnv();
-    const exposedPorts = this.buildExposedPorts();
-    const portBindings = this.buildPortBindings();
+    const exposedPorts = this.buildExposedPorts(m);
+    const portBindings = this.buildPortBindings(m);
 
     const container = await this.docker.createContainer({
       Image: image,
@@ -555,9 +769,17 @@ export class TraefikManager {
       },
     });
 
-    await container.start();
+    try {
+      await container.start();
+    } catch (err) {
+      // Docker rejects the start when a host port can't be bound (e.g. another
+      // process already owns it). Tear the half-created container down so the
+      // caller's rollback/self-heal starts from a clean slate, then rethrow.
+      await container.remove({ force: true }).catch(() => {});
+      throw err;
+    }
     useLogger().info(
-      `[traefik-manager] created Traefik container (${this.domainStore.list().length} domain, ${this.portStore.list().length} port mapping(s))`,
+      `[traefik-manager] created Traefik container (${m.domain.length} domain, ${m.port.length} port mapping(s))`,
     );
     useLogCollector().attach(TRAEFIK_CONTAINER_NAME, container.id, 'traefik').catch((err) =>
       useLogger().warn(`[traefik-manager] log attach failed: ${err instanceof Error ? err.message : err}`),

@@ -32,6 +32,7 @@ defineRouteMeta({
 });
 
 import { usePortMappingStore, useTraefikManager, useContainerManager } from '../../utils/services';
+import { TraefikPortConflictError } from '../../utils/traefik-manager';
 import { requireContainerAccess } from '../../utils/auth-helpers';
 
 export default defineEventHandler(async (event) => {
@@ -83,17 +84,54 @@ export default defineEventHandler(async (event) => {
 
   requireContainerAccess(event, containerInfo);
 
-  const created = await store.add({
-    externalPort: extPort,
-    type: body.type as 'localhost' | 'external',
-    workerId: containerInfo.id,
-    containerName: containerInfo.containerName,
-    internalPort: intPort,
-    appType: body.appType as string | undefined,
-    instanceId: body.instanceId as string | undefined,
-    userId: containerInfo.userId,
-  });
-  await useTraefikManager().reconcile();
+  const traefik = useTraefikManager();
+
+  // Reject ports reserved for Traefik's own 80/443 web entrypoints before
+  // persisting — these can never back a mapping while domain routing/dashboard
+  // is active (a pm-<port> entrypoint on 80/443 would stop Traefik booting).
+  try {
+    traefik.assertPortAcceptable(extPort);
+  } catch (err) {
+    if (err instanceof TraefikPortConflictError) {
+      throw createError({ statusCode: 409, statusMessage: err.message });
+    }
+    throw err;
+  }
+
+  let created;
+  try {
+    created = await store.add({
+      externalPort: extPort,
+      type: body.type as 'localhost' | 'external',
+      workerId: containerInfo.id,
+      containerName: containerInfo.containerName,
+      internalPort: intPort,
+      appType: body.appType as string | undefined,
+      instanceId: body.instanceId as string | undefined,
+      userId: containerInfo.userId,
+    });
+  } catch (err) {
+    // `add()` throws on a duplicate external port — surface a 409, matching the
+    // worker-self handler (previously this leaked as a 500).
+    throw createError({
+      statusCode: 409,
+      statusMessage: err instanceof Error ? err.message : 'Port is already mapped',
+    });
+  }
+
+  // Apply transactionally. If the host port can't be bound, the strict reconcile
+  // rolls Traefik back to its last-good config and rejects — so we drop the
+  // just-persisted mapping and return 409, rather than leaving a broken mapping
+  // that would re-break Traefik on every future reconcile/restart.
+  try {
+    await traefik.reconcileStrict();
+  } catch (err) {
+    await store.remove(created.externalPort).catch(() => {});
+    throw createError({
+      statusCode: 409,
+      statusMessage: err instanceof Error ? err.message : 'Failed to apply port mapping',
+    });
+  }
 
   setResponseStatus(event, 201);
   return created;
