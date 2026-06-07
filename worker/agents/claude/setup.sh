@@ -15,7 +15,7 @@ if [ ! -f ~/.claude/settings.json ]; then
 {
   "skipDangerousModePermissionPrompt": true,
   "alwaysThinkingEnabled": true,
-  "effortLevel": "high",
+  "effortLevel": "xhigh",
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
