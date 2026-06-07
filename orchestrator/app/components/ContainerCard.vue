@@ -94,12 +94,12 @@ function metricColor(p: number) {
       : 'text-gray-500 dark:text-gray-400';
 }
 
-// Convert vertical wheel to horizontal scroll on the action row so mouse users
-// can reach buttons that overflow when the card/sidebar is narrow.
-const actionsRef = ref<HTMLElement>();
-function onActionsWheel(e: WheelEvent) {
-  const el = actionsRef.value;
-  if (!el || el.scrollWidth <= el.clientWidth) return;
+// Convert vertical wheel to horizontal scroll on overflowing strips (the action
+// row and the metrics row) so mouse users can reach content that overflows when
+// the card/sidebar is narrow.
+function onHScrollWheel(e: WheelEvent) {
+  const el = e.currentTarget as HTMLElement;
+  if (el.scrollWidth <= el.clientWidth) return;
   if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
   el.scrollLeft += e.deltaY;
   e.preventDefault();
@@ -113,61 +113,61 @@ function onActionsWheel(e: WheelEvent) {
       isActive ? 'bg-blue-50/60 dark:bg-gray-800/60 border-blue-500/50 shadow-lg shadow-blue-500/10' : 'bg-gray-100/60 dark:bg-gray-800/40 border-gray-300/50 dark:border-gray-700/50',
     ]"
   >
-    <!-- Name + status + image ID (clickable for settings) -->
-    <div class="mb-2">
-      <div class="flex items-center justify-between gap-2">
-        <h3
-          class="text-sm font-semibold text-gray-900 dark:text-white truncate cursor-pointer hover:opacity-80 transition-opacity"
-          :title="displayLabel"
-          @click="showDetail = true"
-        >
-          {{ displayLabel }}
-        </h3>
-        <div class="flex items-center gap-1.5 shrink-0 ml-2">
-          <UTooltip v-if="container.pendingRebuild" text="Settings changed — rebuild to apply">
-            <UBadge color="warning" variant="subtle" size="xs">rebuild pending</UBadge>
-          </UTooltip>
-          <span v-if="shortImageId" class="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
-            {{ shortImageId }}
-          </span>
-          <UBadge :color="statusColor" variant="subtle" size="xs">
-            {{ container.status }}
-          </UBadge>
-        </div>
+    <!-- Name + image ID + status (clickable for settings): non-wrapping,
+         scrollable when the card is narrow -->
+    <div class="card-header flex items-center gap-2 mb-2" @wheel="onHScrollWheel">
+      <h3
+        class="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+        :title="displayLabel"
+        @click="showDetail = true"
+      >
+        {{ displayLabel }}
+      </h3>
+      <div class="flex items-center gap-1.5 flex-shrink-0">
+        <UTooltip v-if="container.pendingRebuild" text="Settings changed — rebuild to apply">
+          <UBadge color="warning" variant="subtle" size="xs">rebuild pending</UBadge>
+        </UTooltip>
+        <span v-if="shortImageId" class="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+          {{ shortImageId }}
+        </span>
+        <UBadge :color="statusColor" variant="subtle" size="xs">
+          {{ container.status }}
+        </UBadge>
       </div>
     </div>
 
-    <!-- Per-worker live metrics -->
+    <!-- Per-worker live metrics: non-wrapping, scrollable when the card is narrow -->
     <div
       v-if="isRunning && metric"
-      class="flex items-center gap-3 mb-2 text-[10px] font-mono"
+      class="card-metrics flex items-center gap-3 mb-2 text-[10px] font-mono"
       data-testid="worker-metrics"
+      @wheel="onHScrollWheel"
     >
       <span
-        class="flex items-center gap-1"
+        class="flex items-center gap-1 flex-shrink-0 whitespace-nowrap"
         :class="metricColor(metric.cpuUtilization)"
         :title="`CPU ${metric.cpuUtilization.toFixed(1)}% of host`"
       >
         <UIcon name="i-lucide-cpu" class="size-3" />{{ Math.round(metric.cpuUtilization) }}%
       </span>
       <span
-        class="flex items-center gap-1"
+        class="flex items-center gap-1 flex-shrink-0 whitespace-nowrap"
         :class="metricColor(metric.memoryUtilization)"
         :title="`Memory used${metric.memoryLimitBytes ? ` of ${formatBytes(metric.memoryLimitBytes)}` : ''}`"
       >
         <UIcon name="i-lucide-memory-stick" class="size-3" />{{ formatBytes(metric.memoryUsedBytes) }}
       </span>
-      <span class="flex items-center gap-1 text-gray-500 dark:text-gray-400" title="Disk used (container filesystem + /workspace + agent data)">
+      <span class="flex items-center gap-1 flex-shrink-0 whitespace-nowrap text-gray-500 dark:text-gray-400" title="Disk used (container filesystem + /workspace + agent data)">
         <UIcon name="i-lucide-hard-drive" class="size-3" />{{ formatBytes(metric.diskUsedBytes) }}
       </span>
-      <span class="flex items-center gap-1 text-gray-400 dark:text-gray-500" title="Network throughput (down / up)">
+      <span class="flex items-center gap-1 flex-shrink-0 whitespace-nowrap text-gray-400 dark:text-gray-500" title="Network throughput (down / up)">
         <UIcon name="i-lucide-arrow-down" class="size-3" />{{ formatRate(metric.netRxBytesPerSec) }}
         <UIcon name="i-lucide-arrow-up" class="size-3 ml-0.5" />{{ formatRate(metric.netTxBytesPerSec) }}
       </span>
     </div>
 
     <!-- Actions: all left-aligned, grouped with dividers, scrollable when narrow -->
-    <div ref="actionsRef" class="card-actions flex items-center gap-1.5" @wheel="onActionsWheel">
+    <div class="card-actions flex items-center gap-1.5" @wheel="onHScrollWheel">
       <!-- Views (running only) -->
       <template v-if="isRunning">
         <div class="flex items-center gap-0.5 flex-shrink-0">
@@ -249,12 +249,17 @@ function onActionsWheel(e: WheelEvent) {
 </template>
 
 <style scoped>
-/* Horizontal scroll for the action row when it overflows a narrow card, with
-   the scrollbar hidden (scroll via trackpad or wheel — see onActionsWheel). */
+/* Horizontal scroll for the header, metrics, and action rows when they overflow
+   a narrow card, with the scrollbar hidden (scroll via trackpad or wheel — see
+   onHScrollWheel). None of the strips wrap onto a second line. */
+.card-header,
+.card-metrics,
 .card-actions {
   overflow-x: auto;
   scrollbar-width: none;
 }
+.card-header::-webkit-scrollbar,
+.card-metrics::-webkit-scrollbar,
 .card-actions::-webkit-scrollbar {
   display: none;
 }
