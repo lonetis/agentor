@@ -152,6 +152,32 @@ while IFS= read -r line; do
 done <<< "$ENV_VARS"
 
 # ==========================================================================
+# Git providers (WORKER.gitProviders): every provider the orchestrator knows,
+# as { id, type, url, tokenEnvVar, containerRegistry? }. A provider counts as
+# authenticated when its tokenEnvVar holds a token (the user's Account env var
+# or an environment override). A payload without the field predates GitLab
+# support and only knew GitHub.
+# ==========================================================================
+GIT_PROVIDERS_JSON=$(echo "$WORKER" | jq -c '.gitProviders // [{"id":"github","type":"github","url":"https://github.com","tokenEnvVar":"GITHUB_TOKEN","containerRegistry":"ghcr.io"}]')
+
+# Value of the env var named $1 (empty when unset or not a valid name).
+_env_value() {
+    if [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then printf '%s' "${!1:-}"; fi
+}
+
+# Field $2 of the provider with id $1 (empty when unknown).
+_git_provider_field() {
+    echo "$GIT_PROVIDERS_JSON" | jq -r --arg id "$1" --arg f "$2" '.[] | select(.id == $id) | .[$f] // empty'
+}
+
+# Authenticated providers as TSV lines: id, type, url, tokenEnvVar.
+AUTHED_GIT_PROVIDERS=()
+while IFS=$'\t' read -r gp_id gp_type gp_url gp_token_var; do
+    [ -n "$gp_id" ] && [ -n "$(_env_value "$gp_token_var")" ] \
+        && AUTHED_GIT_PROVIDERS+=("$gp_id"$'\t'"$gp_type"$'\t'"$gp_url"$'\t'"$gp_token_var")
+done < <(echo "$GIT_PROVIDERS_JSON" | jq -r '.[] | [.id, .type, .url, .tokenEnvVar] | @tsv')
+
+# ==========================================================================
 # Phase 1: Agent setup
 # Each setup script creates config files only if they don't exist yet.
 # Once created, files are never overwritten — the user owns them.
@@ -199,10 +225,14 @@ DOCKERCONF
         tries=$((tries - 1))
     done
     if [ -S /var/run/docker.sock ]; then
-        if [ -n "$GITHUB_TOKEN" ]; then
-            echo "$GITHUB_TOKEN" | docker login ghcr.io -u agent --password-stdin > /dev/null 2>&1 \
-                || echo "[docker] Warning: GHCR login failed, continuing"
-        fi
+        # Log in to each provider's container registry (ghcr.io,
+        # registry.gitlab.com) the user has a token for.
+        while IFS=$'\t' read -r registry token_var; do
+            token=$(_env_value "$token_var")
+            [ -n "$token" ] || continue
+            printf '%s' "$token" | docker login "$registry" -u oauth2 --password-stdin > /dev/null 2>&1 \
+                || echo "[docker] Warning: $registry login failed, continuing"
+        done < <(echo "$GIT_PROVIDERS_JSON" | jq -r '.[] | select(.containerRegistry) | [.containerRegistry, .tokenEnvVar] | @tsv')
         _done docker "Docker daemon"
         _log "DinD: dockerd ready"
     else
@@ -260,12 +290,57 @@ fi
 # ==========================================================================
 # Phase 4: Git identity + auth
 # Sets global git user from the creating user's profile (name/email from
-# the WORKER JSON). Credential helper requires GITHUB_TOKEN.
+# the WORKER JSON), then per-host credentials for every authenticated git
+# provider. Tokens are never written into git config: the credential
+# helpers read them from the environment when git asks.
 # ==========================================================================
 GIT_USER_NAME=$(echo "$WORKER" | jq -r '.gitName // ""')
 GIT_USER_EMAIL=$(echo "$WORKER" | jq -r '.gitEmail // ""')
 
-if [ -n "$GIT_USER_NAME" ] || [ -n "$GIT_USER_EMAIL" ] || [ -n "$GITHUB_TOKEN" ]; then
+# glab problems must not abort the boot (set -e); never log the arguments,
+# they can carry a token.
+_glab_config() {
+    glab config set "$@" > /dev/null 2>&1 || _log "Git config: WARNING — glab config update failed"
+}
+
+GLAB_CONFIGURED=false
+configure_git_provider() {
+    local id="$1" type="$2" url="$3" token_var="$4"
+    local scheme="${url%%://*}" rest="${url#*://}"
+    local host_port="${rest%%/*}"
+    local host="${host_port%%:*}"
+    local origin="$scheme://$host_port"
+    case "$type" in
+        github)
+            export GH_TOKEN
+            GH_TOKEN=$(_env_value "$token_var")
+            git config --global "credential.$origin.helper" '!gh auth git-credential'
+            ;;
+        gitlab)
+            git config --global "credential.$origin.helper" \
+                "!f() { test \"\$1\" = get || exit 0; echo username=oauth2; echo \"password=\$$token_var\"; }; f"
+            # glab keeps per-host tokens in its config (HTTPS for git, so the
+            # helper above authenticates its clones and pushes). Inside a repo
+            # glab looks the remote's host[:port] up; `--hostname` only takes a
+            # bare host, so a port also gets a bare-host entry whose API points
+            # at host:port.
+            local glab_hosts=("$host_port")
+            [ "$host" != "$host_port" ] && glab_hosts+=("$host")
+            local h
+            for h in "${glab_hosts[@]}"; do
+                _glab_config --host "$h" token "$(_env_value "$token_var")"
+                _glab_config --host "$h" api_protocol "$scheme"
+                _glab_config --host "$h" git_protocol https
+                [ "$rest" != "$h" ] && _glab_config --host "$h" api_host "$rest"
+            done
+            GLAB_CONFIGURED=true
+            ;;
+    esac
+    git config --global "url.$url/.insteadOf" "git@$host:"
+    _log "Git config: $id credentials configured ($origin)"
+}
+
+if [ -n "$GIT_USER_NAME" ] || [ -n "$GIT_USER_EMAIL" ] || [ ${#AUTHED_GIT_PROVIDERS[@]} -gt 0 ]; then
     _step git "Git configuration"
     _log "Git config: start"
     if [ -n "$GIT_USER_NAME" ]; then
@@ -276,12 +351,11 @@ if [ -n "$GIT_USER_NAME" ] || [ -n "$GIT_USER_EMAIL" ] || [ -n "$GITHUB_TOKEN" ]
         git config --global user.email "$GIT_USER_EMAIL"
         _log "Git config: user.email=$GIT_USER_EMAIL"
     fi
-    if [ -n "$GITHUB_TOKEN" ]; then
-        export GH_TOKEN="$GITHUB_TOKEN"
-        git config --global credential.https://github.com.helper '!gh auth git-credential'
-        git config --global url."https://github.com/".insteadOf "git@github.com:"
-        _log "Git config: credential helper configured"
-    fi
+    for entry in "${AUTHED_GIT_PROVIDERS[@]}"; do
+        IFS=$'\t' read -r gp_id gp_type gp_url gp_token_var <<< "$entry"
+        configure_git_provider "$gp_id" "$gp_type" "$gp_url" "$gp_token_var"
+    done
+    [ "$GLAB_CONFIGURED" = true ] && _glab_config -g check_update false
     _done git "Git configuration"
     _log "Git config: done"
 else
@@ -295,8 +369,10 @@ clone_repo() {
     local PROVIDER="$1"
     local URL="$2"
     local BRANCH="$3"
-    local REPO_NAME
+    local REPO_NAME TYPE BASE_URL
     REPO_NAME=$(basename "$URL" .git)
+    TYPE=$(_git_provider_field "$PROVIDER" type)
+    BASE_URL=$(_git_provider_field "$PROVIDER" url)
 
     if [ -d "/workspace/$REPO_NAME" ]; then
         echo "Directory /workspace/$REPO_NAME already exists, skipping clone"
@@ -308,7 +384,7 @@ clone_repo() {
         CLONE_ARGS+=("--branch" "$BRANCH")
     fi
 
-    case "$PROVIDER" in
+    case "$TYPE" in
         github)
             # Only forward `-- --branch X` to the underlying git clone when a
             # branch is set — a trailing bare `--` is fragile across gh versions.
@@ -323,6 +399,11 @@ clone_repo() {
             }
             ;;
         *)
+            # A repo path on the provider (`group/subgroup/project`) clones
+            # from the provider's URL; a full clone URL is used as-is.
+            if [ -n "$BASE_URL" ] && [[ "$URL" != *://* && "$URL" != git@* ]]; then
+                URL="$BASE_URL/${URL%.git}.git"
+            fi
             git clone "${CLONE_ARGS[@]}" "$URL" "/workspace/$REPO_NAME" 2>&1 || {
                 echo "Failed to clone $URL, skipping"
                 return 1

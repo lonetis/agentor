@@ -73,7 +73,16 @@ export default defineEventHandler(async (event) => {
   });
 
   // --- Git Providers (domains only; tokens are per-user, see Account modal) ---
-  const gitItems: SettingItem[] = [];
+  const gitItems: SettingItem[] = [
+    {
+      key: 'GITLAB_INSTANCES',
+      label: 'Self-managed GitLab Instances',
+      value: config.gitlabInstances.length > 0
+        ? config.gitlabInstances.map((i) => `${i.name}=${i.url}`)
+        : 'none',
+      type: config.gitlabInstances.length > 0 ? 'list' : 'string',
+    },
+  ];
   for (const provider of listGitProviders()) {
     gitItems.push({
       key: `${provider.id}.cloneDomains`,

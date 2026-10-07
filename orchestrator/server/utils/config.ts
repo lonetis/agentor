@@ -13,6 +13,17 @@ export interface DnsProviderConfig {
   resolvers: string[];
 }
 
+/** A self-managed GitLab server offered as an additional git provider
+ * (`GITLAB_INSTANCES`). gitlab.com is built in and never listed here. */
+export interface GitLabInstanceConfig {
+  /** Admin-chosen short name: provider id `gitlab-<name>`, per-user token env
+   * var `GITLAB_<NAME>_TOKEN`. */
+  name: string;
+  /** Web base URL without a trailing slash — may carry a relative URL root
+   * (`https://example.com/gitlab`). The API lives at `<url>/api/v4`. */
+  url: string;
+}
+
 export interface Config {
   dockerNetwork: string;
   containerPrefix: string;
@@ -51,6 +62,7 @@ export interface Config {
    * MCP clients must reach the orchestrator under exactly this URL. */
   publicBaseUrl: string;
   mcpEnabled: boolean;
+  gitlabInstances: GitLabInstanceConfig[];
 }
 
 const DEFAULT_LOG_MAX_SIZE = 50 * 1024 * 1024;
@@ -135,6 +147,47 @@ function resolvePublicBaseUrl(
   return 'http://localhost:3000';
 }
 
+const GITLAB_INSTANCE_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** Parses `GITLAB_INSTANCES` (`<name>=<url>`, comma-separated). Malformed or
+ * duplicate entries are skipped with a warning rather than failing startup —
+ * one bad entry should not take the dashboard down. */
+export function parseGitLabInstances(raw: string): GitLabInstanceConfig[] {
+  const instances: GitLabInstanceConfig[] = [];
+  for (const entry of raw.split(',').map((e) => e.trim()).filter(Boolean)) {
+    const eq = entry.indexOf('=');
+    const name = eq > 0 ? entry.slice(0, eq).trim().toLowerCase() : '';
+    const url = eq > 0 ? normalizeInstanceUrl(entry.slice(eq + 1).trim()) : null;
+
+    let problem = '';
+    if (!GITLAB_INSTANCE_NAME_RE.test(name)) problem = 'expected <name>=<url> with a name of lowercase letters, digits and dashes';
+    else if (!url) problem = 'the URL must be an absolute http(s) URL without credentials, query or fragment';
+    else if (new URL(url).hostname === 'gitlab.com') problem = 'gitlab.com is built in';
+    else if (instances.some((i) => i.name === name)) problem = `duplicate name "${name}"`;
+    else if (instances.some((i) => i.url === url)) problem = `duplicate URL ${url}`;
+
+    if (problem) {
+      // Logger may not be initialized yet during config loading.
+      console.warn(`[config] GITLAB_INSTANCES entry '${entry}' ignored: ${problem}`);
+      continue;
+    }
+    instances.push({ name, url: url! });
+  }
+  return instances;
+}
+
+function normalizeInstanceUrl(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  if (url.username || url.password || url.search || url.hash) return null;
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+}
+
 export function parseTraefikMode(value: string | undefined): 'managed' | 'external' {
   const mode = (value || '').trim().toLowerCase();
   if (mode === '' || mode === 'managed') return 'managed';
@@ -191,6 +244,7 @@ export function loadConfig(): Config {
     betterAuthRpId: process.env.BETTER_AUTH_RP_ID?.trim() || '',
     publicBaseUrl: resolvePublicBaseUrl(betterAuthUrl, dashboardSubdomain, dashboardBaseDomain, baseDomainConfigs),
     mcpEnabled: (process.env.MCP_ENABLED ?? 'true').trim().toLowerCase() !== 'false',
+    gitlabInstances: parseGitLabInstances(process.env.GITLAB_INSTANCES || ''),
   };
 }
 

@@ -16,7 +16,7 @@ Uses **dnsmasq + ipset + iptables** for network-level domain filtering (not a by
 | `package-managers` | dnsmasq + ipset allowlist of 98 package registry domains + agent API domains |
 | `custom` | dnsmasq + ipset with user-defined domains (+ optional PM domains) + agent API domains |
 
-**Agent API domains** (aggregated from `AGENT_CONFIGS` in `agent-config.ts`) are always injected into every restricted mode so any agent CLI can reach its model API, auth, and telemetry endpoints. The UI shows all agent domains in a collapsible section when a restricted mode is selected.
+**Agent API domains** (aggregated from `AGENT_CONFIGS` in `agent-config.ts`) are always injected into every restricted mode so any agent CLI can reach its model API, auth, and telemetry endpoints. The UI shows all agent domains in a collapsible section when a restricted mode is selected. Except in `block-all`, the **git provider hosts** (`getAllGitCloneDomains()` — GitHub, gitlab.com, and every self-managed GitLab in `GITLAB_INSTANCES`) are injected the same way, so cloned repos can still be pulled and pushed.
 
 Architecture: dnsmasq resolves allowed domains and adds IPs to a kernel ipset via `ipset=` directives. iptables OUTPUT policy is DROP, with exceptions for loopback, Docker networks, and the ipset. Blocks all protocols (TCP/UDP/ICMP) to non-allowed destinations.
 

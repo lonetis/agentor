@@ -93,7 +93,8 @@ jobs:
               tmux -V
               chromium --version
               code-server --version
-              command -v gh code docker dnsmasq microsocks x11vnc Xvfb maim xdotool /usr/sbin/sshd
+              glab version
+              command -v gh glab code docker dnsmasq microsocks x11vnc Xvfb maim xdotool /usr/sbin/sshd
             '
 
       # Requires the host Docker socket: the orchestrator resolves its storage

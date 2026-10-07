@@ -374,19 +374,20 @@ export class ApiClient {
     return { status: res.status(), body: await res.json() };
   }
 
-  // ─── GitHub ───────────────────────────────────────────────────
-  async listGitHubRepos() {
-    const res = await this.request.get(`${BASE_URL}/api/github/repos`);
+  async listGitRepos(providerId: string) {
+    const res = await this.request.get(`${BASE_URL}/api/git-providers/${encodeURIComponent(providerId)}/repos`);
     return { status: res.status(), body: await res.json() };
   }
 
-  async listGitHubBranches(owner: string, repo: string) {
-    const res = await this.request.get(`${BASE_URL}/api/github/repos/${owner}/${repo}/branches`);
+  async listGitBranches(providerId: string, repo?: string) {
+    const res = await this.request.get(`${BASE_URL}/api/git-providers/${encodeURIComponent(providerId)}/branches`, {
+      params: repo === undefined ? {} : { repo },
+    });
     return { status: res.status(), body: await res.json() };
   }
 
-  async createGitHubRepo(data: Record<string, unknown>) {
-    const res = await this.request.post(`${BASE_URL}/api/github/repos`, { data });
+  async createGitRepo(providerId: string, data: Record<string, unknown>) {
+    const res = await this.request.post(`${BASE_URL}/api/git-providers/${encodeURIComponent(providerId)}/repos`, { data });
     return { status: res.status(), body: await res.json() };
   }
 

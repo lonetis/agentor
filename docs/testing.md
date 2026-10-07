@@ -222,6 +222,7 @@ Use `test.describe.serial` when tests share state (e.g., stop then restart a con
 - **Traefik integration tests**: Skipped when `BASE_DOMAINS` is not configured
 - **Agent prompting tests**: Skipped when the admin user has no agent credentials configured. The helper checks `/api/account/env-vars` for the admin's API keys and `/api/account/agent-credentials` for OAuth file status; if none are set the test is skipped.
 - **Domain mappings UI**: Some tests skipped when `BASE_DOMAINS` is not set
+- **GitLab specs** (`api/gitlab*.spec.ts`, `ui/gitlab-repo-input.spec.ts`): skipped unless the `gitlab-mock` provider exists — the dockerized stack provides it (`GITLAB_INSTANCES=mock=http://gitlab-mock:8080` + the `gitlab-mock` service running `tests/docker/gitlab-mock/server.mjs`, a GitLab API v4 + git smart HTTP stand-in)
 
 ### Terminal WebSocket Tests
 - Uses Node.js native `WebSocket` (Node 22+) via `TerminalWsClient` helper

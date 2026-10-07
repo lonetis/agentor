@@ -39,12 +39,17 @@ const passkeyAddLoading = ref(false);
 
 // Per-user env vars (predefined slots + custom), injected into every worker the
 // user creates. All are stored uniformly, keyed by env var name — the predefined
-// list is just a UI affordance and is trivially extended by adding a key to
-// PREDEFINED_ENV_VAR_KEYS. The SSH public key is NOT an env var (separate file).
-const predefinedKeys = PREDEFINED_ENV_VAR_KEYS;
-const predefinedEnv = reactive<Record<string, string>>(
-  Object.fromEntries(predefinedKeys.map((k) => [k, ''])),
+// list is just a UI affordance: PREDEFINED_ENV_VAR_KEYS plus every git
+// provider's token variable (e.g. GITLAB_<NAME>_TOKEN of a self-managed GitLab).
+// The SSH public key is NOT an env var (separate file).
+const { gitProviders, ready: gitProvidersReady } = useGitProviders();
+const predefinedKeys = computed(() => [
+  ...new Set<string>([...PREDEFINED_ENV_VAR_KEYS, ...gitProviders.value.map((p) => p.tokenEnvVar)]),
+]);
+const predefinedHints = computed<Record<string, string>>(() =>
+  Object.fromEntries(gitProviders.value.map((p) => [p.tokenEnvVar, `${p.displayName} token`])),
 );
+const predefinedEnv = reactive<Record<string, string>>({});
 const customEnv = ref<{ key: string; value: string }[]>([]);
 const sshKey = ref('');
 const envLoading = ref(false);
@@ -125,7 +130,9 @@ async function loadEnvVars() {
   // allSettled so an env-vars fetch failure doesn't also blank the SSH key field
   // (and vice versa) — each section owns its own error/empty state independently.
   try {
-    const [envResult] = await Promise.allSettled([fetchEnvAndCreds(), loadSshKey()]);
+    // Providers first: their token variables decide which stored env vars are
+    // shown as predefined slots rather than custom rows.
+    const [envResult] = await Promise.allSettled([fetchEnvAndCreds(), loadSshKey(), gitProvidersReady()]);
     if (envResult.status === 'rejected') {
       const err = envResult.reason as { data?: { statusMessage?: string }; message?: string };
       envError.value = err?.data?.statusMessage || err?.message || 'Failed to load env vars';
@@ -133,8 +140,8 @@ async function loadEnvVars() {
     }
     const v = envVarsRef.value;
     if (v) {
-      const known = predefinedKeys as readonly string[];
-      for (const k of predefinedKeys) predefinedEnv[k] = '';
+      const known = predefinedKeys.value;
+      for (const k of known) predefinedEnv[k] = '';
       const custom: { key: string; value: string }[] = [];
       for (const { key, value } of v.envVars) {
         if (known.includes(key)) predefinedEnv[key] = value;
@@ -202,7 +209,7 @@ async function handleEnvSave() {
   envLoading.value = true;
   try {
     const envVars = [
-      ...predefinedKeys
+      ...predefinedKeys.value
         .map((key) => ({ key, value: predefinedEnv[key] ?? '' }))
         .filter((e) => e.value.length > 0),
       ...customEnv.value
@@ -212,7 +219,8 @@ async function handleEnvSave() {
     await saveEnvVars({ envVars });
     envSuccess.value = 'Env vars saved';
     // Refresh git-provider token status so the repo autocomplete picks up a
-    // newly-saved (or removed) GITHUB_TOKEN without requiring a page reload.
+    // newly-saved (or removed) token without requiring a page reload.
+    useGitRepos().invalidate();
     await useGitProviders().refresh();
   } catch (err: any) {
     envError.value = err?.data?.statusMessage || err?.message || 'Failed to save';
@@ -585,17 +593,18 @@ async function handleDeletePasskey(p: PasskeyRow) {
 
         <div class="border-t border-gray-200 dark:border-gray-800"></div>
 
-        <!-- Predefined env vars — well-known slots (agent API/OAuth keys, GitHub
-             token), labeled by their env var NAME. Stored uniformly with the
-             custom env vars below; extend by adding a key to
-             PREDEFINED_ENV_VAR_KEYS in shared/types. -->
+        <!-- Predefined env vars — well-known slots (agent API/OAuth keys, git
+             provider tokens), labeled by their env var NAME. Stored uniformly
+             with the custom env vars below; extend by adding a key to
+             PREDEFINED_ENV_VAR_KEYS in shared/types (provider tokens come from
+             /api/git-providers). -->
         <section class="space-y-3" data-testid="account-api-keys">
           <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">Predefined environment variables</h3>
           <p class="text-xs text-gray-500 dark:text-gray-400">
             Injected as environment variables into every worker you create. Values are only visible to you.
           </p>
 
-          <UFormField v-for="key in predefinedKeys" :key="key" :label="key">
+          <UFormField v-for="key in predefinedKeys" :key="key" :label="key" :hint="predefinedHints[key]">
             <div class="flex gap-2">
               <UInput
                 v-model="predefinedEnv[key]"

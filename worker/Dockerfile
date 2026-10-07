@@ -71,6 +71,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     apt-get update && apt-get install -y --no-install-recommends gh && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# GitLab CLI (latest release .deb — glab has no apt repository)
+RUN GLAB_VERSION=$(curl -fsSL "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest" | jq -r '.tag_name | ltrimstr("v")') && \
+    curl -fsSL -o /tmp/glab.deb "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_$(dpkg --print-architecture).deb" && \
+    apt-get install -y --no-install-recommends /tmp/glab.deb && \
+    rm -f /tmp/glab.deb && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Chromium (from Debian bookworm — Ubuntu 24.04 only ships a snap wrapper)
 RUN curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc \
       | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg && \

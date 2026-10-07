@@ -1,43 +1,42 @@
 <script setup lang="ts">
-import type { RepoConfig, GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo } from '~/types';
+import type { RepoConfig, GitProviderInfo, GitRepoInfo, GitBranchInfo } from '~/types';
 
+// One repository row. With a token for the selected provider it offers a
+// searchable list of the user's repos (plus "create"), and a branch picker for
+// the chosen repo; otherwise it is a plain URL + branch input. Repo lists are
+// shared per provider via useGitRepos; branch state is local to the row.
 const props = defineProps<{
   modelValue: RepoConfig;
   providers: GitProviderInfo[];
-  githubRepos?: GitHubRepoInfo[];
-  githubReposLoading?: boolean;
-  githubReposError?: string;
-  githubBranches?: GitHubBranchInfo[];
-  githubBranchesLoading?: boolean;
-  githubDefaultBranch?: string;
-  githubUser?: string;
-  githubOrgs?: string[];
-  creatingRepo?: boolean;
 }>();
 
 const emit = defineEmits<{
   'update:modelValue': [value: RepoConfig];
   remove: [];
-  'repo-selected': [fullName: string];
-  'create-repo': [payload: { owner: string; name: string; isPrivate: boolean }];
 }>();
+
+const { reposFor, load, fetchBranches, createRepo } = useGitRepos();
 
 const providerOptions = computed(() =>
   props.providers.map((p) => ({ label: p.displayName, value: p.id }))
 );
 
-const placeholder = computed(() => {
-  const provider = props.providers.find((p) => p.id === props.modelValue.provider);
-  return provider?.placeholder || 'https://example.com/owner/repo';
-});
+const provider = computed(() => props.providers.find((p) => p.id === props.modelValue.provider));
 
-const currentProvider = computed(() =>
-  props.providers.find((p) => p.id === props.modelValue.provider)
-);
+const placeholder = computed(() => provider.value?.placeholder || 'https://example.com/owner/repo');
 
-const isGitHubWithToken = computed(() =>
-  currentProvider.value?.id === 'github' && currentProvider.value?.tokenConfigured === true
-);
+const browsable = computed(() => provider.value?.tokenConfigured === true);
+
+const repoState = computed(() => (provider.value ? reposFor(provider.value.id) : undefined));
+const repos = computed(() => repoState.value?.repos ?? []);
+
+watch([() => provider.value?.id, browsable], ([id, ok]) => {
+  if (id && ok) load(id);
+}, { immediate: true });
+
+// The row may be removed while a request is in flight — never emit for it then.
+let unmounted = false;
+onUnmounted(() => { unmounted = true; });
 
 // === Custom repo dropdown ===
 
@@ -45,6 +44,8 @@ const searchText = ref(props.modelValue.url || '');
 const showDropdown = ref(false);
 const highlightedIndex = ref(-1);
 const dropdownRef = ref<HTMLElement>();
+const creating = ref(false);
+const createError = ref('');
 
 // Keep searchText and modelValue.url in sync
 watch(() => props.modelValue.url, (val) => {
@@ -54,39 +55,35 @@ watch(() => props.modelValue.url, (val) => {
 watch(searchText, (val) => {
   if (val !== props.modelValue.url) update('url', val);
   highlightedIndex.value = -1;
+  createError.value = '';
 });
 
 const filteredRepos = computed(() => {
-  const repos = props.githubRepos || [];
   const query = searchText.value.toLowerCase().trim();
-  const filtered = query ? repos.filter((r) => r.fullName.toLowerCase().includes(query)) : repos;
+  const filtered = query ? repos.value.filter((r) => r.fullName.toLowerCase().includes(query)) : repos.value;
   return filtered.slice(0, 50);
 });
 
+/** "Create" target for the typed text: a bare name goes to the user's own
+ * namespace, a path to the namespace before its last segment (GitLab paths may
+ * be nested: `group/subgroup/name`). */
 const createTarget = computed(() => {
   const text = searchText.value.trim();
-  if (!text) return null;
-  if ((props.githubRepos || []).some((r) => r.fullName === text)) return null;
-
-  const parts = text.split('/');
-  if (parts.length === 2 && parts[0] && parts[1]) {
-    return { owner: parts[0], name: parts[1].replace(/\.git$/, '') };
-  }
-  if (parts.length === 1 && parts[0] && props.githubUser) {
-    return { owner: props.githubUser, name: parts[0] };
-  }
-  const fullName = extractFullName(text);
-  if (fullName) {
-    const [owner, name] = fullName.split('/') as [string, string];
-    return { owner, name };
-  }
-  return null;
+  if (!text || repos.value.some((r) => r.fullName === text)) return null;
+  const username = repoState.value?.username;
+  if (!text.includes('/')) return username ? { owner: username, name: text } : null;
+  const fullName = toFullName(text);
+  if (!fullName) return null;
+  const cut = fullName.lastIndexOf('/');
+  return { owner: fullName.slice(0, cut), name: fullName.slice(cut + 1) };
 });
 
 // Keyboard navigation indices
 const createPublicIdx = computed(() => filteredRepos.value.length);
 const createPrivateIdx = computed(() => filteredRepos.value.length + 1);
 const totalItems = computed(() => filteredRepos.value.length + (createTarget.value ? 2 : 0));
+
+const dropdownError = computed(() => createError.value || repoState.value?.error || '');
 
 function highlightNext() {
   if (!showDropdown.value) { showDropdown.value = true; return; }
@@ -117,10 +114,10 @@ function selectHighlighted() {
   }
 }
 
-function selectRepo(repo: GitHubRepoInfo) {
+function selectRepo(repo: GitRepoInfo) {
   searchText.value = repo.fullName;
   showDropdown.value = false;
-  emit('repo-selected', repo.fullName);
+  loadBranches(repo.fullName);
 }
 
 function onContainerFocusout(e: FocusEvent) {
@@ -131,28 +128,96 @@ function onContainerFocusout(e: FocusEvent) {
   }
 }
 
+async function handleCreate(isPrivate: boolean) {
+  const target = createTarget.value;
+  const providerId = provider.value?.id;
+  if (!target || !providerId) return;
+  searchText.value = `${target.owner}/${target.name}`;
+  showDropdown.value = false;
+  creating.value = true;
+  createError.value = '';
+  try {
+    const repo = await createRepo(providerId, { ...target, isPrivate });
+    if (unmounted || props.modelValue.provider !== providerId) return;
+    searchText.value = repo.fullName;
+    loadBranches(repo.fullName);
+  } catch (err) {
+    createError.value = fetchErrorMessage(err, 'Failed to create repository');
+    showDropdown.value = true;
+  } finally {
+    creating.value = false;
+  }
+}
+
 // === Branch field ===
 
-const branchItems = computed(() =>
-  (props.githubBranches || []).map((b) => b.name)
-);
+const branches = ref<GitBranchInfo[]>([]);
+const branchesLoading = ref(false);
+const defaultBranch = ref('');
+let branchRequest = 0;
+
+const branchItems = computed(() => branches.value.map((b) => b.name));
+
+async function loadBranches(fullName: string) {
+  const providerId = provider.value?.id;
+  if (!providerId || !browsable.value) return;
+  const request = ++branchRequest;
+  branchesLoading.value = true;
+  try {
+    const data = await fetchBranches(providerId, fullName);
+    if (request !== branchRequest) return;
+    branches.value = data.branches;
+    defaultBranch.value = data.defaultBranch;
+  } catch {
+    // Unknown repo or a typed URL that isn't on the provider — the branch
+    // field stays free-text.
+    if (request !== branchRequest) return;
+    branches.value = [];
+    defaultBranch.value = '';
+  } finally {
+    if (request === branchRequest) branchesLoading.value = false;
+  }
+}
+
+watch(() => props.modelValue.provider, () => {
+  branchRequest++;
+  branches.value = [];
+  defaultBranch.value = '';
+  branchesLoading.value = false;
+  createError.value = '';
+});
+
+// Rows opened with a repo already set (worker settings) get their branch list
+// once the provider's token status is known.
+watch(browsable, (ok) => {
+  const fullName = ok ? toFullName(props.modelValue.url || '') : null;
+  if (fullName) loadBranches(fullName);
+}, { immediate: true });
 
 // === Helpers ===
 
-function extractFullName(url: string): string | null {
-  const match = url.match(/(?:github\.com\/)?([^/\s]+\/[^/\s]+)/);
-  return match?.[1]?.replace(/\.git$/, '') ?? null;
+/** The repo path on the selected provider (`owner/repo`, `group/sub/project`)
+ * for a typed path, web/clone URL or `git@host:` URL — null when the text points
+ * at another host or is not a repo path. */
+function toFullName(text: string): string | null {
+  let path = text.trim();
+  const base = provider.value?.url;
+  if (base) {
+    const host = base.replace(/^[a-z]+:\/\//i, '').split('/')[0]!.split(':')[0];
+    if (path.startsWith(`${base}/`)) path = path.slice(base.length + 1);
+    else if (path.startsWith(`git@${host}:`)) path = path.slice(`git@${host}:`.length);
+  }
+  if (/^[a-z]+:\/\//i.test(path) || path.startsWith('git@')) return null;
+  path = path.replace(/\/+$/, '').replace(/\.git$/, '');
+  const parts = path.split('/');
+  if (parts.length < 2 || parts.some((p) => !p)) return null;
+  if (provider.value?.type === 'github' && parts.length !== 2) return null;
+  return path;
 }
 
 function update<K extends keyof RepoConfig>(field: K, value: RepoConfig[K]) {
+  if (unmounted) return;
   emit('update:modelValue', { ...props.modelValue, [field]: value });
-}
-
-function handleCreate(isPrivate: boolean) {
-  if (!createTarget.value) return;
-  searchText.value = `${createTarget.value.owner}/${createTarget.value.name}`;
-  showDropdown.value = false;
-  emit('create-repo', { ...createTarget.value, isPrivate });
 }
 </script>
 
@@ -162,22 +227,24 @@ function handleCreate(isPrivate: boolean) {
       :model-value="modelValue.provider"
       :items="providerOptions"
       size="xs"
-      class="w-28 shrink-0"
+      class="w-32 shrink-0"
+      aria-label="Git provider"
       @update:model-value="update('provider', $event)"
     />
 
     <!-- Custom searchable repo dropdown -->
     <div
-      v-if="isGitHubWithToken"
+      v-if="browsable"
       class="relative flex-1 min-w-0"
       @focusout="onContainerFocusout"
     >
       <UInput
         v-model="searchText"
-        :loading="githubReposLoading || creatingRepo"
+        :loading="repoState?.loading || creating"
         size="xs"
         class="w-full"
         placeholder="Search or create repository..."
+        aria-label="Repository"
         @focus="showDropdown = true"
         @click="showDropdown = true"
         @keydown.escape="showDropdown = false"
@@ -186,18 +253,19 @@ function handleCreate(isPrivate: boolean) {
         @keydown.enter.prevent="selectHighlighted"
       />
       <div
-        v-if="showDropdown && (filteredRepos.length || createTarget || githubReposError)"
+        v-if="showDropdown && (filteredRepos.length || createTarget || dropdownError)"
         ref="dropdownRef"
         class="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-[calc(var(--ui-radius)*2)] bg-[var(--ui-bg-elevated)] ring ring-[var(--ui-border-accented)] shadow-lg py-1"
         @mousedown.prevent
       >
-        <!-- GitHub error (token set but request failed) -->
+        <!-- Provider error (token set but the request failed, or create failed) -->
         <div
-          v-if="githubReposError"
+          v-if="dropdownError"
           class="px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 flex items-center gap-2"
+          data-testid="repo-dropdown-error"
         >
           <UIcon name="i-lucide-alert-triangle" class="shrink-0 size-3.5" />
-          <span class="truncate" :title="githubReposError">{{ githubReposError }}</span>
+          <span class="truncate" :title="dropdownError">{{ dropdownError }}</span>
         </div>
 
         <!-- Existing repos -->
@@ -267,19 +335,21 @@ function handleCreate(isPrivate: boolean) {
       :placeholder="placeholder"
       size="xs"
       class="flex-1 min-w-0"
+      aria-label="Repository URL"
       @update:model-value="update('url', $event)"
     />
 
-    <!-- Branch: searchable dropdown when GitHub token configured -->
+    <!-- Branch: searchable dropdown when the provider is browsable -->
     <UInputMenu
-      v-if="isGitHubWithToken && modelValue.url"
+      v-if="browsable && modelValue.url"
       :model-value="modelValue.branch || ''"
       :items="branchItems"
       create-item="always"
-      :loading="githubBranchesLoading"
+      :loading="branchesLoading"
       size="xs"
       class="w-44 shrink-0"
-      :placeholder="githubDefaultBranch ? `${githubDefaultBranch} (default)` : 'branch (optional)'"
+      :placeholder="defaultBranch ? `${defaultBranch} (default)` : 'branch (optional)'"
+      aria-label="Branch"
       @update:model-value="update('branch', $event)"
       @create="update('branch', $event)"
     />
@@ -289,6 +359,7 @@ function handleCreate(isPrivate: boolean) {
       placeholder="branch (optional)"
       size="xs"
       class="w-36 shrink-0"
+      aria-label="Branch"
       @update:model-value="update('branch', $event)"
     />
 

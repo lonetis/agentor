@@ -15,7 +15,8 @@ Tools map 1:1 onto Agentor's REST API. In tool names, **container = worker**. Ev
 - **Domain mapping** — routes `subdomain.baseDomain[/path]` (HTTP/HTTPS/TCP, optional basic auth, optional wildcard) to a worker port through Traefik. Only available when `get_domain_mapper_status` reports `enabled: true`; use one of its `baseDomains`.
 - **Apps** — per-worker services: `chromium` (CDP), `socks5` proxy, `vscode` tunnel, `ssh` server (auto-maps an external port in 22000–22999).
 - **Archive vs delete** — `archive_container` removes the container but keeps workspace, agent data and mappings (`unarchive_worker` restores it); `delete_container` / `delete_archived_worker` erase everything permanently.
-- **Account** — per-user env vars injected into every worker the user owns (`GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, ... — values are secrets), the SSH public key used by the `ssh` app, and agent OAuth logins shared across the user's workers.
+- **Git providers** — GitHub, gitlab.com and any self-managed GitLab servers the admin configured (`list_git_providers`). A worker repo is `{ provider, url, branch? }` where `url` is a clone URL or a repo path on that provider (`owner/repo`, `group/subgroup/project`). With the user's token for a provider (its `tokenEnvVar` among the account env vars), private repos clone and `list_git_repos` / `list_git_branches` / `create_git_repo` work.
+- **Account** — per-user env vars injected into every worker the user owns (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `ANTHROPIC_API_KEY`, ... — values are secrets), the SSH public key used by the `ssh` app, and agent OAuth logins shared across the user's workers.
 
 ## Typical workflows
 

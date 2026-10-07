@@ -1,7 +1,7 @@
 # Key Files
 
 ## Root
-- `.env.example` - All orchestrator-wide environment variables (logging, Traefik, dashboard auth, ACME). User-scoped secrets (agent API keys, GitHub token, custom env vars) live in the dashboard's Account modal, not here.
+- `.env.example` - All orchestrator-wide environment variables (logging, Traefik, dashboard auth, ACME). Also `GITLAB_INSTANCES` (self-managed GitLab servers as extra git providers). User-scoped secrets (agent API keys, git provider tokens, custom env vars) live in the dashboard's Account modal, not here.
 - `docker-compose.prod.yml` - Production Docker Compose configuration (GHCR images)
 - `docker-compose.dev.yml` - Development Docker Compose (hot reload via mounted source)
 - `.github/workflows/docker-image.yml` - CI: reusable single-image build (per-arch build pushed by digest + multi-arch manifest merge). Inputs: `image`, `context`, `push`, `refresh` (no-cache + re-pull base image), `tags`.
@@ -12,14 +12,14 @@
 - `orchestrator/app.config.ts` - App-level configuration
 
 ## Orchestrator — Shared
-- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, WorkerMetrics, WorkerMetricsStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UserEnvVar, UserEnvVars, UserEnvVarsInput, UserSshKey, PREDEFINED_ENV_VAR_KEYS, UpdatableImage, LogLevel, LogSource, LogEntry). `UserEnvVars` is `{ userId, createdAt, updatedAt, envVars: UserEnvVar[] }` (`UserEnvVar = { key, value }` — a uniform list, no hardcoded fields); `UserEnvVarsInput = { envVars? }`; `UserSshKey = { sshPublicKey }`; `PREDEFINED_ENV_VAR_KEYS` is the predefined-key UI affordance list (`GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) — extend it to add a predefined input. All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
+- `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, GitProviderType, GitProviderInfo, GitRepoInfo, GitBranchInfo, GitRepoList, GitBranchList, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, WorkerMetrics, WorkerMetricsStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UserEnvVar, UserEnvVars, UserEnvVarsInput, UserSshKey, PREDEFINED_ENV_VAR_KEYS, UpdatableImage, LogLevel, LogSource, LogEntry). `UserEnvVars` is `{ userId, createdAt, updatedAt, envVars: UserEnvVar[] }` (`UserEnvVar = { key, value }` — a uniform list, no hardcoded fields); `UserEnvVarsInput = { envVars? }`; `UserSshKey = { sshPublicKey }`; `PREDEFINED_ENV_VAR_KEYS` is the predefined-key UI affordance list (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) — extend it to add a predefined input (git provider token variables are added on top by the Account modal). All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
 
 ## Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build (includes python3/make/g++ for better-sqlite3 native build; copies `.npmrc` before `npm ci`)
 - `orchestrator/.npmrc` - `legacy-peer-deps=true` (better-auth 1.7's optional framework peers otherwise break npm's resolver)
 - `orchestrator/nuxt.config.ts` - Nuxt configuration (modules, SPA mode, Nitro WebSocket)
 - `orchestrator/server/plugins/services.ts` - Nitro startup: init Auth (better-auth + migrations) + Logger + LogStore + LogBroadcaster + LogCollector + Docker + ContainerManager + PortMappingStore + DomainMappingStore + TraefikManager + EnvironmentStore + CapabilityStore + InstructionStore + InitScriptStore + WorkerStore + UpdateChecker + UsageChecker
-- `orchestrator/server/utils/config.ts` - Environment variable parsing (includes `betterAuthSecret`, the resolved `publicBaseUrl`, `mcpEnabled`)
+- `orchestrator/server/utils/config.ts` - Environment variable parsing (includes `betterAuthSecret`, the resolved `publicBaseUrl`, `mcpEnabled`, `gitlabInstances` from `GITLAB_INSTANCES` via `parseGitLabInstances`)
 - `orchestrator/server/utils/auth.ts` - better-auth singleton + admin plugin + @better-auth/passkey plugin + jwt / @better-auth/mcp / @better-auth/cimd (OAuth 2.1 provider for MCP clients); exports `useAuth()`, `migrateAuth()`, `hasAnyUsers()`, `setUserRoleDirect()`, `getCredentialSummary()`, `removeUserPassword()`, `getMcpAuthConfig()`, `MCP_PATH`, `MCP_SCOPE`. Implements `resolveUser()` for passkey-first registration via the setup-token store.
 - `orchestrator/server/utils/setup-token-store.ts` - In-memory 5-minute one-shot tokens used as opaque `context` for passkey-first registration when no session exists. Consumed by `/api/setup/create-admin-passkey-token` and the `resolveUser` callback.
 - `orchestrator/server/utils/auth-helpers.ts` - `requireAuth`, `requireAdmin`, `requireContainerAccess`, `requireRunningContainerAccess`, `canAccessResource`, `authenticateWsPeer`; `resolveAuthFromEvent` also redeems MCP internal auth capabilities
@@ -62,7 +62,12 @@
 - `orchestrator/server/utils/orphan-sweeper.ts` - OrphanSweeper class. Runs at startup and every 10 minutes; reads the auth DB's user table and prunes any per-user env-vars row / credentials directory / usage state whose userId is no longer present. Uses a timer rather than a middleware so nothing touches better-auth's request pipeline.
 - `orchestrator/server/utils/init-script-store.ts` - InitScriptStore class (extends JsonStore, built-in seeding)
 - `orchestrator/server/utils/agent-config.ts` - Static agent configuration registry (API domains, env var mappings per agent)
-- `orchestrator/server/utils/git-providers.ts` - Git provider registry (GIT_PROVIDER_REGISTRY)
+- `orchestrator/server/utils/git-providers.ts` - Git provider registry: `listGitProviders()` (GitHub, gitlab.com, configured GitLab instances), `getGitProvider()`, `listWorkerGitProviders()` (the `WORKER.gitProviders` payload), `getAllGitCloneDomains()` (firewall allowlist), `parseRepoConfigs()` (repos validation for create/PATCH)
+- `orchestrator/server/utils/git-hosting-client.ts` - `GitHostingService` interface + `GitHostingClient` base (auth headers, timeouts, 60s response cache, pagination hook, upstream error mapping)
+- `orchestrator/server/utils/git-hosting.ts` - `getGitHostingService(provider, token)` factory with the per-provider+token instance cache; route helpers `resolveGitProviderForUser()` / `requireGitHostingService()`
+- `orchestrator/server/utils/gitlab.ts` - GitLabService (REST API v4 for gitlab.com and self-managed instances; `X-Next-Page` pagination, nested group paths, project creation via namespace lookup)
+- `orchestrator/server/api/git-providers/index.get.ts` - Provider list with the caller's per-provider `tokenConfigured` (defines the `GitProvider` / `GitRepo` OpenAPI schemas)
+- `orchestrator/server/api/git-providers/[providerId]/repos.get.ts` + `repos.post.ts` + `branches.get.ts` - List / create repositories and list branches on any provider with the caller's token
 - `orchestrator/server/utils/apps.ts` - App type registry (APP_REGISTRY)
 - `orchestrator/server/utils/package-manager-domains.ts` - Package-manager domain allowlist + `getPackageManagerDomains()` (the firewall allowlist for the `package-managers`/`custom` network modes)
 - `orchestrator/server/utils/docker.ts` - DockerService class (dockerode wrapper)
@@ -77,7 +82,7 @@
 - `orchestrator/server/utils/environments.ts` - EnvironmentStore class, network mode types, package manager domains list
 - `orchestrator/server/utils/worker-store.ts` - WorkerStore class (persistent worker metadata for archive/unarchive)
 - `orchestrator/server/utils/user-credentials.ts` - UserCredentialManager class (per-user OAuth credential files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json`, ensures dirs/files, generates per-user bind strings, statusList + reset) + AGENT_CREDENTIAL_MAPPINGS registry
-- `orchestrator/server/utils/user-env-store.ts` - UserEnvVarStore class (one file per user at `<DATA_DIR>/users/<userId>/env-vars.json` holding a uniform `envVars: [{ key, value }]` list — no hardcoded fields and no SSH handling; provides the `renderUserEnvVars` helper and a `getUserEnvVar(env, key)` lookup used e.g. for the GitHub token)
+- `orchestrator/server/utils/user-env-store.ts` - UserEnvVarStore class (one file per user at `<DATA_DIR>/users/<userId>/env-vars.json` holding a uniform `envVars: [{ key, value }]` list — no hardcoded fields and no SSH handling; provides the `renderUserEnvVars` helper and a `getUserEnvVar(env, key)` lookup used e.g. for git provider tokens)
 - `orchestrator/server/utils/user-scoped-store.ts` - UserScopedJsonStore<K, V> base class. Loads from `<DATA_DIR>/users/*/<filename>` and keeps `Map<userId, Map<K, V>>` in memory; each user's file is persisted independently. Used by WorkerStore, PortMappingStore, DomainMappingStore, and the user half of the built-in-plus-user stores (Environments, Capabilities, Instructions, InitScripts).
 - `orchestrator/server/utils/defaults-store.ts` - DefaultsStore<V> base class. Single-file JSON store at `<DATA_DIR>/defaults/<filename>` holding built-in, platform-seeded entries. Written by `seedBuiltIns()`; never mutated by user-facing APIs.
 - `orchestrator/server/utils/storage.ts` - StorageManager class (auto-detects volume vs directory storage mode, provides bind string construction and cleanup for worker workspaces, agent config data, DinD, Traefik certs; also reads/writes the per-user SSH key via `readSshAuthorizedKeys`/`writeSshAuthorizedKeys` at `<DATA_DIR>/users/<userId>/ssh/authorized_keys`)
@@ -94,11 +99,11 @@
 - `orchestrator/server/utils/log-broadcaster.ts` - LogBroadcaster class (manages WebSocket peers for live log streaming)
 - `orchestrator/server/utils/log-collector.ts` - LogCollector class (attaches to Docker containers via dockerode logs, handles TTY/non-TTY streams, heuristic level detection)
 - `orchestrator/server/utils/log-levels.ts` - Log level utility (`shouldLog`)
-- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useResourceMonitor, useUserCredentialManager, useUserEnvStore, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility. (GitHubService is per-token via `getGitHubServiceForToken(token)` rather than a singleton, since the token comes from each caller's UserEnvVars.)
+- `orchestrator/server/utils/services.ts` - Singleton getters via `singleton()` factory (useDockerService, useContainerManager, useConfig, usePortMappingStore, useDomainMappingStore, useSelfSignedCertManager, useTraefikManager, useEnvironmentStore, useWorkerStore, useStorageManager, useUpdateChecker, useUsageChecker, useResourceMonitor, useUserCredentialManager, useUserEnvStore, useCapabilityStore, useInstructionStore, useInitScriptStore, useLogStore, useLogBroadcaster, useLogger, useLogCollector) + shared `cleanupWorkerMappings()` utility. (Git hosting clients are per provider + token via `getGitHostingService(provider, token)` rather than singletons, since the token comes from each caller's UserEnvVars.)
 - `orchestrator/server/utils/validation.ts` - Shared validation constants (WINDOW_NAME_RE)
 - `orchestrator/server/utils/ws-utils.ts` - Shared WebSocket utilities (getPeerId, toBuffer, createWsRelayHandlers factory for desktop/editor relays)
 - `orchestrator/server/utils/terminal-handler.ts` - Docker stream WebSocket terminal logic (uses ws-utils, exports terminalWsHandler)
-- `orchestrator/server/utils/github.ts` - GitHubService class (GitHub API wrapper, repo/branch operations) — per-token via `getGitHubServiceForToken(token)` so each user uses their own token from their Account env vars
+- `orchestrator/server/utils/github.ts` - GitHubService (GitHub REST API on `GitHostingClient`: repos, orgs, branches, repo creation; `Link` pagination)
 - `orchestrator/server/api/logs.get.ts` - Query log entries with filters (sources, levels, search, since, until, limit)
 - `orchestrator/server/api/logs.delete.ts` - Clear all log files
 - `orchestrator/server/api/log-sources.get.ts` - List known container log sources
@@ -150,7 +155,7 @@
 - `orchestrator/app/components/PaneSeparator.vue` - Resizable separator between pane nodes (horizontal or vertical)
 - `orchestrator/app/components/PaneSplitNode.vue` - Recursive component rendering PaneNode tree (leaf → tab bar + content, container → flex children + separators)
 - `orchestrator/app/components/PortMappingsPanel.vue` - Port mappings management
-- `orchestrator/app/components/RepoInput.vue` - Repo URL + branch + provider input with GitHub repo/branch search
+- `orchestrator/app/components/RepoInput.vue` - Self-contained repo row (provider select + searchable repo picker with create + branch picker for any provider the user has a token for; plain inputs otherwise)
 - `orchestrator/app/components/SplitPaneLayout.vue` - Thin wrapper rendering PaneSplitNode at rootNode
 - `orchestrator/app/components/TerminalPane.vue` - Multi-terminal host with inner tmux tab bar (TmuxTabBar)
 - `orchestrator/app/components/TerminalPlaceholder.vue` - Empty state when no worker is open
@@ -172,8 +177,8 @@
 - `orchestrator/app/composables/useEnvironments.ts` - Environment CRUD
 - `orchestrator/app/composables/useCapabilities.ts` - Capability CRUD
 - `orchestrator/app/composables/useInstructions.ts` - Instruction entry CRUD
-- `orchestrator/app/composables/useGitHubRepos.ts` - GitHub repos list, org filter, create repo
-- `orchestrator/app/composables/useGitProviders.ts` - Git provider list
+- `orchestrator/app/composables/useGitRepos.ts` - Module-level per-provider repo store (60s staleness, `invalidate()`), branch fetch, repo creation
+- `orchestrator/app/composables/useGitProviders.ts` - Git provider list singleton (`refresh()`, `ready()`)
 - `orchestrator/app/composables/useInitScripts.ts` - Init script CRUD
 - `orchestrator/app/composables/usePolling.ts` - Polling lifecycle helper (start/stop with onMounted/onUnmounted)
 - `orchestrator/app/composables/usePortMappings.ts` - Port mapping CRUD + polling
@@ -188,11 +193,11 @@
 - `orchestrator/app/composables/useWorkerMetrics.ts` - Per-worker metrics polling (10s singleton; sidebar feeds each card a `metric` prop)
 - `orchestrator/app/utils/container-name.ts` - Utility for container name display (shortName helper)
 - `orchestrator/app/utils/format.ts` - `formatBytes` / `formatRate` helpers (metrics panels + worker cards)
-- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, LogLevel, LogSource, LogEntry) + defines GitProviderInfo, GitHubRepoInfo, GitHubBranchInfo, AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, WorkerSystemEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone, ChallengeType, BaseDomainConfig
+- `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including GitProviderInfo, GitRepoInfo, GitBranchInfo, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, LogLevel, LogSource, LogEntry) + defines AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, WorkerSystemEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone, ChallengeType, BaseDomainConfig
 
 ## Worker
-- `worker/Dockerfile` - Unified worker image (Node.js 22, all agent CLIs, code-server, display stack, Chromium, Playwright, Firefox, microsocks, maim + xdotool for the desktop screenshot / input API, utility packages, agent user, entrypoint)
-- `worker/entrypoint.sh` - Entrypoint (tmux, env var export, agent setups, docker daemon, display stack, code-server, git auth, repo clone, firewall, setup script, launch)
+- `worker/Dockerfile` - Unified worker image (Node.js 22, all agent CLIs, code-server, display stack, Chromium, Playwright, Firefox, microsocks, maim + xdotool for the desktop screenshot / input API, gh + glab, utility packages, agent user, entrypoint)
+- `worker/entrypoint.sh` - Entrypoint (tmux, env var export, agent setups, docker daemon + git provider registry logins, display stack, code-server, per-provider git auth + glab config from `WORKER.gitProviders`, repo clone, firewall, setup script, launch)
 - `worker/loading-screen.sh` - Animated startup display (braille spinner, progress bar, per-step timing)
 - `worker/memfd-exec.py` - Script executor via memfd_create (no temp files on disk, supports any shebang)
 - `worker/setup.sh` - Runs ENVIRONMENT.setupScript via memfd (called by entrypoint Phase 7)
@@ -214,7 +219,8 @@
 - `tests/helpers/test-users.ts` - Create/sign-in/delete test users via the admin API (used by passkey + authorization tests)
 - `tests/helpers/webauthn.ts` - Install/dispose Chrome DevTools virtual WebAuthn authenticator for end-to-end passkey tests (`installVirtualAuthenticator(page)`)
 - `tests/helpers/mcp.ts` - MCP test client: full OAuth flow through the MCP SDK (`connectMcp`), hand-driven OAuth steps (`registerPublicClient`, `authorizationRequest`, `approveAuthorization`, `obtainTokens`, `requestTokens`), tool-call helpers (`callJson`, `callError`)
-- `tests/api/*.spec.ts` - API integration tests (65 files; incl. worker-metrics, worker-export-import, github-repos, mcp-oauth, mcp-tools, mcp-platform, worker-exec, tmux-io, desktop-control, users)
-- `tests/ui/*.spec.ts` - UI integration tests (45 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh, mcp-oauth)
+- `tests/api/*.spec.ts` - API integration tests (69 files; incl. worker-metrics, worker-export-import, git-repos, gitlab, gitlab-worker, mcp-oauth, mcp-tools, mcp-platform, worker-exec, tmux-io, desktop-control, users)
+- `tests/ui/*.spec.ts` - UI integration tests (46 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh, gitlab-repo-input, mcp-oauth)
+- `tests/docker/gitlab-mock/server.mjs` - Self-managed GitLab stand-in for the dockerized stack (REST API v4 subset + git smart HTTP via `git http-backend`; 2-item pages, bogus `Link` hosts); configured as `GITLAB_INSTANCES=mock=http://gitlab-mock:8080`
 - `tests/FEATURES.md` - Feature inventory driving test coverage
 - `tests/TESTS.md` - Test suite documentation with counts per file

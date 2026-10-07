@@ -40,19 +40,26 @@ const { selectedPreset, presetOptions } = useInitScriptSync(initScripts, toRef(f
 const environmentOptions = computed(() => environments.value.map((e) => ({ label: e.name, value: e.id })));
 const defaultProvider = computed(() => gitProviders.value[0]?.id || 'github');
 
+// Stable per-row keys: each RepoInput keeps its own branch / create state.
+const repoKeys = ref<number[]>([]);
+let nextRepoKey = 0;
+
 function resetFormFromContainer() {
   form.displayName = props.container.displayName || '';
   form.environmentId = props.container.environmentId || defaultEnvironmentId.value;
   form.repos = (props.container.repos || []).map((r) => ({ ...r }));
+  repoKeys.value = form.repos.map(() => nextRepoKey++);
   form.mounts = (props.container.mounts || []).map((m) => ({ ...m }));
   form.initScript = props.container.initScript || '';
 }
 
 function addRepo() {
   form.repos.push({ provider: defaultProvider.value, url: '', branch: '' });
+  repoKeys.value.push(nextRepoKey++);
 }
 function removeRepo(idx: number) {
   form.repos.splice(idx, 1);
+  repoKeys.value.splice(idx, 1);
 }
 function addMount() {
   form.mounts.push({ source: '', target: '', readOnly: false });
@@ -265,7 +272,7 @@ const formattedCreatedAt = computed(() => {
               <div class="space-y-2">
                 <RepoInput
                   v-for="(repo, idx) in form.repos"
-                  :key="idx"
+                  :key="repoKeys[idx]"
                   :model-value="repo"
                   :providers="gitProviders"
                   @update:model-value="form.repos[idx] = $event"

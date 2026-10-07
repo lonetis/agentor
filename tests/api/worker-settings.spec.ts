@@ -172,6 +172,24 @@ test.describe.serial('Worker settings — PATCH metadata & validation', () => {
     expect((await api.updateContainerSettings(worker.id, { repos: 'not-json' })).status).toBe(400);
     // mount with a non-string source
     expect((await api.updateContainerSettings(worker.id, { mounts: [{ source: 123, target: '/x' }] })).status).toBe(400);
+    // repo on a git provider that does not exist
+    const unknown = await api.updateContainerSettings(worker.id, { repos: [{ provider: 'nope', url: 'a/b' }] });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.statusMessage).toContain('Unknown git provider "nope"');
+  });
+
+  test('repos on any configured git provider are accepted', async ({ request }) => {
+    const api = new ApiClient(request);
+    const { status, body } = await api.updateContainerSettings(worker.id, {
+      repos: [{ provider: 'gitlab', url: 'group/subgroup/project', branch: 'main' }, { url: 'octocat/Hello-World' }],
+    });
+    expect(status).toBe(200);
+    // A repo without a provider defaults to GitHub.
+    expect(body.repos).toEqual([
+      { provider: 'gitlab', url: 'group/subgroup/project', branch: 'main' },
+      { provider: 'github', url: 'octocat/Hello-World' },
+    ]);
+    expect(body.pendingRebuild).toBe(true);
   });
 
   test('unsafe mounts are rejected with 400 on PATCH', async ({ request }) => {

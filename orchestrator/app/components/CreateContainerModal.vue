@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { GitProviderInfo, MountConfig, RepoConfig, CreateContainerRequest, GitHubBranchInfo, GitHubRepoInfo } from '~/types';
+import type { GitProviderInfo, MountConfig, RepoConfig, CreateContainerRequest } from '~/types';
 
 const props = defineProps<{
   gitProviders: GitProviderInfo[];
@@ -16,21 +16,10 @@ const open = defineModel<boolean>('open', { default: false });
 
 const { environments, defaultEnvironmentId } = useEnvironments();
 
-const {
-  repos: githubRepos,
-  reposLoading: githubReposLoading,
-  username: githubUser,
-  orgs: githubOrgs,
-  error: githubReposError,
-  fetchRepos,
-  addRepoToList,
-} = useGitHubRepos();
-
-// Per-repo-row branch state keyed by stable row ID
-const branchData = reactive(new Map<number, { branches: GitHubBranchInfo[]; loading: boolean; defaultBranch: string }>());
-const creatingRepo = reactive(new Map<number, boolean>());
-let rowCounter = 0;
-const repoRowIds = reactive(new Map<number, number>());
+// Stable per-row keys: each RepoInput keeps its own branch / create state, so a
+// row must stay bound to the same component when an earlier row is removed.
+const repoKeys = ref<number[]>([]);
+let nextRepoKey = 0;
 
 const generatedName = ref('');
 
@@ -42,7 +31,8 @@ watch(defaultEnvironmentId, (id) => {
 
 watch(open, async (isOpen) => {
   if (isOpen) {
-    fetchRepos();
+    // Repo rows refetch their provider's list on first use after opening.
+    useGitRepos().invalidate();
     const { displayName } = await $fetch<{ displayName: string }>('/api/containers/generate-name');
     generatedName.value = displayName;
   }
@@ -70,79 +60,13 @@ const environmentOptions = computed(() =>
 const defaultProvider = computed(() => props.gitProviders[0]?.id || 'github');
 
 function addRepo() {
-  const idx = form.repos.length;
   form.repos.push({ provider: defaultProvider.value, url: '', branch: '' });
-  repoRowIds.set(idx, ++rowCounter);
+  repoKeys.value.push(nextRepoKey++);
 }
 
 function removeRepo(idx: number) {
-  const rowId = repoRowIds.get(idx);
-  if (rowId !== undefined) {
-    branchData.delete(rowId);
-    creatingRepo.delete(rowId);
-  }
   form.repos.splice(idx, 1);
-  // Re-index row IDs after splice
-  const newMap = new Map<number, number>();
-  for (const [k, v] of repoRowIds) {
-    if (k < idx) newMap.set(k, v);
-    else if (k > idx) newMap.set(k - 1, v);
-  }
-  repoRowIds.clear();
-  for (const [k, v] of newMap) repoRowIds.set(k, v);
-}
-
-async function onRepoSelected(idx: number, fullName: string) {
-  const rowId = repoRowIds.get(idx);
-  if (rowId === undefined) return;
-
-  branchData.set(rowId, { branches: [], loading: true, defaultBranch: '' });
-
-  try {
-    const [owner, repo] = fullName.split('/');
-    const data = await $fetch<{ branches: GitHubBranchInfo[]; defaultBranch: string }>(
-      `/api/github/repos/${owner}/${repo}/branches`,
-    );
-    branchData.set(rowId, { branches: data.branches, loading: false, defaultBranch: data.defaultBranch });
-  } catch {
-    branchData.set(rowId, { branches: [], loading: false, defaultBranch: '' });
-  }
-}
-
-async function onCreateRepo(idx: number, payload: { owner: string; name: string; isPrivate: boolean }) {
-  const rowId = repoRowIds.get(idx);
-  if (rowId === undefined) return;
-
-  creatingRepo.set(rowId, true);
-  try {
-    const data = await $fetch<{ repo: GitHubRepoInfo }>('/api/github/repos', {
-      method: 'POST',
-      body: { owner: payload.owner, name: payload.name, private: payload.isPrivate },
-    });
-
-    addRepoToList(data.repo);
-    // The await above may have outlived this row — the user can remove a repo
-    // mid-flight, which re-indexes `repoRowIds`. Resolve the live index from the
-    // stable rowId before writing so we never mutate the wrong (or a gone) row.
-    const liveIdx = [...repoRowIds].find(([, id]) => id === rowId)?.[0];
-    if (liveIdx === undefined || !form.repos[liveIdx]) return;
-    form.repos[liveIdx] = { ...form.repos[liveIdx]!, url: data.repo.fullName };
-    await onRepoSelected(liveIdx, data.repo.fullName);
-  } catch {
-    // API error — leave the URL as-is so the user can retry
-  } finally {
-    creatingRepo.set(rowId, false);
-  }
-}
-
-function getBranchData(idx: number) {
-  const rowId = repoRowIds.get(idx);
-  return rowId !== undefined ? branchData.get(rowId) : undefined;
-}
-
-function getCreatingRepo(idx: number) {
-  const rowId = repoRowIds.get(idx);
-  return rowId !== undefined ? creatingRepo.get(rowId) ?? false : false;
+  repoKeys.value.splice(idx, 1);
 }
 
 function addMount() {
@@ -189,10 +113,7 @@ function reset() {
   form.mounts = [];
   form.initScript = '';
   generatedName.value = '';
-  branchData.clear();
-  creatingRepo.clear();
-  repoRowIds.clear();
-  rowCounter = 0;
+  repoKeys.value = [];
 }
 </script>
 
@@ -228,22 +149,11 @@ function reset() {
           <div class="space-y-2">
             <RepoInput
               v-for="(repo, idx) in form.repos"
-              :key="repoRowIds.get(idx) ?? idx"
+              :key="repoKeys[idx]"
               :model-value="repo"
-              @update:model-value="form.repos[idx] = $event"
               :providers="gitProviders"
-              :github-repos="githubRepos"
-              :github-repos-loading="githubReposLoading"
-              :github-repos-error="githubReposError"
-              :github-branches="getBranchData(idx)?.branches"
-              :github-branches-loading="getBranchData(idx)?.loading"
-              :github-default-branch="getBranchData(idx)?.defaultBranch"
-              :github-user="githubUser"
-              :github-orgs="githubOrgs"
-              :creating-repo="getCreatingRepo(idx)"
+              @update:model-value="form.repos[idx] = $event"
               @remove="removeRepo(idx)"
-              @repo-selected="onRepoSelected(idx, $event)"
-              @create-repo="onCreateRepo(idx, $event)"
             />
           </div>
           <UButton

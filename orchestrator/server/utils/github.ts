@@ -1,173 +1,64 @@
-export interface GitHubRepo {
-  fullName: string;
+import type { GitBranchList, GitRepoInfo } from '../../shared/types';
+import { GitHostingClient } from './git-hosting-client';
+import { useLogger } from './services';
+
+const API = 'https://api.github.com';
+
+interface ApiRepo {
+  full_name: string;
   private: boolean;
-  defaultBranch: string;
+  default_branch: string;
 }
 
-export interface GitHubBranch {
-  name: string;
+function toRepo(r: ApiRepo): GitRepoInfo {
+  return { fullName: r.full_name, private: r.private, defaultBranch: r.default_branch };
 }
 
-interface CacheEntry<T> {
-  data: T;
-  expiresAt: number;
-}
-
-const CACHE_TTL = 60_000; // 60s
-/** Timeout for every outbound GitHub API call so a hung socket can't pin a
- * request handler forever. */
-const FETCH_TIMEOUT_MS = 30_000;
-
-/** Per-token GitHub API wrapper. Tokens come from each user's per-user env
- * vars, resolved by the provider's `tokenEnvVar` (e.g. `GITHUB_TOKEN`).
- * Instances are cached by token so repeated calls within 60s reuse the same
- * upstream data. */
-export class GitHubService {
-  private token: string;
-  private cache = new Map<string, CacheEntry<unknown>>();
-
-  constructor(token: string) {
-    this.token = token;
+/** GitHub REST API client bound to one user token (from the provider's
+ * `tokenEnvVar` in the user's env vars). */
+export class GitHubService extends GitHostingClient {
+  getUsername(): Promise<string> {
+    return this.cached('user', async () => (await this.request<{ login: string }>(`${API}/user`)).login);
   }
 
-  get hasToken(): boolean {
-    return this.token.length > 0;
-  }
-
-  async listRepos(): Promise<GitHubRepo[]> {
-    const cached = this.getCache<GitHubRepo[]>('repos');
-    if (cached) return cached;
-
-    const url = 'https://api.github.com/user/repos?per_page=100&sort=full_name&affiliation=owner,collaborator,organization_member';
-    const pages = await this.fetchAllPages<{
-      full_name: string;
-      private: boolean;
-      default_branch: string;
-    }>(url);
-
-    const repos = pages.map((r) => ({
-      fullName: r.full_name,
-      private: r.private,
-      defaultBranch: r.default_branch,
-    }));
-
-    useLogger().debug(`[github] fetched ${repos.length} repos`);
-    this.setCache('repos', repos);
-    return repos;
-  }
-
-  async getUser(): Promise<{ login: string }> {
-    const cached = this.getCache<{ login: string }>('user');
-    if (cached) return cached;
-    const user = await this.apiFetch<{ login: string }>('https://api.github.com/user');
-    this.setCache('user', user);
-    return user;
-  }
-
-  async listOrgs(): Promise<string[]> {
-    const cached = this.getCache<string[]>('orgs');
-    if (cached) return cached;
-    const orgs = await this.fetchAllPages<{ login: string }>('https://api.github.com/user/orgs?per_page=100');
-    const result = orgs.map((o) => o.login);
-    this.setCache('orgs', result);
-    return result;
-  }
-
-  async createRepo(owner: string, name: string, isPrivate: boolean): Promise<GitHubRepo> {
-    const user = await this.getUser();
-    const isOrg = owner !== user.login;
-
-    const url = isOrg
-      ? `https://api.github.com/orgs/${owner}/repos`
-      : 'https://api.github.com/user/repos';
-
-    useLogger().info(`[github] creating repo ${owner}/${name} (private=${isPrivate}, org=${isOrg})`);
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { ...this.headers(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, private: isPrivate }),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  listRepos(): Promise<GitRepoInfo[]> {
+    return this.cached('repos', async () => {
+      const repos = (await this.fetchAllPages<ApiRepo>(
+        `${API}/user/repos?per_page=100&sort=full_name&affiliation=owner,collaborator,organization_member`,
+      )).map(toRepo);
+      useLogger().debug(`${this.logTag} fetched ${repos.length} repos`);
+      return repos;
     });
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ message: res.statusText }));
-      const message = (body as { message?: string }).message || res.statusText;
-      useLogger().error(`[github] failed to create repo ${owner}/${name}: ${res.status} ${message}`);
-      throw createError({
-        statusCode: res.status,
-        statusMessage: message,
-      });
-    }
-
-    const data = (await res.json()) as { full_name: string; private: boolean; default_branch: string };
-
-    // Invalidate repos cache so next list includes the new repo
-    this.cache.delete('repos');
-
-    useLogger().info(`[github] created repo ${data.full_name}`);
-
-    return {
-      fullName: data.full_name,
-      private: data.private,
-      defaultBranch: data.default_branch,
-    };
   }
 
-  async listBranches(owner: string, repo: string): Promise<{ branches: GitHubBranch[]; defaultBranch: string }> {
-    const cacheKey = `branches:${owner}/${repo}`;
-    const cached = this.getCache<{ branches: GitHubBranch[]; defaultBranch: string }>(cacheKey);
-    if (cached) return cached;
-
-    // Fetch repo info for default branch
-    const repoInfo = await this.apiFetch<{ default_branch: string }>(
-      `https://api.github.com/repos/${owner}/${repo}`,
+  listNamespaces(): Promise<string[]> {
+    return this.cached('orgs', async () =>
+      (await this.fetchAllPages<{ login: string }>(`${API}/user/orgs?per_page=100`)).map((o) => o.login),
     );
-    const defaultBranch = repoInfo.default_branch;
-
-    // Fetch all branches
-    const pages = await this.fetchAllPages<{ name: string }>(
-      `https://api.github.com/repos/${owner}/${repo}/branches?per_page=100`,
-    );
-
-    const result = {
-      branches: pages.map((b) => ({ name: b.name })),
-      defaultBranch,
-    };
-
-    useLogger().debug(`[github] fetched ${result.branches.length} branches for ${owner}/${repo} (default: ${defaultBranch})`);
-    this.setCache(cacheKey, result);
-    return result;
   }
 
-  private async apiFetch<T>(url: string): Promise<T> {
-    const res = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-    if (!res.ok) {
-      useLogger().error(`[github] API request failed: ${res.status} ${res.statusText} (${url})`);
-      throw createError({ statusCode: res.status, statusMessage: `GitHub API error: ${res.statusText}` });
-    }
-    return res.json() as Promise<T>;
+  listBranches(fullName: string): Promise<GitBranchList> {
+    const repoPath = encodeRepoPath(fullName);
+    return this.cached(`branches:${fullName}`, async () => {
+      const [repo, branches] = await Promise.all([
+        this.request<{ default_branch: string }>(`${API}/repos/${repoPath}`),
+        this.fetchAllPages<{ name: string }>(`${API}/repos/${repoPath}/branches?per_page=100`),
+      ]);
+      return { branches: branches.map((b) => ({ name: b.name })), defaultBranch: repo.default_branch };
+    });
   }
 
-  private async fetchAllPages<T>(url: string): Promise<T[]> {
-    const results: T[] = [];
-    let nextUrl: string | null = url;
-
-    while (nextUrl) {
-      const res = await fetch(nextUrl, { headers: this.headers(), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-      if (!res.ok) {
-        useLogger().error(`[github] paginated request failed: ${res.status} ${res.statusText} (${nextUrl})`);
-        throw createError({ statusCode: res.status, statusMessage: `GitHub API error: ${res.statusText}` });
-      }
-      const page = (await res.json()) as T[];
-      results.push(...page);
-      nextUrl = this.parseNextLink(res.headers.get('link'));
-    }
-
-    return results;
+  async createRepo(namespace: string, name: string, isPrivate: boolean): Promise<GitRepoInfo> {
+    const isOrg = namespace !== await this.getUsername();
+    const url = isOrg ? `${API}/orgs/${encodeURIComponent(namespace)}/repos` : `${API}/user/repos`;
+    useLogger().info(`${this.logTag} creating repo ${namespace}/${name} (private=${isPrivate}, org=${isOrg})`);
+    const repo = toRepo(await this.request<ApiRepo>(url, { method: 'POST', body: { name, private: isPrivate } }));
+    this.invalidate('repos');
+    useLogger().info(`${this.logTag} created repo ${repo.fullName}`);
+    return repo;
   }
 
-  private headers(): Record<string, string> {
+  protected headers(): Record<string, string> {
     return {
       Authorization: `token ${this.token}`,
       Accept: 'application/vnd.github+json',
@@ -175,64 +66,17 @@ export class GitHubService {
     };
   }
 
-  private parseNextLink(linkHeader: string | null): string | null {
-    if (!linkHeader) return null;
-    const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+  protected nextPageUrl(res: Response): string | null {
+    const match = res.headers.get('link')?.match(/<([^>]+)>;\s*rel="next"/);
     return match?.[1] ?? null;
   }
-
-  private getCache<T>(key: string): T | null {
-    const entry = this.cache.get(key);
-    if (entry && Date.now() < entry.expiresAt) return entry.data as T;
-    if (entry) this.cache.delete(key);
-    return null;
-  }
-
-  private setCache<T>(key: string, data: T): void {
-    this.cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
-  }
 }
 
-/** Evict cached instances idle longer than this so rotated tokens (and their
- * 60s repo caches) don't stay resident — and the plaintext token isn't retained
- * as a Map key for the whole process lifetime. */
-const INSTANCE_IDLE_TTL_MS = 5 * 60_000;
-/** Hard cap on distinct cached instances. Guards against unbounded growth from
- * many users / frequent token rotation; the least-recently-used is evicted. */
-const MAX_INSTANCES = 256;
-
-interface InstanceEntry {
-  service: GitHubService;
-  lastUsed: number;
-}
-
-const instances = new Map<string, InstanceEntry>();
-
-/** Returns a GitHubService bound to the given token, reusing instances so
- * their per-token caches persist across requests. Idle instances are evicted
- * after `INSTANCE_IDLE_TTL_MS` (and the map is LRU-capped) so rotated tokens
- * are not retained in memory indefinitely. */
-export function getGitHubServiceForToken(token: string): GitHubService {
-  const now = Date.now();
-
-  // Drop instances that haven't been used recently — frees the token + its repo cache.
-  for (const [key, entry] of instances) {
-    if (now - entry.lastUsed > INSTANCE_IDLE_TTL_MS) instances.delete(key);
+/** `owner/repo` → `owner/repo` with each segment URL-encoded. */
+function encodeRepoPath(fullName: string): string {
+  const parts = fullName.split('/');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw createError({ statusCode: 400, statusMessage: `Invalid GitHub repository "${fullName}" — expected owner/repo` });
   }
-
-  let entry = instances.get(token);
-  if (!entry) {
-    entry = { service: new GitHubService(token), lastUsed: now };
-    instances.set(token, entry);
-    // LRU cap: if over the limit, evict the oldest entries first.
-    if (instances.size > MAX_INSTANCES) {
-      const sorted = [...instances.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
-      for (let i = 0; i < sorted.length - MAX_INSTANCES; i++) {
-        instances.delete(sorted[i]![0]);
-      }
-    }
-  } else {
-    entry.lastUsed = now;
-  }
-  return entry.service;
+  return parts.map(encodeURIComponent).join('/');
 }

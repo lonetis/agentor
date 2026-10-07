@@ -42,8 +42,8 @@ dispatch (Actions → Refresh Docker Images → Run workflow):
 2. **Publish under a dated tag only** — `refresh-YYYYMMDD`. `latest` is not
    touched yet.
 3. **Smoke-test on amd64 and arm64.** The worker image must report versions for
-   `claude`, `codex`, `gemini`, node, npm, git, tmux, chromium and code-server,
-   and carry the expected binaries (`gh`, `code`, `docker`, `dnsmasq`,
+   `claude`, `codex`, `gemini`, node, npm, git, tmux, chromium, code-server and
+   glab, and carry the expected binaries (`gh`, `glab`, `code`, `docker`, `dnsmasq`,
    `microsocks`, `x11vnc`, `Xvfb`, `maim`, `xdotool`, `sshd`). The orchestrator
    image must boot against a Docker socket and answer `GET /api/health` with
    `status: ok`.

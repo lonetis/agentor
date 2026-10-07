@@ -41,7 +41,7 @@ The orchestrator also exposes session-authenticated routes under `$ORCHESTRATOR_
 
 - **Languages:** Node.js 22 LTS (npm, npx), Python 3 (pip), build-essential (gcc, make)
 - **Editors:** neovim, vim, nano, plus VS Code in the browser (code-server) and a VS Code Tunnel app for connecting from a local VS Code via Microsoft's Remote - Tunnels
-- **VCS:** git (pre-configured with the operator's name and email — agent-authored commits add a `Co-authored-by` trailer), gh (GitHub CLI)
+- **VCS:** git (pre-configured with the operator's name and email — agent-authored commits add a `Co-authored-by` trailer), gh (GitHub CLI), glab (GitLab CLI). For every git provider the operator stored a token for (GitHub, gitlab.com, and any self-managed GitLab server), HTTPS clone/pull/push to that host already authenticate, `git@host:` URLs are rewritten to HTTPS, and gh / glab are signed in. List the configured GitLab hosts with `jq -r '.gitProviders[] | select(.type == "gitlab") | .url' <<< "$WORKER"`; outside a clone, point glab at one with `--hostname <host>`. glab lets a `GITLAB_TOKEN` env var (gitlab.com) override every other host's token — if both are set, run glab against a self-managed host as `env -u GITLAB_TOKEN glab …`.
 - **Search:** ripgrep (rg), fd-find (fd)
 - **Terminal:** tmux (your session is named `main` — you're already inside it)
 - **Utilities:** jq, curl, wget, tree, less, htop, btop, rsync, strace, file, man-db
@@ -86,4 +86,4 @@ A permanent `delete` (not `archive`) wipes `/workspace` and the agent config vol
 - `DOCKER_ENABLED` — `true` if Docker-in-Docker is available
 - `DISPLAY` — X11 display (`:99`)
 - `EXPOSE_PORT_MAPPINGS`, `EXPOSE_DOMAIN_MAPPINGS`, `EXPOSE_USAGE` — `true`/`false` flags reflecting which worker-facing API capabilities the operator enabled for this environment. The corresponding skills are only injected when these are `true`.
-- Plus any agent API keys, `GITHUB_TOKEN`, and custom env vars the operator configured in their Account settings.
+- Plus any agent API keys, git provider tokens (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_<NAME>_TOKEN` for a self-managed GitLab), and custom env vars the operator configured in their Account settings.

@@ -36,6 +36,22 @@ services:
       - DOCKER_NETWORK=agentor-net
       - DATA_DIR=/data
       - LOG_LEVEL=info
+      # A self-managed GitLab (the gitlab-mock service below) → provider
+      # `gitlab-mock`, per-user token env var GITLAB_MOCK_TOKEN.
+      - GITLAB_INSTANCES=mock=http://gitlab-mock:8080
+
+  # Stand-in for a self-managed GitLab server: REST API v4 subset + git smart
+  # HTTP (see gitlab-mock/server.mjs). Runs on the worker image, which already
+  # has node and git.
+  gitlab-mock:
+    image: agentor-worker:latest
+    entrypoint: ["node", "/opt/gitlab-mock/server.mjs"]
+    restart: unless-stopped
+    container_name: agentor-test-gitlab-mock
+    networks:
+      - agentor-net
+    volumes:
+      - /opt/test-stack/gitlab-mock:/opt/gitlab-mock:ro
 
 volumes:
   agentor-data:

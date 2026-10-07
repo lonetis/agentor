@@ -150,6 +150,15 @@ test.describe('Containers API', () => {
       expect(body.statusMessage).toContain('data directory');
     });
 
+    test('rejects repos on an unknown git provider or with a malformed shape', async ({ request }) => {
+      const api = new ApiClient(request);
+      const unknown = await api.createContainer({ repos: [{ provider: 'nope', url: 'a/b' }] });
+      expect(unknown.status).toBe(400);
+      expect(unknown.body.statusMessage).toContain('Unknown git provider "nope"');
+      expect((await api.createContainer({ repos: [{ provider: 'github', url: 42 }] })).status).toBe(400);
+      expect((await api.createContainer({ repos: { provider: 'github', url: 'a/b' } })).status).toBe(400);
+    });
+
     test('accepts repos as object array', async ({ request }) => {
       const container = await createWorker(request, {
         repos: [{ provider: 'github', url: 'https://github.com/octocat/Hello-World' }],

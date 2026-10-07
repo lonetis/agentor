@@ -32,6 +32,8 @@ import { useContainerManager, useConfig } from '../../utils/services';
 import { MAX_DISPLAY_NAME_LENGTH } from '../../utils/validation';
 import { validateMounts } from '../../utils/docker';
 import { requireAuth } from '../../utils/auth-helpers';
+import { parseRepoConfigs } from '../../utils/git-providers';
+import type { RepoConfig } from '../../../shared/types';
 
 export default defineEventHandler(async (event) => {
   const { user } = requireAuth(event);
@@ -65,17 +67,19 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: mountError });
   }
 
-  let parsedRepos;
+  let parsedRepos: RepoConfig[] | undefined;
   if (body.repos) {
-    if (typeof body.repos === 'string') {
+    let rawRepos: unknown = body.repos;
+    if (typeof rawRepos === 'string') {
       try {
-        parsedRepos = JSON.parse(body.repos);
+        rawRepos = JSON.parse(rawRepos);
       } catch {
         throw createError({ statusCode: 400, statusMessage: 'Invalid repos JSON' });
       }
-    } else {
-      parsedRepos = body.repos;
     }
+    const result = parseRepoConfigs(rawRepos);
+    if ('error' in result) throw createError({ statusCode: 400, statusMessage: result.error });
+    parsedRepos = result.repos;
   }
 
   // Resource limits are an environment property — no per-worker override. Git

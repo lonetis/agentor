@@ -3,11 +3,13 @@ import { createTestUser, signInBrowserAsUser, deleteTestUser, type CreatedUser }
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
-// The five predefined env var slots rendered by the Account modal. These mirror
+// The predefined env var slots rendered by the Account modal. These mirror
 // PREDEFINED_ENV_VAR_KEYS in orchestrator/shared/types.ts — each is rendered as a
-// masked input labeled by the KEY itself, addressable via `env-<KEY>`.
+// masked input labeled by the KEY itself, addressable via `env-<KEY>`. (Token
+// variables of configured self-managed GitLab instances are added on top.)
 const PREDEFINED_KEYS = [
   'GITHUB_TOKEN',
+  'GITLAB_TOKEN',
   'ANTHROPIC_API_KEY',
   'CLAUDE_CODE_OAUTH_TOKEN',
   'OPENAI_API_KEY',

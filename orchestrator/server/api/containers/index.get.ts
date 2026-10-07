@@ -37,8 +37,8 @@ defineRouteMeta({
             type: 'object',
             description: 'A git repository cloned into /workspace when the worker starts',
             properties: {
-              provider: { type: 'string', description: 'Git provider id (default github; private repos use the user\'s GITHUB_TOKEN)' },
-              url: { type: 'string', description: 'Clone URL, e.g. https://github.com/owner/repo' },
+              provider: { type: 'string', description: 'Git provider id from list_git_providers: `github` (default), `gitlab`, or `gitlab-<name>` for a self-managed GitLab server. Private repos authenticate with the user\'s token for that provider (its `tokenEnvVar`, e.g. GITHUB_TOKEN / GITLAB_TOKEN).' },
+              url: { type: 'string', description: 'Clone URL (e.g. https://gitlab.com/group/project) or the repository path on the provider (`owner/repo`, `group/subgroup/project` — a list_git_repos `fullName`)' },
               branch: { type: 'string', description: 'Branch to check out (default: the repository default branch)' },
             },
           },

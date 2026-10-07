@@ -17,7 +17,7 @@ import {
 } from './worker-export';
 import type { WorkerExportManifest } from './worker-export';
 import type { AppInstanceInfo, TmuxWindow } from '../../shared/types';
-import { getAllGitCloneDomains } from './git-providers';
+import { getAllGitCloneDomains, listWorkerGitProviders } from './git-providers';
 import { getAllAgentApiDomains } from './agent-config';
 import { getPackageManagerDomains, DEFAULT_ENVIRONMENT_ID } from './environments';
 import { getUserById } from './auth';
@@ -162,12 +162,21 @@ export class ContainerManager {
     return { userEnv, credentialBinds };
   }
 
-  /** Resolve the worker's git identity live from the owning user. The worker
-   * references the owner by `userId` only — name/email are never snapshotted onto
-   * the worker record, so they always reflect the user's current profile. */
-  private resolveGitIdentity(userId: string): { gitName: string; gitEmail: string } {
+  /** Build the `WORKER` env JSON: the worker's own settings plus what is
+   * resolved live at build time — the owner's git identity (the worker references
+   * the owner by `userId` only, so name/email always reflect the current profile)
+   * and the git provider registry the entrypoint sets up auth and clones from. */
+  private buildWorkerJson(
+    userId: string,
+    worker: Pick<WorkerJsonPayload, 'id' | 'displayName' | 'repos' | 'initScript'>,
+  ): WorkerJsonPayload {
     const user = getUserById(userId);
-    return { gitName: user?.name ?? '', gitEmail: user?.email ?? '' };
+    return {
+      ...worker,
+      gitName: user?.name ?? '',
+      gitEmail: user?.email ?? '',
+      gitProviders: listWorkerGitProviders(),
+    };
   }
 
   private resolveCapabilitiesAndInstructions(
@@ -403,17 +412,12 @@ export class ContainerManager {
     // Resource limits are an environment property (no per-worker override).
     const { cpuLimit, memoryLimit, dockerEnabled } = this.deriveLimits(envConfig);
 
-    // Git identity resolved live from the owner — never stored on the worker.
-    const { gitName, gitEmail } = this.resolveGitIdentity(userId);
-
-    const workerJson: WorkerJsonPayload = {
+    const workerJson = this.buildWorkerJson(userId, {
       id,
       displayName,
       repos,
       initScript: request.initScript?.trim() || '',
-      gitName,
-      gitEmail,
-    };
+    });
 
     const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(userId);
 
@@ -712,16 +716,12 @@ export class ContainerManager {
 
     const { cpuLimit, memoryLimit, dockerEnabled } = this.deriveLimits(envConfig);
 
-    const { gitName, gitEmail } = this.resolveGitIdentity(info.userId);
-
-    const workerJson: WorkerJsonPayload = {
+    const workerJson = this.buildWorkerJson(info.userId, {
       id: info.id,
       displayName: info.displayName || '',
       repos: info.repos || [],
       initScript: info.initScript || '',
-      gitName,
-      gitEmail,
-    };
+    });
 
     const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(info.userId);
 
@@ -813,16 +813,12 @@ export class ContainerManager {
 
     const { cpuLimit, memoryLimit, dockerEnabled } = this.deriveLimits(envConfig);
 
-    const { gitName, gitEmail } = this.resolveGitIdentity(worker.userId);
-
-    const workerJson: WorkerJsonPayload = {
+    const workerJson = this.buildWorkerJson(worker.userId, {
       id: worker.id,
       displayName: worker.displayName || '',
       repos: worker.repos || [],
       initScript: worker.initScript || '',
-      gitName,
-      gitEmail,
-    };
+    });
 
     const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(worker.userId);
 
@@ -1069,8 +1065,7 @@ export class ContainerManager {
 
       const envConfig = this.resolveEnvironmentConfig(environmentId);
       const { cpuLimit, memoryLimit, dockerEnabled } = this.deriveLimits(envConfig);
-      const { gitName, gitEmail } = this.resolveGitIdentity(userId);
-      const workerJson: WorkerJsonPayload = { id, displayName, repos, initScript, gitName, gitEmail };
+      const workerJson = this.buildWorkerJson(userId, { id, displayName, repos, initScript });
       const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(userId);
 
       // Import the captured rootfs into a per-worker image (best-effort).

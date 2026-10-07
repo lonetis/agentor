@@ -16,7 +16,7 @@ export const WORKER_SYSTEM_ENV_VARS: { name: string; description: string }[] = [
   { name: 'ENVIRONMENT', description: 'Environment config JSON — network mode, allowed domains, Docker, setup script, exposed APIs' },
   { name: 'CAPABILITIES', description: 'Enabled capability documents (JSON array)' },
   { name: 'INSTRUCTIONS', description: 'Enabled instruction documents (JSON array)' },
-  { name: 'WORKER', description: 'Worker identity & config JSON — id, display name, repos, init script, git identity' },
+  { name: 'WORKER', description: 'Worker identity & config JSON — id, display name, repos, init script, git identity, git providers' },
   { name: 'ORCHESTRATOR_URL', description: 'Base URL of the orchestrator API (used by worker-self calls)' },
   { name: 'WORKER_CONTAINER_NAME', description: "This worker's Docker container name" },
   { name: 'EXPOSE_PORT_MAPPINGS', description: 'Whether the worker-self port-mapping API is exposed (from Expose APIs)' },

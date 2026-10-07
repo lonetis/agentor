@@ -2,6 +2,12 @@ import type { NetworkMode, RepoConfig, MountConfig, ExposeApis as ExposeApisType
 
 export type {
   RepoConfig,
+  GitProviderType,
+  GitProviderInfo,
+  GitRepoInfo,
+  GitBranchInfo,
+  GitRepoList,
+  GitBranchList,
   MountConfig,
   TmuxWindow,
   AppInstanceInfo,
@@ -36,23 +42,6 @@ export type {
 // below are defined here (not re-exported from shared/types) and must be kept in
 // field-parity with their server-side counterparts by hand until they are
 // consolidated into shared/types.
-
-export interface GitProviderInfo {
-  id: string;
-  displayName: string;
-  placeholder: string;
-  tokenConfigured: boolean;
-}
-
-export interface GitHubRepoInfo {
-  fullName: string;
-  private: boolean;
-  defaultBranch: string;
-}
-
-export interface GitHubBranchInfo {
-  name: string;
-}
 
 export interface AppTypeInfo {
   id: string;

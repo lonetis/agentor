@@ -56,9 +56,28 @@ test.describe('Settings API', () => {
 
     // No `*Token` items — per-user tokens belong to /api/account/env-vars.
     const keys = section.items.map((i: { key: string }) => i.key);
-    expect(keys.some((k: string) => k.endsWith('Token') || k === 'GITHUB_TOKEN')).toBe(false);
-    // Clone domain entries should still be present.
-    expect(keys.some((k: string) => k.endsWith('.cloneDomains'))).toBe(true);
+    expect(keys.some((k: string) => /token/i.test(k))).toBe(false);
+    // Clone domain entries should still be present — one per provider.
+    expect(keys).toEqual(expect.arrayContaining(['github.cloneDomains', 'gitlab.cloneDomains']));
+  });
+
+  test('git-providers section lists the configured self-managed GitLab instances', async ({ request }) => {
+    const api = new ApiClient(request);
+    const { body } = await api.getSettings();
+    const section = body.find((s: { id: string }) => s.id === 'git-providers');
+    const item = section.items.find((i: { key: string }) => i.key === 'GITLAB_INSTANCES');
+    expect(item).toBeTruthy();
+    const providers = (await api.listGitProviders()).body as { id: string; url: string }[];
+    const instances = providers.filter((p) => p.id.startsWith('gitlab-'));
+    if (instances.length === 0) {
+      expect(item.value).toBe('none');
+    } else {
+      expect(item.type).toBe('list');
+      expect(item.value).toEqual(instances.map((p) => `${p.id.slice('gitlab-'.length)}=${p.url}`));
+      for (const p of instances) {
+        expect(section.items.map((i: { key: string }) => i.key)).toContain(`${p.id}.cloneDomains`);
+      }
+    }
   });
 
   test('contains network section', async ({ request }) => {

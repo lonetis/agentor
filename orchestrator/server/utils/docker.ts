@@ -6,6 +6,7 @@ import { getAppType } from './apps';
 import { renderUserEnvVars } from './user-env-store';
 import type { MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ExposeApis, UserEnvVars } from '../../shared/types';
 import type { StorageManager } from './storage';
+import type { WorkerGitProvider } from './git-providers';
 import { pullOptionsFor } from './registry-auth';
 
 export interface EnvironmentJsonPayload {
@@ -44,6 +45,9 @@ export interface WorkerJsonPayload {
   initScript: string;
   gitName: string;
   gitEmail: string;
+  /** Every configured git provider — the entrypoint resolves repo paths against
+   * `url` and sets up auth for each provider whose `tokenEnvVar` is set. */
+  gitProviders: WorkerGitProvider[];
 }
 
 /** Runtime image config replicated onto a container created from an *imported*
@@ -160,7 +164,7 @@ export class DockerService {
     instructionsJson: InstructionJsonEntry[];
     workerJson: WorkerJsonPayload;
     storageManager?: StorageManager;
-    /** Per-user env vars (agent API keys, GitHub token, custom). Already
+    /** Per-user env vars (agent API keys, git provider tokens, custom). Already
      * resolved against the worker owner's account by the container manager. */
     userEnv: UserEnvVars;
     /** Image to run. Defaults to the standard worker image; set to a per-worker

@@ -25,10 +25,11 @@ const CORE_TOOLS = [
   'list_capabilities', 'get_capability', 'create_capability', 'update_capability', 'delete_capability',
   'list_instructions', 'get_instruction', 'create_instruction', 'update_instruction', 'delete_instruction',
   'list_init_scripts', 'get_init_script', 'create_init_script', 'update_init_script', 'delete_init_script',
-  // account, usage, metrics, github
+  // account, usage, metrics, git providers
   'get_current_user', 'update_account_profile', 'get_account_env_vars', 'put_account_env_vars',
   'get_account_ssh_key', 'put_account_ssh_key', 'get_account_agent_credentials', 'list_authorized_apps',
-  'get_usage', 'refresh_usage', 'list_worker_metrics', 'get_worker_metrics', 'list_github_repos',
+  'get_usage', 'refresh_usage', 'list_worker_metrics', 'get_worker_metrics',
+  'list_git_providers', 'list_git_repos', 'list_git_branches', 'create_git_repo',
 ];
 
 const ADMIN_TOOLS = [

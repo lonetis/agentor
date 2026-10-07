@@ -1,7 +1,59 @@
 export interface RepoConfig {
+  /** Git provider id (see `GitProviderInfo.id`). */
   provider: string;
+  /** Full clone URL, or the repo path on the provider (`owner/repo`,
+   * `group/subgroup/project`). */
   url: string;
   branch?: string;
+}
+
+/** Hosting software behind a git provider — selects the API client and the
+ * worker-side auth setup. */
+export type GitProviderType = 'github' | 'gitlab';
+
+/** A git provider as `GET /api/git-providers` returns it. gitlab.com and GitHub
+ * are built in; self-managed GitLab servers come from `GITLAB_INSTANCES`. */
+export interface GitProviderInfo {
+  id: string;
+  type: GitProviderType;
+  displayName: string;
+  /** Web base URL, e.g. `https://gitlab.example.com`. */
+  url: string;
+  placeholder: string;
+  /** Per-user env var holding the token for this provider (e.g. `GITLAB_TOKEN`). */
+  tokenEnvVar: string;
+  /** Whether the calling user has a value set for `tokenEnvVar`. */
+  tokenConfigured: boolean;
+}
+
+/** A repository on a git provider. `fullName` is its path there: `owner/repo`
+ * on GitHub, `group[/subgroup…]/project` on GitLab. */
+export interface GitRepoInfo {
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+}
+
+export interface GitBranchInfo {
+  name: string;
+}
+
+/** `GET /api/git-providers/:providerId/repos`. */
+export interface GitRepoList {
+  repos: GitRepoInfo[];
+  tokenConfigured: boolean;
+  /** The token's account — the default owner for new repositories. */
+  username: string;
+  /** Other namespaces (GitHub orgs, GitLab groups) the user can create repositories in. */
+  namespaces: string[];
+  /** Set when a token IS configured but the provider request failed. */
+  error?: string;
+}
+
+/** `GET /api/git-providers/:providerId/branches`. */
+export interface GitBranchList {
+  branches: GitBranchInfo[];
+  defaultBranch: string;
 }
 
 export interface MountConfig {
@@ -291,6 +343,7 @@ export type UserEnvVarsInput = { envVars?: UserEnvVar[] };
  * only a UI affordance and is trivially extensible by adding a key. */
 export const PREDEFINED_ENV_VAR_KEYS = [
   'GITHUB_TOKEN',
+  'GITLAB_TOKEN',
   'ANTHROPIC_API_KEY',
   'CLAUDE_CODE_OAUTH_TOKEN',
   'OPENAI_API_KEY',

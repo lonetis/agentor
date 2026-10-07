@@ -3,7 +3,7 @@
 [![Build and Push Docker Images](https://github.com/lonetis/agentor/actions/workflows/docker-build.yml/badge.svg?branch=main)](https://github.com/lonetis/agentor/actions/workflows/docker-build.yml)
 [![Refresh Docker Images](https://github.com/lonetis/agentor/actions/workflows/docker-refresh.yml/badge.svg)](https://github.com/lonetis/agentor/actions/workflows/docker-refresh.yml)
 
-Self-hosted alternative to Claude Code Web, Codex in the Cloud, and similar managed agent environments. Spawns isolated AI coding agent workers in Docker containers, each with a live terminal, VS Code editor (browser + native tunnel), virtual desktop, TCP port + domain mapping, and GitHub integration, all managed through a web dashboard. Full control over the runtime environment.
+Self-hosted alternative to Claude Code Web, Codex in the Cloud, and similar managed agent environments. Spawns isolated AI coding agent workers in Docker containers, each with a live terminal, VS Code editor (browser + native tunnel), virtual desktop, TCP port + domain mapping, and GitHub / GitLab integration (including self-managed GitLab servers), all managed through a web dashboard. Full control over the runtime environment.
 
 ![Agentor Dashboard](docs/screenshot.png)
 
@@ -24,6 +24,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 - **VS Code editor** — code-server (VS Code in the browser) per worker, accessible in a split pane
 - **Virtual desktop** — Xvfb + fluxbox + noVNC, accessible in-browser
 - **Multi-repo cloning** — clone one or more git repos into each worker at startup
+- **GitHub & GitLab integration** — GitHub, gitlab.com and any number of self-managed GitLab servers: search, pick and create repositories and branches from the dashboard, private repos clone with each user's own token, and `gh` / `glab` come signed in inside workers
 - **App system** — launch Chromium (with CDP), SOCKS5 proxy, VS Code Tunnel (native VS Code client via Microsoft's relay, GitHub device-code auth), or OpenSSH server (port 22, public-key auth from each user's Account settings; Start auto-allocates an external `22xxx` port mapping) from the Apps pane
 - **Port & domain mapping** — unified Traefik reverse proxy handling both TCP port forwarding (localhost- or network-bound) and subdomain-based HTTP/HTTPS/TCP routing with TLS (Let's Encrypt HTTP-01/DNS-01 or self-signed CA), optional HTTP basic auth
 - **Auto-updates** — per-image or bulk image updates in production mode with registry-agnostic digest comparison (GHCR + Docker Hub), orchestrator self-replaces
@@ -55,9 +56,9 @@ This downloads `docker-compose.yml` and `.env` into the current directory. Then:
 
 1. `docker compose up -d`
 2. Open **http://localhost:3000** and create your admin account
-3. Click your name in the sidebar footer → **Account** → fill in API keys / GitHub token, or follow the [Agent login (per user)](#agent-login-per-user) section to sign in via OAuth
+3. Click your name in the sidebar footer → **Account** → fill in API keys / GitHub or GitLab tokens, or follow the [Agent login (per user)](#agent-login-per-user) section to sign in via OAuth
 
-`.env` only contains orchestrator-wide settings (logging, Traefik, dashboard auth). All agent API keys, the GitHub token, and any custom env vars are configured per user from the dashboard.
+`.env` only contains orchestrator-wide settings (logging, Traefik, dashboard auth). All agent API keys, git provider tokens, and any custom env vars are configured per user from the dashboard.
 
 ---
 
@@ -75,7 +76,7 @@ This downloads `docker-compose.yml` and `.env` into the current directory. Then:
    cp .env.example .env
    ```
 
-2. Edit `.env` if you want to override any orchestrator-wide settings (everything works out of the box). All user-scoped secrets — agent API keys, GitHub token, custom env vars — are configured per user from the **Account** modal in the dashboard, not via `.env`.
+2. Edit `.env` if you want to override any orchestrator-wide settings (everything works out of the box). All user-scoped secrets — agent API keys, git provider tokens, custom env vars — are configured per user from the **Account** modal in the dashboard, not via `.env`.
 
 ---
 
@@ -147,6 +148,8 @@ Open the sidebar footer, click your name, then **Account → API keys & tokens**
 - `OPENAI_API_KEY`
 - `GEMINI_API_KEY`
 - `GITHUB_TOKEN` (used for cloning private repos and `gh` inside your workers)
+- `GITLAB_TOKEN` (gitlab.com — cloning private repos, `glab`, and the repo picker)
+- `GITLAB_<NAME>_TOKEN` for each self-managed GitLab server your admin configured (`GITLAB_INSTANCES` in `.env`) — these appear in the list automatically
 
 You can also add arbitrary `KEY=value` pairs in **Custom environment variables** — these get exported into every worker you create.
 

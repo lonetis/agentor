@@ -34,10 +34,11 @@ defineRouteMeta({
   },
 });
 
-import type { RepoConfig, MountConfig, UpdateContainerSettingsRequest } from '../../../../shared/types';
+import type { MountConfig, UpdateContainerSettingsRequest } from '../../../../shared/types';
 import { useContainerManager, useEnvironmentStore, useConfig } from '../../../utils/services';
 import { MAX_DISPLAY_NAME_LENGTH } from '../../../utils/validation';
 import { validateMounts } from '../../../utils/docker';
+import { parseRepoConfigs } from '../../../utils/git-providers';
 import { requireContainerAccess } from '../../../utils/auth-helpers';
 
 function bad(message: string): never {
@@ -105,21 +106,9 @@ export default defineEventHandler(async (event) => {
 
   // --- repos (rebuild) ---
   if (body.repos !== undefined && body.repos !== null) {
-    const arr = parseArray(body.repos, 'repos');
-    const repos: RepoConfig[] = [];
-    for (const r of arr) {
-      if (typeof r !== 'object' || r === null) bad('each repo must be an object');
-      const repo = r as Record<string, unknown>;
-      if (repo.url !== undefined && typeof repo.url !== 'string') bad('repo.url must be a string');
-      if (repo.provider !== undefined && typeof repo.provider !== 'string') bad('repo.provider must be a string');
-      if (repo.branch !== undefined && typeof repo.branch !== 'string') bad('repo.branch must be a string');
-      repos.push({
-        provider: (repo.provider as string) || 'github',
-        url: (repo.url as string) || '',
-        ...(repo.branch ? { branch: repo.branch as string } : {}),
-      });
-    }
-    patch.repos = repos;
+    const result = parseRepoConfigs(parseArray(body.repos, 'repos'));
+    if ('error' in result) bad(result.error);
+    patch.repos = result.repos;
   }
 
   // --- mounts (rebuild) ---
