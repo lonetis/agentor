@@ -246,8 +246,14 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
   <aside class="relative bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 min-w-0">
     <!-- Header -->
     <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-      <div class="flex items-center justify-between">
-        <h1 class="text-lg font-bold text-gray-900 dark:text-white">Agentor</h1>
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <AppLogo class="h-9 shrink-0" />
+          <div class="min-w-0 leading-tight">
+            <h1 class="text-lg font-bold text-gray-900 dark:text-white">Agentor</h1>
+            <p class="text-xs text-gray-500">Orchestrator</p>
+          </div>
+        </div>
         <div class="flex items-center gap-1">
           <ThemeToggle />
           <button
@@ -259,7 +265,6 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
           </button>
         </div>
       </div>
-      <p class="text-xs text-gray-500 mt-0.5">Orchestrator</p>
       <div class="flex gap-2 mt-3">
         <UButton class="flex-1" @click="emit('newWorker')">
           + New Worker

@@ -7,9 +7,11 @@
 - `.github/workflows/docker-image.yml` - CI: reusable single-image build (per-arch build pushed by digest + multi-arch manifest merge). Inputs: `image`, `context`, `push`, `refresh` (no-cache + re-pull base image), `tags`.
 - `.github/workflows/docker-build.yml` - CI: source-change builds (push/PR) — paths-filter + two calls into `docker-image.yml`
 - `.github/workflows/docker-refresh.yml` - CI: daily (04:00 UTC) + manual dependency refresh — cache-free rebuild of both images, smoke-tested on amd64 + arm64, then promoted to `latest`/`main`
+- `docs/assets/` - README artwork: `agentor-logo-light.png` / `agentor-logo-dark.png` (wordmark + tagline for GitHub's light / dark theme via `<picture>`). Not part of the app bundle.
 
 ## Orchestrator — Config
 - `orchestrator/app.config.ts` - App-level configuration
+- `orchestrator/public/` - Static files served at the site root: the favicon set (`favicon.ico`, `favicon-16x16/32x32/48x48.png`, `apple-touch-icon.png`, `android-chrome-192x192/512x512.png`) + `site.webmanifest`; linked from `nuxt.config.ts` → `app.head.link`
 
 ## Orchestrator — Shared
 - `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, GitProviderType, GitProviderInfo, GitRepoInfo, GitBranchInfo, GitRepoList, GitBranchList, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, WorkerMetrics, WorkerMetricsStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UserEnvVar, UserEnvVars, UserEnvVarsInput, UserSshKey, PREDEFINED_ENV_VAR_KEYS, UpdatableImage, LogLevel, LogSource, LogEntry). `UserEnvVars` is `{ userId, createdAt, updatedAt, envVars: UserEnvVar[] }` (`UserEnvVar = { key, value }` — a uniform list, no hardcoded fields); `UserEnvVarsInput = { envVars? }`; `UserSshKey = { sshPublicKey }`; `PREDEFINED_ENV_VAR_KEYS` is the predefined-key UI affordance list (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) — extend it to add a predefined input (git provider token variables are added on top by the Account modal). All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
@@ -120,6 +122,7 @@
 
 ## Orchestrator — Client (app/)
 - `orchestrator/app/assets/css/main.css` - CSS custom properties for theming (--pane-tab-*, --terminal-*, --scrollbar-*) + dark/light mode overrides
+- `orchestrator/app/assets/img/agentor-symbol.png` - The Agentor mark (transparent PNG) bundled via Vite for `AppLogo.vue`
 - `orchestrator/app/app.vue` - Nuxt app root component
 - `orchestrator/app/pages/index.vue` - Dashboard page (sidebar + split pane layout + modals)
 - `orchestrator/app/pages/login.vue` - Sign-in form (email/password + passkey; redirects to `/`, or continues an OAuth authorization)
@@ -128,6 +131,7 @@
 - `orchestrator/app/middleware/auth.global.ts` - Global client route guard (redirects to `/setup` or `/login` as needed)
 - `orchestrator/app/composables/useAuth.ts` - better-auth Vue client wrapper (session, user, isAdmin, signIn, signOut, admin + passkey + oauth-provider client plugins; `isOAuthAuthorizationPage()`, `followOAuthRedirect()`)
 - `orchestrator/app/plugins/xterm.client.ts` - Provides `$Terminal` and `$FitAddon` globally (avoids SSR import issues)
+- `orchestrator/app/components/AppLogo.vue` - The Agentor mark as an `<img>` (`data-testid="agentor-logo"`, decorative `alt` by default, sized by the caller) — sidebar header + login / setup / consent pages
 - `orchestrator/app/components/AppSidebar.vue` - Left sidebar (container list, archived workers, port mappings, domain mappings, usage panel, update notification, **signed-in user card + sign out + Users modal trigger for admins**)
 - `orchestrator/app/components/UsersModal.vue` - Admin-only user management (list, create, change role, reset password, delete) via `/api/users`
 - `orchestrator/app/components/McpAccessSection.vue` - Account modal section: MCP server URL + setup command, authorized OAuth applications with Revoke
@@ -220,7 +224,7 @@
 - `tests/helpers/webauthn.ts` - Install/dispose Chrome DevTools virtual WebAuthn authenticator for end-to-end passkey tests (`installVirtualAuthenticator(page)`)
 - `tests/helpers/mcp.ts` - MCP test client: full OAuth flow through the MCP SDK (`connectMcp`), hand-driven OAuth steps (`registerPublicClient`, `authorizationRequest`, `approveAuthorization`, `obtainTokens`, `requestTokens`), tool-call helpers (`callJson`, `callError`)
 - `tests/api/*.spec.ts` - API integration tests (70 files; incl. worker-metrics, worker-export-import, git-repos, gitlab, gitlab-worker, git-provider-access, mcp-oauth, mcp-tools, mcp-platform, worker-exec, tmux-io, desktop-control, users)
-- `tests/ui/*.spec.ts` - UI integration tests (46 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh, gitlab-repo-input, mcp-oauth)
+- `tests/ui/*.spec.ts` - UI integration tests (47 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh, gitlab-repo-input, mcp-oauth, branding)
 - `tests/docker/gitlab-mock/server.mjs` - Self-managed GitLab stand-in for the dockerized stack (REST API v4 subset + git smart HTTP via `git http-backend`, anonymous fetch of public projects; 2-item pages, bogus `Link` hosts, keyset project listing, 500 for deep offset membership pages); configured as `GITLAB_INSTANCES=mock=http://gitlab-mock:8080`
 - `tests/FEATURES.md` - Feature inventory driving test coverage
 - `tests/TESTS.md` - Test suite documentation with counts per file

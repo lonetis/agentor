@@ -9,7 +9,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ### 0.1 First-run Setup
 - `/api/setup/status` is public and returns `{ needsSetup, passkeysEnabled, mcpUrl }` (`mcpUrl` = the OAuth-protected MCP server URL, or `null` when MCP is disabled)
 - When no users exist, navigating to any dashboard URL redirects to `/setup`
-- Setup page asks for name, email, password, confirm password
+- Setup page shows the Agentor mark above the "Welcome to Agentor" heading and asks for name, email, password, confirm password
 - Password must be at least 8 characters; passwords must match
 - `/api/setup/create-admin` creates the first user with role = `admin`, auto-signs them in, and redirects to `/`
 - Once any user exists, `/api/setup/create-admin` returns 409
@@ -17,7 +17,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ### 0.2 Login
 - Navigating to any protected URL while unauthenticated redirects to `/login`
-- Login page renders email + password fields and a Sign in button
+- Login page renders the Agentor mark above the "Agentor" / "Orchestrator" heading, email + password fields and a Sign in button
 - `/login` is public (bypasses the auth middleware)
 - Incorrect credentials show an error message, no redirect
 - Correct credentials redirect to `/` (dashboard) via full page reload
@@ -109,7 +109,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ### 0.13 OAuth 2.1 for MCP clients (consent + login continuation)
 - better-auth acts as an OAuth 2.1 authorization server for MCP clients (details in §29): authorization code + PKCE (S256), refresh tokens, Dynamic Client Registration and Client ID Metadata Documents
-- **Consent page** `/oauth/consent`: reached from `/api/auth/oauth2/authorize` with a signed query; shows "Authorize <client name>", the signed-in email, the origin approval redirects to (so look-alike client names can be spotted), and each requested scope with a description (`agentor` = full control of the account). **Approve** redirects back to the client's redirect URI with `code` + `state`; **Deny** redirects with `error=access_denied`. Visiting the page without a signed query shows an error and disabled buttons
+- **Consent page** `/oauth/consent`: reached from `/api/auth/oauth2/authorize` with a signed query; shows the Agentor mark above the "Agentor" heading, "Authorize <client name>", the signed-in email, the origin approval redirects to (so look-alike client names can be spotted), and each requested scope with a description (`agentor` = full control of the account). **Approve** redirects back to the client's redirect URI with `code` + `state`; **Deny** redirects with `error=access_denied`. Visiting the page without a signed query shows an error and disabled buttons
 - **Login continuation**: a signed-out user starting an authorization is sent to `/login?<signed query>`, which shows "Sign in to authorize an application to access your Agentor account."; after email/password or passkey sign-in the authorization continues to the consent page (not the dashboard). With a signed query the login page does not auto-redirect a signed-in user to `/`; a signed-out visit to the consent page is redirected to `/login` with the signed query preserved, so signing in resumes the authorization
 - Apps a user authorized are listed / revocable in the Account modal (§0.9b)
 
@@ -118,14 +118,14 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ## 1. Dashboard Layout
 
 ### 1.1 Page Structure
-- Page loads with "Agentor" title and "Orchestrator" subtitle
+- Page loads with the Agentor mark, "Agentor" title and "Orchestrator" subtitle
 - Browser title contains "Agentor"
 - Left sidebar + main content area layout
 - Main content area shows placeholder when no panes are open ("Create a worker from the sidebar to get started")
 - Floating hamburger button appears when sidebar is collapsed
 
 ### 1.2 Sidebar Header
-- "Agentor" heading with "Orchestrator" subtitle
+- Agentor mark (`AppLogo`, `data-testid="agentor-logo"`, decorative `alt=""`) beside the "Agentor" heading with "Orchestrator" subtitle — the heading stays a real `<h1>` text
 - ThemeToggle component (3 buttons: System/Light/Dark)
 - Collapse sidebar button (double-chevron icon)
 
@@ -155,6 +155,14 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - A tab with at least 20% of its width visible stays out of the dropdown — this gives a small hysteresis zone so tabs don't pop in and out while scrolling past them
 - Scrolling the tab bar updates the dropdown live — tabs that become visible drop out, tabs that scroll off join
 - Once the sidebar is wide enough that every tab is fully visible (or at least 20% visible after scrolling), the "More" button disappears entirely
+
+---
+
+### 1.6 Branding & Favicon
+- Every page links the favicon set from `<head>`: `favicon.ico` (16–256 px embedded sizes), `favicon-16x16.png` / `favicon-32x32.png` / `favicon-48x48.png`, `apple-touch-icon.png` (180×180) and the web manifest `site.webmanifest`
+- The icon files, `android-chrome-192x192.png` / `android-chrome-512x512.png` and the manifest are served from the site root (`orchestrator/public/`); the manifest names the app `Agentor`, uses navy `#0f172a` as theme/background colour, `start_url: /`, and lists the two android-chrome icons
+- No `theme-color` meta tag — the colour mode is user-selectable, so no fixed browser-chrome colour is asserted
+- The README shows the full wordmark logo (`docs/assets/agentor-logo-light.png`, dark variant via `<picture>`); it is not part of the app
 
 ---
 

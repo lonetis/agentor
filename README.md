@@ -1,7 +1,14 @@
-# Agentor: Agent Orchestrator
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/agentor-logo-dark.png">
+    <img src="docs/assets/agentor-logo-light.png" alt="Agentor — orchestrate AI agents" width="480">
+  </picture>
+</p>
 
-[![Build and Push Docker Images](https://github.com/lonetis/agentor/actions/workflows/docker-build.yml/badge.svg?branch=main)](https://github.com/lonetis/agentor/actions/workflows/docker-build.yml)
-[![Refresh Docker Images](https://github.com/lonetis/agentor/actions/workflows/docker-refresh.yml/badge.svg)](https://github.com/lonetis/agentor/actions/workflows/docker-refresh.yml)
+<p align="center">
+  <a href="https://github.com/lonetis/agentor/actions/workflows/docker-build.yml"><img src="https://github.com/lonetis/agentor/actions/workflows/docker-build.yml/badge.svg?branch=main" alt="Build and Push Docker Images"></a>
+  <a href="https://github.com/lonetis/agentor/actions/workflows/docker-refresh.yml"><img src="https://github.com/lonetis/agentor/actions/workflows/docker-refresh.yml/badge.svg" alt="Refresh Docker Images"></a>
+</p>
 
 Self-hosted alternative to Claude Code Web, Codex in the Cloud, and similar managed agent environments. Spawns isolated AI coding agent workers in Docker containers, each with a live terminal, VS Code editor (browser + native tunnel), virtual desktop, TCP port + domain mapping, and GitHub / GitLab integration (including self-managed GitLab servers), all managed through a web dashboard. Full control over the runtime environment.
 

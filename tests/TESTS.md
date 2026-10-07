@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1508 tests** across 116 test files (~952 API + ~556 UI)
+- **~1513 tests** across 117 test files (~952 API + ~561 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -108,7 +108,7 @@ tests/
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
     mcp.ts                 # MCP client over the real OAuth flow (MCP SDK) + hand-driven OAuth steps + tool-call helpers
   api/                     # API endpoint tests (~952 tests across 70 files)
-  ui/                      # UI interaction tests (~556 tests across 46 files)
+  ui/                      # UI interaction tests (~561 tests across 47 files)
 ```
 
 ## Test Categories
@@ -188,7 +188,7 @@ tests/
 | `users.spec.ts` | 11 | `/api/users` admin API: list (roles, shape), create (user signs in; admin role; email lowercased), create validation (400s) + duplicate email 409, update name/email/role (+ 409 / 400 cases), an admin cannot demote, delete or reset the password of themselves, set password (new works, old fails, short 400), delete (gone from list, can't sign in), unknown ids 404, regular users 403 on every route, 401 unauth |
 | `account-profile.spec.ts` | 4 | `GET /api/account/me` (admin identity + role); a user updates their own name/email via `PATCH /api/account/profile`; profile validation (empty body/name, bad email 400, taken email 409, role cannot be escalated); 401 unauth |
 
-### UI Tests (~556 tests, 46 files)
+### UI Tests (~561 tests, 47 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -238,6 +238,7 @@ tests/
 | `github-autocomplete-refresh.spec.ts` | 1 | Regression: saving env vars in the Account modal refetches `/api/git-providers` (so the repo autocomplete gate updates without a page reload); env-vars PUT is stubbed so no real account state is mutated |
 | `gitlab-repo-input.spec.ts` | 4 | Repo picker + Account modal with the GitLab mock (own user with GITLAB_MOCK_TOKEN; skipped without the mock): the provider select lists GitHub / GitLab / GitLab (mock); searching and picking a nested project (`group/sub/project`) loads its branches (`main (default)` placeholder, `feature-x` option); typing `group/sub/<name>` offers public/private create; the Account modal shows `GITLAB_TOKEN` and a pre-filled, hinted `GITLAB_MOCK_TOKEN` predefined input |
 | `mcp-oauth.spec.ts` | 7 | OAuth in the browser: a signed-in user approves an app on the consent page (client name, redirect origin, `agentor` scope description, email) → redirect with code + state; Deny → `access_denied`; a signed-out user lands on `/login` with the OAuth notice, signs in, and continues to consent + code; a consent page opened after the session ended goes to `/login` with the signed query and resumes; the consent page links http(s) client homepages but never a `javascript:` client_uri; the consent page refuses direct visits; Account modal → MCP access shows the `/mcp` URL and revokes an authorized app (two-step) |
+| `branding.spec.ts` | 5 | Agentor mark + favicon: the sidebar header renders the mark (`data-testid="agentor-logo"`, decoded — `naturalWidth > 0`) beside the "Agentor" heading + "Orchestrator" subtitle; `<head>` links `favicon.ico`, the 16/32 px PNG icons, `apple-touch-icon.png` and `site.webmanifest`; every icon file is served from the site root with an `image/*` content type; the manifest names `Agentor`, `start_url: /` and the two android-chrome icons; the login page (fresh context) shows the mark above the "Agentor" heading |
 
 ## Design Decisions
 

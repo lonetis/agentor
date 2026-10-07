@@ -3,6 +3,20 @@ export default defineNuxtConfig({
 
   ssr: false,
 
+  app: {
+    head: {
+      // Favicon set + web manifest, served from `public/` at the site root.
+      link: [
+        { rel: 'icon', href: '/favicon.ico', sizes: '16x16 24x24 32x32 48x48 64x64 128x128 256x256' },
+        { rel: 'icon', type: 'image/png', sizes: '48x48', href: '/favicon-48x48.png' },
+        { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' },
+        { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16x16.png' },
+        { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
+        { rel: 'manifest', href: '/site.webmanifest' },
+      ],
+    },
+  },
+
   colorMode: {
     preference: 'dark',
   },

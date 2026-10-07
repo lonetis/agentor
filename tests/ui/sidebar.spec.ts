@@ -108,8 +108,9 @@ test.describe('Sidebar', () => {
       // Look for the button group containing the theme icons (monitor, sun, moon)
       const collapseBtn = page.locator('button[title="Collapse sidebar"]');
       await expect(collapseBtn).toBeVisible();
-      // The theme buttons are siblings of the collapse button
-      const headerButtons = page.locator('aside h1').locator('..').locator('button');
+      // The theme buttons share the collapse button's button group (the h1 sits
+      // in its own text block next to the logo mark, so anchor on the button)
+      const headerButtons = collapseBtn.locator('..').locator('button');
       // Should have at least 4 buttons (3 theme + 1 collapse)
       expect(await headerButtons.count()).toBeGreaterThanOrEqual(4);
     });

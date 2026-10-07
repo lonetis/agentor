@@ -85,6 +85,15 @@ The Account modal's **Predefined environment variables** are `PREDEFINED_ENV_VAR
 - **Account modal → MCP access** (`components/McpAccessSection.vue`, last section of the Account modal, hidden when MCP is disabled): the MCP server URL (from `mcpUrl` in `/api/setup/status`) with a copy button and a `claude mcp add` example, plus the user's authorized applications (`GET /api/account/oauth-apps`) with a two-step **Revoke** (`DELETE /api/account/oauth-apps/:clientId`).
 - **Users modal** (`components/UsersModal.vue`) uses the `/api/users` REST API (the same routes as the MCP user tools) instead of better-auth's session-only admin endpoints.
 
+## Branding
+
+The Agentor mark (robot + containers) is used in two forms:
+
+- **In-app mark** — `app/assets/img/agentor-symbol.png` (transparent, theme-neutral), rendered by `AppLogo.vue`: a single `<img>` (`data-testid="agentor-logo"`, `alt=""` by default because every placement sits next to an "Agentor" heading; pass `alt` when it stands alone) sized by the caller's classes. Placements: the sidebar header (beside the "Agentor" heading + "Orchestrator" subtitle, `h-9`) and above the heading on the login, setup and OAuth consent pages (`h-16`). The text headings are kept — they carry the name for assistive tech and are what the tests anchor on (`h1:has-text("Agentor")`). The image goes through Vite (`~/assets/…`), so it is hashed and cached like any other bundled asset.
+- **Favicon set** — `orchestrator/public/` holds `favicon.ico` (16–256 px embedded), `favicon-16x16/32x32/48x48.png`, `apple-touch-icon.png` (180 px), `android-chrome-192x192/512x512.png` and `site.webmanifest` (name `Agentor`, navy `#0f172a` theme/background, `start_url: /`). Nuxt serves `public/` at the site root, and `nuxt.config.ts` → `app.head.link` emits the `icon` / `apple-touch-icon` / `manifest` links on every page. No `theme-color` meta is set: the app's color mode is user-selectable, so a fixed navy browser chrome would be wrong in light mode.
+
+The README logos (wordmark + tagline) live in `docs/assets/` and are not part of the app bundle: `agentor-logo-light.png` (dark lettering, transparent) for GitHub's light theme and `agentor-logo-dark.png` for dark, selected with a `<picture>` + `prefers-color-scheme` source. The dark file is the original navy-background export with the background keyed out (ImageMagick colour-distance mask), so it sits on GitHub's dark theme without a visible box — it is **not** meant for light backgrounds.
+
 ## Theme System
 
 Three-way color mode toggle (Default/White/Dark) in the sidebar header, powered by `@nuxtjs/color-mode` (bundled with Nuxt UI v3). Default preference is `dark` (preserves the original dark-only UI). Persisted to `localStorage` automatically.

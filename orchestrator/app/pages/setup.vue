@@ -95,6 +95,7 @@ async function handleSubmit() {
   <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4">
     <div class="w-full max-w-md">
       <div class="text-center mb-8">
+        <AppLogo class="block h-16 mx-auto mb-4" />
         <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100">Welcome to Agentor</h1>
         <p class="text-gray-500 dark:text-gray-400 mt-1">Create the first admin account to get started</p>
       </div>
