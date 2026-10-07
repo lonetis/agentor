@@ -84,6 +84,25 @@ export function listWorkerGitProviders(): WorkerGitProvider[] {
   }));
 }
 
+/** Env vars a provider type's CLI also takes a token from, besides the
+ * provider's own `tokenEnvVar` (`gh` and `glab` read these natively). */
+const CLI_TOKEN_ENV_VARS: Record<GitProviderType, string[]> = {
+  github: ['GH_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'],
+  gitlab: ['GITLAB_ACCESS_TOKEN', 'OAUTH_TOKEN'],
+};
+
+/** Every env var name that can carry a git provider credential into a worker:
+ * each provider's token variable plus the variables its CLI reads. Withheld
+ * from workers whose environment disables git provider access. */
+export function getGitCredentialEnvVars(): Set<string> {
+  const names = new Set<string>();
+  for (const provider of listGitProviders()) {
+    names.add(provider.tokenEnvVar);
+    for (const name of CLI_TOKEN_ENV_VARS[provider.type]) names.add(name);
+  }
+  return names;
+}
+
 export function getAllGitCloneDomains(): string[] {
   const domains = new Set<string>();
   for (const provider of listGitProviders()) {

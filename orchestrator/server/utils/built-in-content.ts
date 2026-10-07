@@ -56,6 +56,7 @@ export interface BuiltInEnvironment {
   envVars: string;
   setupScript: string;
   exposeApis: ExposeApis;
+  gitProviderAccess: boolean;
   enabledCapabilityIds: string[] | null;
   enabledInstructionIds: string[] | null;
 }

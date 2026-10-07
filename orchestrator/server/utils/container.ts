@@ -17,9 +17,9 @@ import {
 } from './worker-export';
 import type { WorkerExportManifest } from './worker-export';
 import type { AppInstanceInfo, TmuxWindow } from '../../shared/types';
-import { getAllGitCloneDomains, listWorkerGitProviders } from './git-providers';
+import { getAllGitCloneDomains, getGitCredentialEnvVars, listWorkerGitProviders } from './git-providers';
 import { getAllAgentApiDomains } from './agent-config';
-import { getPackageManagerDomains, DEFAULT_ENVIRONMENT_ID } from './environments';
+import { getPackageManagerDomains, withoutEnvVarLines, DEFAULT_ENVIRONMENT_ID } from './environments';
 import { getUserById } from './auth';
 import { WORKSPACE_ROOT } from './validation';
 import type { EnvironmentStore, Environment } from './environments';
@@ -142,8 +142,18 @@ export class ContainerManager {
     return `${shortId}-${workerId}`.slice(0, 20);
   }
 
-  private async resolveUserEnvAndBinds(userId: string): Promise<{ userEnv: UserEnvVars; credentialBinds: string[] }> {
-    const userEnv = this.userEnvStore?.getOrDefault(userId) ?? zeroUserEnvVars(userId);
+  private async resolveUserEnvAndBinds(
+    userId: string,
+    envConfig: ResolvedEnvConfig,
+  ): Promise<{ userEnv: UserEnvVars; credentialBinds: string[] }> {
+    let userEnv = this.userEnvStore?.getOrDefault(userId) ?? zeroUserEnvVars(userId);
+    // Without git provider access the worker gets none of the owner's git
+    // tokens, so neither git, gh, glab nor the DinD registry login can
+    // authenticate as the owner.
+    if (!envConfig.environmentJson.gitProviderAccess) {
+      const withheld = getGitCredentialEnvVars();
+      userEnv = { ...userEnv, envVars: userEnv.envVars.filter((e) => !withheld.has(e.key)) };
+    }
     const credentialBinds: string[] = [];
     if (this.userCredentialManager && userId) {
       await this.userCredentialManager.ensureUserDir(userId);
@@ -237,6 +247,7 @@ export class ContainerManager {
           setupScript: '',
           envVars: '',
           exposeApis: defaultExposeApis,
+          gitProviderAccess: true,
         },
         capabilitiesJson,
         instructionsJson,
@@ -268,6 +279,7 @@ export class ContainerManager {
     );
 
     const dockerEnabled = env.dockerEnabled ?? true;
+    const gitProviderAccess = env.gitProviderAccess !== false;
 
     return {
       cpuLimit: env.cpuLimit != null ? env.cpuLimit : undefined,
@@ -278,8 +290,11 @@ export class ContainerManager {
         allowedDomains: domains,
         dockerEnabled,
         setupScript: env.setupScript || '',
-        envVars: env.envVars || '',
+        // The switch also wins over git tokens written into the environment's
+        // own env vars.
+        envVars: gitProviderAccess ? env.envVars || '' : withoutEnvVarLines(env.envVars || '', getGitCredentialEnvVars()),
         exposeApis,
+        gitProviderAccess,
       },
       capabilitiesJson,
       instructionsJson,
@@ -419,7 +434,7 @@ export class ContainerManager {
       initScript: request.initScript?.trim() || '',
     });
 
-    const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(userId);
+    const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(userId, envConfig);
 
     const container = await this.dockerService.createWorkerContainer({
       userId,
@@ -723,7 +738,7 @@ export class ContainerManager {
       initScript: info.initScript || '',
     });
 
-    const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(info.userId);
+    const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(info.userId, envConfig);
 
     // Imported workers reuse their per-worker image (captured rootfs) across
     // rebuilds; falls back to the standard image if that image is gone.
@@ -820,7 +835,7 @@ export class ContainerManager {
       initScript: worker.initScript || '',
     });
 
-    const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(worker.userId);
+    const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(worker.userId, envConfig);
 
     const imageOpts = await this.resolveImageOpts(worker.importedImage);
 
@@ -1066,7 +1081,7 @@ export class ContainerManager {
       const envConfig = this.resolveEnvironmentConfig(environmentId);
       const { cpuLimit, memoryLimit, dockerEnabled } = this.deriveLimits(envConfig);
       const workerJson = this.buildWorkerJson(userId, { id, displayName, repos, initScript });
-      const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(userId);
+      const { userEnv, credentialBinds } = await this.resolveUserEnvAndBinds(userId, envConfig);
 
       // Import the captured rootfs into a per-worker image (best-effort).
       let importedImage: string | undefined;
@@ -1188,6 +1203,7 @@ export class ContainerManager {
         envVars: env.envVars,
         setupScript: env.setupScript,
         exposeApis: env.exposeApis,
+        gitProviderAccess: env.gitProviderAccess,
         enabledCapabilityIds: env.enabledCapabilityIds,
         enabledInstructionIds: env.enabledInstructionIds,
         userId,

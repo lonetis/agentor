@@ -125,6 +125,8 @@ export interface EnvironmentInfo {
   envVars: string;
   setupScript: string;
   exposeApis: ExposeApisType;
+  /** Absent on environments saved before the setting existed (= allowed). */
+  gitProviderAccess?: boolean;
   enabledCapabilityIds: string[] | null;
   enabledInstructionIds: string[] | null;
   builtIn: boolean;

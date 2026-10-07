@@ -255,6 +255,47 @@ test.describe('Environments API', () => {
     });
   });
 
+  test.describe('Git provider access', () => {
+    test('defaults to true, also on the built-in default environment', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { body } = await api.createEnvironment({ name: `GitAccess-Default-${Date.now()}` });
+      createdEnvIds.push(body.id);
+      expect(body.gitProviderAccess).toBe(true);
+
+      const { body: list } = await api.listEnvironments();
+      const def = list.find((e: { builtIn: boolean; name: string }) => e.builtIn && e.name === 'default');
+      expect(def.gitProviderAccess).toBe(true);
+    });
+
+    test('can be turned off on create and on again by update; other updates leave it alone', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status, body: created } = await api.createEnvironment({ name: `GitAccess-Off-${Date.now()}`, gitProviderAccess: false });
+      expect(status).toBe(201);
+      createdEnvIds.push(created.id);
+      expect(created.gitProviderAccess).toBe(false);
+      expect((await api.getEnvironment(created.id)).body.gitProviderAccess).toBe(false);
+
+      const { body: renamed } = await api.updateEnvironment(created.id, { cpuLimit: 2 });
+      expect(renamed.gitProviderAccess).toBe(false);
+
+      const { status: putStatus, body: enabled } = await api.updateEnvironment(created.id, { gitProviderAccess: true });
+      expect(putStatus).toBe(200);
+      expect(enabled.gitProviderAccess).toBe(true);
+    });
+
+    test('rejects a non-boolean value', async ({ request }) => {
+      const api = new ApiClient(request);
+      const { status } = await api.createEnvironment({ name: `GitAccess-Bad-${Date.now()}`, gitProviderAccess: 'no' });
+      expect(status).toBe(400);
+
+      const { body: created } = await api.createEnvironment({ name: `GitAccess-BadPut-${Date.now()}` });
+      createdEnvIds.push(created.id);
+      const { status: putStatus } = await api.updateEnvironment(created.id, { gitProviderAccess: 0 });
+      expect(putStatus).toBe(400);
+      expect((await api.getEnvironment(created.id)).body.gitProviderAccess).toBe(true);
+    });
+  });
+
   test.describe('Partial update behavior', () => {
     test('preserves unchanged fields on partial update', async ({ request }) => {
       const api = new ApiClient(request);

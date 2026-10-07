@@ -219,8 +219,8 @@
 - `tests/helpers/test-users.ts` - Create/sign-in/delete test users via the admin API (used by passkey + authorization tests)
 - `tests/helpers/webauthn.ts` - Install/dispose Chrome DevTools virtual WebAuthn authenticator for end-to-end passkey tests (`installVirtualAuthenticator(page)`)
 - `tests/helpers/mcp.ts` - MCP test client: full OAuth flow through the MCP SDK (`connectMcp`), hand-driven OAuth steps (`registerPublicClient`, `authorizationRequest`, `approveAuthorization`, `obtainTokens`, `requestTokens`), tool-call helpers (`callJson`, `callError`)
-- `tests/api/*.spec.ts` - API integration tests (69 files; incl. worker-metrics, worker-export-import, git-repos, gitlab, gitlab-worker, mcp-oauth, mcp-tools, mcp-platform, worker-exec, tmux-io, desktop-control, users)
+- `tests/api/*.spec.ts` - API integration tests (70 files; incl. worker-metrics, worker-export-import, git-repos, gitlab, gitlab-worker, git-provider-access, mcp-oauth, mcp-tools, mcp-platform, worker-exec, tmux-io, desktop-control, users)
 - `tests/ui/*.spec.ts` - UI integration tests (46 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh, gitlab-repo-input, mcp-oauth)
-- `tests/docker/gitlab-mock/server.mjs` - Self-managed GitLab stand-in for the dockerized stack (REST API v4 subset + git smart HTTP via `git http-backend`; 2-item pages, bogus `Link` hosts, keyset project listing, 500 for deep offset membership pages); configured as `GITLAB_INSTANCES=mock=http://gitlab-mock:8080`
+- `tests/docker/gitlab-mock/server.mjs` - Self-managed GitLab stand-in for the dockerized stack (REST API v4 subset + git smart HTTP via `git http-backend`, anonymous fetch of public projects; 2-item pages, bogus `Link` hosts, keyset project listing, 500 for deep offset membership pages); configured as `GITLAB_INSTANCES=mock=http://gitlab-mock:8080`
 - `tests/FEATURES.md` - Feature inventory driving test coverage
 - `tests/TESTS.md` - Test suite documentation with counts per file

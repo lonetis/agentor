@@ -5,7 +5,8 @@
 // groups, namespaces, branches, project creation) and real git smart HTTP for
 // the seeded repositories, so a worker can clone with its per-host token.
 // Every request needs MOCK_TOKEN: as a Bearer / PRIVATE-TOKEN header for the
-// API, as the Basic-auth password for git.
+// API, as the Basic-auth password for git — except fetching a public project,
+// which like on GitLab works anonymously.
 //
 // Pages are capped at 2 items so clients must paginate, and `Link` headers
 // point at a host that does not exist — like a self-managed instance whose
@@ -183,11 +184,14 @@ async function handleApi(req, res, url) {
   return send(res, 404, { message: '404 Not Found' });
 }
 
-/** Proxies git smart HTTP to `git http-backend` (CGI) after Basic auth. */
+/** Proxies git smart HTTP to `git http-backend` (CGI) after Basic auth;
+ * fetching a public project needs none. */
 function handleGit(req, res, url) {
   const basic = req.headers.authorization?.match(/^Basic (.+)$/)?.[1];
   const password = basic ? Buffer.from(basic, 'base64').toString().split(':').slice(1).join(':') : '';
-  if (password !== TOKEN) {
+  const fetching = url.searchParams.get('service') === 'git-upload-pack' || url.pathname.endsWith('/git-upload-pack');
+  const project = findProject(url.pathname.match(/^\/(.+)\.git\//)?.[1] ?? '');
+  if (password !== TOKEN && !(fetching && project?.visibility === 'public')) {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="GitLab"', 'Content-Type': 'text/plain' });
     return res.end('HTTP Basic: Access denied\n');
   }

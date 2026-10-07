@@ -13,7 +13,7 @@ export const USER_ENV_KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
  * orchestrator" list surfaced in the worker Environment editor
  * (`GET /api/worker-env-vars`). */
 export const WORKER_SYSTEM_ENV_VARS: { name: string; description: string }[] = [
-  { name: 'ENVIRONMENT', description: 'Environment config JSON — network mode, allowed domains, Docker, setup script, exposed APIs' },
+  { name: 'ENVIRONMENT', description: 'Environment config JSON — network mode, allowed domains, Docker, setup script, exposed APIs, git provider access' },
   { name: 'CAPABILITIES', description: 'Enabled capability documents (JSON array)' },
   { name: 'INSTRUCTIONS', description: 'Enabled instruction documents (JSON array)' },
   { name: 'WORKER', description: 'Worker identity & config JSON — id, display name, repos, init script, git identity, git providers' },

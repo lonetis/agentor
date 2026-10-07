@@ -16,6 +16,9 @@ export interface EnvironmentJsonPayload {
   setupScript: string;
   envVars: string;
   exposeApis: ExposeApis;
+  /** False when the environment withholds the owner's git provider credentials
+   * (the entrypoint then also scrubs credentials left by an earlier boot). */
+  gitProviderAccess: boolean;
 }
 
 /** Result of `DockerService.execCapture`. `exitCode` is -1 when the host-side

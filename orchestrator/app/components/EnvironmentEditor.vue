@@ -22,6 +22,7 @@ const form = reactive({
   envVars: '',
   setupScript: '',
   exposeApis: { portMappings: true, domainMappings: true, usage: true } as ExposeApis,
+  gitProviderAccess: true,
   enabledCapabilityIds: null as string[] | null,
   enabledInstructionIds: null as string[] | null,
 });
@@ -112,6 +113,7 @@ function initForm() {
     form.envVars = props.environment.envVars;
     form.setupScript = props.environment.setupScript;
     form.exposeApis = props.environment.exposeApis ?? { portMappings: true, domainMappings: true, usage: true };
+    form.gitProviderAccess = props.environment.gitProviderAccess !== false;
     form.enabledCapabilityIds = props.environment.enabledCapabilityIds ?? null;
     form.enabledInstructionIds = props.environment.enabledInstructionIds ?? null;
   }
@@ -143,6 +145,7 @@ function handleSave() {
     envVars: form.envVars,
     setupScript: form.setupScript,
     exposeApis: form.exposeApis,
+    gitProviderAccess: form.gitProviderAccess,
     enabledCapabilityIds: form.enabledCapabilityIds,
     enabledInstructionIds: form.enabledInstructionIds,
   });
@@ -301,6 +304,18 @@ function handleSave() {
           </div>
         </div>
       </div>
+    </fieldset>
+
+    <!-- Git provider access -->
+    <fieldset>
+      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Git Providers</legend>
+      <label class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
+        <UCheckbox v-model="form.gitProviderAccess" :disabled="readOnly" />
+        Allow access to git providers
+      </label>
+      <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+        Workers get your GitHub / GitLab tokens, and git, gh and glab are signed in. Turn off for untrusted code: no git token reaches the worker (one set in this environment's env vars is dropped too), nothing is authenticated, and only public repositories can be cloned.
+      </p>
     </fieldset>
 
     <!-- Expose APIs -->

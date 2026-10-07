@@ -343,6 +343,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
   - Block all (no outbound)
   - Agent API domains collapsible viewer (shown in restricted modes except block-all)
   - Package manager domains collapsible viewer with count
+- **Git Providers** — "Allow access to git providers" checkbox (checked by default). Unchecked = `gitProviderAccess: false`: workers get none of the owner's git provider credentials (see §27.3) — meant for running untrusted code
 - **Expose APIs** — 3 checkboxes: Port Mappings, Domain Mappings, Usage Monitoring
 - **Capabilities** — "Select All" toggle + per-capability checkbox with name and "Built-in" badge
 - **Instructions** — "Select All" toggle + per-entry checkbox with name and "Built-in" badge
@@ -837,6 +838,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `PUT /api/environments/:id` — update
 - `DELETE /api/environments/:id` — delete
 - Built-in "default" environment: cannot edit/delete
+- `gitProviderAccess` (boolean, default `true` — also on the built-in default; environments saved before the field existed count as `true`): settable on create and update, left untouched by updates that omit it, non-boolean → 400
 
 ### 24.8 Capabilities
 - `GET /api/capabilities` — list all
@@ -1019,6 +1021,15 @@ The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/ap
 - Repo cloning: GitHub repos via `gh repo clone` when the user has a GitHub token; other providers — and GitHub without a token, so public GitHub repos clone anonymously — via `git clone`, resolving a repo path (`owner/repo`, `group/subgroup/project`) to `<provider url>/<path>.git`; full clone URLs are used as-is; the optional branch is checked out. A repo that needs credentials the worker lacks fails its clone (logged, marked failed on the loading screen) instead of blocking the boot on a credential prompt
 - With Docker-in-Docker, the inner daemon logs into each provider's container registry the user has a token for (`ghcr.io`, `registry.gitlab.com`)
 - Restricted network modes (all but `full` / `block-all`) allowlist every provider's hosts (`github.com`, `gitlab.com`, `*.gitlab.com`, each self-managed GitLab host)
+
+### 27.3 Git Provider Access per Environment
+- An environment with `gitProviderAccess: false` (Environments modal → Git Providers → unchecked) keeps every git credential out of its workers, so untrusted code running there cannot reach the owner's repositories:
+  - No git token env var is set: each provider's token variable (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_<NAME>_TOKEN`) and the variables gh / glab read natively (`GH_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`) are withheld from the owner's account env vars **and** dropped from the environment's own env vars. All other env vars (agent API keys, custom vars) are passed as usual
+  - git has no credential helpers, gh and glab are not signed in, and the Docker-in-Docker daemon does not log into any provider registry
+  - Credentials an earlier boot left behind (gh `hosts.yml`, glab `config.yml`, git credential helpers, provider registry logins — e.g. from a rootfs restored from an export) are removed on every start
+  - `ENVIRONMENT.gitProviderAccess` is `false` inside the worker; the platform guide tells agents what this means
+  - Public repositories still clone; private ones fail to clone. The git identity (name/email) is still configured
+- Like other environment settings it applies on create / rebuild / unarchive / import — flipping it takes effect on a worker's next rebuild
 
 ---
 

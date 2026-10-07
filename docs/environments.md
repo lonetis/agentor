@@ -20,6 +20,18 @@ Uses **dnsmasq + ipset + iptables** for network-level domain filtering (not a by
 
 Architecture: dnsmasq resolves allowed domains and adds IPs to a kernel ipset via `ipset=` directives. iptables OUTPUT policy is DROP, with exceptions for loopback, Docker networks, and the ipset. Blocks all protocols (TCP/UDP/ICMP) to non-allowed destinations.
 
+## Git Provider Access
+
+`gitProviderAccess` (default `true`; absent on older environments = `true`) decides whether workers get the owner's git provider credentials. Turning it off is meant for running untrusted code: nothing in the worker can authenticate as the owner against GitHub, gitlab.com or a self-managed GitLab.
+
+When `false`:
+
+- **Orchestrator** (`ContainerManager.resolveUserEnvAndBinds` / `resolveEnvironmentConfig`) withholds every name in `getGitCredentialEnvVars()` (`git-providers.ts`) — each provider's `tokenEnvVar` plus the variables `gh` / `glab` read natively (`GH_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`) — from both the owner's account env vars and the environment's own `envVars` (`withoutEnvVarLines`). The switch wins over a token written into the environment. All other env vars are passed as usual.
+- **Entrypoint** reads `ENVIRONMENT.gitProviderAccess`: no provider counts as authenticated (no credential helpers, no glab config, no `GH_TOKEN`, no DinD registry login), and credentials an earlier boot left behind are scrubbed on every start (`~/.config/gh/hosts.yml`, `~/.config/glab-cli/config.yml`, git `credential.*.helper` entries, `docker logout` of each provider registry) — a rootfs restored from an export carries the source worker's.
+- **Cloning** still works for public repositories: without an authenticated GitHub provider the entrypoint clones with plain `git clone` (gh refuses to run unauthenticated). Private repos fail to clone. The git identity (name/email) is still set, and the firewall allowlist keeps the provider hosts.
+
+Like every environment setting it is baked in at create time — flipping it takes effect on a worker's next rebuild. Not affected: the dashboard's repo picker (it calls the provider APIs from the orchestrator with the user's token, never from the worker).
+
 ## Capabilities
 
 Reusable knowledge documents teaching agents how to use specific capabilities, following the [Agent Skills specification](https://agentskills.io/specification). Each capability is a markdown file with YAML frontmatter (`name`, `description`, optional `license`, `compatibility`, `metadata`, `allowed-tools`). Managed via `orchestrator/server/utils/capability-store.ts` (`CapabilityStore`), persisted to `<DATA_DIR>/capabilities.json`. Built-in capability files live in `orchestrator/server/built-in/capabilities/`.

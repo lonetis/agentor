@@ -339,6 +339,40 @@ test.describe('Environments Modal', () => {
       }
     });
 
+    test('git provider access is on by default and can be turned off', async ({ page, request }) => {
+      const api = new ApiClient(request);
+      const envName = `UIEnvNoGit-${Date.now()}`;
+      await goToDashboard(page);
+      await openEnvironmentsModal(page);
+      const dialog = page.locator('[role="dialog"]');
+      await dialog.getByRole('button', { name: 'New', exact: true }).click();
+
+      await expect(dialog.getByText('Git Providers', { exact: true })).toBeVisible({ timeout: 10_000 });
+      const gitAccess = () => dialog.locator('label', { hasText: 'Allow access to git providers' }).getByRole('checkbox');
+      await expect(gitAccess()).toHaveAttribute('aria-checked', 'true');
+
+      await dialog.locator('input[placeholder="My environment"]').fill(envName);
+      await gitAccess().click();
+      await expect(gitAccess()).toHaveAttribute('aria-checked', 'false');
+
+      try {
+        await dialog.locator('button:has-text("Create")').click();
+        await expect.poll(async () => {
+          const { body: envs } = await api.listEnvironments();
+          return envs.find((e: { name: string }) => e.name === envName)?.gitProviderAccess;
+        }).toBe(false);
+
+        // Re-opening the environment shows the saved setting.
+        const envRow = dialog.locator('.rounded-lg').filter({ hasText: envName });
+        await envRow.locator('button:has-text("Edit")').click();
+        await expect(gitAccess()).toHaveAttribute('aria-checked', 'false', { timeout: 10_000 });
+      } finally {
+        const { body: envs } = await api.listEnvironments();
+        const created = envs.find((e: { name: string }) => e.name === envName);
+        if (created) try { await api.deleteEnvironment(created.id); } catch { /* ignore */ }
+      }
+    });
+
     test('network mode dropdown has expected options', async ({ page }) => {
       await goToDashboard(page);
       await openEnvironmentsModal(page);

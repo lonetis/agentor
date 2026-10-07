@@ -11,6 +11,15 @@ export { DEFAULT_PACKAGE_MANAGER_DOMAINS, getPackageManagerDomains } from './pac
  * has no explicit `environmentId`. Stable across restarts (derived UUID). */
 export const DEFAULT_ENVIRONMENT_ID = builtInId('environment', 'default');
 
+/** Drop the `KEY=VALUE` lines whose key is in `keys` from an environment's
+ * `envVars` text (the format the worker entrypoint exports line by line). */
+export function withoutEnvVarLines(envVars: string, keys: Set<string>): string {
+  return envVars
+    .split('\n')
+    .filter((line) => !keys.has(line.trim().split('=')[0]!.trim()))
+    .join('\n');
+}
+
 export interface Environment {
   id: string;
   name: string;
@@ -23,6 +32,10 @@ export interface Environment {
   envVars: string;
   setupScript: string;
   exposeApis: ExposeApis;
+  /** Whether workers get the owner's git provider credentials (tokens as env
+   * vars, git / gh / glab / registry auth). Absent on environments saved before
+   * the setting existed — only an explicit `false` withholds access. */
+  gitProviderAccess?: boolean;
   enabledCapabilityIds: string[] | null;
   enabledInstructionIds: string[] | null;
   builtIn: boolean;
@@ -64,6 +77,7 @@ export class EnvironmentStore extends BuiltInAndUserStore<Environment, BuiltInEn
       envVars: item.envVars,
       setupScript: item.setupScript,
       exposeApis: item.exposeApis,
+      gitProviderAccess: item.gitProviderAccess,
       enabledCapabilityIds: item.enabledCapabilityIds,
       enabledInstructionIds: item.enabledInstructionIds,
       builtIn: true,
