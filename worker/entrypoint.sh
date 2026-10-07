@@ -177,6 +177,14 @@ while IFS=$'\t' read -r gp_id gp_type gp_url gp_token_var; do
         && AUTHED_GIT_PROVIDERS+=("$gp_id"$'\t'"$gp_type"$'\t'"$gp_url"$'\t'"$gp_token_var")
 done < <(echo "$GIT_PROVIDERS_JSON" | jq -r '.[] | [.id, .type, .url, .tokenEnvVar] | @tsv')
 
+_git_provider_authed() {
+    local entry
+    for entry in "${AUTHED_GIT_PROVIDERS[@]}"; do
+        [ "${entry%%$'\t'*}" = "$1" ] && return 0
+    done
+    return 1
+}
+
 # ==========================================================================
 # Phase 1: Agent setup
 # Each setup script creates config files only if they don't exist yet.
@@ -384,32 +392,34 @@ clone_repo() {
         CLONE_ARGS+=("--branch" "$BRANCH")
     fi
 
-    case "$TYPE" in
-        github)
-            # Only forward `-- --branch X` to the underlying git clone when a
-            # branch is set — a trailing bare `--` is fragile across gh versions.
-            local gh_extra=()
-            [ -n "$BRANCH" ] && gh_extra=(-- --branch "$BRANCH")
-            # `return 1` on failure so the caller's `wait` sees a non-zero exit
-            # and records the repo in FAILED_REPOS (otherwise the echo's exit 0
-            # masks the failure and clones silently appear to succeed).
-            gh repo clone "$URL" "/workspace/$REPO_NAME" "${gh_extra[@]}" 2>&1 || {
-                echo "Failed to clone $URL via gh, skipping"
-                return 1
-            }
-            ;;
-        *)
-            # A repo path on the provider (`group/subgroup/project`) clones
-            # from the provider's URL; a full clone URL is used as-is.
-            if [ -n "$BASE_URL" ] && [[ "$URL" != *://* && "$URL" != git@* ]]; then
-                URL="$BASE_URL/${URL%.git}.git"
-            fi
-            git clone "${CLONE_ARGS[@]}" "$URL" "/workspace/$REPO_NAME" 2>&1 || {
-                echo "Failed to clone $URL, skipping"
-                return 1
-            }
-            ;;
-    esac
+    # `return 1` on failure so the caller's `wait` sees a non-zero exit and
+    # records the repo in FAILED_REPOS (otherwise the echo's exit 0 masks the
+    # failure and clones silently appear to succeed). GIT_TERMINAL_PROMPT=0:
+    # the container has a TTY, so a repo that needs credentials it lacks would
+    # otherwise prompt for a username and block the boot forever.
+    if [ "$TYPE" = github ] && _git_provider_authed "$PROVIDER"; then
+        # Only forward `-- --branch X` to the underlying git clone when a
+        # branch is set — a trailing bare `--` is fragile across gh versions.
+        local gh_extra=()
+        [ -n "$BRANCH" ] && gh_extra=(-- --branch "$BRANCH")
+        GIT_TERMINAL_PROMPT=0 gh repo clone "$URL" "/workspace/$REPO_NAME" "${gh_extra[@]}" 2>&1 || {
+            echo "Failed to clone $URL via gh, skipping"
+            return 1
+        }
+        return 0
+    fi
+
+    # Every other provider, and GitHub without a token (gh refuses to run
+    # unauthenticated; public repos clone anonymously). A repo path on the
+    # provider (`group/subgroup/project`) clones from the provider's URL; a
+    # full clone URL is used as-is.
+    if [ -n "$BASE_URL" ] && [[ "$URL" != *://* && "$URL" != git@* ]]; then
+        URL="$BASE_URL/${URL%.git}.git"
+    fi
+    GIT_TERMINAL_PROMPT=0 git clone "${CLONE_ARGS[@]}" "$URL" "/workspace/$REPO_NAME" 2>&1 || {
+        echo "Failed to clone $URL, skipping"
+        return 1
+    }
 }
 
 REPOS_JSON=$(echo "$WORKER" | jq -r '.repos // empty')
