@@ -5,8 +5,10 @@ import { createTestUser, deleteTestUser, signedInContext, type CreatedUser } fro
 // GitLab support against a self-managed instance: the dockerized stack runs a
 // GitLab mock (tests/docker/gitlab-mock) configured as
 // GITLAB_INSTANCES=mock=http://gitlab-mock:8080 → provider `gitlab-mock`.
-// The mock caps pages at 2 items and sends `Link` headers to a host that does
-// not exist, so listing everything proves `X-Next-Page` pagination.
+// The mock caps pages at 2 items and points `Link` headers at a host that does
+// not exist, so a complete listing proves the client pages on its own URL —
+// projects by keyset (offset pages past the first fail with a 500, like a
+// large instance timing out), groups via `Link`, branches via `X-Next-Page`.
 const MOCK = 'gitlab-mock';
 const MOCK_TOKEN = 'glpat-agentor-mock-token';
 
@@ -67,16 +69,16 @@ test.describe('GitLab (self-managed instance)', () => {
     });
   });
 
-  test('lists projects across pages with nested paths, visibility and default branches', async () => {
+  test('lists projects by keyset across pages with nested paths, visibility and default branches', async () => {
     const { status, body } = await api.listGitRepos(MOCK);
     expect(status).toBe(200);
     expect(body.tokenConfigured).toBe(true);
     expect(body.error).toBeUndefined();
     expect(body.username).toBe('mock-user');
-    expect(body.namespaces).toEqual(['group', 'group/sub']);
+    expect(body.namespaces).toEqual(['group', 'group/sub', 'other-group']);
 
     const repos = body.repos as Repo[];
-    // Seeded projects — page 2 only reachable through X-Next-Page.
+    // Seeded projects — spread over keyset pages.
     expect(repos).toContainEqual({ fullName: 'group/sub/project', private: true, defaultBranch: 'main' });
     expect(repos).toContainEqual({ fullName: 'group/public-proj', private: false, defaultBranch: 'develop' });
     // `internal` visibility is not public.
@@ -88,7 +90,7 @@ test.describe('GitLab (self-managed instance)', () => {
   test('lists the branches of a nested project', async () => {
     const { status, body } = await api.listGitBranches(MOCK, 'group/sub/project');
     expect(status).toBe(200);
-    expect(body).toEqual({ branches: [{ name: 'main' }, { name: 'feature-x' }], defaultBranch: 'main' });
+    expect(body).toEqual({ branches: [{ name: 'main' }, { name: 'feature-x' }, { name: 'release' }], defaultBranch: 'main' });
     // A `.git` suffix (copied clone URL path) is accepted.
     expect((await api.listGitBranches(MOCK, 'group/sub/project.git')).body.defaultBranch).toBe('main');
   });

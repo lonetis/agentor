@@ -9,8 +9,12 @@
 //
 // Pages are capped at 2 items so clients must paginate, and `Link` headers
 // point at a host that does not exist — like a self-managed instance whose
-// configured external URL differs from the URL it is reached at. Clients have
-// to follow `X-Next-Page`.
+// configured external URL differs from the URL it is reached at, so clients
+// may only take the query from them. Project listings page by keyset
+// (`pagination=keyset`, `Link` only); offset pages past the first fail with
+// a 500 for membership listings, like a large instance hitting its query
+// timeout. Groups page by offset with `Link` + `X-Next-Page`, branches with
+// `X-Next-Page` only.
 import { createServer } from 'node:http';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -27,6 +31,7 @@ const namespaces = [
   { id: 1, full_path: 'mock-user', kind: 'user' },
   { id: 10, full_path: 'group', kind: 'group' },
   { id: 11, full_path: 'group/sub', kind: 'group' },
+  { id: 12, full_path: 'other-group', kind: 'group' },
 ];
 const groups = namespaces.filter((n) => n.kind === 'group');
 
@@ -65,10 +70,10 @@ function seedRepo(fullPath, branches) {
   rmSync(work, { recursive: true, force: true });
 }
 
-addProject('group/sub/project', 'private', 'main', ['main', 'feature-x']);
+addProject('group/sub/project', 'private', 'main', ['main', 'feature-x', 'release']);
 addProject('group/public-proj', 'public', 'develop', ['develop']);
 addProject('mock-user/personal', 'internal', 'main', ['main']);
-seedRepo('group/sub/project', ['main', 'feature-x']);
+seedRepo('group/sub/project', ['main', 'feature-x', 'release']);
 seedRepo('group/public-proj', ['develop']);
 
 const apiProject = ({ branches: _branches, ...p }) => p;
@@ -78,17 +83,34 @@ function send(res, status, body, headers = {}) {
   res.end(JSON.stringify(body));
 }
 
-function paginate(req, res, url, items) {
-  const perPage = Math.min(Number(url.searchParams.get('per_page') || 20), PAGE_CAP);
+/** A `Link: rel="next"` header on a host the client cannot reach. */
+function linkHeader(url, params) {
+  const next = new URL(url.pathname + url.search, 'https://gitlab.invalid');
+  for (const [k, v] of Object.entries(params)) next.searchParams.set(k, String(v));
+  return `<${next}>; rel="next"`;
+}
+
+function perPageOf(url) {
+  return Math.min(Number(url.searchParams.get('per_page') || 20), PAGE_CAP);
+}
+
+function paginate(req, res, url, items, { link = true } = {}) {
+  const perPage = perPageOf(url);
   const page = Math.max(Number(url.searchParams.get('page') || 1), 1);
   const slice = items.slice((page - 1) * perPage, page * perPage);
   const hasNext = page * perPage < items.length;
   const headers = { 'X-Page': String(page), 'X-Per-Page': String(perPage), 'X-Next-Page': hasNext ? String(page + 1) : '' };
-  if (hasNext) {
-    const next = new URL(url.pathname + url.search, 'https://gitlab.invalid');
-    next.searchParams.set('page', String(page + 1));
-    headers.Link = `<${next}>; rel="next"`;
-  }
+  if (hasNext && link) headers.Link = linkHeader(url, { page: page + 1 });
+  send(res, 200, slice, headers);
+}
+
+/** Keyset pages (`id_after` cursor): `Link` only, no `X-Next-Page`. */
+function paginateKeyset(req, res, url, items) {
+  const perPage = perPageOf(url);
+  const after = Number(url.searchParams.get('id_after') || 0);
+  const rest = items.filter((i) => i.id > after).sort((a, b) => a.id - b.id);
+  const slice = rest.slice(0, perPage);
+  const headers = rest.length > perPage ? { Link: linkHeader(url, { id_after: slice[slice.length - 1].id }) } : {};
   send(res, 200, slice, headers);
 }
 
@@ -123,7 +145,13 @@ async function handleApi(req, res, url) {
   let m;
 
   if (req.method === 'GET' && path === '/user') return send(res, 200, user);
-  if (req.method === 'GET' && path === '/projects') return paginate(req, res, url, projects.map(apiProject));
+  if (req.method === 'GET' && path === '/projects') {
+    if (url.searchParams.get('pagination') === 'keyset') return paginateKeyset(req, res, url, projects.map(apiProject));
+    if (url.searchParams.get('membership') === 'true' && Number(url.searchParams.get('page') || 1) > 1) {
+      return send(res, 500, { message: '500 Internal Server Error' });
+    }
+    return paginate(req, res, url, projects.map(apiProject));
+  }
   if (req.method === 'GET' && path === '/groups') return paginate(req, res, url, groups);
   if (req.method === 'GET' && (m = path.match(/^\/namespaces\/([^/]+)$/))) {
     const ns = findNamespace(m[1]);
@@ -136,7 +164,7 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && (m = path.match(/^\/projects\/([^/]+)\/repository\/branches$/))) {
     const p = findProject(m[1]);
     if (!p) return send(res, 404, { message: '404 Project Not Found' });
-    return paginate(req, res, url, p.branches.map((name) => ({ name, default: name === p.default_branch })));
+    return paginate(req, res, url, p.branches.map((name) => ({ name, default: name === p.default_branch })), { link: false });
   }
   if (req.method === 'POST' && path === '/projects') {
     const body = await readJson(req);

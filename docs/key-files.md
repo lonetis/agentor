@@ -65,7 +65,7 @@
 - `orchestrator/server/utils/git-providers.ts` - Git provider registry: `listGitProviders()` (GitHub, gitlab.com, configured GitLab instances), `getGitProvider()`, `listWorkerGitProviders()` (the `WORKER.gitProviders` payload), `getAllGitCloneDomains()` (firewall allowlist), `parseRepoConfigs()` (repos validation for create/PATCH)
 - `orchestrator/server/utils/git-hosting-client.ts` - `GitHostingService` interface + `GitHostingClient` base (auth headers, timeouts, 60s response cache, pagination hook, upstream error mapping)
 - `orchestrator/server/utils/git-hosting.ts` - `getGitHostingService(provider, token)` factory with the per-provider+token instance cache; route helpers `resolveGitProviderForUser()` / `requireGitHostingService()`
-- `orchestrator/server/utils/gitlab.ts` - GitLabService (REST API v4 for gitlab.com and self-managed instances; `X-Next-Page` pagination, nested group paths, project creation via namespace lookup)
+- `orchestrator/server/utils/gitlab.ts` - GitLabService (REST API v4 for gitlab.com and self-managed instances; keyset-paged project listing, pagination on its own URL (`Link` query / `X-Next-Page`), nested group paths, project creation via namespace lookup)
 - `orchestrator/server/api/git-providers/index.get.ts` - Provider list with the caller's per-provider `tokenConfigured` (defines the `GitProvider` / `GitRepo` OpenAPI schemas)
 - `orchestrator/server/api/git-providers/[providerId]/repos.get.ts` + `repos.post.ts` + `branches.get.ts` - List / create repositories and list branches on any provider with the caller's token
 - `orchestrator/server/utils/apps.ts` - App type registry (APP_REGISTRY)
@@ -221,6 +221,6 @@
 - `tests/helpers/mcp.ts` - MCP test client: full OAuth flow through the MCP SDK (`connectMcp`), hand-driven OAuth steps (`registerPublicClient`, `authorizationRequest`, `approveAuthorization`, `obtainTokens`, `requestTokens`), tool-call helpers (`callJson`, `callError`)
 - `tests/api/*.spec.ts` - API integration tests (69 files; incl. worker-metrics, worker-export-import, git-repos, gitlab, gitlab-worker, mcp-oauth, mcp-tools, mcp-platform, worker-exec, tmux-io, desktop-control, users)
 - `tests/ui/*.spec.ts` - UI integration tests (46 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh, gitlab-repo-input, mcp-oauth)
-- `tests/docker/gitlab-mock/server.mjs` - Self-managed GitLab stand-in for the dockerized stack (REST API v4 subset + git smart HTTP via `git http-backend`; 2-item pages, bogus `Link` hosts); configured as `GITLAB_INSTANCES=mock=http://gitlab-mock:8080`
+- `tests/docker/gitlab-mock/server.mjs` - Self-managed GitLab stand-in for the dockerized stack (REST API v4 subset + git smart HTTP via `git http-backend`; 2-item pages, bogus `Link` hosts, keyset project listing, 500 for deep offset membership pages); configured as `GITLAB_INSTANCES=mock=http://gitlab-mock:8080`
 - `tests/FEATURES.md` - Feature inventory driving test coverage
 - `tests/TESTS.md` - Test suite documentation with counts per file

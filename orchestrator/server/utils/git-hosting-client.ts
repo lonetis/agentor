@@ -93,6 +93,12 @@ export abstract class GitHostingClient implements GitHostingService {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       useLogger().error(`${this.logTag} ${method} ${url} failed: ${reason}`);
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw createError({
+          statusCode: 504,
+          statusMessage: `${this.provider.displayName} did not respond within ${FETCH_TIMEOUT_MS / 1000}s`,
+        });
+      }
       throw createError({ statusCode: 502, statusMessage: `${this.provider.displayName} is unreachable: ${reason}` });
     }
     if (!res.ok) {

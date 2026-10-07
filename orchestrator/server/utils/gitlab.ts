@@ -25,10 +25,14 @@ export class GitLabService extends GitHostingClient {
     return this.cached('user', async () => (await this.request<{ username: string }>(`${this.api}/user`)).username);
   }
 
+  /** Keyset pagination: offset pages make GitLab count the whole membership
+   * set and skip every earlier row on each page, which on large or cold
+   * instances runs into its query timeout (500) — keyset pages are plain
+   * `id > last` index scans. */
   listRepos(): Promise<GitRepoInfo[]> {
     return this.cached('repos', async () => {
       const repos = (await this.fetchAllPages<ApiProject>(
-        `${this.api}/projects?membership=true&simple=true&order_by=id&sort=asc&per_page=100`,
+        `${this.api}/projects?membership=true&simple=true&pagination=keyset&order_by=id&sort=asc&per_page=100`,
       )).map(toRepo).sort((a, b) => a.fullName.localeCompare(b.fullName));
       useLogger().debug(`${this.logTag} fetched ${repos.length} projects`);
       return repos;
@@ -74,15 +78,21 @@ export class GitLabService extends GitHostingClient {
     return { Authorization: `Bearer ${this.token}`, Accept: 'application/json' };
   }
 
-  /** Follows `X-Next-Page` on our own URL rather than the `Link` header: GitLab
-   * builds `Link` from its configured external URL, which on self-managed
-   * instances often differs from the URL the orchestrator reaches it at. */
+  /** The next page comes from `Link` (keyset and offset) or `X-Next-Page`
+   * (offset only). Only the query of a `Link` URL is used: GitLab builds it
+   * from its configured external URL, which on self-managed instances often
+   * differs from the URL the orchestrator reaches it at. */
   protected nextPageUrl(res: Response, url: string): string | null {
-    const next = res.headers.get('x-next-page');
-    if (!next) return null;
-    const u = new URL(url);
-    u.searchParams.set('page', next);
-    return u.toString();
+    const next = new URL(url);
+    const link = res.headers.get('link')?.match(/<([^>]+)>;\s*rel="next"/)?.[1];
+    if (link) {
+      next.search = new URL(link).search;
+      return next.toString();
+    }
+    const page = res.headers.get('x-next-page');
+    if (!page) return null;
+    next.searchParams.set('page', page);
+    return next.toString();
   }
 }
 
