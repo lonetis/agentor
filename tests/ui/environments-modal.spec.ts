@@ -339,33 +339,53 @@ test.describe('Environments Modal', () => {
       }
     });
 
-    test('git provider access is on by default and can be turned off', async ({ page, request }) => {
+    test('git providers are all enabled by default and can be deselected individually', async ({ page, request }) => {
       const api = new ApiClient(request);
-      const envName = `UIEnvNoGit-${Date.now()}`;
+      const envName = `UIEnvGit-${Date.now()}`;
       await goToDashboard(page);
       await openEnvironmentsModal(page);
       const dialog = page.locator('[role="dialog"]');
       await dialog.getByRole('button', { name: 'New', exact: true }).click();
 
-      await expect(dialog.getByText('Git Providers', { exact: true })).toBeVisible({ timeout: 10_000 });
-      const gitAccess = () => dialog.locator('label', { hasText: 'Allow access to git providers' }).getByRole('checkbox');
-      await expect(gitAccess()).toHaveAttribute('aria-checked', 'true');
+      const section = dialog.locator('fieldset').filter({ has: page.getByText('Git Providers', { exact: true }) });
+      await expect(section).toBeVisible({ timeout: 10_000 });
+      const providerBox = (url: string) => section.locator('label').filter({ hasText: url }).getByRole('checkbox');
+      const selectAll = section.locator('label').filter({ hasText: 'Select All' }).getByRole('checkbox');
+      await expect(selectAll).toHaveAttribute('aria-checked', 'true');
+      await expect(providerBox('github.com')).toHaveAttribute('aria-checked', 'true');
+      await expect(providerBox('gitlab.com')).toHaveAttribute('aria-checked', 'true');
+
+      // Deselecting one provider leaves the others enabled.
+      await providerBox('github.com').click();
+      await expect(providerBox('github.com')).toHaveAttribute('aria-checked', 'false');
+      await expect(providerBox('gitlab.com')).toHaveAttribute('aria-checked', 'true');
+      await expect(selectAll).toHaveAttribute('aria-checked', 'false');
 
       await dialog.locator('input[placeholder="My environment"]').fill(envName);
-      await gitAccess().click();
-      await expect(gitAccess()).toHaveAttribute('aria-checked', 'false');
-
       try {
         await dialog.locator('button:has-text("Create")').click();
         await expect.poll(async () => {
           const { body: envs } = await api.listEnvironments();
-          return envs.find((e: { name: string }) => e.name === envName)?.gitProviderAccess;
-        }).toBe(false);
+          return envs.find((e: { name: string }) => e.name === envName)?.enabledGitProviderIds;
+        }).toEqual(expect.arrayContaining(['gitlab']));
+        const { body: envs } = await api.listEnvironments();
+        expect(envs.find((e: { name: string }) => e.name === envName).enabledGitProviderIds).not.toContain('github');
 
-        // Re-opening the environment shows the saved setting.
+        // Re-opening shows the saved selection; unchecking Select All deselects every provider.
         const envRow = dialog.locator('.rounded-lg').filter({ hasText: envName });
         await envRow.locator('button:has-text("Edit")').click();
-        await expect(gitAccess()).toHaveAttribute('aria-checked', 'false', { timeout: 10_000 });
+        await expect(providerBox('github.com')).toHaveAttribute('aria-checked', 'false', { timeout: 10_000 });
+        await expect(providerBox('gitlab.com')).toHaveAttribute('aria-checked', 'true');
+        await selectAll.click();
+        await expect(providerBox('github.com')).toHaveAttribute('aria-checked', 'true');
+        await selectAll.click();
+        await expect(providerBox('github.com')).toHaveAttribute('aria-checked', 'false');
+        await expect(providerBox('gitlab.com')).toHaveAttribute('aria-checked', 'false');
+        await dialog.locator('button:has-text("Update")').click();
+        await expect.poll(async () => {
+          const { body: list } = await api.listEnvironments();
+          return list.find((e: { name: string }) => e.name === envName)?.enabledGitProviderIds;
+        }).toEqual([]);
       } finally {
         const { body: envs } = await api.listEnvironments();
         const created = envs.find((e: { name: string }) => e.name === envName);

@@ -343,7 +343,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
   - Block all (no outbound)
   - Agent API domains collapsible viewer (shown in restricted modes except block-all)
   - Package manager domains collapsible viewer with count
-- **Git Providers** — "Allow access to git providers" checkbox (checked by default). Unchecked = `gitProviderAccess: false`: workers get none of the owner's git provider credentials (see §27.3) — meant for running untrusted code
+- **Git Providers** — "Select All" toggle + one checkbox per git provider (display name + host), all checked by default (= `enabledGitProviderIds: null`, which also covers providers configured later). Unchecking a provider keeps its credentials out of the environment's workers (see §27.3); unchecking Select All deselects every provider (`[]`, for running untrusted code); checking every provider again stores `null`. On save, ids of providers no longer configured are dropped
 - **Expose APIs** — 3 checkboxes: Port Mappings, Domain Mappings, Usage Monitoring
 - **Capabilities** — "Select All" toggle + per-capability checkbox with name and "Built-in" badge
 - **Instructions** — "Select All" toggle + per-entry checkbox with name and "Built-in" badge
@@ -838,7 +838,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `PUT /api/environments/:id` — update
 - `DELETE /api/environments/:id` — delete
 - Built-in "default" environment: cannot edit/delete
-- `gitProviderAccess` (boolean, default `true` — also on the built-in default; environments saved before the field existed count as `true`): settable on create and update, left untouched by updates that omit it, non-boolean → 400
+- `enabledGitProviderIds` (`null` = every provider incl. ones configured later — the default, also on the built-in default and on environments saved before the field existed; `[]` = none; or a list of provider ids, deduplicated): settable on create and update, left untouched by updates that omit it; anything but null / an array of strings → 400; an unknown provider id → 400 `Unknown git provider "<id>" (available: …)`
 
 ### 24.8 Capabilities
 - `GET /api/capabilities` — list all
@@ -1023,13 +1023,13 @@ The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/ap
 - Restricted network modes (all but `full` / `block-all`) allowlist every provider's hosts (`github.com`, `gitlab.com`, `*.gitlab.com`, each self-managed GitLab host)
 
 ### 27.3 Git Provider Access per Environment
-- An environment with `gitProviderAccess: false` (Environments modal → Git Providers → unchecked) keeps every git credential out of its workers, so untrusted code running there cannot reach the owner's repositories:
-  - No git token env var is set: each provider's token variable (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_<NAME>_TOKEN`) and the variables gh / glab read natively (`GH_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`) are withheld from the owner's account env vars **and** dropped from the environment's own env vars. All other env vars (agent API keys, custom vars) are passed as usual
-  - git has no credential helpers, gh and glab are not signed in, and the Docker-in-Docker daemon does not log into any provider registry
-  - Credentials an earlier boot left behind (gh `hosts.yml`, glab `config.yml`, git credential helpers, provider registry logins — e.g. from a rootfs restored from an export) are removed on every start
-  - `ENVIRONMENT.gitProviderAccess` is `false` inside the worker; the platform guide tells agents what this means
-  - Public repositories still clone; private ones fail to clone. The git identity (name/email) is still configured
-- Like other environment settings it applies on create / rebuild / unarchive / import — flipping it takes effect on a worker's next rebuild
+- An environment's `enabledGitProviderIds` (Environments modal → Git Providers) decides which providers' credentials its workers get. For every provider it does not enable, untrusted code running there cannot reach the owner's repositories on that provider:
+  - The provider's token env var (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_<NAME>_TOKEN`) is withheld from the owner's account env vars **and** dropped from the environment's own env vars. So are the CLI variables of its type (`GH_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN` for GitHub; `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN` for GitLab) — gh / glab use those for any host, so they go as soon as one provider of the type is not enabled. An enabled provider's own token variable is never withheld; all other env vars (agent API keys, custom vars) are passed as usual
+  - git has no credential helper for its host, gh / glab are not signed in to it, and the Docker-in-Docker daemon does not log into its registry
+  - Credentials an earlier boot left behind for it (its git credential helper, gh `hosts.yml` / glab `config.yml`, its registry login — e.g. from a rootfs restored from an export) are removed on every start; enabled GitLab hosts are configured again right after
+  - Its public repositories still clone; private ones fail to clone. The git identity (name/email) is still configured
+- Enabled providers work exactly as in §27.2. `ENVIRONMENT.enabledGitProviderIds` inside the worker is the resolved list of enabled provider ids (never null); the platform guide tells agents what it means
+- Like other environment settings it applies on create / rebuild / unarchive / import — a changed selection takes effect on a worker's next rebuild
 
 ---
 

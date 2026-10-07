@@ -32,10 +32,10 @@ export interface Environment {
   envVars: string;
   setupScript: string;
   exposeApis: ExposeApis;
-  /** Whether workers get the owner's git provider credentials (tokens as env
-   * vars, git / gh / glab / registry auth). Absent on environments saved before
-   * the setting existed — only an explicit `false` withholds access. */
-  gitProviderAccess?: boolean;
+  /** Git providers whose credentials (token env vars, git / gh / glab /
+   * registry auth) workers get: null = all, also providers configured later;
+   * [] = none. Absent on environments saved before the setting existed (= all). */
+  enabledGitProviderIds?: string[] | null;
   enabledCapabilityIds: string[] | null;
   enabledInstructionIds: string[] | null;
   builtIn: boolean;
@@ -77,7 +77,7 @@ export class EnvironmentStore extends BuiltInAndUserStore<Environment, BuiltInEn
       envVars: item.envVars,
       setupScript: item.setupScript,
       exposeApis: item.exposeApis,
-      gitProviderAccess: item.gitProviderAccess,
+      enabledGitProviderIds: item.enabledGitProviderIds,
       enabledCapabilityIds: item.enabledCapabilityIds,
       enabledInstructionIds: item.enabledInstructionIds,
       builtIn: true,

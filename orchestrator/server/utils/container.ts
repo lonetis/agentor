@@ -17,7 +17,7 @@ import {
 } from './worker-export';
 import type { WorkerExportManifest } from './worker-export';
 import type { AppInstanceInfo, TmuxWindow } from '../../shared/types';
-import { getAllGitCloneDomains, getGitCredentialEnvVars, listWorkerGitProviders } from './git-providers';
+import { getAllGitCloneDomains, getWithheldGitCredentialEnvVars, listWorkerGitProviders, resolveEnabledGitProviderIds } from './git-providers';
 import { getAllAgentApiDomains } from './agent-config';
 import { getPackageManagerDomains, withoutEnvVarLines, DEFAULT_ENVIRONMENT_ID } from './environments';
 import { getUserById } from './auth';
@@ -147,11 +147,11 @@ export class ContainerManager {
     envConfig: ResolvedEnvConfig,
   ): Promise<{ userEnv: UserEnvVars; credentialBinds: string[] }> {
     let userEnv = this.userEnvStore?.getOrDefault(userId) ?? zeroUserEnvVars(userId);
-    // Without git provider access the worker gets none of the owner's git
-    // tokens, so neither git, gh, glab nor the DinD registry login can
-    // authenticate as the owner.
-    if (!envConfig.environmentJson.gitProviderAccess) {
-      const withheld = getGitCredentialEnvVars();
+    // The owner's tokens for git providers the environment does not enable
+    // never reach the worker, so neither git, gh, glab nor the DinD registry
+    // login can authenticate as the owner there.
+    const withheld = getWithheldGitCredentialEnvVars(envConfig.environmentJson.enabledGitProviderIds);
+    if (withheld.size > 0) {
       userEnv = { ...userEnv, envVars: userEnv.envVars.filter((e) => !withheld.has(e.key)) };
     }
     const credentialBinds: string[] = [];
@@ -247,7 +247,7 @@ export class ContainerManager {
           setupScript: '',
           envVars: '',
           exposeApis: defaultExposeApis,
-          gitProviderAccess: true,
+          enabledGitProviderIds: resolveEnabledGitProviderIds(null),
         },
         capabilitiesJson,
         instructionsJson,
@@ -279,7 +279,7 @@ export class ContainerManager {
     );
 
     const dockerEnabled = env.dockerEnabled ?? true;
-    const gitProviderAccess = env.gitProviderAccess !== false;
+    const enabledGitProviderIds = resolveEnabledGitProviderIds(env.enabledGitProviderIds);
 
     return {
       cpuLimit: env.cpuLimit != null ? env.cpuLimit : undefined,
@@ -290,11 +290,11 @@ export class ContainerManager {
         allowedDomains: domains,
         dockerEnabled,
         setupScript: env.setupScript || '',
-        // The switch also wins over git tokens written into the environment's
-        // own env vars.
-        envVars: gitProviderAccess ? env.envVars || '' : withoutEnvVarLines(env.envVars || '', getGitCredentialEnvVars()),
+        // The selection also wins over git tokens written into the
+        // environment's own env vars.
+        envVars: withoutEnvVarLines(env.envVars || '', getWithheldGitCredentialEnvVars(enabledGitProviderIds)),
         exposeApis,
-        gitProviderAccess,
+        enabledGitProviderIds,
       },
       capabilitiesJson,
       instructionsJson,
@@ -1203,7 +1203,7 @@ export class ContainerManager {
         envVars: env.envVars,
         setupScript: env.setupScript,
         exposeApis: env.exposeApis,
-        gitProviderAccess: env.gitProviderAccess,
+        enabledGitProviderIds: env.enabledGitProviderIds,
         enabledCapabilityIds: env.enabledCapabilityIds,
         enabledInstructionIds: env.enabledInstructionIds,
         userId,

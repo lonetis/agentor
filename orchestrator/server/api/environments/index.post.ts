@@ -18,6 +18,7 @@ defineRouteMeta({
 import { useEnvironmentStore } from '../../utils/services';
 import type { NetworkMode } from '../../../shared/types';
 import { requireAuth } from '../../utils/auth-helpers';
+import { parseEnabledGitProviderIds } from '../../utils/git-providers';
 
 export default defineEventHandler(async (event) => {
   const { user } = requireAuth(event);
@@ -35,8 +36,9 @@ export default defineEventHandler(async (event) => {
   if (body.cpuLimit !== undefined && (typeof body.cpuLimit !== 'number' || body.cpuLimit < 0)) {
     throw createError({ statusCode: 400, statusMessage: 'cpuLimit must be a non-negative number (0 = unrestricted)' });
   }
-  if (body.gitProviderAccess !== undefined && typeof body.gitProviderAccess !== 'boolean') {
-    throw createError({ statusCode: 400, statusMessage: 'gitProviderAccess must be a boolean' });
+  const gitProviders = parseEnabledGitProviderIds(body.enabledGitProviderIds ?? null);
+  if ('error' in gitProviders) {
+    throw createError({ statusCode: 400, statusMessage: gitProviders.error });
   }
   if (body.enabledCapabilityIds != null && !Array.isArray(body.enabledCapabilityIds)) {
     throw createError({ statusCode: 400, statusMessage: 'enabledCapabilityIds must be null or an array of ids' });
@@ -57,7 +59,7 @@ export default defineEventHandler(async (event) => {
     envVars: body.envVars || '',
     setupScript: body.setupScript || '',
     exposeApis: body.exposeApis ?? { portMappings: true, domainMappings: true, usage: true },
-    gitProviderAccess: body.gitProviderAccess ?? true,
+    enabledGitProviderIds: gitProviders.ids,
     enabledCapabilityIds: body.enabledCapabilityIds ?? null,
     enabledInstructionIds: body.enabledInstructionIds ?? null,
     userId: user.id,

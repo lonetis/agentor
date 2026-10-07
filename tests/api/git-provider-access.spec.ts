@@ -3,18 +3,19 @@ import { ApiClient } from '../helpers/api-client';
 import { createWorker, cleanupWorker, waitForWorkerRunning } from '../helpers/worker-lifecycle';
 import { createTestUser, deleteTestUser, signedInContext, type CreatedUser } from '../helpers/test-users';
 
-// An environment with `gitProviderAccess: false` runs untrusted code without
-// the owner's git credentials: no token env var (account- or environment-
-// defined), no git / gh / glab auth, no credentials left by an earlier boot.
-// Public repositories still clone. With the stack's GitLab mock (provider
-// `gitlab-mock`) the clone checks run against a public and a private project.
+// An environment's `enabledGitProviderIds` decides which git providers' owner
+// credentials its workers get. For every other provider: no token env var
+// (account- or environment-defined, incl. the CLIs' own variables), no git /
+// gh / glab auth, no credentials left by an earlier boot — public
+// repositories still clone. One worker walks through no provider → only the
+// stack's GitLab mock (`gitlab-mock`) → every provider, rebuilding in between.
 const MOCK = 'gitlab-mock';
 const MOCK_TOKEN = 'glpat-agentor-mock-token';
-// Every withheld value carries this marker, so one grep over the container's
-// environment proves none of them got in.
+// Every token that belongs to GitHub, gitlab.com or a CLI variable carries this
+// marker, so one grep over the container's environment proves none got in.
 const WITHHELD = 'agentor-withheld';
 
-test.describe.serial('Git provider access disabled by the environment', () => {
+test.describe.serial('Git provider access selected per environment', () => {
   let mockConfigured = false;
   let user: CreatedUser;
   let ctx: Awaited<ReturnType<typeof signedInContext>>;
@@ -37,6 +38,12 @@ test.describe.serial('Git provider access disabled by the environment', () => {
     }, { timeout: 120_000, intervals: [2_000] }).toBe(expected);
   }
 
+  async function selectProvidersAndRebuild(enabledGitProviderIds: string[] | null) {
+    expect((await api.updateEnvironment(environmentId, { enabledGitProviderIds })).status).toBe(200);
+    expect((await api.rebuildContainer(workerId)).status).toBe(200);
+    await waitForWorkerRunning(ctx, workerId, 90_000);
+  }
+
   test.beforeAll(async ({ request }) => {
     test.setTimeout(240_000);
     const { body: providers } = await new ApiClient(request).listGitProviders();
@@ -50,6 +57,7 @@ test.describe.serial('Git provider access disabled by the environment', () => {
         { key: 'GITHUB_TOKEN', value: `ghp_${WITHHELD}_github` },
         { key: 'GH_TOKEN', value: `gho_${WITHHELD}_gh` },
         { key: 'GITLAB_TOKEN', value: `glpat-${WITHHELD}-gitlab` },
+        { key: 'GITLAB_ACCESS_TOKEN', value: `glpat-${WITHHELD}-glab` },
         ...(mockConfigured ? [{ key: 'GITLAB_MOCK_TOKEN', value: MOCK_TOKEN }] : []),
         { key: 'ANTHROPIC_API_KEY', value: 'sk-ant-kept' },
         { key: 'KEPT_CUSTOM', value: 'kept-value' },
@@ -58,7 +66,7 @@ test.describe.serial('Git provider access disabled by the environment', () => {
 
     const env = await api.createEnvironment({
       name: `NoGit-${Date.now()}`,
-      gitProviderAccess: false,
+      enabledGitProviderIds: [],
       dockerEnabled: false,
       envVars: `GITLAB_TOKEN=glpat-${WITHHELD}-env\nENV_KEPT=env-value`,
     });
@@ -86,25 +94,25 @@ test.describe.serial('Git provider access disabled by the environment', () => {
     if (user) await deleteTestUser(user.id);
   });
 
-  test('no git token reaches the container — neither from the account nor from the environment', async () => {
+  test('no provider enabled: no git token reaches the container — neither from the account nor from the environment', async () => {
     const { stdout } = await exec(
       'echo "W=$(grep -caF ' + WITHHELD + ' /proc/1/environ)' +
-      ' V=$(env | grep -cE \'^(GITHUB_TOKEN|GH_TOKEN|GITLAB_TOKEN|GITLAB_MOCK_TOKEN)=\')' +
+      ' V=$(env | grep -cE \'^(GITHUB_TOKEN|GH_TOKEN|GITLAB_TOKEN|GITLAB_ACCESS_TOKEN|GITLAB_MOCK_TOKEN)=\')' +
       ' A=$ANTHROPIC_API_KEY C=$KEPT_CUSTOM"',
     );
     // Non-git account env vars are still passed.
     expect(stdout.trim()).toBe('W=0 V=0 A=sk-ant-kept C=kept-value');
   });
 
-  test("ENVIRONMENT turns access off and drops git tokens from the environment's own env vars", async () => {
+  test("no provider enabled: ENVIRONMENT says so and the environment's own git token is dropped", async () => {
     const { stdout } = await exec(
-      `jq -r '"\\(.gitProviderAccess) \\(.envVars)"' <<< "$ENVIRONMENT";` +
+      `jq -r '"\\(.enabledGitProviderIds | tojson) \\(.envVars)"' <<< "$ENVIRONMENT";` +
       ' tmux show-environment -g ENV_KEPT; tmux show-environment -g GITLAB_TOKEN 2>/dev/null || echo "no GITLAB_TOKEN"',
     );
-    expect(stdout.trim().split('\n')).toEqual(['false ENV_KEPT=env-value', 'ENV_KEPT=env-value', 'no GITLAB_TOKEN']);
+    expect(stdout.trim().split('\n')).toEqual(['[] ENV_KEPT=env-value', 'ENV_KEPT=env-value', 'no GITLAB_TOKEN']);
   });
 
-  test('git, gh and glab are not authenticated', async () => {
+  test('no provider enabled: git, gh and glab are not authenticated', async () => {
     const helpers = await exec("git config --global --get-regexp '^credential\\.' | wc -l");
     expect(helpers.stdout.trim()).toBe('0');
     const gh = await exec('gh auth status');
@@ -115,7 +123,7 @@ test.describe.serial('Git provider access disabled by the environment', () => {
     expect(glab.stdout.trim()).toBe('T=[]');
   });
 
-  test('public repositories still clone; private ones stay out of reach', async () => {
+  test('no provider enabled: public repositories still clone; private ones stay out of reach', async () => {
     test.skip(!mockConfigured, 'needs GITLAB_INSTANCES=mock=… (dockerized test stack)');
     const { stdout } = await exec(
       'echo "P=$(git -C /workspace/public-proj branch --show-current) S=$(test -d /workspace/project && echo cloned || echo missing)"',
@@ -125,7 +133,7 @@ test.describe.serial('Git provider access disabled by the environment', () => {
     expect(lsRemote.exitCode).not.toBe(0);
   });
 
-  test('credentials an earlier boot left behind are scrubbed on start', async () => {
+  test('credentials an earlier boot left behind for a provider that is not enabled are scrubbed on start', async () => {
     test.setTimeout(180_000);
     const plant = await exec(
       'mkdir -p ~/.config/gh ~/.config/glab-cli' +
@@ -145,20 +153,33 @@ test.describe.serial('Git provider access disabled by the environment', () => {
     );
   });
 
-  test('turning access back on applies on the next rebuild', async () => {
+  test('only the GitLab instance enabled: its credentials alone reach the worker', async () => {
+    test.skip(!mockConfigured, 'needs GITLAB_INSTANCES=mock=… (dockerized test stack)');
     test.setTimeout(240_000);
-    expect((await api.updateEnvironment(environmentId, { gitProviderAccess: true })).status).toBe(200);
-    const { status } = await api.rebuildContainer(workerId);
-    expect(status).toBe(200);
-    await waitForWorkerRunning(ctx, workerId, 90_000);
+    await selectProvidersAndRebuild([MOCK]);
+
+    // GitHub's and gitlab.com's tokens stay out, and so do the CLI variables
+    // (GH_TOKEN, GITLAB_ACCESS_TOKEN) — glab would use the latter for any host.
+    await pollStdout(
+      'echo "W=$(grep -caF ' + WITHHELD + ' /proc/1/environ) M=$GITLAB_MOCK_TOKEN";' +
+      " git config --global --get-regexp '^credential\\.' | cut -d' ' -f1; jq -r .envVars <<< \"$ENVIRONMENT\"",
+      [`W=0 M=${MOCK_TOKEN}`, 'credential.http://gitlab-mock:8080.helper', 'ENV_KEPT=env-value'].join('\n'),
+    );
+    const gh = await exec('gh auth status');
+    expect(gh.exitCode).not.toBe(0);
+    const glab = await exec('echo "M=$(glab config get token --host gitlab-mock) C=[$(glab config get token --host gitlab.com 2>/dev/null)]"');
+    expect(glab.stdout.trim()).toBe(`M=${MOCK_TOKEN} C=[]`);
+    // The private project was skipped before; now it clones with the token.
+    await pollStdout('git -C /workspace/project branch --show-current', 'main');
+  });
+
+  test('every provider enabled again: all credentials are back after a rebuild', async () => {
+    test.setTimeout(240_000);
+    await selectProvidersAndRebuild(null);
 
     await pollStdout(
       'echo "G=$GITHUB_TOKEN H=$(git config --global --get credential.https://github.com.helper)"; jq -r .envVars <<< "$ENVIRONMENT"',
       [`G=ghp_${WITHHELD}_github H=!gh auth git-credential`, `GITLAB_TOKEN=glpat-${WITHHELD}-env`, 'ENV_KEPT=env-value'].join('\n'),
     );
-    if (mockConfigured) {
-      // The private project was skipped before; now it clones with the token.
-      await pollStdout('git -C /workspace/project branch --show-current', 'main');
-    }
   });
 });

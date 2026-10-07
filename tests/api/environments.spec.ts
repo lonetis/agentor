@@ -256,43 +256,52 @@ test.describe('Environments API', () => {
   });
 
   test.describe('Git provider access', () => {
-    test('defaults to true, also on the built-in default environment', async ({ request }) => {
+    test('enables every provider by default, also on the built-in default environment', async ({ request }) => {
       const api = new ApiClient(request);
       const { body } = await api.createEnvironment({ name: `GitAccess-Default-${Date.now()}` });
       createdEnvIds.push(body.id);
-      expect(body.gitProviderAccess).toBe(true);
+      expect(body.enabledGitProviderIds).toBeNull();
 
       const { body: list } = await api.listEnvironments();
       const def = list.find((e: { builtIn: boolean; name: string }) => e.builtIn && e.name === 'default');
-      expect(def.gitProviderAccess).toBe(true);
+      expect(def.enabledGitProviderIds).toBeNull();
     });
 
-    test('can be turned off on create and on again by update; other updates leave it alone', async ({ request }) => {
+    test('selects individual providers or none; other updates leave the selection alone', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status, body: created } = await api.createEnvironment({ name: `GitAccess-Off-${Date.now()}`, gitProviderAccess: false });
+      const { status, body: created } = await api.createEnvironment({
+        name: `GitAccess-Some-${Date.now()}`,
+        enabledGitProviderIds: ['gitlab', 'gitlab', 'github'],
+      });
       expect(status).toBe(201);
       createdEnvIds.push(created.id);
-      expect(created.gitProviderAccess).toBe(false);
-      expect((await api.getEnvironment(created.id)).body.gitProviderAccess).toBe(false);
+      expect(created.enabledGitProviderIds).toEqual(['gitlab', 'github']);
 
-      const { body: renamed } = await api.updateEnvironment(created.id, { cpuLimit: 2 });
-      expect(renamed.gitProviderAccess).toBe(false);
+      const { body: resized } = await api.updateEnvironment(created.id, { cpuLimit: 2 });
+      expect(resized.enabledGitProviderIds).toEqual(['gitlab', 'github']);
 
-      const { status: putStatus, body: enabled } = await api.updateEnvironment(created.id, { gitProviderAccess: true });
-      expect(putStatus).toBe(200);
-      expect(enabled.gitProviderAccess).toBe(true);
+      const { body: none } = await api.updateEnvironment(created.id, { enabledGitProviderIds: [] });
+      expect(none.enabledGitProviderIds).toEqual([]);
+      expect((await api.getEnvironment(created.id)).body.enabledGitProviderIds).toEqual([]);
+
+      const { body: all } = await api.updateEnvironment(created.id, { enabledGitProviderIds: null });
+      expect(all.enabledGitProviderIds).toBeNull();
     });
 
-    test('rejects a non-boolean value', async ({ request }) => {
+    test('rejects malformed values and unknown providers', async ({ request }) => {
       const api = new ApiClient(request);
-      const { status } = await api.createEnvironment({ name: `GitAccess-Bad-${Date.now()}`, gitProviderAccess: 'no' });
-      expect(status).toBe(400);
+      for (const enabledGitProviderIds of [true, 'github', [1], ['nope']]) {
+        const { status, body } = await api.createEnvironment({ name: `GitAccess-Bad-${Date.now()}`, enabledGitProviderIds });
+        if (status === 201) createdEnvIds.push(body.id);
+        expect(status, JSON.stringify(enabledGitProviderIds)).toBe(400);
+      }
 
       const { body: created } = await api.createEnvironment({ name: `GitAccess-BadPut-${Date.now()}` });
       createdEnvIds.push(created.id);
-      const { status: putStatus } = await api.updateEnvironment(created.id, { gitProviderAccess: 0 });
-      expect(putStatus).toBe(400);
-      expect((await api.getEnvironment(created.id)).body.gitProviderAccess).toBe(true);
+      const { status, body } = await api.updateEnvironment(created.id, { enabledGitProviderIds: ['github', 'nope'] });
+      expect(status).toBe(400);
+      expect(body.statusMessage).toContain('Unknown git provider "nope"');
+      expect((await api.getEnvironment(created.id)).body.enabledGitProviderIds).toBeNull();
     });
   });
 

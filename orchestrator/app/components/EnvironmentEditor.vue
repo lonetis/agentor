@@ -22,7 +22,7 @@ const form = reactive({
   envVars: '',
   setupScript: '',
   exposeApis: { portMappings: true, domainMappings: true, usage: true } as ExposeApis,
-  gitProviderAccess: true,
+  enabledGitProviderIds: null as string[] | null,
   enabledCapabilityIds: null as string[] | null,
   enabledInstructionIds: null as string[] | null,
 });
@@ -31,6 +31,7 @@ const systemEnvVars = ref<WorkerSystemEnvVar[]>([]);
 const { data: credentials } = useFetch<CredentialInfo[]>('/api/account/agent-credentials', { default: () => [] });
 
 const { data: allCapabilities } = useFetch<CapabilityInfo[]>('/api/capabilities', { default: () => [] });
+const { gitProviders } = useGitProviders();
 const { data: allInstructions } = useFetch<InstructionInfo[]>('/api/instructions', { default: () => [] });
 
 // Track "all selected" toggle state
@@ -79,6 +80,32 @@ function toggleInstruction(id: string) {
   }
 }
 
+// null = every provider (also ones configured later). Unlike the capability
+// list, unchecking "Select All" means none — the setting for untrusted code.
+const allGitProvidersSelected = computed({
+  get: () => form.enabledGitProviderIds === null,
+  set: (v: boolean) => {
+    form.enabledGitProviderIds = v ? null : [];
+  },
+});
+
+function isGitProviderEnabled(id: string): boolean {
+  return form.enabledGitProviderIds === null || form.enabledGitProviderIds.includes(id);
+}
+function toggleGitProvider(id: string) {
+  const all = gitProviders.value.map((p) => p.id);
+  const current = form.enabledGitProviderIds ?? all;
+  const next = current.includes(id) ? current.filter((pid) => pid !== id) : [...current, id];
+  form.enabledGitProviderIds = all.every((pid) => next.includes(pid)) ? null : next;
+}
+
+// The API rejects unknown provider ids, so drop those of providers removed
+// from the configuration since the environment was saved.
+function currentGitProviderIds(ids: string[] | null): string[] | null {
+  if (ids === null || gitProviders.value.length === 0) return ids;
+  return ids.filter((id) => gitProviders.value.some((p) => p.id === id));
+}
+
 const networkModeOptions = [
   { label: 'Full', value: 'full', description: 'Unrestricted network access' },
   { label: 'Package managers', value: 'package-managers', description: 'Only package registries' },
@@ -113,7 +140,7 @@ function initForm() {
     form.envVars = props.environment.envVars;
     form.setupScript = props.environment.setupScript;
     form.exposeApis = props.environment.exposeApis ?? { portMappings: true, domainMappings: true, usage: true };
-    form.gitProviderAccess = props.environment.gitProviderAccess !== false;
+    form.enabledGitProviderIds = props.environment.enabledGitProviderIds ?? null;
     form.enabledCapabilityIds = props.environment.enabledCapabilityIds ?? null;
     form.enabledInstructionIds = props.environment.enabledInstructionIds ?? null;
   }
@@ -145,7 +172,7 @@ function handleSave() {
     envVars: form.envVars,
     setupScript: form.setupScript,
     exposeApis: form.exposeApis,
-    gitProviderAccess: form.gitProviderAccess,
+    enabledGitProviderIds: currentGitProviderIds(form.enabledGitProviderIds),
     enabledCapabilityIds: form.enabledCapabilityIds,
     enabledInstructionIds: form.enabledInstructionIds,
   });
@@ -306,16 +333,30 @@ function handleSave() {
       </div>
     </fieldset>
 
-    <!-- Git provider access -->
-    <fieldset>
+    <!-- Git providers -->
+    <fieldset v-if="gitProviders.length > 0">
       <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Git Providers</legend>
-      <label class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
-        <UCheckbox v-model="form.gitProviderAccess" :disabled="readOnly" />
-        Allow access to git providers
-      </label>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
-        Workers get your GitHub / GitLab tokens, and git, gh and glab are signed in. Turn off for untrusted code: no git token reaches the worker (one set in this environment's env vars is dropped too), nothing is authenticated, and only public repositories can be cloned.
+      <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+        Workers get your tokens for the checked providers, and git, gh and glab are signed in to them. Uncheck a provider to keep its credentials out of workers running untrusted code (a token set in this environment's env vars is dropped too) — its public repositories still clone.
       </p>
+      <div class="mb-2">
+        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
+          <UCheckbox :model-value="allGitProvidersSelected" @update:model-value="allGitProvidersSelected = !!$event" :disabled="readOnly" />
+          Select All
+        </label>
+      </div>
+      <div class="space-y-1.5 pl-1">
+        <label
+          v-for="provider in gitProviders"
+          :key="provider.id"
+          class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
+          :class="readOnly ? 'cursor-default' : 'cursor-pointer'"
+        >
+          <UCheckbox :model-value="isGitProviderEnabled(provider.id)" @update:model-value="toggleGitProvider(provider.id)" :disabled="readOnly" />
+          {{ provider.displayName }}
+          <span class="text-xs font-mono text-gray-400 dark:text-gray-500">{{ provider.url.replace(/^https?:\/\//, '') }}</span>
+        </label>
+      </div>
     </fieldset>
 
     <!-- Expose APIs -->

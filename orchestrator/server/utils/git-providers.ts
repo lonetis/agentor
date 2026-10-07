@@ -85,22 +85,53 @@ export function listWorkerGitProviders(): WorkerGitProvider[] {
 }
 
 /** Env vars a provider type's CLI also takes a token from, besides the
- * provider's own `tokenEnvVar` (`gh` and `glab` read these natively). */
+ * provider's own `tokenEnvVar`. `gh` and `glab` use them for any host. */
 const CLI_TOKEN_ENV_VARS: Record<GitProviderType, string[]> = {
   github: ['GH_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'],
   gitlab: ['GITLAB_ACCESS_TOKEN', 'OAUTH_TOKEN'],
 };
 
-/** Every env var name that can carry a git provider credential into a worker:
- * each provider's token variable plus the variables its CLI reads. Withheld
- * from workers whose environment disables git provider access. */
-export function getGitCredentialEnvVars(): Set<string> {
+/** Ids of the providers an environment gives its workers credentials for.
+ * `enabledIds` null/absent = every provider, including ones configured later;
+ * ids of providers that no longer exist are ignored. */
+export function resolveEnabledGitProviderIds(enabledIds: string[] | null | undefined): string[] {
+  return listGitProviders()
+    .filter((p) => enabledIds == null || enabledIds.includes(p.id))
+    .map((p) => p.id);
+}
+
+/** Env var names that would hand a worker credentials for a provider outside
+ * `enabledIds`: each such provider's token variable plus its CLI's variables.
+ * The CLI variables are not tied to one host, so they are withheld as soon as
+ * one provider of that type is; an enabled provider's own token variable
+ * never is. */
+export function getWithheldGitCredentialEnvVars(enabledIds: string[]): Set<string> {
+  const providers = listGitProviders();
   const names = new Set<string>();
-  for (const provider of listGitProviders()) {
+  for (const provider of providers) {
+    if (enabledIds.includes(provider.id)) continue;
     names.add(provider.tokenEnvVar);
     for (const name of CLI_TOKEN_ENV_VARS[provider.type]) names.add(name);
   }
+  for (const provider of providers) {
+    if (enabledIds.includes(provider.id)) names.delete(provider.tokenEnvVar);
+  }
   return names;
+}
+
+/** Validates an environment's `enabledGitProviderIds` request field: null, or
+ * an array of known provider ids. Returns the ids (deduplicated), or an error
+ * message for a 400. */
+export function parseEnabledGitProviderIds(input: unknown): { ids: string[] | null } | { error: string } {
+  if (input === null) return { ids: null };
+  if (!Array.isArray(input) || input.some((id) => typeof id !== 'string')) {
+    return { error: 'enabledGitProviderIds must be null or an array of git provider ids' };
+  }
+  const unknown = input.filter((id) => !getGitProvider(id));
+  if (unknown.length > 0) {
+    return { error: `Unknown git provider "${unknown[0]}" (available: ${listGitProviders().map((p) => p.id).join(', ')})` };
+  }
+  return { ids: [...new Set(input as string[])] };
 }
 
 export function getAllGitCloneDomains(): string[] {

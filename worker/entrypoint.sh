@@ -158,11 +158,16 @@ done <<< "$ENV_VARS"
 # or an environment override). A payload without the field predates GitLab
 # support and only knew GitHub.
 #
-# ENVIRONMENT.gitProviderAccess=false: the orchestrator withholds every git
-# token, and no provider is authenticated here either (defaults to true).
+# ENVIRONMENT.enabledGitProviderIds lists the providers the environment gives
+# credentials for; the orchestrator withholds the others' tokens, and they are
+# never authenticated here either. A payload without the field enables all.
 # ==========================================================================
 GIT_PROVIDERS_JSON=$(echo "$WORKER" | jq -c '.gitProviders // [{"id":"github","type":"github","url":"https://github.com","tokenEnvVar":"GITHUB_TOKEN","containerRegistry":"ghcr.io"}]')
-GIT_PROVIDER_ACCESS=$(echo "$ENVIRONMENT" | jq -r 'if .gitProviderAccess == null then true else .gitProviderAccess end')
+
+_git_provider_enabled() {
+    echo "$ENVIRONMENT" | jq -e --arg id "$1" \
+        '.enabledGitProviderIds == null or any(.enabledGitProviderIds[]; . == $id)' > /dev/null
+}
 
 # Value of the env var named $1 (empty when unset or not a valid name).
 _env_value() {
@@ -176,12 +181,10 @@ _git_provider_field() {
 
 # Authenticated providers as TSV lines: id, type, url, tokenEnvVar.
 AUTHED_GIT_PROVIDERS=()
-if [ "$GIT_PROVIDER_ACCESS" = true ]; then
-    while IFS=$'\t' read -r gp_id gp_type gp_url gp_token_var; do
-        [ -n "$gp_id" ] && [ -n "$(_env_value "$gp_token_var")" ] \
-            && AUTHED_GIT_PROVIDERS+=("$gp_id"$'\t'"$gp_type"$'\t'"$gp_url"$'\t'"$gp_token_var")
-    done < <(echo "$GIT_PROVIDERS_JSON" | jq -r '.[] | [.id, .type, .url, .tokenEnvVar] | @tsv')
-fi
+while IFS=$'\t' read -r gp_id gp_type gp_url gp_token_var; do
+    [ -n "$gp_id" ] && _git_provider_enabled "$gp_id" && [ -n "$(_env_value "$gp_token_var")" ] \
+        && AUTHED_GIT_PROVIDERS+=("$gp_id"$'\t'"$gp_type"$'\t'"$gp_url"$'\t'"$gp_token_var")
+done < <(echo "$GIT_PROVIDERS_JSON" | jq -r '.[] | [.id, .type, .url, .tokenEnvVar] | @tsv')
 
 _git_provider_authed() {
     local entry
@@ -239,14 +242,15 @@ DOCKERCONF
         tries=$((tries - 1))
     done
     if [ -S /var/run/docker.sock ]; then
-        # Log in to each provider's container registry (ghcr.io,
-        # registry.gitlab.com) the user has a token for.
-        while IFS=$'\t' read -r registry token_var; do
-            token=$(_env_value "$token_var")
-            [ -n "$token" ] || continue
-            printf '%s' "$token" | docker login "$registry" -u oauth2 --password-stdin > /dev/null 2>&1 \
+        # Log in to the container registry (ghcr.io, registry.gitlab.com) of
+        # every authenticated provider.
+        for entry in "${AUTHED_GIT_PROVIDERS[@]}"; do
+            IFS=$'\t' read -r gp_id _ _ gp_token_var <<< "$entry"
+            registry=$(_git_provider_field "$gp_id" containerRegistry)
+            [ -n "$registry" ] || continue
+            _env_value "$gp_token_var" | docker login "$registry" -u oauth2 --password-stdin > /dev/null 2>&1 \
                 || echo "[docker] Warning: $registry login failed, continuing"
-        done < <(echo "$GIT_PROVIDERS_JSON" | jq -r '.[] | select(.containerRegistry) | [.containerRegistry, .tokenEnvVar] | @tsv')
+        done
         _done docker "Docker daemon"
         _log "DinD: dockerd ready"
     else
@@ -354,24 +358,28 @@ configure_git_provider() {
     _log "Git config: $id credentials configured ($origin)"
 }
 
-# Without git provider access, credentials an earlier boot left behind must go
-# too — a rootfs restored from an export carries the source worker's gh / glab
-# configs, git credential helpers and registry logins.
-scrub_git_credentials() {
-    rm -f /home/agent/.config/gh/hosts.yml /home/agent/.config/glab-cli/config.yml
-    local key
-    while read -r key _; do
-        git config --global --unset-all "$key" || true
-    done < <(git config --global --get-regexp '^credential\..*\.helper$' 2>/dev/null || true)
-    while IFS= read -r registry; do
+# A provider the environment does not enable must not keep credentials an
+# earlier boot left behind either — a rootfs restored from an export carries
+# the source worker's gh / glab configs, git credential helpers and registry
+# logins. glab keeps every host in one file; the enabled hosts are written
+# back below.
+scrub_git_provider() {
+    local id="$1" type="$2" url="$3" registry="$4"
+    local scheme="${url%%://*}" rest="${url#*://}"
+    git config --global --unset-all "credential.$scheme://${rest%%/*}.helper" || true
+    case "$type" in
+        github) rm -f /home/agent/.config/gh/hosts.yml ;;
+        gitlab) rm -f /home/agent/.config/glab-cli/config.yml ;;
+    esac
+    if [ -n "$registry" ]; then
         docker logout "$registry" > /dev/null 2>&1 || true
-    done < <(echo "$GIT_PROVIDERS_JSON" | jq -r '.[] | .containerRegistry // empty')
+    fi
+    _log "Git config: $id not enabled by the environment — no credentials"
 }
 
-if [ "$GIT_PROVIDER_ACCESS" != true ]; then
-    scrub_git_credentials
-    _log "Git config: git provider access disabled by the environment — no credentials"
-fi
+while IFS=$'\t' read -r gp_id gp_type gp_url gp_registry; do
+    _git_provider_enabled "$gp_id" || scrub_git_provider "$gp_id" "$gp_type" "$gp_url" "$gp_registry"
+done < <(echo "$GIT_PROVIDERS_JSON" | jq -r '.[] | [.id, .type, .url, .containerRegistry // ""] | @tsv')
 
 if [ -n "$GIT_USER_NAME" ] || [ -n "$GIT_USER_EMAIL" ] || [ ${#AUTHED_GIT_PROVIDERS[@]} -gt 0 ]; then
     _step git "Git configuration"

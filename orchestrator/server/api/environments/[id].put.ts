@@ -19,6 +19,7 @@ defineRouteMeta({
 import { useEnvironmentStore } from '../../utils/services';
 import type { NetworkMode } from '../../../shared/types';
 import { requireAuth, canAccessResource } from '../../utils/auth-helpers';
+import { parseEnabledGitProviderIds } from '../../utils/git-providers';
 
 export default defineEventHandler(async (event) => {
   const ctx = requireAuth(event);
@@ -36,8 +37,9 @@ export default defineEventHandler(async (event) => {
   if (body.cpuLimit !== undefined && (typeof body.cpuLimit !== 'number' || body.cpuLimit < 0)) {
     throw createError({ statusCode: 400, statusMessage: 'cpuLimit must be a non-negative number (0 = unrestricted)' });
   }
-  if (body.gitProviderAccess !== undefined && typeof body.gitProviderAccess !== 'boolean') {
-    throw createError({ statusCode: 400, statusMessage: 'gitProviderAccess must be a boolean' });
+  const gitProviders = body.enabledGitProviderIds !== undefined ? parseEnabledGitProviderIds(body.enabledGitProviderIds) : undefined;
+  if (gitProviders && 'error' in gitProviders) {
+    throw createError({ statusCode: 400, statusMessage: gitProviders.error });
   }
   if (body.enabledCapabilityIds !== undefined && body.enabledCapabilityIds !== null && !Array.isArray(body.enabledCapabilityIds)) {
     throw createError({ statusCode: 400, statusMessage: 'enabledCapabilityIds must be null or an array of ids' });
@@ -57,7 +59,7 @@ export default defineEventHandler(async (event) => {
   if (body.envVars !== undefined) update.envVars = body.envVars;
   if (body.setupScript !== undefined) update.setupScript = body.setupScript;
   if (body.exposeApis !== undefined) update.exposeApis = body.exposeApis;
-  if (body.gitProviderAccess !== undefined) update.gitProviderAccess = body.gitProviderAccess;
+  if (gitProviders) update.enabledGitProviderIds = gitProviders.ids;
   if (body.enabledCapabilityIds !== undefined) update.enabledCapabilityIds = body.enabledCapabilityIds;
   if (body.enabledInstructionIds !== undefined) update.enabledInstructionIds = body.enabledInstructionIds;
 

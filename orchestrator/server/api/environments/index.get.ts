@@ -46,9 +46,11 @@ defineRouteMeta({
                   usage: { type: 'boolean' },
                 },
               },
-              gitProviderAccess: {
-                type: 'boolean',
-                description: "Give workers the owner's git provider credentials (default true). When false, the git token env vars (GITHUB_TOKEN, GITLAB_TOKEN, GITLAB_<NAME>_TOKEN, GH_TOKEN, …) are withheld — also from this environment's own envVars — and git, gh, glab and the Docker registry login are not authenticated, so code running in the worker cannot reach the owner's repositories. Public repositories still clone.",
+              enabledGitProviderIds: {
+                type: 'array',
+                items: { type: 'string' },
+                nullable: true,
+                description: "Git provider ids (see list_git_providers) whose credentials workers get (null = all, also providers configured later; [] = none; default null). For every other provider the owner's token env var (GITHUB_TOKEN, GITLAB_TOKEN, GITLAB_<NAME>_TOKEN) is withheld — also from this environment's own envVars — together with the provider CLI's own variables (GH_TOKEN, … / GITLAB_ACCESS_TOKEN, OAUTH_TOKEN), and git, gh / glab and the Docker registry login are not authenticated for it, so code running in the worker cannot reach the owner's repositories there. Public repositories still clone. Use [] to run untrusted code.",
               },
               enabledCapabilityIds: { type: 'array', items: { type: 'string' }, nullable: true, description: 'Capability ids installed in workers (null = all, [] = none)' },
               enabledInstructionIds: { type: 'array', items: { type: 'string' }, nullable: true, description: 'Instruction ids installed in workers (null = all, [] = none)' },
