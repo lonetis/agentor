@@ -179,4 +179,30 @@ test.describe.serial('Terminal Pane', () => {
       ws.close();
     }
   });
+
+  test('preserves muted palette text and truecolour in the web terminal', async ({ page }) => {
+    await goToDashboard(page);
+    const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
+    await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
+    await card.locator('button').first().click();
+    await expect(page.locator('.xterm-rows')).toBeVisible({ timeout: 15_000 });
+
+    const ws = new TerminalWsClient(containerId);
+    const paletteMarker = `PALETTE_${Date.now()}`;
+    const rgbMarker = `RGB_${Date.now()}`;
+    try {
+      await ws.connect();
+      await ws.waitForOutput(/[\$#>]\s*$/, 15_000);
+      ws.sendLine(`printf '\\033[38;5;8m${paletteMarker}\\033[0m\\n\\033[38;2;12;123;234m${rgbMarker}\\033[0m\\n'`);
+
+      const paletteText = page.locator('.xterm-rows span').filter({ hasText: new RegExp(`^${paletteMarker}$`) });
+      await expect(paletteText).toBeVisible();
+      expect(await paletteText.evaluate((el) => getComputedStyle(el).color))
+        .not.toBe(await page.locator('.xterm-viewport').evaluate((el) => getComputedStyle(el).backgroundColor));
+      const rgbText = page.locator('.xterm-rows span').filter({ hasText: new RegExp(`^${rgbMarker}$`) });
+      await expect(rgbText).toHaveCSS('color', 'rgb(12, 123, 234)');
+    } finally {
+      ws.close();
+    }
+  });
 });

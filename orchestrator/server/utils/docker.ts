@@ -307,8 +307,11 @@ export class DockerService {
     const attachExec = await container.exec({
       Cmd: [
         'sh', '-c',
-        `tmux new-session -d -t main -s "${tmuxSession}" && { tmux select-window -t "${tmuxSession}:${windowIndex}" 2>/dev/null || true; } && exec tmux attach-session -t "${tmuxSession}"`,
+        `tmux new-session -d -t main -s "${tmuxSession}" && { tmux select-window -t "${tmuxSession}:${windowIndex}" 2>/dev/null || true; } && exec tmux -T RGB attach-session -t "${tmuxSession}"`,
       ],
+      // xterm.js supports 256 colours and truecolour. Inheriting Docker's
+      // plain xterm default reduces muted TUI text to the background colour.
+      Env: ['TERM=xterm-256color', 'COLORTERM=truecolor'],
       AttachStdin: true,
       AttachStdout: true,
       AttachStderr: true,
