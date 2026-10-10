@@ -29,6 +29,10 @@ function cancelEdit() {
   editingId.value = null;
 }
 
+watch(open, (isOpen) => {
+  if (isOpen) cancelEdit();
+});
+
 async function handleSave(data: Partial<EnvironmentInfo>) {
   if (editingId.value) {
     await updateEnvironment(editingId.value, data);

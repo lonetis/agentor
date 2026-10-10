@@ -16,6 +16,55 @@ test.describe('Environments Modal', () => {
     await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10_000 });
   });
 
+  for (const closeMethod of ['Close', 'Escape', 'outside click'] as const) {
+    test(`reopening shows the list after dismissing an editor with ${closeMethod}`, async ({ page, request }) => {
+      const api = new ApiClient(request);
+      const envName = `UIEnvReopen-${closeMethod}-${Date.now()}`;
+      const { body: created } = await api.createEnvironment({ name: envName });
+
+      try {
+        await goToDashboard(page);
+        await openEnvironmentsModal(page);
+        const dialog = page.getByRole('dialog');
+        const nameInput = dialog.locator('input[placeholder="My environment"]');
+        const envRow = dialog.locator('.rounded-lg').filter({ hasText: envName });
+
+        for (const mode of ['edit', 'create', 'view'] as const) {
+          await test.step(`dismiss and reopen from ${mode} mode`, async () => {
+            if (mode === 'edit') {
+              await envRow.getByRole('button', { name: 'Edit', exact: true }).click();
+              await expect(nameInput).toHaveValue(envName);
+            } else if (mode === 'create') {
+              await dialog.getByRole('button', { name: 'New', exact: true }).click();
+              await expect(nameInput).toHaveValue('');
+            } else {
+              await dialog.getByRole('button', { name: 'View', exact: true }).first().click();
+              await expect(nameInput).toBeDisabled();
+            }
+
+            if (mode !== 'view') await nameInput.fill('Unsaved draft');
+
+            if (closeMethod === 'Close') {
+              await dialog.getByRole('button', { name: 'Close', exact: true }).first().click();
+            } else if (closeMethod === 'Escape') {
+              await page.keyboard.press('Escape');
+            } else {
+              await page.mouse.click(10, 10);
+            }
+            await expect(dialog).toBeHidden();
+
+            await openEnvironmentsModal(page);
+            await expect(dialog.getByRole('button', { name: 'New', exact: true })).toBeVisible();
+            await expect(envRow).toBeVisible();
+            await expect(nameInput).toBeHidden();
+          });
+        }
+      } finally {
+        await api.deleteEnvironment(created.id);
+      }
+    });
+  }
+
   test('shows pre-created environments', async ({ page, request }) => {
     // Create an environment via API first
     const api = new ApiClient(request);
