@@ -154,11 +154,10 @@ function recalcOverflow() {
   const viewRight = viewLeft + bar.clientWidth;
   const next = new Set<string>();
   const children = Array.from(bar.querySelectorAll<HTMLElement>('[data-tab-id]'));
-  // A tab is listed in the overflow dropdown only if LESS THAN 20% of its
-  // width is currently visible inside the scroll viewport. A tab with 20% or
-  // more visible stays out of the dropdown — this gives a small hysteresis
-  // zone so tabs don't pop in/out while scrolling past them.
-  const VISIBLE_THRESHOLD = 0.2;
+  // Include clipped tabs before they become hard to recognize or click.
+  // Some overlap between the tab bar and the dropdown is intentional:
+  // a tab must be at least 80% visible to stay out of the dropdown.
+  const VISIBLE_THRESHOLD = 0.8;
   for (const el of children) {
     const id = el.dataset.tabId;
     if (!id) continue;
@@ -177,7 +176,7 @@ function recalcOverflow() {
     overflowingIds.value = next;
   }
   // The More button + padding only show when there's actually something to
-  // drop down. If the user scrolls such that every tab is at least 20%
+  // drop down. If the user scrolls such that every tab is at least 80%
   // visible, the button (and its gradient overlay) disappear.
   hasOverflow.value = next.size > 0;
   if (next.size === 0 && moreOpen.value) moreOpen.value = false;
@@ -331,7 +330,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         <UIcon name="i-lucide-chevrons-right" class="size-3.5" />
       </button>
 
-      <!-- Dropdown lists only tabs not currently visible in the scroll viewport. -->
+      <!-- Dropdown includes hidden tabs and tabs with less than 80% visible. -->
       <div v-if="moreOpen && hasOverflow && overflowingTabs.length > 0" class="sidebar-tab-dropdown">
         <button
           v-for="tab in overflowingTabs"
