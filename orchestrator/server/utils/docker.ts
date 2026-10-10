@@ -304,10 +304,12 @@ export class DockerService {
 
     // Each WebSocket gets a linked session (shares windows with 'main' but has
     // its own current-window pointer). Cleaned up explicitly on disconnect.
+    // Support both raw OSC 52 and application DCS passthrough clipboard writes,
+    // including workers created before browser clipboard support was added.
     const attachExec = await container.exec({
       Cmd: [
         'sh', '-c',
-        `tmux new-session -d -t main -s "${tmuxSession}" && { tmux select-window -t "${tmuxSession}:${windowIndex}" 2>/dev/null || true; } && exec tmux -T RGB attach-session -t "${tmuxSession}"`,
+        `tmux set -s set-clipboard on && tmux set -g allow-passthrough on && tmux new-session -d -t main -s "${tmuxSession}" && { tmux select-window -t "${tmuxSession}:${windowIndex}" 2>/dev/null || true; } && exec tmux -T RGB,clipboard,hyperlinks attach-session -t "${tmuxSession}"`,
       ],
       // xterm.js supports 256 colours and truecolour. Inheriting Docker's
       // plain xterm default reduces muted TUI text to the background colour.
