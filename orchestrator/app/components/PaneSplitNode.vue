@@ -20,6 +20,12 @@ const emit = defineEmits<{
 const { isDragging, dragPayload, startDrag, endDrag } = useDragTab();
 
 const containerEl = ref<HTMLElement | null>(null);
+const paneContent = ref<{ focusTerminal: () => void } | null>(null);
+
+function handleActivateTab(tabId: string) {
+  emit('activateTab', tabId, props.node.id);
+  nextTick(() => paneContent.value?.focusTerminal());
+}
 
 function handleSeparatorResize(firstChildId: string, delta: number) {
   if (!containerEl.value) return;
@@ -85,7 +91,7 @@ const totalLeaves = computed(() => {
     <PaneGroupTabBar
       :group="node"
       :is-focused="node.id === focusedNodeId"
-      @activate="(tabId) => emit('activateTab', tabId, node.id)"
+      @activate="handleActivateTab"
       @close="(tabId) => emit('closeTab', tabId)"
       @focus-group="emit('focusNode', node.id)"
       @drag-start="handleTabDragStart"
@@ -93,7 +99,10 @@ const totalLeaves = computed(() => {
     />
     <div class="flex-1 relative min-h-0">
       <PaneContent
+        ref="paneContent"
         :group="node"
+        :is-focused="node.id === focusedNodeId"
+        @focus-group="emit('focusNode', node.id)"
       />
       <PaneDropOverlay
         v-if="isDragging"
