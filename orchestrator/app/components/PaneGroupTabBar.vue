@@ -121,7 +121,8 @@ const insertIndicatorLeft = computed(() => {
       draggable="true"
       @dragstart="onTabDragStart(tab.id, $event)"
       @click="emit('activate', tab.id)"
-      @mousedown="onMiddleClick($event, tab.id)"
+      @mousedown.middle.prevent
+      @auxclick="onMiddleClick($event, tab.id)"
     >
       <UIcon :name="typeIcons[tab.type] ?? 'i-lucide-file'" class="size-3.5 shrink-0" />
       <span class="truncate max-w-[140px]">{{ tab.type === 'logs' ? 'Logs' : `${tab.containerName} - ${typeLabels[tab.type] ?? tab.type}` }}</span>
