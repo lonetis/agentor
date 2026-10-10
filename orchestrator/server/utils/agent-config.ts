@@ -49,6 +49,11 @@ const AGENT_CONFIGS: AgentConfig[] = [
     ],
   },
   {
+    id: 'zen',
+    displayName: 'OpenCode Zen',
+    apiDomains: ['opencode.ai', 'models.dev'],
+  },
+  {
     // Matches the app registry id (`apps.ts` → `vscode`) so the same component
     // isn't referred to by two different identifiers across files.
     id: 'vscode',

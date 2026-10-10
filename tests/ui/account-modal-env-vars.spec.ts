@@ -14,6 +14,7 @@ const PREDEFINED_KEYS = [
   'CLAUDE_CODE_OAUTH_TOKEN',
   'OPENAI_API_KEY',
   'GEMINI_API_KEY',
+  'OPENCODE_ZEN_API_KEY',
 ] as const;
 
 test.describe('Account modal — env vars', () => {
@@ -58,7 +59,7 @@ test.describe('Account modal — env vars', () => {
       await expect(predefined.getByText(key, { exact: true })).toBeVisible();
     }
 
-    // Agent OAuth credentials section: 3 agents, all "Not logged in" for a fresh user.
+    // Saved credentials are empty for all four CLIs for a fresh user.
     const claude = page.locator('[data-testid="agent-cred-claude"]');
     const codex = page.locator('[data-testid="agent-cred-codex"]');
     const gemini = page.locator('[data-testid="agent-cred-gemini"]');
@@ -68,6 +69,7 @@ test.describe('Account modal — env vars', () => {
     await expect(claude).toContainText(/Not logged in/i);
     await expect(codex).toContainText(/Not logged in/i);
     await expect(gemini).toContainText(/Not logged in/i);
+    await expect(page.getByTestId('agent-cred-opencode')).toContainText('Not logged in');
   });
 
   test('saves a predefined env var and persists across reload of the modal', async ({ page, context }) => {

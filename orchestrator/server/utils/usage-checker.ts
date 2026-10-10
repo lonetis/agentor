@@ -168,7 +168,7 @@ export class UsageChecker {
 
   private async doFetchAll(): Promise<void> {
     const userIds = await this.candidateUserIds();
-    // Parallel per-user — each user's three agents are independent. One
+    // Parallel per-user — each user's providers are independent. One
     // user's slow upstream API should not block others.
     await Promise.all(userIds.map((userId) => this.doFetchUser(userId)));
   }
@@ -178,17 +178,20 @@ export class UsageChecker {
     const now = Date.now();
     const existing = this.userStates.get(userId) ?? new Map<string, AgentState>();
 
-    const agentIds = ['claude', 'codex', 'gemini'] as const;
+    const agentIds = ['claude', 'codex', 'gemini', 'zen'] as const;
     const fetchFns = [
       () => this.fetchClaudeUsage(userId),
       () => this.fetchCodexUsage(userId),
       () => this.fetchGeminiUsage(userId),
+      () => this.getZenStatus(userId),
     ];
 
     const fetchers: Array<() => Promise<AgentUsageInfo>> = [];
     for (let i = 0; i < agentIds.length; i++) {
       const state = existing.get(agentIds[i]!);
-      if (!state || now - state.lastFetchTime >= POLL_INTERVAL_MS) {
+      // Zen status only reads local credentials; keep login/reset visible
+      // immediately while preserving upstream quota polling intervals.
+      if (agentIds[i] === 'zen' || !state || now - state.lastFetchTime >= POLL_INTERVAL_MS) {
         fetchers.push(fetchFns[i]!);
       }
     }
@@ -348,6 +351,23 @@ export class UsageChecker {
     }
     if (this.rateLimitBackoff.delete(backoffKey)) await this.saveUser(userId);
     return resp;
+  }
+
+  // ─── Zen ────────────────────────────────────────────────────
+
+  /** Saved Console OAuth and service-account keys both represent a connection.
+   * Quota availability is separate; inference env keys do not imply a login. */
+  private async getZenStatus(userId: string): Promise<AgentUsageInfo> {
+    const authType = await this.credMgr?.getZenAuthType(userId) ?? 'none';
+    return {
+      agentId: 'zen',
+      displayName: 'OpenCode',
+      authType,
+      connected: authType !== 'none',
+      usageAvailable: false,
+      windows: [],
+      lastChecked: new Date().toISOString(),
+    };
   }
 
   // ─── Claude ─────────────────────────────────────────────────

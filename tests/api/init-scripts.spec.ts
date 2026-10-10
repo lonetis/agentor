@@ -29,6 +29,7 @@ test.describe('Init Scripts API', () => {
       expect(builtInNames).toContain('claude');
       expect(builtInNames).toContain('codex');
       expect(builtInNames).toContain('gemini');
+      expect(builtInNames).toContain('opencode');
       // Built-in ids are stable derived UUIDs — the slug is the name, not the id.
       for (const s of builtIns) {
         expect(s.id).not.toBe(s.name);

@@ -22,8 +22,8 @@ test.describe('Usage Panel', () => {
     const aside = page.locator('aside');
     // Wait for usage data to load (agent names appear after API response)
     await expect(aside.getByText('Claude', { exact: true })).toBeVisible({ timeout: 10_000 });
-    // Each agent should show one of the auth type badges
-    const authLabels = await aside.locator('text=/OAuth|API key|not configured/').all();
+    // Connection and auth status are displayed independently of usage windows.
+    const authLabels = await aside.locator('text=/OAuth|Logged in|not configured/').all();
     expect(authLabels.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -48,25 +48,27 @@ test.describe('Usage Panel', () => {
     await expect(claude).toBeVisible();
     await expect(codex).toBeVisible();
     await expect(gemini).toBeVisible();
+    await expect(aside.getByText('OpenCode', { exact: true })).toBeVisible();
     // Verify all three are distinct elements
     expect(await claude.count()).toBe(1);
     expect(await codex.count()).toBe(1);
     expect(await gemini.count()).toBe(1);
   });
 
-  test('shows an auth badge element per agent', async ({ page }) => {
+  test('shows auth badges for OAuth and unconfigured agents', async ({ page }) => {
+    await page.route('**/api/usage', route => route.fulfill({ json: { agents: [
+      { agentId: 'claude', displayName: 'Claude', authType: 'oauth', windows: [] },
+      { agentId: 'codex', displayName: 'Codex', authType: 'none', windows: [] },
+      { agentId: 'gemini', displayName: 'Gemini', authType: 'none', windows: [] },
+      { agentId: 'zen', displayName: 'OpenCode', authType: 'none', connected: false, windows: [] },
+    ] } }));
     await goToDashboard(page);
     await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
-    // Auth badges contain one of: "OAuth", "API key", "not configured"
-    // Each badge has a rounded styling with specific color classes
-    const badges = aside.locator('span').filter({
-      hasText: /^(OAuth|API key|not configured)$/,
-    });
-    // There should be exactly 3 badges — one per agent
-    await expect(badges).toHaveCount(3);
+    const badges = aside.locator('.system-card-header span.rounded');
+    await expect(badges).toHaveCount(4);
     // Each badge should be visible
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       await expect(badges.nth(i)).toBeVisible();
     }
   });
@@ -77,21 +79,34 @@ test.describe('Usage Panel', () => {
     const aside = page.locator('aside');
     // Check each badge has the expected color class based on its label
     const badges = aside.locator('span').filter({
-      hasText: /^(OAuth|API key|not configured)$/,
+      hasText: /^(OAuth|Logged in|not configured)$/,
     });
     const count = await badges.count();
     for (let i = 0; i < count; i++) {
       const text = (await badges.nth(i).textContent())?.trim();
       const classAttr = await badges.nth(i).getAttribute('class') || '';
-      if (text === 'OAuth') {
+      if (text === 'OAuth' || text === 'Logged in') {
         expect(classAttr).toContain('bg-green');
-      } else if (text === 'API key') {
-        expect(classAttr).toContain('bg-blue');
       } else if (text === 'not configured') {
         expect(classAttr).toContain('bg-gray');
       }
     }
   });
+
+  for (const [authType, title] of [['oauth', 'Zen - Console account (OAuth)'], ['api-key', 'Zen - API key configured']] as const) {
+    test(`shows OpenCode connected with saved ${authType} credentials even when usage is unavailable`, async ({ page }) => {
+      await page.route('**/api/usage', route => route.fulfill({ json: { agents: [
+        { agentId: 'zen', displayName: 'OpenCode', authType, connected: true, usageAvailable: false, windows: [] },
+      ] } }));
+      await goToDashboard(page);
+      await selectSidebarTab(page, 'Usage');
+      const card = page.locator('aside .system-card').filter({ has: page.getByText('OpenCode', { exact: true }) });
+      const badge = card.getByText('Logged in', { exact: true });
+      await expect(badge).toBeVisible();
+      await expect(badge).toHaveAttribute('title', title);
+      await expect(badge).toHaveClass(/bg-green/);
+    });
+  }
 
   test('shows "Fetched Xm ago" relative timestamp per agent', async ({ page }) => {
     await goToDashboard(page);
@@ -104,9 +119,9 @@ test.describe('Usage Panel', () => {
     // At least one agent should have a fetch timestamp (agents with OAuth or API key auth
     // that have been fetched will show one; agents with 'none' auth may not)
     const count = await timestamps.count();
-    // Depending on configuration, there may be 0 to 3 timestamps
+    // Depending on configuration, there may be 0 to 4 timestamps.
     expect(count).toBeGreaterThanOrEqual(0);
-    expect(count).toBeLessThanOrEqual(3);
+    expect(count).toBeLessThanOrEqual(4);
   });
 
   test('refresh button is visible in Actions card', async ({ page }) => {
@@ -283,21 +298,14 @@ test.describe('Usage Panel', () => {
     // (lowercase, no italic), and Playwright's `hasText` is a case-insensitive
     // substring match by default which would match both.
     const notConfigured = aside.locator('span').filter({ hasText: /^Not configured$/ });
-    const noApiKeyData = aside.locator('span').filter({ hasText: 'No usage data for API key auth' });
 
     const notConfiguredCount = await notConfigured.count();
-    const noApiKeyCount = await noApiKeyData.count();
 
-    expect(notConfiguredCount + noApiKeyCount).toBeGreaterThanOrEqual(0);
+    expect(notConfiguredCount).toBeGreaterThanOrEqual(0);
 
     for (let i = 0; i < notConfiguredCount; i++) {
       await expect(notConfigured.nth(i)).toBeVisible();
       const classAttr = await notConfigured.nth(i).getAttribute('class') || '';
-      expect(classAttr).toContain('italic');
-    }
-    for (let i = 0; i < noApiKeyCount; i++) {
-      await expect(noApiKeyData.nth(i)).toBeVisible();
-      const classAttr = await noApiKeyData.nth(i).getAttribute('class') || '';
       expect(classAttr).toContain('italic');
     }
   });
