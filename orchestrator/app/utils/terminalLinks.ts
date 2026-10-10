@@ -15,6 +15,34 @@ function panelPart(line: IBufferLine, left: number, right: number) {
   return match ? { column: left + match[1]!.length, text: match[2]! } : undefined;
 }
 
+function underlineParts(term: Terminal, event: MouseEvent, column: number, start: number, parts: string[]) {
+  const screen = term.element?.querySelector<HTMLElement>('.xterm-screen');
+  if (!screen) return () => {};
+  const rect = screen.getBoundingClientRect();
+  const cellWidth = rect.width / term.cols;
+  const cellHeight = rect.height / term.rows;
+  const target = event.target instanceof Element ? event.target : screen;
+  const color = getComputedStyle(target).color;
+  const group = screen.ownerDocument.createElement('div');
+  group.style.pointerEvents = 'none';
+  for (const [index, part] of parts.entries()) {
+    const row = start + index - term.buffer.active.viewportY;
+    if (row < 0 || row >= term.rows) continue;
+    const underline = screen.ownerDocument.createElement('div');
+    underline.className = 'terminal-link-underline';
+    Object.assign(underline.style, {
+      position: 'absolute',
+      left: `${column * cellWidth}px`,
+      top: `${(row + 1) * cellHeight - 2}px`,
+      width: `${part.length * cellWidth}px`,
+      borderBottom: `1px solid ${color}`,
+    });
+    group.appendChild(underline);
+  }
+  screen.appendChild(group);
+  return () => group.remove();
+}
+
 // TUI dialogs wrap inside a panel, without terminal soft wrapping. Read only
 // that panel's background run so the session behind it cannot enter the URL.
 export function wrappedQueryLinkProvider(
@@ -64,10 +92,20 @@ export function wrappedQueryLinkProvider(
           if (!uri.includes('?') || !uri.includes('=')) continue;
           try { new URL(uri); } catch { continue; }
           const part = parts[y - start - 1]!;
+          let clearUnderline = () => {};
           callback([{
             text: uri,
             range: { start: { x: first.column + 1, y }, end: { x: first.column + part.length, y } },
             activate,
+            // Keep each row's hit area separate; a multiline xterm range
+            // would also make the padding between rows clickable.
+            decorations: { underline: false, pointerCursor: true },
+            hover: (event) => {
+              clearUnderline();
+              clearUnderline = underlineParts(term, event, first.column, start, parts);
+            },
+            leave: () => clearUnderline(),
+            dispose: () => clearUnderline(),
           }]);
           return;
         }
