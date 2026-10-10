@@ -3,6 +3,9 @@ import type { FitAddon } from '@xterm/addon-fit';
 import type { WebLinksAddon } from '@xterm/addon-web-links';
 import { wrappedQueryLinkProvider } from '~/utils/terminalLinks';
 
+const TERMINAL_FONT_FAMILY = 'Menlo, "Cascadia Code", "Fira Code", "JetBrains Mono", monospace';
+const TERMINAL_FONT_SIZE = 14;
+
 interface TerminalState {
   containerId: string;
   windowIndex: number;
@@ -62,6 +65,7 @@ export function useTerminal() {
   });
   let fitTimer: ReturnType<typeof setTimeout> | null = null;
   let restoreFocus = false;
+  let openGeneration = 0;
 
   async function copyText(text: string) {
     try {
@@ -71,7 +75,7 @@ export function useTerminal() {
     }
   }
 
-  function openTerminal(
+  async function openTerminal(
     containerId: string,
     windowIndex: number,
     containerEl: HTMLElement,
@@ -89,6 +93,19 @@ export function useTerminal() {
 
     closeTerminal();
     const shouldRestoreFocus = restoreFocus;
+    const generation = openGeneration;
+    // The DOM renderer caches glyph widths on first use. Loading fonts later
+    // leaves cached spaces and newly measured text at different widths.
+    try {
+      await Promise.allSettled([
+        containerEl.ownerDocument.fonts.load(`${TERMINAL_FONT_SIZE}px ${TERMINAL_FONT_FAMILY}`, 'W Привет'),
+        containerEl.ownerDocument.fonts.load(`bold ${TERMINAL_FONT_SIZE}px ${TERMINAL_FONT_FAMILY}`, 'W Привет'),
+      ]);
+    } catch {
+      // A failed web font falls back to the browser's available monospace font.
+    }
+    // A tab may close or reconnect while its fonts are loading.
+    if (generation !== openGeneration || !containerEl.isConnected) return;
     restoreFocus = false;
 
     const activateLink = (event: MouseEvent, uri: string) => {
@@ -100,8 +117,8 @@ export function useTerminal() {
     };
     const term = new TerminalClass({
       theme: getTheme(),
-      fontFamily: 'Menlo, "Cascadia Code", "Fira Code", "JetBrains Mono", monospace',
-      fontSize: 14,
+      fontFamily: TERMINAL_FONT_FAMILY,
+      fontSize: TERMINAL_FONT_SIZE,
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 10000,
@@ -266,6 +283,7 @@ export function useTerminal() {
   }
 
   function closeTerminal() {
+    openGeneration++;
     const t = activeTerminal.value;
     if (!t) return;
     restoreFocus = t.term.textarea === t.containerEl.ownerDocument.activeElement;
