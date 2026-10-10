@@ -30,6 +30,20 @@ const form = reactive({
 const systemEnvVars = ref<WorkerSystemEnvVar[]>([]);
 const { data: credentials } = useFetch<CredentialInfo[]>('/api/account/agent-credentials', { default: () => [] });
 
+function isAgentLoggedIn(cred: CredentialInfo): boolean {
+  return cred.configured;
+}
+
+function credentialTitle(cred: CredentialInfo): string | undefined {
+  if (cred.agentId !== 'opencode') return undefined;
+  if (!cred.configured) {
+    return cred.zenAuthType === 'api-key' ? 'No saved credentials. Zen API key configured separately.' : 'No saved credentials';
+  }
+  if (cred.zenAuthType === 'oauth') return 'Zen - Console account (OAuth)';
+  if (cred.zenAuthType === 'api-key') return 'Zen - API key configured';
+  return 'Other provider credentials saved';
+}
+
 const { data: allCapabilities } = useFetch<CapabilityInfo[]>('/api/capabilities', { default: () => [] });
 const { gitProviders } = useGitProviders();
 const { data: allInstructions } = useFetch<InstructionInfo[]>('/api/instructions', { default: () => [] });
@@ -214,9 +228,9 @@ function handleSave() {
     <!-- Credentials (signed-in user's OAuth files — same files every worker
          this user creates will inherit) -->
     <fieldset v-if="credentials.length > 0">
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Your agent OAuth credentials</legend>
+      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Your agent credentials</legend>
       <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
-        Log in once inside any of your workers — credentials are stored per user and shared across all of your workers. Manage them in Account → Agent OAuth credentials.
+        Log in once inside any of your workers — credentials are stored per user and shared across all of your workers. Manage them in Account → Agent credentials.
       </p>
       <div class="space-y-1">
         <div
@@ -227,8 +241,11 @@ function handleSave() {
           <UIcon name="i-heroicons-key" class="text-gray-400 dark:text-gray-500 w-3 h-3 shrink-0" />
           <span class="text-gray-500 dark:text-gray-400">{{ cred.agentId }}</span>
           <span class="text-gray-400 dark:text-gray-600">&mdash;</span>
-          <span :class="cred.configured ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-600'">
-            {{ cred.configured ? 'logged in' : 'not logged in' }}
+          <span
+            :title="credentialTitle(cred)"
+            :class="isAgentLoggedIn(cred) ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-600'"
+          >
+            {{ isAgentLoggedIn(cred) ? 'logged in' : 'not logged in' }}
           </span>
         </div>
       </div>

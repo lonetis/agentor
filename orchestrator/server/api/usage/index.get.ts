@@ -2,7 +2,7 @@ defineRouteMeta({
   openAPI: {
     tags: ['Usage'],
     summary: 'Get agent usage status',
-    description: 'Returns usage monitoring data for the current user\'s OAuth-authenticated agents. Each user sees only their own usage — polling is per-user.',
+    description: 'Returns agent connection status and available usage monitoring data for the current user. Each user sees only their own usage — polling is per-user.',
     operationId: 'getUsage',
     responses: {
       200: {
@@ -20,6 +20,7 @@ defineRouteMeta({
               agentId: { type: 'string' },
               displayName: { type: 'string' },
               authType: { type: 'string', enum: ['oauth', 'api-key', 'none'] },
+              connected: { type: 'boolean', description: 'Saved provider credentials are present, independently of quota availability or environment API keys' },
               usageAvailable: { type: 'boolean' },
               planType: { type: 'string', description: 'Plan/tier label when the upstream reports one (e.g. Codex)' },
               windows: {

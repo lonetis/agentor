@@ -69,6 +69,36 @@ test.describe('Environments Modal', () => {
     await expect(dialog.getByText('Docker-in-Docker')).toBeVisible({ timeout: 10_000 });
   });
 
+  for (const [zenAuthType, title] of [['oauth', 'Zen - Console account (OAuth)'], ['api-key', 'Zen - API key configured']] as const) {
+    test(`shows Zen ${zenAuthType} status in the Environment editor`, async ({ page }) => {
+      await page.route('**/api/account/agent-credentials', route => route.fulfill({ json: [
+        { agentId: 'opencode', fileName: 'opencode.json', configured: true, zenAuthType },
+      ] }));
+      await goToDashboard(page);
+      await openEnvironmentsModal(page);
+      const dialog = page.locator('[role="dialog"]');
+      await dialog.getByRole('button', { name: 'New', exact: true }).click();
+      await expect(dialog.getByText('opencode', { exact: true })).toBeVisible();
+      await expect(dialog.getByText('logged in', { exact: true })).toBeVisible();
+      await expect(dialog.getByText('logged in', { exact: true })).toHaveAttribute('title', title);
+      await expect(dialog.getByText('not logged in', { exact: true })).toHaveCount(0);
+    });
+  }
+
+  test('shows no saved login when only the Zen environment API key is configured', async ({ page }) => {
+    await page.route('**/api/account/agent-credentials', route => route.fulfill({ json: [
+      { agentId: 'opencode', fileName: 'opencode.json', configured: false, zenAuthType: 'api-key' },
+    ] }));
+    await goToDashboard(page);
+    await openEnvironmentsModal(page);
+    const dialog = page.locator('[role="dialog"]');
+    await dialog.getByRole('button', { name: 'New', exact: true }).click();
+    const status = dialog.getByText('not logged in', { exact: true });
+    await expect(status).toBeVisible();
+    await expect(status).toHaveAttribute('title', 'No saved credentials. Zen API key configured separately.');
+    await expect(status).toHaveClass(/text-gray/);
+  });
+
   test('environment form shows resource limit fields', async ({ page }) => {
     await goToDashboard(page);
     await openEnvironmentsModal(page);

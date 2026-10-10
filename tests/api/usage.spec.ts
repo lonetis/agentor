@@ -46,7 +46,7 @@ test.describe('Usage API (per-user)', () => {
       }
     });
 
-    test('refresh populates all three agents for the caller', async ({ request }) => {
+    test('refresh populates all agents for the caller', async ({ request }) => {
       const api = new ApiClient(request);
       const { status, body } = await api.refreshUsage();
       expect(status).toBe(200);
@@ -54,6 +54,7 @@ test.describe('Usage API (per-user)', () => {
       expect(ids).toContain('claude');
       expect(ids).toContain('codex');
       expect(ids).toContain('gemini');
+      expect(ids).toContain('zen');
     });
 
     test('refresh-then-get returns same agent list', async ({ request }) => {
@@ -61,7 +62,7 @@ test.describe('Usage API (per-user)', () => {
       await api.refreshUsage();
       const { body } = await api.getUsageStatus();
       const ids = body.agents.map((a: { agentId: string }) => a.agentId).sort();
-      expect(ids).toEqual(['claude', 'codex', 'gemini']);
+      expect(ids).toEqual(['claude', 'codex', 'gemini', 'zen']);
     });
 
     test('agents have valid shape after refresh', async ({ request }) => {

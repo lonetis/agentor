@@ -183,12 +183,13 @@ USER agent
 
 # Agent CLIs (installed as agent user so auto-updates work)
 RUN curl -fsSL https://claude.ai/install.sh | bash
-RUN npm config set prefix ~/.local && npm install -g @openai/codex @google/gemini-cli
+RUN npm config set prefix ~/.local && npm install -g @openai/codex @google/gemini-cli @opencode/cli@2
 ENV PATH="/home/agent/.local/bin:${PATH}"
 
 # Agent setup/start scripts
 COPY --chown=agent:agent agents/ /home/agent/agents/
 RUN chmod +x /home/agent/agents/*/setup.sh
+RUN bash /home/agent/agents/opencode/build-zen-config.sh
 
 WORKDIR /workspace
 

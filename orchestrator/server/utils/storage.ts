@@ -28,6 +28,7 @@ const CREDENTIAL_MOUNT_POINTS = [
   '.claude/.credentials.json',
   '.codex/auth.json',
   '.gemini/oauth_creds.json',
+  'opencode/data/auth.json',
 ];
 
 export class StorageManager {

@@ -3,7 +3,7 @@ const props = defineProps<{
   containerId: string;
 }>();
 
-const { $Terminal, $FitAddon } = useNuxtApp();
+const { $Terminal, $FitAddon, $WebLinksAddon } = useNuxtApp();
 
 const containerIdRef = toRef(props, 'containerId');
 
@@ -47,11 +47,11 @@ function ensureTerminal(windowIndex: number) {
 function connectTerminal(windowIndex: number) {
   const entry = terminals.get(windowIndex);
   const el = terminalRefs.get(windowIndex);
-  if (!entry || !el || !$Terminal || !$FitAddon) return;
+  if (!entry || !el || !$Terminal || !$FitAddon || !$WebLinksAddon) return;
 
   entry.el = el;
   el.innerHTML = '';
-  entry.instance.openTerminal(props.containerId, windowIndex, el, $Terminal, $FitAddon);
+  entry.instance.openTerminal(props.containerId, windowIndex, el, $Terminal, $FitAddon, $WebLinksAddon);
 }
 
 function destroyTerminal(windowIndex: number) {

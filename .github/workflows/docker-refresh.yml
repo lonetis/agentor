@@ -2,7 +2,7 @@ name: Refresh Docker Images
 
 # Daily cache-free rebuild of both images so unpinned dependencies pick up
 # current versions: the base images (ubuntu:24.04 / node:22-alpine), all apt
-# packages, and the Claude / Codex / Gemini CLIs. Nothing in the repo changes —
+# packages, and the agent CLIs (OpenCode stays within the latest 2.x). Nothing in the repo changes —
 # the same Dockerfiles simply resolve to newer upstream versions.
 #
 # Images are published under a dated tag first, smoke-tested on both
@@ -87,6 +87,7 @@ jobs:
               claude --version
               codex --version
               gemini --version
+              opencode --version
               node --version
               npm --version
               git --version

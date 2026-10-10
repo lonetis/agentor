@@ -1,5 +1,10 @@
 import type { Terminal, ITheme } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
+import type { WebLinksAddon } from '@xterm/addon-web-links';
+import { wrappedQueryLinkProvider } from '~/utils/terminalLinks';
+
+const TERMINAL_FONT_FAMILY = 'Menlo, "Cascadia Code", "Fira Code", "JetBrains Mono", monospace';
+const TERMINAL_FONT_SIZE = 14;
 
 interface TerminalState {
   containerId: string;
@@ -8,7 +13,6 @@ interface TerminalState {
   fitAddon: FitAddon;
   ws: WebSocket;
   containerEl: HTMLElement;
-  eventCleanup: () => void;
   writeBatch: (Uint8Array | string)[];
   writeRafId: number | null;
 }
@@ -45,6 +49,7 @@ const LIGHT_THEME: ITheme = {
 
 export function useTerminal() {
   const colorMode = useColorMode();
+  const toast = useToast();
   const activeTerminal = shallowRef<TerminalState | null>(null);
 
   function getTheme(): ITheme {
@@ -59,13 +64,24 @@ export function useTerminal() {
     }
   });
   let fitTimer: ReturnType<typeof setTimeout> | null = null;
+  let restoreFocus = false;
+  let openGeneration = 0;
 
-  function openTerminal(
+  async function copyText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      toast.add({ title: 'Could not copy text', description: 'Allow clipboard access for this site and try again.', color: 'error' });
+    }
+  }
+
+  async function openTerminal(
     containerId: string,
     windowIndex: number,
     containerEl: HTMLElement,
     TerminalClass: typeof Terminal,
     FitAddonClass: typeof FitAddon,
+    WebLinksAddonClass: typeof WebLinksAddon,
   ) {
     const current = activeTerminal.value;
 
@@ -76,21 +92,60 @@ export function useTerminal() {
     }
 
     closeTerminal();
+    const shouldRestoreFocus = restoreFocus;
+    const generation = openGeneration;
+    // The DOM renderer caches glyph widths on first use. Loading fonts later
+    // leaves cached spaces and newly measured text at different widths.
+    try {
+      await Promise.allSettled([
+        containerEl.ownerDocument.fonts.load(`${TERMINAL_FONT_SIZE}px ${TERMINAL_FONT_FAMILY}`, 'W Привет'),
+        containerEl.ownerDocument.fonts.load(`bold ${TERMINAL_FONT_SIZE}px ${TERMINAL_FONT_FAMILY}`, 'W Привет'),
+      ]);
+    } catch {
+      // A failed web font falls back to the browser's available monospace font.
+    }
+    // A tab may close or reconnect while its fonts are loading.
+    if (generation !== openGeneration || !containerEl.isConnected) return;
+    restoreFocus = false;
 
+    const activateLink = (event: MouseEvent, uri: string) => {
+      // Selection modifiers must keep selecting text, including URLs.
+      if (event.button !== 0 || event.shiftKey || event.altKey || term.hasSelection()) return;
+      if (['http:', 'https:'].includes(new URL(uri).protocol)) {
+        window.open(uri, '_blank', 'noopener,noreferrer');
+      }
+    };
     const term = new TerminalClass({
       theme: getTheme(),
-      fontFamily: 'Menlo, "Cascadia Code", "Fira Code", "JetBrains Mono", monospace',
-      fontSize: 14,
+      fontFamily: TERMINAL_FONT_FAMILY,
+      fontSize: TERMINAL_FONT_SIZE,
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 10000,
       fastScrollModifier: 'alt',
       macOptionClickForcesSelection: true,
       altClickMovesCursor: false,
+      linkHandler: { activate: activateLink },
     });
 
     const fitAddon = new FitAddonClass();
     term.loadAddon(fitAddon);
+    term.registerLinkProvider(wrappedQueryLinkProvider(term, activateLink));
+    term.loadAddon(new WebLinksAddonClass(activateLink));
+    // Applications copy over OSC 52; reads of the browser clipboard are not
+    // part of this protocol bridge. tmux may use an empty selection parameter.
+    term.parser.registerOscHandler(52, (data) => {
+      const separator = data.indexOf(';');
+      const encoded = data.slice(separator + 1);
+      if (separator < 0 || encoded === '?') return true;
+      try {
+        const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
+        copyText(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+      } catch {
+        // Ignore malformed clipboard payloads.
+      }
+      return true;
+    });
     // Hide terminal while the initial tmux screen redraw streams in.
     // Without this, xterm.js progressively renders lines top-to-bottom,
     // causing a visible scroll effect. We reveal after the data settles.
@@ -98,26 +153,6 @@ export function useTerminal() {
 
     term.open(containerEl);
     fitAddon.fit();
-
-    // Force xterm.js to use native text selection for click/drag.
-    // xterm.js's shouldForceSelection() checks altKey+macOptionClickForcesSelection
-    // on Mac, or shiftKey on other platforms. We override the relevant modifier
-    // key on pointer/mouse events so xterm.js handles selection locally instead
-    // of forwarding to tmux. Wheel events are unaffected.
-    const isMac = /mac/i.test(navigator.platform);
-    const forceSelectionKey = isMac ? 'altKey' : 'shiftKey';
-    const overrideKey = (e: Event) => {
-      Object.defineProperty(e, forceSelectionKey, { value: true });
-    };
-    const eventTypes = ['pointerdown', 'pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup'] as const;
-    for (const type of eventTypes) {
-      containerEl.addEventListener(type, overrideKey, { capture: true });
-    }
-    const eventCleanup = () => {
-      for (const type of eventTypes) {
-        containerEl.removeEventListener(type, overrideKey, { capture: true });
-      }
-    };
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${location.host}/ws/terminal/${containerId}/${windowIndex}`;
@@ -133,6 +168,7 @@ export function useTerminal() {
       // Wait for the initial tmux screen redraw to finish, then refit,
       // scroll to bottom, and reveal the terminal in its final state.
       setTimeout(() => {
+        if (activeTerminal.value?.term !== term) return;
         fitAddon.fit();
         const dims2 = fitAddon.proposeDimensions();
         if (dims2 && dims2.cols > 0 && dims2.rows > 0 && ws.readyState === WebSocket.OPEN) {
@@ -140,6 +176,11 @@ export function useTerminal() {
         }
         term.scrollToBottom();
         containerEl.style.visibility = '';
+        // Reconnecting a focused terminal removes its textarea from the DOM.
+        // Restore keyboard input unless the user has focused another control.
+        if (shouldRestoreFocus && containerEl.ownerDocument.activeElement === containerEl.ownerDocument.body) {
+          term.focus();
+        }
       }, 200);
     };
 
@@ -172,33 +213,51 @@ export function useTerminal() {
       term.write('\r\n\x1b[31m[Connection closed]\x1b[0m\r\n');
     };
 
-    // Shift+Enter → send CSI u encoded Shift+Enter so agents (Claude Code,
-    // Codex, etc.) can distinguish it from plain Enter and insert a newline.
-    // tmux extended-keys (csi-u format) passes this through to the application.
     term.attachCustomKeyEventHandler((event) => {
-      if (event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
-        if (event.type === 'keydown' && ws.readyState === WebSocket.OPEN) {
-          ws.send('\x1b[13;2u');
-        }
+      // Let xterm.js clear its keyboard state when the key is released.
+      if (event.type === 'keyup' || event.isComposing) return true;
+      // Copy a local selection before handling terminal Ctrl+C (SIGINT).
+      // Match physical keys so copy also works with non-Latin layouts.
+      if (event.code === 'KeyC' && !event.altKey &&
+        ((event.ctrlKey && !event.metaKey) || (event.metaKey && !event.ctrlKey)) && term.hasSelection()) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.type === 'keydown') copyText(term.getSelection());
         return false;
       }
-      return true;
+      let data: string;
+      if (event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        // CSI u lets agents distinguish Shift+Enter from Enter.
+        data = '\x1b[13;2u';
+      } else if ((event.key === 'Escape' || event.code === 'Escape') &&
+        !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        // tmux requires an explicit modifier (1 = none) to decode CSI u.
+        data = '\x1b[27;1u';
+      } else if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && /^Key[A-Z]$/.test(event.code)) {
+        // Physical keys keep terminal Ctrl shortcuts working in RU and other
+        // layouts. CSI u also bypasses Docker's Ctrl+P, Ctrl+Q detach handling;
+        // tmux decodes it into the application's expected key format.
+        data = `\x1b[${event.code.charCodeAt(3) + 32};5u`;
+      } else {
+        return true;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type === 'keydown' && ws.readyState === WebSocket.OPEN) {
+        term.input(data);
+      }
+      return false;
     });
 
-    // SGR mouse escape: \x1b[<button;col;row[Mm]
-    // Button >= 64 = scroll (wheel up/down) — forward to tmux for scrollback.
-    // Button < 64 = click/drag/motion — block so tmux doesn't move cursor.
-    const SGR_MOUSE_RE = /^\x1b\[<(\d+);\d+;\d+[Mm]$/;
-
+    // Forward mouse reports as well as keyboard input so TUIs can handle
+    // clicks. xterm.js retains local selection with Shift (Option on macOS).
     term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
-        const m = data.match(SGR_MOUSE_RE);
-        if (m && parseInt(m[1]!, 10) < 64) return;
         ws.send(data);
       }
     });
 
-    activeTerminal.value = { containerId, windowIndex, term, fitAddon, ws, containerEl, eventCleanup, writeBatch, writeRafId };
+    activeTerminal.value = { containerId, windowIndex, term, fitAddon, ws, containerEl, writeBatch, writeRafId };
   }
 
   function fitTerminal(immediate = false) {
@@ -224,10 +283,11 @@ export function useTerminal() {
   }
 
   function closeTerminal() {
+    openGeneration++;
     const t = activeTerminal.value;
     if (!t) return;
+    restoreFocus = t.term.textarea === t.containerEl.ownerDocument.activeElement;
     if (t.writeRafId !== null) cancelAnimationFrame(t.writeRafId);
-    t.eventCleanup();
     t.ws?.close();
     t.term?.dispose();
     activeTerminal.value = null;
@@ -235,6 +295,7 @@ export function useTerminal() {
 
   function destroy() {
     closeTerminal();
+    restoreFocus = false;
     stopColorWatch();
     if (fitTimer) clearTimeout(fitTimer);
   }

@@ -31,6 +31,7 @@ export function useUserEnvVars() {
       body: input,
     });
     envVars.value = updated;
+    credentials.value = await $fetch<CredentialInfo[]>('/api/account/agent-credentials');
     return updated;
   }
 

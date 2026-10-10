@@ -77,6 +77,14 @@ const AGENT_CONFIGS: AgentTestConfig[] = [
     prompt: 'What is 2+2? Reply with just the number.',
     responsePattern: /4/,
   },
+  {
+    id: 'opencode',
+    displayName: 'OpenCode Zen',
+    readyPattern: /OpenCode|Ask anything|Build.*Zen/i,
+    failPattern: /\$\s*$/m,
+    prompt: 'What is 2+2? Reply with just the number.',
+    responsePattern: /4/,
+  },
 ];
 
 let credentials: AgentCredentials;
@@ -96,7 +104,7 @@ for (const agent of AGENT_CONFIGS) {
       const hasCredentials = credentials[agent.id as keyof AgentCredentials];
       test.skip(!hasCredentials, `No credentials configured for ${agent.displayName}`);
 
-      const script = initScripts.find(p => p.id === agent.id);
+      const script = initScripts.find(p => p.name === agent.id);
       if (!script) {
         test.skip(true, `Init script '${agent.id}' not found`);
         return;

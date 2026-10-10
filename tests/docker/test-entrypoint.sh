@@ -2,7 +2,7 @@
 # Test runner entrypoint.
 #
 # Boots an isolated agentor stack inside this container's own dockerd
-# (true DinD), runs the playwright suite against it, and tears it down.
+# (true DinD), runs unit tests and the playwright suite, and tears it down.
 # Forwards every CLI arg straight to `playwright test`, so the user can
 # run all tests, a single file, or pass --project=api, etc.
 set -euo pipefail
@@ -194,6 +194,27 @@ build_with_retry agentor-orchestrator:latest /src/orchestrator
 log "Images built."
 
 # ---------------------------------------------------------------------------
+# Phase 2.5: run unit tests before starting the stack
+# ---------------------------------------------------------------------------
+cd /work/tests
+if [ ! -d node_modules ]; then
+    log "Installing test dependencies..."
+    npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+fi
+
+log "Running unit tests in the worker image..."
+# Keep the repository layout for imports from tests into worker sources.
+# The worker supplies OpenCode and its catalog so the native CLI test runs.
+docker run --rm --init --entrypoint npm \
+    -v /work/tests:/work/tests:ro \
+    -v /src/worker:/work/worker:ro \
+    -w /work/tests \
+    -e OPENCODE_CLI=/home/agent/.local/bin/opencode \
+    -e OPENCODE_CATALOG=/home/agent/agents/opencode/zen-provider.json \
+    agentor-worker:latest run test:unit
+log "Unit tests passed."
+
+# ---------------------------------------------------------------------------
 # Phase 3: bring inner stack up fresh
 # ---------------------------------------------------------------------------
 log "Pre-cleaning stale playwright state on host bind mount..."
@@ -233,11 +254,6 @@ fi
 # Phase 5: run playwright tests
 # ---------------------------------------------------------------------------
 cd /work/tests
-if [ ! -d node_modules ]; then
-    log "Installing test dependencies..."
-    npm ci --no-audit --no-fund || npm install --no-audit --no-fund
-fi
-
 log "Running playwright tests: $*"
 set +e
 npx playwright test "$@"
