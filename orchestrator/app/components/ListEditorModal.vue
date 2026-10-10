@@ -67,6 +67,10 @@ function cancelEdit() {
   viewing.value = null;
 }
 
+watch(open, (isOpen) => {
+  if (isOpen) cancelEdit();
+});
+
 async function handleSave() {
   if (!editForm.name.trim() || !editForm.content.trim()) return;
   const body = { name: editForm.name, content: editForm.content };

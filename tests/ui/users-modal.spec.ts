@@ -1,10 +1,40 @@
 import { test, expect } from '@playwright/test';
 import { createTestUser, deleteTestUser, type CreatedUser } from '../helpers/test-users';
+import { goToDashboard, selectSidebarTab } from '../helpers/ui-helpers';
 
 /**
  * Admin-only Users modal. Runs with the global admin storage state (default).
  */
 test.describe('Users modal (admin)', () => {
+  for (const closeMethod of ['Close', 'Escape', 'outside click'] as const) {
+    test(`reopening shows the list after dismissing the new user form with ${closeMethod}`, async ({ page }) => {
+      await goToDashboard(page);
+      await selectSidebarTab(page, 'System');
+      const openButton = page.getByRole('button', { name: 'Users', exact: true });
+      await openButton.click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'New', exact: true }).click();
+      await dialog.locator('input[type="email"]').fill('unsaved@example.test');
+
+      if (closeMethod === 'Close') {
+        await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+      } else if (closeMethod === 'Escape') {
+        await page.keyboard.press('Escape');
+      } else {
+        await page.mouse.click(10, 10);
+      }
+      await expect(dialog).toBeHidden();
+
+      await openButton.click();
+      await expect(dialog.getByRole('button', { name: 'New', exact: true })).toBeVisible();
+      await expect(dialog.locator('[data-user-row]').first()).toBeVisible();
+      await expect(dialog.locator('input[type="email"]')).toBeHidden();
+
+      await dialog.getByRole('button', { name: 'New', exact: true }).click();
+      await expect(dialog.locator('input[type="email"]')).toHaveValue('');
+    });
+  }
+
   test('admin opens Users modal from the System tab', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('h1:has-text("Agentor")', { timeout: 15_000 });

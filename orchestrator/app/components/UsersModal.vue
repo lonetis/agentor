@@ -43,7 +43,10 @@ async function refresh() {
 }
 
 watch(open, (v) => {
-  if (v) refresh();
+  if (v) {
+    cancelCreate();
+    refresh();
+  }
 });
 
 function startCreate() {
