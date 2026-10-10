@@ -1,6 +1,12 @@
 <script setup lang="ts">
 const props = defineProps<{
   containerId: string;
+  isActive: boolean;
+  isFocused: boolean;
+}>();
+
+const emit = defineEmits<{
+  focusGroup: [];
 }>();
 
 const { $Terminal, $FitAddon } = useNuxtApp();
@@ -44,7 +50,7 @@ function ensureTerminal(windowIndex: number) {
   terminals.set(windowIndex, { instance, el: null });
 }
 
-function connectTerminal(windowIndex: number) {
+function connectTerminal(windowIndex: number, focus = true) {
   const entry = terminals.get(windowIndex);
   const el = terminalRefs.get(windowIndex);
   if (!entry || !el || !$Terminal || !$FitAddon) return;
@@ -52,7 +58,25 @@ function connectTerminal(windowIndex: number) {
   entry.el = el;
   el.innerHTML = '';
   entry.instance.openTerminal(props.containerId, windowIndex, el, $Terminal, $FitAddon);
+  if (focus && props.isActive && props.isFocused && windowIndex === activeWindowIndex.value) {
+    entry.instance.focusTerminal();
+  }
 }
+
+function focusTerminal() {
+  if (!props.isActive || !props.isFocused || activeWindowIndex.value == null) return;
+  const entry = terminals.get(activeWindowIndex.value);
+  entry?.instance.fitTerminal(true);
+  entry?.instance.focusTerminal();
+}
+
+function handleActivate(windowIndex: number) {
+  emit('focusGroup');
+  activateWindow(windowIndex);
+  nextTick(focusTerminal);
+}
+
+defineExpose({ focusTerminal });
 
 function destroyTerminal(windowIndex: number) {
   const entry = terminals.get(windowIndex);
@@ -82,6 +106,7 @@ let skipReconnect = false;
 
 // Wrap createWindow to suppress reconnection for UI-initiated creates
 async function handleCreate(name?: string) {
+  emit('focusGroup');
   skipReconnect = true;
   await createWindow(name);
   await nextTick();
@@ -92,6 +117,10 @@ async function handleCreate(name?: string) {
 watch(
   windows,
   (newWindows) => {
+    const active = activeWindowIndex.value == null ? null
+      : terminals.get(activeWindowIndex.value)?.instance.activeTerminal.value;
+    const focusOnConnect = knownWindowIndices.size === 0 ||
+      (!!active && active.term.textarea === active.containerEl.ownerDocument.activeElement);
     const currentIndices = new Set(newWindows.map((w) => w.index));
 
     // Destroy terminals for removed windows
@@ -128,7 +157,7 @@ watch(
       if (active != null) {
         const entry = terminals.get(active);
         if (entry && !entry.el) {
-          connectTerminal(active);
+          connectTerminal(active, focusOnConnect);
         }
       }
     });
@@ -136,10 +165,12 @@ watch(
   { deep: true },
 );
 
-// When active tab changes: connect if needed, then refit
-watch(activeWindowIndex, (index) => {
-  if (index == null) return;
+// Focus after both the outer pane tab and the tmux window are visible.
+watch([() => props.isActive, () => props.isFocused, activeWindowIndex], ([isActive, , index], [, , previousIndex]) => {
+  for (const entry of terminals.values()) entry.instance.cancelFocus();
+  if (!isActive || index == null) return;
   nextTick(() => {
+    if (!props.isActive || index !== activeWindowIndex.value) return;
     const entry = terminals.get(index);
     if (!entry) return;
     if (!entry.el) {
@@ -148,6 +179,13 @@ watch(activeWindowIndex, (index) => {
     } else {
       // Already connected — just refit for the now-visible element
       entry.instance.fitTerminal();
+      if (!props.isFocused) return;
+      // Focusing a split group by clicking a tmux input must keep that input
+      // focused. Switching windows (including creation) still focuses xterm.
+      const focused = entry.el.ownerDocument.activeElement;
+      if (index === previousIndex && focused instanceof HTMLInputElement &&
+        focused.closest('.tmux-tab-bar') === terminalsContainer.value?.previousElementSibling) return;
+      entry.instance.focusTerminal();
     }
   });
 });
@@ -180,7 +218,7 @@ onUnmounted(() => {
       :windows="windows"
       :active-window-index="activeWindowIndex"
       :default-window-index="defaultWindowIndex"
-      @activate="activateWindow"
+      @activate="handleActivate"
       @close="closeWindow"
       @create="handleCreate"
       @rename="onRename"
