@@ -8,7 +8,6 @@ interface TerminalState {
   fitAddon: FitAddon;
   ws: WebSocket;
   containerEl: HTMLElement;
-  eventCleanup: () => void;
   writeBatch: (Uint8Array | string)[];
   writeRafId: number | null;
 }
@@ -59,6 +58,7 @@ export function useTerminal() {
     }
   });
   let fitTimer: ReturnType<typeof setTimeout> | null = null;
+  let restoreFocus = false;
 
   function openTerminal(
     containerId: string,
@@ -76,6 +76,8 @@ export function useTerminal() {
     }
 
     closeTerminal();
+    const shouldRestoreFocus = restoreFocus;
+    restoreFocus = false;
 
     const term = new TerminalClass({
       theme: getTheme(),
@@ -99,26 +101,6 @@ export function useTerminal() {
     term.open(containerEl);
     fitAddon.fit();
 
-    // Force xterm.js to use native text selection for click/drag.
-    // xterm.js's shouldForceSelection() checks altKey+macOptionClickForcesSelection
-    // on Mac, or shiftKey on other platforms. We override the relevant modifier
-    // key on pointer/mouse events so xterm.js handles selection locally instead
-    // of forwarding to tmux. Wheel events are unaffected.
-    const isMac = /mac/i.test(navigator.platform);
-    const forceSelectionKey = isMac ? 'altKey' : 'shiftKey';
-    const overrideKey = (e: Event) => {
-      Object.defineProperty(e, forceSelectionKey, { value: true });
-    };
-    const eventTypes = ['pointerdown', 'pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup'] as const;
-    for (const type of eventTypes) {
-      containerEl.addEventListener(type, overrideKey, { capture: true });
-    }
-    const eventCleanup = () => {
-      for (const type of eventTypes) {
-        containerEl.removeEventListener(type, overrideKey, { capture: true });
-      }
-    };
-
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${location.host}/ws/terminal/${containerId}/${windowIndex}`;
     const ws = new WebSocket(wsUrl);
@@ -133,6 +115,7 @@ export function useTerminal() {
       // Wait for the initial tmux screen redraw to finish, then refit,
       // scroll to bottom, and reveal the terminal in its final state.
       setTimeout(() => {
+        if (activeTerminal.value?.term !== term) return;
         fitAddon.fit();
         const dims2 = fitAddon.proposeDimensions();
         if (dims2 && dims2.cols > 0 && dims2.rows > 0 && ws.readyState === WebSocket.OPEN) {
@@ -140,6 +123,11 @@ export function useTerminal() {
         }
         term.scrollToBottom();
         containerEl.style.visibility = '';
+        // Reconnecting a focused terminal removes its textarea from the DOM.
+        // Restore keyboard input unless the user has focused another control.
+        if (shouldRestoreFocus && containerEl.ownerDocument.activeElement === containerEl.ownerDocument.body) {
+          term.focus();
+        }
       }, 200);
     };
 
@@ -172,33 +160,42 @@ export function useTerminal() {
       term.write('\r\n\x1b[31m[Connection closed]\x1b[0m\r\n');
     };
 
-    // Shift+Enter → send CSI u encoded Shift+Enter so agents (Claude Code,
-    // Codex, etc.) can distinguish it from plain Enter and insert a newline.
-    // tmux extended-keys (csi-u format) passes this through to the application.
     term.attachCustomKeyEventHandler((event) => {
+      // Let xterm.js clear its keyboard state when the key is released.
+      if (event.type === 'keyup' || event.isComposing) return true;
+      let data: string;
       if (event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
-        if (event.type === 'keydown' && ws.readyState === WebSocket.OPEN) {
-          ws.send('\x1b[13;2u');
-        }
-        return false;
+        // CSI u lets agents distinguish Shift+Enter from Enter.
+        data = '\x1b[13;2u';
+      } else if ((event.key === 'Escape' || event.code === 'Escape') &&
+        !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        // tmux requires an explicit modifier (1 = none) to decode CSI u.
+        data = '\x1b[27;1u';
+      } else if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && /^Key[A-Z]$/.test(event.code)) {
+        // Physical keys keep terminal Ctrl shortcuts working in RU and other
+        // layouts. CSI u also bypasses Docker's Ctrl+P, Ctrl+Q detach handling;
+        // tmux decodes it into the application's expected key format.
+        data = `\x1b[${event.code.charCodeAt(3) + 32};5u`;
+      } else {
+        return true;
       }
-      return true;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type === 'keydown' && ws.readyState === WebSocket.OPEN) {
+        term.input(data);
+      }
+      return false;
     });
 
-    // SGR mouse escape: \x1b[<button;col;row[Mm]
-    // Button >= 64 = scroll (wheel up/down) — forward to tmux for scrollback.
-    // Button < 64 = click/drag/motion — block so tmux doesn't move cursor.
-    const SGR_MOUSE_RE = /^\x1b\[<(\d+);\d+;\d+[Mm]$/;
-
+    // Forward mouse reports as well as keyboard input so TUIs can handle
+    // clicks. xterm.js retains local selection with Shift (Option on macOS).
     term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
-        const m = data.match(SGR_MOUSE_RE);
-        if (m && parseInt(m[1]!, 10) < 64) return;
         ws.send(data);
       }
     });
 
-    activeTerminal.value = { containerId, windowIndex, term, fitAddon, ws, containerEl, eventCleanup, writeBatch, writeRafId };
+    activeTerminal.value = { containerId, windowIndex, term, fitAddon, ws, containerEl, writeBatch, writeRafId };
   }
 
   function fitTerminal(immediate = false) {
@@ -226,8 +223,8 @@ export function useTerminal() {
   function closeTerminal() {
     const t = activeTerminal.value;
     if (!t) return;
+    restoreFocus = t.term.textarea === t.containerEl.ownerDocument.activeElement;
     if (t.writeRafId !== null) cancelAnimationFrame(t.writeRafId);
-    t.eventCleanup();
     t.ws?.close();
     t.term?.dispose();
     activeTerminal.value = null;
@@ -235,6 +232,7 @@ export function useTerminal() {
 
   function destroy() {
     closeTerminal();
+    restoreFocus = false;
     stopColorWatch();
     if (fitTimer) clearTimeout(fitTimer);
   }
