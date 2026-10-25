@@ -270,6 +270,8 @@ export interface AgentUsageInfo {
   agentId: string;
   displayName: string;
   authType: AgentAuthType;
+  /** Saved provider credentials; independent of quota availability and env keys. */
+  connected?: boolean;
   usageAvailable: boolean;
   windows: UsageWindow[];
   planType?: string;
@@ -314,6 +316,9 @@ export interface CredentialInfo {
   agentId: string;
   fileName: string;
   configured: boolean;
+  /** Zen authentication, including the account API-key env var. `configured`
+   * still describes saved files, so Reset never targets an environment key. */
+  zenAuthType?: 'oauth' | 'api-key' | 'none';
 }
 
 /** A single env var the user wants injected into every worker they own, keyed by
@@ -348,6 +353,7 @@ export const PREDEFINED_ENV_VAR_KEYS = [
   'CLAUDE_CODE_OAUTH_TOKEN',
   'OPENAI_API_KEY',
   'GEMINI_API_KEY',
+  'OPENCODE_ZEN_API_KEY',
 ] as const;
 
 /** The user's SSH public key(s) — NOT an env var. Stored only in

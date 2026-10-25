@@ -26,8 +26,9 @@ COPY variants/ /opt/test-stack/variants/
 # Mock self-managed GitLab served by the stack's gitlab-mock service.
 COPY gitlab-mock/ /opt/test-stack/gitlab-mock/
 
-# Test runner entrypoint — boots dockerd, builds images, brings up the
-# inner stack, runs playwright with passthrough args, tears down on exit.
+# Test runner entrypoint — boots dockerd, builds images, runs unit tests,
+# brings up the inner stack, runs playwright with passthrough
+# args, tears down on exit.
 COPY test-entrypoint.sh /usr/local/bin/test-entrypoint.sh
 RUN chmod +x /usr/local/bin/test-entrypoint.sh
 

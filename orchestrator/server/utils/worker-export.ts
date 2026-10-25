@@ -1,10 +1,11 @@
 import { createGzip } from 'node:zlib';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { stat, mkdir, writeFile, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { stat, mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Readable } from 'node:stream';
 import * as tar from 'tar-stream';
+import Database from 'better-sqlite3';
 import type { Environment } from './environments';
 import type { PortMapping } from './port-mapping-store';
 import type { DomainMapping } from './domain-mapping-store';
@@ -34,11 +35,11 @@ export const RESTORE_AGENTS_PARENT = '/home/agent';
  * `/home/agent/.agent-data/.claude/.credentials.json` → `.claude/.credentials.json`.
  * The export tars `/home/agent/.agent-data`, so tar entries are prefixed with
  * the `.agent-data/` basename and these suffixes match via `endsWith`. */
-export const CREDENTIAL_EXCLUDE_SUFFIXES = AGENT_CREDENTIAL_MAPPINGS.map((m) =>
+export const CREDENTIAL_EXCLUDE_SUFFIXES = [...AGENT_CREDENTIAL_MAPPINGS.map((m) =>
   m.containerPath.startsWith(`${EXPORT_AGENTS_PATH}/`)
     ? m.containerPath.slice(EXPORT_AGENTS_PATH.length + 1)
     : m.containerPath,
-);
+), 'opencode/state/service.json', 'opencode/state/agentor-credential-sync.json'];
 
 /** File names inside the outer bundle tar. */
 export const BUNDLE_FILES = {
@@ -90,8 +91,29 @@ export async function writeFilteredAgentsGz(
 ): Promise<number> {
   const extract = tar.extract();
   const pack = tar.pack();
+  const sqliteDir = await mkdtemp(join(dirname(dest), 'opencode-export-'));
+  let sqliteHeader: tar.Headers | undefined;
 
   extract.on('entry', (header, stream, next) => {
+    // OpenCode logs CLI arguments, which can contain API keys passed to auth
+    // or its generic API command. Logs are diagnostic data, not session history.
+    if (/(?:^|\/)opencode\/data\/log(?:\/|$)/.test(header.name)) {
+      stream.on('end', next);
+      stream.resume();
+      return;
+    }
+    const sqlite = /(?:^|\/)opencode\/data\/(opencode\.db(?:-wal|-shm)?)$/.exec(header.name);
+    if (sqlite) {
+      if (sqlite[1] === 'opencode.db') sqliteHeader = header;
+      if (sqlite[1] === 'opencode.db-shm') {
+        stream.on('end', next);
+        stream.resume();
+      } else {
+        pipeline(stream, createWriteStream(join(sqliteDir, sqlite[1]!)))
+          .then(() => next(), error => extract.destroy(error));
+      }
+      return;
+    }
     if (excludeSuffixes.some((s) => header.name.endsWith(s))) {
       stream.on('end', next);
       stream.resume();
@@ -100,15 +122,36 @@ export async function writeFilteredAgentsGz(
     const entry = pack.entry(header, next);
     stream.pipe(entry);
   });
-  extract.on('finish', () => pack.finalize());
+  extract.on('finish', () => {
+    (async () => {
+      if (sqliteHeader) {
+        const database = new Database(join(sqliteDir, 'opencode.db'));
+        const cleanPath = join(sqliteDir, 'clean.db');
+        try {
+          if (database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'credential'").get()) {
+            database.pragma('secure_delete = ON');
+            database.exec('DELETE FROM credential');
+          }
+          // A fresh database omits deleted secrets and WAL pages while retaining
+          // the worker's sessions, messages, and all other OpenCode state.
+          database.prepare('VACUUM INTO ?').run(cleanPath);
+        } finally { database.close(); }
+        const size = (await stat(cleanPath)).size;
+        await pipeline(createReadStream(cleanPath), pack.entry({ ...sqliteHeader, size }));
+      }
+      pack.finalize();
+    })().catch(error => pack.destroy(error));
+  });
   extract.on('error', (err) => pack.destroy(err));
 
   const writeDone = pipeline(pack, createGzip(), createWriteStream(dest));
   // Drive src → extract with pipeline (not a bare .pipe) so a src error tears
   // down extract → pack and rejects, instead of hanging forever waiting for an
   // 'end'/'finish' that never comes.
-  await Promise.all([pipeline(src, extract), writeDone]);
-  return (await stat(dest)).size;
+  try {
+    await Promise.all([pipeline(src, extract), writeDone]);
+    return (await stat(dest)).size;
+  } finally { await rm(sqliteDir, { recursive: true, force: true }); }
 }
 
 /** Build the outer bundle tar as a readable stream, sourcing each entry from a

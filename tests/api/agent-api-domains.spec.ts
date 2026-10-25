@@ -30,6 +30,12 @@ test.describe('Agent API Domains', () => {
     expect(body).toContain('api.anthropic.com');
   });
 
+  test('includes Zen inference and the OpenCode model catalog', async ({ request }) => {
+    const { body } = await new ApiClient(request).listAgentApiDomains();
+    expect(body).toContain('opencode.ai');
+    expect(body).toContain('models.dev');
+  });
+
   test('no duplicates in the array', async ({ request }) => {
     const api = new ApiClient(request);
     const { body } = await api.listAgentApiDomains();

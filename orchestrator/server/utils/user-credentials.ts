@@ -1,11 +1,13 @@
 import { chown, readFile, stat, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { join } from 'node:path';
 import type { StorageManager } from './storage';
 import type { CredentialInfo } from '../../shared/types';
 
 /** Files expected to exist in each user's credentials directory. `fileName` is
  * the per-user file on the host; `containerPath` is where the file is bind-mounted
- * inside the worker — the exact path each CLI reads and writes. The paths nest
+ * inside the worker — read by the CLI or its Agentor credential adapter. The paths nest
  * inside the agent-data volume, so the orchestrator pre-creates the mountpoint
  * files on the host (see `StorageManager.ensureWorkerDirs`) to keep Docker
  * Desktop's virtiofs happy with the nested bind. Writes by the CLI land on the
@@ -20,13 +22,15 @@ export const AGENT_CREDENTIAL_MAPPINGS: AgentCredentialMapping[] = [
   { agentId: 'claude', fileName: 'claude.json', containerPath: '/home/agent/.agent-data/.claude/.credentials.json' },
   { agentId: 'codex', fileName: 'codex.json', containerPath: '/home/agent/.agent-data/.codex/auth.json' },
   { agentId: 'gemini', fileName: 'gemini.json', containerPath: '/home/agent/.agent-data/.gemini/oauth_creds.json' },
+  { agentId: 'opencode', fileName: 'opencode.json', containerPath: '/home/agent/.agent-data/opencode/data/auth.json' },
 ];
 
 const AGENT_UID = 1000;
 const AGENT_GID = 1000;
+const execFileAsync = promisify(execFile);
 
-/** Manages per-user OAuth credential files stored under
- * `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json` and
+/** Manages per-user credential files stored under
+ * `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini,opencode}.json` and
  * bind-mounted into that user's workers. */
 export class UserCredentialManager {
   private storage: StorageManager;
@@ -80,18 +84,46 @@ export class UserCredentialManager {
   async getStatusForUser(userId: string, fileName: string): Promise<boolean> {
     try {
       const content = await readFile(this.filePath(userId, fileName), 'utf-8');
+      // Agentor mirrors OpenCode 2 credentials from each worker's SQLite.
+      // Whitespace or malformed files must not show a connected account.
+      if (fileName === 'opencode.json') {
+        const providers: unknown = JSON.parse(content);
+        if (!providers || typeof providers !== 'object' || Array.isArray(providers)) return false;
+        const saved = (providers as { credentials?: { value: unknown }[] }).credentials;
+        const values = Array.isArray(saved) ? saved.map(entry => entry.value) : Object.values(providers);
+        return values.some((cred: unknown) => {
+          if (!cred || typeof cred !== 'object') return false;
+          const value = cred as Record<string, unknown>;
+          return ((value.type === 'api' || value.type === 'key') && typeof value.key === 'string' && value.key.length > 0) ||
+            (value.type === 'oauth' && typeof value.access === 'string' && value.access.length > 0) ||
+            (value.type === 'wellknown' && typeof value.token === 'string' && value.token.length > 0);
+        });
+      }
       return content.trim().length > 2;
     } catch {
       return false;
     }
   }
 
-  /** Reset (truncate to `{}`) a single credential file. */
+  /** Reset one agent; OpenCode records a new generation for offline workers. */
   async reset(userId: string, fileName: string): Promise<void> {
     const mapping = AGENT_CREDENTIAL_MAPPINGS.find((m) => m.fileName === fileName);
     if (!mapping) throw new Error(`Unknown credential file: ${fileName}`);
     await this.ensureUserDir(userId);
-    await writeFile(this.filePath(userId, fileName), '{}', { mode: 0o600 });
+    if (fileName === 'opencode.json') {
+      // Serialize Reset with the Console plugin's cross-worker token refresh.
+      // Keep the inode: worker auth.json files are nested bind mounts.
+      const resetScript = `
+        const fs = require('node:fs');
+        const { randomUUID } = require('node:crypto');
+        fs.writeFileSync(process.argv[1], JSON.stringify({credentials: [], sync: {
+          version: 1, resetID: randomUUID(), deleted: []
+        }}), {mode: 0o600});`;
+      await execFileAsync('flock', ['-x', this.filePath(userId, fileName), process.execPath,
+        '--input-type=commonjs', '-e', resetScript, this.filePath(userId, fileName)], { timeout: 25_000 });
+    } else {
+      await writeFile(this.filePath(userId, fileName), '{}', { mode: 0o600 });
+    }
     try {
       await chown(this.filePath(userId, fileName), AGENT_UID, AGENT_GID);
     } catch {
@@ -101,14 +133,29 @@ export class UserCredentialManager {
   }
 
   /** Return the per-user status for every known agent credential mapping. */
-  async statusList(userId: string): Promise<CredentialInfo[]> {
+  async statusList(userId: string, zenApiKeyConfigured = false): Promise<CredentialInfo[]> {
     return Promise.all(
       AGENT_CREDENTIAL_MAPPINGS.map(async (m) => ({
         agentId: m.agentId,
         fileName: m.fileName,
         configured: await this.getStatusForUser(userId, m.fileName),
+        ...(m.agentId === 'opencode' && { zenAuthType: await this.getZenAuthType(userId, zenApiKeyConfigured) }),
       })),
     );
+  }
+
+  async getZenAuthType(userId: string, apiKeyConfigured = false): Promise<'oauth' | 'api-key' | 'none'> {
+    try {
+      const saved = JSON.parse(await readFile(this.filePath(userId, 'opencode.json'), 'utf8'));
+      const credentials = saved?.credentials;
+      const zen = Array.isArray(credentials)
+        ? (credentials.find(entry => entry.integrationID === 'zen' && entry.active)
+          ?? credentials.find(entry => entry.integrationID === 'zen'))?.value
+        : saved?.zen;
+      if (zen?.type === 'oauth' && typeof zen.access === 'string' && zen.access) return 'oauth';
+      if (['api', 'key'].includes(zen?.type) && typeof zen.key === 'string' && zen.key) return 'api-key';
+    } catch { /* Empty or malformed credentials do not represent a login. */ }
+    return apiKeyConfigured ? 'api-key' : 'none';
   }
 
   /** Remove the user's entire data directory (credentials + anything else).

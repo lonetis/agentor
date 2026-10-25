@@ -42,6 +42,7 @@ export interface AgentCredentials {
   claude: boolean;
   codex: boolean;
   gemini: boolean;
+  opencode: boolean;
 }
 
 /**
@@ -57,20 +58,15 @@ export async function checkAgentCredentials(request: APIRequestContext): Promise
     api.listAccountAgentCredentials(),
   ]);
 
-  const env = envVars as {
-    githubToken?: string;
-    anthropicApiKey?: string;
-    claudeCodeOauthToken?: string;
-    openaiApiKey?: string;
-    geminiApiKey?: string;
-  };
+  const env = new Map((envVars.envVars ?? []).map((entry: { key: string; value: string }) => [entry.key, entry.value]));
   const credFiles = creds as { agentId: string; configured: boolean }[];
   const hasCred = (agentId: string) => credFiles.find(c => c.agentId === agentId)?.configured ?? false;
 
   return {
-    claude: !!env.anthropicApiKey || !!env.claudeCodeOauthToken || hasCred('claude'),
-    codex: !!env.openaiApiKey || hasCred('codex'),
-    gemini: !!env.geminiApiKey || hasCred('gemini'),
+    claude: !!env.get('ANTHROPIC_API_KEY') || !!env.get('CLAUDE_CODE_OAUTH_TOKEN') || hasCred('claude'),
+    codex: !!env.get('OPENAI_API_KEY') || hasCred('codex'),
+    gemini: !!env.get('GEMINI_API_KEY') || hasCred('gemini'),
+    opencode: !!env.get('OPENCODE_ZEN_API_KEY') || hasCred('opencode'),
   };
 }
 

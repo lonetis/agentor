@@ -63,15 +63,15 @@ test.describe('Account agent credentials (per-user) API', () => {
     }
   });
 
-  test('returns 3 entries (claude, codex, gemini), all not configured for a fresh user', async () => {
+  test('returns 4 entries, all not configured for a fresh user', async () => {
     const u = await createUserAndSignIn('cred-fresh');
     try {
       const { status, body } = await u.api.listAccountAgentCredentials();
       expect(status).toBe(200);
       expect(Array.isArray(body)).toBe(true);
-      expect(body.length).toBe(3);
+      expect(body.length).toBe(4);
       const ids = body.map((c: { agentId: string }) => c.agentId).sort();
-      expect(ids).toEqual(['claude', 'codex', 'gemini']);
+      expect(ids).toEqual(['claude', 'codex', 'gemini', 'opencode']);
       for (const c of body) {
         expect(typeof c.fileName).toBe('string');
         expect(c.fileName.length).toBeGreaterThan(0);
@@ -115,8 +115,8 @@ test.describe('Account agent credentials (per-user) API', () => {
       const aList = await a.api.listAccountAgentCredentials();
       const bList = await b.api.listAccountAgentCredentials();
       // Both lists have the same shape, both unconfigured for fresh users.
-      expect(aList.body.length).toBe(3);
-      expect(bList.body.length).toBe(3);
+      expect(aList.body.length).toBe(4);
+      expect(bList.body.length).toBe(4);
       for (const c of aList.body) expect(c.configured).toBe(false);
       for (const c of bList.body) expect(c.configured).toBe(false);
     } finally {

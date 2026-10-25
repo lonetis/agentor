@@ -1,15 +1,15 @@
 defineRouteMeta({
   openAPI: {
     tags: ['Account'],
-    summary: "Reset an agent's OAuth credential for the current user",
-    description: 'Clears the stored OAuth credential file for the given agent. The file is replaced with `{}` so the next time the user runs the agent CLI inside a worker they will be prompted to log in fresh.',
+    summary: "Reset an agent's credentials for the current user",
+    description: 'Clears the stored credentials for the given agent. Account API-key environment variables are unaffected.',
     operationId: 'resetAccountAgentCredential',
     parameters: [
       {
         in: 'path',
         name: 'agentId',
         required: true,
-        schema: { type: 'string', enum: ['claude', 'codex', 'gemini'] },
+        schema: { type: 'string', enum: ['claude', 'codex', 'gemini', 'opencode'] },
       },
     ],
     responses: {

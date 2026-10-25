@@ -124,6 +124,21 @@ if [ -d "$AGENT_DATA" ]; then
     fi
     ln -sfn "$AGENT_DATA/.claude.json" /home/agent/.claude.json
 
+    # OpenCode separates config, sessions/auth, and UI state into XDG paths.
+    # Link only its own subdirectories; other tools also use .config/.local.
+    for pair in 'config:.config' 'data:.local/share' 'state:.local/state'; do
+        kind="${pair%%:*}"
+        parent="/home/agent/${pair#*:}"
+        persistent="$AGENT_DATA/opencode/$kind"
+        target="$parent/opencode"
+        mkdir -p "$persistent" "$parent"
+        if [ -e "$target" ] && [ ! -L "$target" ]; then
+            cp -an "$target/." "$persistent/"
+            rm -rf "$target"
+        fi
+        ln -sfn "$persistent" "$target"
+    done
+
     _log "Agent data: symlinks created"
 fi
 

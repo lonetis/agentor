@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { PREDEFINED_ENV_VAR_KEYS } from '../../shared/types';
-import type { UserSshKey } from '../../shared/types';
+import type { CredentialInfo, UserSshKey } from '../../shared/types';
 
 const open = defineModel<boolean>('open', { default: false });
 
@@ -62,7 +62,16 @@ const envVisible = reactive<Record<string, boolean>>({});
 const { envVars: envVarsRef, credentials: agentCreds, fetchAll: fetchEnvAndCreds, save: saveEnvVars, resetCredential } = useUserEnvVars();
 const credResetConfirmId = ref<string | null>(null);
 const credResetError = ref('');
-const credResetSuccess = ref('');
+
+function credentialTitle(cred: CredentialInfo): string | undefined {
+  if (cred.agentId !== 'opencode') return undefined;
+  if (!cred.configured) {
+    return cred.zenAuthType === 'api-key' ? 'No saved credentials. Zen API key configured separately.' : 'No saved credentials';
+  }
+  if (cred.zenAuthType === 'oauth') return 'Zen - Console account (OAuth)';
+  if (cred.zenAuthType === 'api-key') return 'Zen - API key configured';
+  return 'Other provider credentials saved';
+}
 
 // Credential summary (drives the UI: do we have a password? do we have passkeys?)
 const credentials = ref<CredentialSummary>({ hasPassword: true, passkeyCount: 0 });
@@ -90,7 +99,6 @@ function resetMessages() {
   sshError.value = '';
   sshSuccess.value = '';
   credResetError.value = '';
-  credResetSuccess.value = '';
 }
 
 async function refreshCredentialSummary() {
@@ -249,14 +257,12 @@ async function handleSshSave() {
 
 async function handleResetCredential(agentId: string) {
   credResetError.value = '';
-  credResetSuccess.value = '';
   if (credResetConfirmId.value !== agentId) {
     credResetConfirmId.value = agentId;
     return;
   }
   try {
     await resetCredential(agentId);
-    credResetSuccess.value = `${agentId} credential reset — log in again inside a worker`;
     credResetConfirmId.value = null;
   } catch (err: any) {
     credResetError.value = err?.data?.statusMessage || err?.message || 'Failed to reset credential';
@@ -706,10 +712,10 @@ async function handleDeletePasskey(p: PasskeyRow) {
 
         <div class="border-t border-gray-200 dark:border-gray-800"></div>
 
-        <!-- Agent OAuth credentials — read-only status + reset per agent.
+        <!-- Saved agent credentials — read-only status + reset per agent.
              Login happens inside a worker by running the agent CLI. -->
         <section class="space-y-3" data-testid="account-agent-credentials">
-          <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">Agent OAuth credentials</h3>
+          <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">Agent credentials</h3>
           <p class="text-xs text-gray-500 dark:text-gray-400">
             Log in once inside any of your workers. Tokens are stored per user and shared across all of your workers.
           </p>
@@ -727,10 +733,13 @@ async function handleDeletePasskey(p: PasskeyRow) {
                 :class="c.configured ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"
               />
               <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium text-gray-900 dark:text-gray-100 capitalize">{{ c.agentId }}</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">
+                <div class="text-sm font-medium text-gray-900 dark:text-gray-100 capitalize">{{ c.agentId === 'opencode' ? 'OpenCode' : c.agentId }}</div>
+                <span class="text-xs text-gray-500 dark:text-gray-400" :title="credentialTitle(c)">
                   {{ c.configured ? 'Logged in' : 'Not logged in' }}
-                </div>
+                </span>
+                <span v-if="c.agentId === 'opencode'" class="text-xs text-gray-500 dark:text-gray-400">
+                  • Use /connect → OpenCode Console (Zen)
+                </span>
               </div>
               <div class="flex gap-1">
                 <UButton
@@ -755,7 +764,6 @@ async function handleDeletePasskey(p: PasskeyRow) {
             </div>
           </div>
           <p v-if="credResetError" class="text-sm text-red-600 dark:text-red-400">{{ credResetError }}</p>
-          <p v-if="credResetSuccess" class="text-sm text-emerald-600 dark:text-emerald-400">{{ credResetSuccess }}</p>
         </section>
 
         <McpAccessSection :active="open" />

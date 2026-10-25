@@ -3,6 +3,15 @@ import { goToDashboard, openCreateWorkerModal } from '../helpers/ui-helpers';
 
 test.describe('Init Preset Selector', () => {
 
+  test('selects the OpenCode preset and fills its startup command', async ({ page }) => {
+    await goToDashboard(page);
+    await openCreateWorkerModal(page);
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('combobox').last().click();
+    await page.getByRole('option', { name: 'opencode', exact: true }).click();
+    await expect(dialog.locator('textarea')).toHaveValue('#!/bin/bash\nopencode --auto');
+  });
+
   test('shows None as default preset selection', async ({ page }) => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);

@@ -49,11 +49,20 @@ function fetchedAgo(iso: string | undefined): string {
 }
 
 function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
+  if (agent.connected !== undefined) {
+    return agent.connected
+      ? { label: 'Logged in', class: 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' }
+      : { label: 'not configured', class: 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400' };
+  }
   switch (agent.authType) {
     case 'oauth': return { label: 'OAuth', class: 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' };
-    case 'api-key': return { label: 'API key', class: 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' };
     default: return { label: 'not configured', class: 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400' };
   }
+}
+
+function connectionTitle(agent: AgentUsageInfo): string | undefined {
+  if (agent.agentId !== 'zen' || !agent.connected) return undefined;
+  return agent.authType === 'oauth' ? 'Zen - Console account (OAuth)' : 'Zen - API key configured';
 }
 </script>
 
@@ -81,6 +90,8 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
             {{ agent.planType }}
           </span>
           <span
+            v-if="agent.connected !== undefined || agent.authType === 'oauth' || agent.authType === 'none'"
+            :title="connectionTitle(agent)"
             class="ml-auto px-1 py-0.5 text-[9px] font-medium rounded"
             :class="authBadge(agent).class"
           >
@@ -114,11 +125,11 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
         </div>
 
         <!-- No usage data -->
-        <div v-else-if="agent.authType === 'api-key'" class="px-3 py-2.5">
-          <span class="text-[10px] text-gray-400 dark:text-gray-500 italic">No usage data for API key auth</span>
-        </div>
-        <div v-else-if="agent.authType === 'none'" class="px-3 py-2.5">
+        <div v-else-if="agent.connected === false || agent.authType === 'none'" class="px-3 py-2.5">
           <span class="text-[10px] text-gray-400 dark:text-gray-500 italic">Not configured</span>
+        </div>
+        <div v-else class="px-3 py-2.5">
+          <span class="text-[10px] text-gray-400 dark:text-gray-500 italic">Not available</span>
         </div>
 
         <!-- Error -->
