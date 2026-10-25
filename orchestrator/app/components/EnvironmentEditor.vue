@@ -38,13 +38,13 @@ const { data: allInstructions } = useFetch<InstructionInfo[]>('/api/instructions
 const allCapabilitiesSelected = computed({
   get: () => form.enabledCapabilityIds === null,
   set: (v: boolean) => {
-    form.enabledCapabilityIds = v ? null : allCapabilities.value.map((s) => s.id);
+    form.enabledCapabilityIds = v ? null : [];
   },
 });
 const allInstructionsSelected = computed({
   get: () => form.enabledInstructionIds === null,
   set: (v: boolean) => {
-    form.enabledInstructionIds = v ? null : allInstructions.value.map((i) => i.id);
+    form.enabledInstructionIds = v ? null : [];
   },
 });
 
@@ -80,8 +80,7 @@ function toggleInstruction(id: string) {
   }
 }
 
-// null = every provider (also ones configured later). Unlike the capability
-// list, unchecking "Select All" means none — the setting for untrusted code.
+// null = every provider (also ones configured later); [] = none.
 const allGitProvidersSelected = computed({
   get: () => form.enabledGitProviderIds === null,
   set: (v: boolean) => {

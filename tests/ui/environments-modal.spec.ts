@@ -173,6 +173,68 @@ test.describe('Environments Modal', () => {
     await expect(dialog.getByText('Instructions').first()).toBeVisible({ timeout: 10_000 });
   });
 
+  for (const { sectionName, field } of [
+    { sectionName: 'Capabilities', field: 'enabledCapabilityIds' },
+    { sectionName: 'Instructions', field: 'enabledInstructionIds' },
+  ] as const) {
+    test(`${sectionName} Select All deselects every item and persists both states`, async ({ page, request }) => {
+      const api = new ApiClient(request);
+      const envName = `UIEnvSelectAll-${sectionName}-${Date.now()}`;
+      await goToDashboard(page);
+      await openEnvironmentsModal(page);
+      const dialog = page.locator('[role="dialog"]');
+      await dialog.getByRole('button', { name: 'New', exact: true }).click();
+
+      const section = dialog.locator('fieldset').filter({ has: page.getByText(sectionName, { exact: true }) });
+      const selectAll = section.locator('label').filter({ hasText: 'Select All' }).getByRole('checkbox');
+      const items = section.locator('label').filter({ hasNotText: 'Select All' }).getByRole('checkbox');
+      await expect(selectAll).toBeChecked();
+      const itemCount = await items.count();
+      expect(itemCount).toBeGreaterThan(0);
+      await expect(items.and(page.locator('[aria-checked="true"]'))).toHaveCount(itemCount);
+
+      try {
+        await selectAll.click();
+        await expect(selectAll).not.toBeChecked();
+        await expect(items.and(page.locator('[aria-checked="false"]'))).toHaveCount(itemCount);
+        await dialog.locator('input[placeholder="My environment"]').fill(envName);
+        await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+        await expect.poll(async () => {
+          const { body: envs } = await api.listEnvironments();
+          return envs.find((e: { name: string }) => e.name === envName)?.[field];
+        }).toEqual([]);
+
+        const envRow = dialog.locator('.rounded-lg').filter({ hasText: envName });
+        await envRow.getByRole('button', { name: 'Edit', exact: true }).click();
+        await expect(selectAll).not.toBeChecked();
+        await expect(items.and(page.locator('[aria-checked="false"]'))).toHaveCount(itemCount);
+
+        // Selecting a single item from the empty list keeps Select All off.
+        await items.first().click();
+        await expect(items.first()).toBeChecked();
+        if (itemCount > 1) await expect(selectAll).not.toBeChecked();
+        await items.first().click();
+        await expect(items.first()).not.toBeChecked();
+
+        await selectAll.click();
+        await expect(selectAll).toBeChecked();
+        await expect(items.and(page.locator('[aria-checked="true"]'))).toHaveCount(itemCount);
+        await dialog.getByRole('button', { name: 'Update', exact: true }).click();
+        await expect.poll(async () => {
+          const { body: envs } = await api.listEnvironments();
+          return envs.find((e: { name: string }) => e.name === envName)?.[field];
+        }).toBeNull();
+        await envRow.getByRole('button', { name: 'Edit', exact: true }).click();
+        await expect(selectAll).toBeChecked();
+        await expect(items.and(page.locator('[aria-checked="true"]'))).toHaveCount(itemCount);
+      } finally {
+        const { body: envs } = await api.listEnvironments();
+        const created = envs.find((e: { name: string }) => e.name === envName);
+        if (created) await api.deleteEnvironment(created.id);
+      }
+    });
+  }
+
   test('editor has Environment Variables section', async ({ page }) => {
     await goToDashboard(page);
     await openEnvironmentsModal(page);
