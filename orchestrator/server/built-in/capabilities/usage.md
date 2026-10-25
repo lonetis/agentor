@@ -10,7 +10,7 @@ Use this skill when you need to check how much of your usage quota is remaining,
 
 ## How it works
 
-The orchestrator periodically polls usage APIs for all configured agents (Claude, Codex, Gemini) and exposes a unified endpoint. Usage data is only available for agents authenticated via OAuth (subscription accounts). API key-based agents show no usage data.
+The orchestrator periodically polls usage APIs for all configured agents (Claude, Codex, Antigravity) and exposes a unified endpoint. Usage data is only available for agents authenticated via OAuth (subscription accounts). API key-based agents show no usage data.
 
 ## Authentication
 
@@ -50,7 +50,7 @@ Returns a JSON object with per-agent usage information for the user who owns thi
 ```
 
 **What the fields mean:**
-- `agentId` — Which agent (claude, codex, gemini)
+- `agentId` — Which agent (claude, codex, antigravity)
 - `authType` — How the agent authenticates: `"oauth"` (subscription), `"api-key"`, or `"none"`
 - `usageAvailable` — Whether usage data could be retrieved. `false` for API key auth or when the token is expired
 - `lastFetchTime` — ISO 8601 timestamp of the last successful fetch for this agent

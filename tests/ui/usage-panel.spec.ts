@@ -13,7 +13,7 @@ test.describe('Usage Panel', () => {
     const aside = page.locator('aside');
     await expect(aside.getByText('Claude', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(aside.getByText('Codex', { exact: true })).toBeVisible();
-    await expect(aside.getByText('Gemini', { exact: true })).toBeVisible();
+    await expect(aside.getByText('Antigravity', { exact: true })).toBeVisible();
   });
 
   test('shows auth type labels', async ({ page }) => {
@@ -37,21 +37,21 @@ test.describe('Usage Panel', () => {
     await expect(aside.getByText('Claude', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
-  test('shows per-agent rows with Claude, Codex, and Gemini visible', async ({ page }) => {
+  test('shows per-agent rows with Claude, Codex, and Antigravity visible', async ({ page }) => {
     await goToDashboard(page);
     await selectSidebarTab(page, 'Usage');
     const aside = page.locator('aside');
     // Each agent should have its own row inside the usage panel
     const claude = aside.getByText('Claude', { exact: true });
     const codex = aside.getByText('Codex', { exact: true });
-    const gemini = aside.getByText('Gemini', { exact: true });
+    const antigravity = aside.getByText('Antigravity', { exact: true });
     await expect(claude).toBeVisible();
     await expect(codex).toBeVisible();
-    await expect(gemini).toBeVisible();
+    await expect(antigravity).toBeVisible();
     // Verify all three are distinct elements
     expect(await claude.count()).toBe(1);
     expect(await codex.count()).toBe(1);
-    expect(await gemini.count()).toBe(1);
+    expect(await antigravity.count()).toBe(1);
   });
 
   test('shows an auth badge element per agent', async ({ page }) => {
@@ -138,7 +138,7 @@ test.describe('Usage Panel', () => {
     // Agent names should still be visible after refresh
     await expect(aside.getByText('Claude', { exact: true })).toBeVisible();
     await expect(aside.getByText('Codex', { exact: true })).toBeVisible();
-    await expect(aside.getByText('Gemini', { exact: true })).toBeVisible();
+    await expect(aside.getByText('Antigravity', { exact: true })).toBeVisible();
 
     // No unexpected console errors related to usage
     const usageErrors = errors.filter(e => e.toLowerCase().includes('usage'));

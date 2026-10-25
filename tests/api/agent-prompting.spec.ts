@@ -69,10 +69,12 @@ const AGENT_CONFIGS: AgentTestConfig[] = [
     ],
   },
   {
-    id: 'gemini',
-    displayName: 'Gemini',
-    // Gemini TUI shows "Type your message" prompt after startup
-    readyPattern: /Type your message/i,
+    id: 'antigravity',
+    displayName: 'Antigravity',
+    // agy's status line shows "? for shortcuts" once the prompt is ready.
+    // The first launch shows onboarding (color scheme, Terms of Service)
+    // instead, which the account owner has to complete in a worker.
+    readyPattern: /\? for shortcuts/i,
     failPattern: /\$\s*$/m,
     prompt: 'What is 2+2? Reply with just the number.',
     responsePattern: /4/,

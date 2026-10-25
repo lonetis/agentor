@@ -22,7 +22,7 @@ defineRouteMeta({
         schemas: {
           CapabilityInput: {
             type: 'object',
-            description: 'Skill document installed into the agent CLIs (Claude, Codex, Gemini) of workers whose environment enables it. Agent Skills format: markdown with YAML frontmatter (`name`, `description`, optional `license`, `compatibility`, `metadata`, `allowed-tools`).',
+            description: 'Skill document installed into the agent CLIs (Claude, Codex, Antigravity) of workers whose environment enables it. Agent Skills format: markdown with YAML frontmatter (`name`, `description`, optional `license`, `compatibility`, `metadata`, `allowed-tools`).',
             properties: {
               name: { type: 'string', description: "Unique capability name (also the installed skill's directory name)" },
               content: { type: 'string', description: 'Skill markdown including the YAML frontmatter' },

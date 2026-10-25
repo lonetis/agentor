@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1513 tests** across 117 test files (~952 API + ~561 UI)
+- **~1514 tests** across 117 test files (~953 API + ~561 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -107,13 +107,13 @@ tests/
     ui-helpers.ts          # Page navigation and interaction helpers
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
     mcp.ts                 # MCP client over the real OAuth flow (MCP SDK) + hand-driven OAuth steps + tool-call helpers
-  api/                     # API endpoint tests (~952 tests across 70 files)
+  api/                     # API endpoint tests (~953 tests across 70 files)
   ui/                      # UI interaction tests (~561 tests across 47 files)
 ```
 
 ## Test Categories
 
-### API Tests (~952 tests, 70 files)
+### API Tests (~953 tests, 70 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -166,10 +166,10 @@ tests/
 | `usage.spec.ts` | 7 | Per-user usage: GET/POST require auth (401 unauth), refresh populates 3 agents for the caller, refresh-then-get returns the same list, agent shape after refresh, per-user isolation (user B's OAuth token doesn't show up in user A's status) |
 | `logs.spec.ts` | 36 | Log query response shape, entry fields, valid levels/sources, source/level/multi-level/search filtering, limit control/default/max clamping, newest-first ordering, ISO timestamps, combined filters, log-sources endpoint, container messages have no leading Docker timestamp (regression for the TTY \r split bug), orchestrator self-stdout captured with sourceId, until is exclusive (boundary entry not duplicated), backwards pagination via until walks contiguously without skipping, hasMore reports remaining matches, clear logs (serialized), clear idempotency |
 | `terminal-exec.spec.ts` | 14 | WebSocket connect, initial output, echo command, pwd /workspace, HOME /home/agent, exit codes, named tmux window, resize, concurrent window isolation, multiline output, whoami agent user, non-existent container, ws-* tmux session cleanup on disconnect, multiple connections cleanup |
-| `agent-prompting.spec.ts` | 6 | Agent CLI start + prompt response for Claude, Codex, Gemini (2 tests each, skipped without credentials) |
-| `agent-data-persistence.spec.ts` | 24 | Agent config symlinks, config file contents, MCP servers (playwright + chrome-devtools) for Claude/Codex/Gemini, persistence across restart/rebuild/archive, no-overwrite on restart/rebuild, exposeApis gates which built-in capability docs are written into the worker (port-mapping filtered out when `portMappings:false`; domain-mapping/usage/tmux present) |
+| `agent-prompting.spec.ts` | 6 | Agent CLI start + prompt response for Claude, Codex, Antigravity (2 tests each, skipped without credentials) |
+| `agent-data-persistence.spec.ts` | 25 | Agent config symlinks, config file contents (incl. Antigravity `trustedWorkspaces`, `mcp_config.json`, `GEMINI.md` + `config/skills`), MCP servers (playwright + chrome-devtools) for Claude/Codex/Antigravity, persistence across restart/rebuild/archive, no-overwrite on restart/rebuild, exposeApis gates which built-in capability docs are written into the worker (port-mapping filtered out when `portMappings:false`; domain-mapping/usage/tmux present) |
 | `git-identity.spec.ts` | 9 | Per-user git config (user.name/email **resolved live from the owner** via `getUserById`), WORKER env var contains the resolved gitName/gitEmail, no git wrapper at /usr/local/bin/git, identity correct across rebuild + archive/unarchive (re-resolved, not stored), **`ContainerInfo`/list do NOT expose gitName/gitEmail (normalization)** |
-| `mcp-servers-loaded.spec.ts` | 6 | MCP server verification: Claude config keys + commands via jq, Codex `mcp list` output + enabled status, Gemini config keys + commands via jq |
+| `mcp-servers-loaded.spec.ts` | 6 | MCP server verification: Claude config keys + commands via jq, Codex `mcp list` output + enabled status, Antigravity `agy mcp list` output + enabled status |
 | `worker-hostname.spec.ts` | 2 | In-container `hostname` equals the Docker short container id (no custom `Hostname` is set — NOT the worker UUID and NOT a friendly label); `containerName = agentor-worker-<id>` with no `userId` segment and no double `agentor-worker-` prefix. Regression for the container-name construction now that `id` is a server-minted UUID v4. |
 | `worker-self.spec.ts` | 13 | Worker-self routes (no session, identified by Docker source IP): `/api/worker-self/info` returns the calling worker's identity, hitting it from outside the docker network is 401, port mapping create/list/delete works from inside the worker, a `workerId` body field is ignored (caller IP wins), list filters out other workers' mappings, DELETE refuses other workers' mappings (403), duplicate-port create returns 409 (not 500), garbage-port delete is 400, port/domain-mapper + usage status shapes, and the **exposeApis gate** — a worker on an environment that disables a flag gets 403 from the corresponding worker-self route while an all-exposed env gets 200 |
 | `startup-worker-owner.spec.ts` | 1 | Restarts the orchestrator (needs `TEST_STACK_VARIANT=restart`, skipped otherwise): right after the restart, a worker's `/api/worker-self/info` already carries its owner's `userId`; no ownerless `users/workers.json` is written and the log has no `ENOTDIR` / orphan-sweeper cleanup |

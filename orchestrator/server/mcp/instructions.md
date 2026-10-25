@@ -1,6 +1,6 @@
 # Agentor MCP server
 
-Agentor is a self-hosted orchestrator for AI coding agents. It runs **workers**: isolated Docker containers (Ubuntu 24.04) with Claude Code, Codex and Gemini CLIs pre-installed, a persistent `/workspace`, a tmux session, a virtual desktop (Xvfb + Chromium), VS Code in the browser, and optional Docker-in-Docker. This MCP server gives you the same control over the platform as a human has in the Agentor web dashboard, acting as the user who authorized you. Admin users additionally get user management, logs, settings and image updates.
+Agentor is a self-hosted orchestrator for AI coding agents. It runs **workers**: isolated Docker containers (Ubuntu 24.04) with Claude Code, Codex and Antigravity CLIs pre-installed, a persistent `/workspace`, a tmux session, a virtual desktop (Xvfb + Chromium), VS Code in the browser, and optional Docker-in-Docker. This MCP server gives you the same control over the platform as a human has in the Agentor web dashboard, acting as the user who authorized you. Admin users additionally get user management, logs, settings and image updates.
 
 Tools map 1:1 onto Agentor's REST API. In tool names, **container = worker**. Every worker-scoped tool takes the worker's UUID as `id` (from `list_containers` / `create_container`), never its display name.
 
@@ -10,7 +10,7 @@ Tools map 1:1 onto Agentor's REST API. In tool names, **container = worker**. Ev
 - **Environment** — reusable worker configuration: CPU/memory limits, network policy (`full`, `package-managers`, `custom` allow-list, `block`, `block-all`), Docker-in-Docker, custom env vars (`KEY=VALUE` lines), a setup script run before the agent starts, which capabilities/instructions are installed, which worker-self APIs are exposed, and which git providers' credentials workers get (`enabledGitProviderIds`: `null` = all, default; `[]` = none, for running untrusted code without access to the user's repositories; or a list of ids from `list_git_providers` — public repos still clone everywhere). One built-in `default` environment exists.
 - **Capability** — a skill document (Agent Skills format: markdown with YAML frontmatter) installed into every agent CLI of workers whose environment enables it.
 - **Instruction** — an AGENTS.md-style markdown document merged into the agents' global instructions (CLAUDE.md / AGENTS.md / GEMINI.md).
-- **Init script** — a reusable bash script offered when creating a worker (built-ins: `claude`, `codex`, `gemini` launch the agent in YOLO mode). Pass its `content` as the worker's `initScript`.
+- **Init script** — a reusable bash script offered when creating a worker (built-ins: `claude`, `codex`, `antigravity` launch the agent in YOLO mode). Pass its `content` as the worker's `initScript`.
 - **Port mapping** — exposes a worker's internal TCP port on a host port (`localhost` = host-only, `external` = network-reachable).
 - **Domain mapping** — routes `subdomain.baseDomain[/path]` (HTTP/HTTPS/TCP, optional basic auth, optional wildcard) to a worker port through Traefik. Only available when `get_domain_mapper_status` reports `enabled: true`; use one of its `baseDomains`.
 - **Apps** — per-worker services: `chromium` (CDP), `socks5` proxy, `vscode` tunnel, `ssh` server (auto-maps an external port in 22000–22999).
@@ -42,4 +42,4 @@ Tools map 1:1 onto Agentor's REST API. In tool names, **container = worker**. Ev
 - Worker-scoped tools need a **running** worker (except lifecycle and settings tools). Check `status` first; `restart_container` a stopped one.
 - Destructive tools (`delete_*`, `archive_container`, `clear_logs`, `apply_updates`) cannot be undone — confirm intent with the user when it is not explicit.
 - Errors come back as `HTTP <status>: <message>` from the underlying API; `403` means the resource belongs to another user or needs the admin role.
-- `get_usage` shows the remaining Claude/Codex/Gemini subscription quota of the user's logged-in agents; check it before starting large jobs.
+- `get_usage` shows the remaining Claude/Codex/Antigravity subscription quota of the user's logged-in agents; check it before starting large jobs.

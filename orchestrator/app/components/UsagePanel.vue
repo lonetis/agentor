@@ -91,7 +91,7 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
         <!-- Usage windows -->
         <div v-if="agent.windows.length > 0" class="px-3 py-2.5 space-y-1">
           <div v-for="(w, i) in agent.windows" :key="i" class="flex items-center gap-1.5">
-            <span class="text-[10px] text-gray-500 dark:text-gray-400 w-11 text-right flex-shrink-0 truncate">{{ w.label }}</span>
+            <span class="text-[10px] text-gray-500 dark:text-gray-400 w-11 text-right flex-shrink-0 truncate" :title="w.label">{{ w.label }}</span>
             <div class="flex-1 h-1.5 rounded-full overflow-hidden" :class="trackColor(w.utilization)">
               <div
                 class="h-full rounded-full transition-all duration-500"

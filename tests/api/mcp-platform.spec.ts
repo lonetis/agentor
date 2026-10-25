@@ -58,7 +58,7 @@ test.describe.serial('MCP drives the platform end-to-end', () => {
 
   test('creates a worker', async ({ request }) => {
     const scripts = await callJson<{ name: string; id: string }[]>(mcp.client, 'list_init_scripts');
-    expect(scripts.map((s) => s.name)).toEqual(expect.arrayContaining(['claude', 'codex', 'gemini']));
+    expect(scripts.map((s) => s.name)).toEqual(expect.arrayContaining(['claude', 'codex', 'antigravity']));
 
     const worker = await callJson(mcp.client, 'create_container', { displayName: `mcp-worker-${stamp}` });
     workerId = worker.id;

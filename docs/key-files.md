@@ -78,12 +78,12 @@
 - `orchestrator/server/utils/domain-mapping-store.ts` - DomainMappingStore class (persistent domain mappings)
 - `orchestrator/server/utils/traefik-manager.ts` - TraefikManager class (Traefik container lifecycle, dynamic config generation)
 - `orchestrator/server/utils/update-checker.ts` - UpdateChecker class (GHCR digest polling, image pull, orchestrator self-replacement)
-- `orchestrator/server/utils/usage-checker.ts` - UsageChecker class (agent usage API polling, OAuth token refresh for Codex)
+- `orchestrator/server/utils/usage-checker.ts` - UsageChecker class (agent usage API polling for Claude / Codex / Antigravity, OAuth token refresh for Codex)
 - `orchestrator/server/utils/resource-monitor.ts` - ResourceMonitor class (in-memory singleton poller; PER-WORKER ONLY, all via the Docker API — cpu/mem/net from dockerode `container.stats` at 3s, disk = writable layer `SizeRw` + `du` of volumes at 60s; no host metrics, no persistence)
 - `orchestrator/server/utils/worker-export.ts` - Worker export/import helpers (WorkerExportManifest type, tar bundle pack/extract, credential-stripping agents-tar filter)
 - `orchestrator/server/utils/environments.ts` - EnvironmentStore class, network mode types, package manager domains list
 - `orchestrator/server/utils/worker-store.ts` - WorkerStore class (persistent worker metadata for archive/unarchive)
-- `orchestrator/server/utils/user-credentials.ts` - UserCredentialManager class (per-user OAuth credential files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json`, ensures dirs/files, generates per-user bind strings, statusList + reset) + AGENT_CREDENTIAL_MAPPINGS registry
+- `orchestrator/server/utils/user-credentials.ts` - UserCredentialManager class (per-user OAuth credential files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,antigravity}.json`, ensures dirs/files, generates per-user bind strings, statusList + reset) + AGENT_CREDENTIAL_MAPPINGS registry
 - `orchestrator/server/utils/user-env-store.ts` - UserEnvVarStore class (one file per user at `<DATA_DIR>/users/<userId>/env-vars.json` holding a uniform `envVars: [{ key, value }]` list — no hardcoded fields and no SSH handling; provides the `renderUserEnvVars` helper and a `getUserEnvVar(env, key)` lookup used e.g. for git provider tokens)
 - `orchestrator/server/utils/user-scoped-store.ts` - UserScopedJsonStore<K, V> base class. Loads from `<DATA_DIR>/users/*/<filename>` and keeps `Map<userId, Map<K, V>>` in memory; each user's file is persisted independently. Used by WorkerStore, PortMappingStore, DomainMappingStore, and the user half of the built-in-plus-user stores (Environments, Capabilities, Instructions, InitScripts).
 - `orchestrator/server/utils/defaults-store.ts` - DefaultsStore<V> base class. Single-file JSON store at `<DATA_DIR>/defaults/<filename>` holding built-in, platform-seeded entries. Written by `seedBuiltIns()`; never mutated by user-facing APIs.
@@ -212,7 +212,7 @@
 - `worker/apps/ssh/manage.sh` - SSH server app manager (start/stop/list via docker exec; NDJSON; sshd on port 22 with public-key auth from bind-mounted authorized_keys)
 - `worker/agents/claude/setup.sh` - Claude auth + config + capabilities/instructions writing (reads CAPABILITIES/INSTRUCTIONS JSON env vars)
 - `worker/agents/codex/setup.sh` - Codex auth + config + capabilities/instructions writing
-- `worker/agents/gemini/setup.sh` - Gemini auth + config + capabilities/instructions writing
+- `worker/agents/antigravity/setup.sh` - Antigravity CLI (`agy`) settings (workspace trust, API-key mode) + MCP config + capabilities/instructions writing
 
 ## Tests
 - `tests/playwright.config.ts` - Playwright config (two projects: api + ui, parallel workers, timeouts)

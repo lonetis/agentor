@@ -22,7 +22,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 |-------|---|-------------------------------------------|------------------------------------------------|
 | **Claude** | [anthropics/claude-code](https://github.com/anthropics/claude-code) | `claude` → `/login` | `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) |
 | **Codex** | [openai/codex](https://github.com/openai/codex) | `codex login --device-auth` | `OPENAI_API_KEY` |
-| **Gemini** | [google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) | `gemini` → `/auth` | `GEMINI_API_KEY` |
+| **Antigravity** | [Google Antigravity CLI](https://antigravity.google/docs/cli/reference) | `agy` → Google OAuth | `GEMINI_API_KEY` |
 
 ## Features
 
@@ -41,7 +41,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 - **Worker archiving** — archive workers to free resources while preserving workspace data; unarchive to restore
 - **File upload/download** — upload files/folders to running workers or during creation, download workspace as `.tar.gz`
 - **Docker-in-Docker** — opt-in per-environment, full Docker daemon inside workers (build, run, compose)
-- **Usage monitoring** — real-time usage/rate limit indicators for OAuth-authenticated agents (Claude, Codex, Gemini)
+- **Usage monitoring** — real-time usage/rate limit indicators for OAuth-authenticated agents (Claude, Codex, Antigravity)
 - **Per-worker resource monitoring** — live CPU / RAM / disk / network metrics on each worker card, sourced entirely from the Docker API (OS-independent)
 - **Worker export/import** — download a worker as a portable `.tar` bundle (settings, environment, mappings, workspace + agent data, and an optional `docker export` of the filesystem) and restore it as a new worker, even on another machine
 - **Centralized logging** — collects logs from all containers (orchestrator, workers, traefik) with NDJSON storage, log rotation, and a live-streaming log viewer in the dashboard
@@ -121,7 +121,7 @@ Open **http://localhost:3000**
 > The production compose file sets `WORKER_IMAGE_PREFIX=ghcr.io/lonetis/` so the orchestrator pulls worker images from GHCR automatically. Docker will pull images on first container creation.
 
 > [!NOTE]
-> The `latest` images are rebuilt every Monday so the base OS, apt packages, and the Claude/Codex/Gemini CLIs stay current. Each rebuild is smoke-tested on amd64 and arm64 before `latest` moves, and is also kept as a dated `refresh-YYYYMMDD` tag — pin the compose file to one of those if you need a fixed build. Use the dashboard's Images panel to pull updates into a running deployment.
+> The `latest` images are rebuilt every Monday so the base OS, apt packages, and the Claude/Codex/Antigravity CLIs stay current. Each rebuild is smoke-tested on amd64 and arm64 before `latest` moves, and is also kept as a dated `refresh-YYYYMMDD` tag — pin the compose file to one of those if you need a fixed build. Use the dashboard's Images panel to pull updates into a running deployment.
 
 > [!NOTE]
 > The Traefik reverse proxy (`agentor-traefik`) is managed automatically by the orchestrator and handles both port mappings and domain mappings on the same container. It is created when the first port/domain mapping is added (or the dashboard subdomain is configured) and removed when all of those are gone. Mapped ports are arbitrary — no fixed ranges — but `80`/`443` are reserved when domain routing is active.
@@ -140,12 +140,15 @@ Log in once inside any of your workers — the agent CLI writes its OAuth token 
 |-------|---------|
 | **Claude** (Pro/Max) | `claude` → `/login` |
 | **Codex** (ChatGPT) | `codex login --device-auth` |
-| **Gemini** (Code Assist) | `gemini` → `/auth` |
+| **Antigravity** (Google AI) | `agy` → Google OAuth (open the printed URL, paste the code back) |
+
+> [!NOTE]
+> Antigravity CLI replaced the Gemini CLI, which Google shut down for personal accounts in June 2026. On first launch `agy` asks you to pick a color scheme and accept Google's Terms of Service.
 
 > [!IMPORTANT]
 > OAuth refresh tokens rotate on use. **Always** log in inside a worker — never copy tokens from your local machine, or both copies will desync and break authentication on both sides.
 
-Tokens live at `<DATA_DIR>/users/<your-user-id>/credentials/{claude,codex,gemini}.json`. To force a fresh login, click **Reset** next to the agent in **Account → Agent OAuth credentials**.
+Tokens live at `<DATA_DIR>/users/<your-user-id>/credentials/{claude,codex,antigravity}.json`. To force a fresh login, click **Reset** next to the agent in **Account → Agent OAuth credentials**.
 
 ### API keys
 

@@ -133,7 +133,7 @@ test.describe('Init Scripts Modal — CRUD Operations', () => {
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 10_000 });
 
-    const builtInScripts = ['claude', 'codex', 'gemini'];
+    const builtInScripts = ['claude', 'codex', 'antigravity'];
     for (const name of builtInScripts) {
       const row = dialog.locator('.rounded-lg').filter({ hasText: name });
       await expect(row.first()).toBeVisible({ timeout: 10_000 });

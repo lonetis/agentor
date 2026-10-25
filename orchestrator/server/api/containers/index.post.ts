@@ -2,7 +2,7 @@ defineRouteMeta({
   openAPI: {
     tags: ['Containers'],
     summary: 'Create container',
-    description: 'Creates and starts a new worker: an isolated Ubuntu container with the Claude Code, Codex and Gemini CLIs, a persistent /workspace, a tmux session, a virtual desktop and VS Code. Returns once the container runs — setup (repo cloning, environment setup script) then continues inside, and the init script finally starts in tmux window 0. The returned `id` (a UUID) identifies the worker in every other worker operation.',
+    description: 'Creates and starts a new worker: an isolated Ubuntu container with the Claude Code, Codex and Antigravity CLIs, a persistent /workspace, a tmux session, a virtual desktop and VS Code. Returns once the container runs — setup (repo cloning, environment setup script) then continues inside, and the init script finally starts in tmux window 0. The returned `id` (a UUID) identifies the worker in every other worker operation.',
     operationId: 'createContainer',
     requestBody: {
       required: true,

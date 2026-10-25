@@ -183,7 +183,8 @@ USER agent
 
 # Agent CLIs (installed as agent user so auto-updates work)
 RUN curl -fsSL https://claude.ai/install.sh | bash
-RUN npm config set prefix ~/.local && npm install -g @openai/codex @google/gemini-cli
+RUN curl -fsSL https://antigravity.google/cli/install.sh | bash
+RUN npm config set prefix ~/.local && npm install -g @openai/codex
 ENV PATH="/home/agent/.local/bin:${PATH}"
 
 # Agent setup/start scripts

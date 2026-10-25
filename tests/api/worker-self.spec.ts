@@ -318,7 +318,7 @@ test.describe.serial('Worker-self API', () => {
       const ids = json.agents.map((a: { agentId: string }) => a.agentId);
       expect(ids).toContain('claude');
       expect(ids).toContain('codex');
-      expect(ids).toContain('gemini');
+      expect(ids).toContain('antigravity');
     } finally {
       ws.close();
     }

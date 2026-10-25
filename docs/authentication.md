@@ -30,7 +30,7 @@ User-owned resources carry a `userId` field populated from the authenticated ses
 | Custom init scripts | `users/<userId>/init-scripts.json` | `InitScript.userId` |
 | Env vars | `users/<userId>/env-vars.json` | file path is the owner id |
 | Usage state | `users/<userId>/usage.json` | file path is the owner id |
-| OAuth credentials | `users/<userId>/credentials/{claude,codex,gemini}.json` | file path is the owner id |
+| OAuth credentials | `users/<userId>/credentials/{claude,codex,antigravity}.json` | file path is the owner id |
 | Worker workspace (dir mode) | `users/<userId>/workspaces/<name>/` | owned by the worker |
 | Worker agent data (dir mode) | `users/<userId>/agents/<name>/` | owned by the worker |
 

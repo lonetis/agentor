@@ -76,7 +76,7 @@ Switch modes by changing one line in the compose file — no env vars needed. `S
     ├── credentials/
     │   ├── claude.json             ← bind-mounted into every worker this user owns
     │   ├── codex.json
-    │   └── gemini.json
+    │   └── antigravity.json
     ├── workspaces/<id>/            ← per-worker workspace (directory mode, keyed by the worker UUID)
     └── agents/<id>/                 ← per-worker agent config (`.claude`, `.gemini`, `.codex`, `.agents`, `.claude.json`)
 ```
@@ -92,7 +92,7 @@ DinD data always uses Docker named volumes (`<containerName>-docker`) regardless
 | Data (Traefik) | `<volumeName>:/data:ro` | `<hostPath>:/data:ro` |
 | Worker workspace | `<containerName>-workspace:/workspace` | `<hostPath>/users/<userId>/workspaces/<id>:/workspace` |
 | Worker agents | `<containerName>-agents:/home/agent/.agent-data` | `<hostPath>/users/<userId>/agents/<id>:/home/agent/.agent-data` |
-| Worker per-user creds (×3) | `<dataHostPath>/users/<userId>/credentials/{claude,codex,gemini}.json:/home/agent/.agent-data/{.claude/.credentials.json,.codex/auth.json,.gemini/oauth_creds.json}` | same, with `<hostPath>` in front of `/users/...`. Directory mode pre-creates these mountpoints on the host so Docker Desktop's virtiofs accepts the nested file bind. |
+| Worker per-user creds (×3) | `<dataHostPath>/users/<userId>/credentials/{claude,codex,antigravity}.json:/home/agent/.agent-data/{.claude/.credentials.json,.codex/auth.json,.gemini/antigravity-cli/antigravity-oauth-token}` | same, with `<hostPath>` in front of `/users/...`. Directory mode pre-creates these mountpoints on the host so Docker Desktop's virtiofs accepts the nested file bind. |
 | Worker DinD | `<containerName>-docker:/var/lib/docker` | `<containerName>-docker:/var/lib/docker` (always named volume) |
 | Traefik certs | `agentor-traefik-certs:/letsencrypt` | `<hostPath>/traefik-certs:/letsencrypt` |
 

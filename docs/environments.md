@@ -47,7 +47,7 @@ Custom capabilities can be created via the Capabilities modal in the sidebar. Bu
 Capabilities are written to agent-specific paths on container first startup:
 - Claude: `/home/agent/.claude/skills/agentor-<safe-name>/SKILL.md` (with YAML frontmatter)
 - Codex: `/home/agent/.agents/skills/agentor-<safe-name>/SKILL.md` (with YAML frontmatter)
-- Gemini: `/home/agent/.gemini/commands/agentor-<safe-name>.toml`
+- Antigravity: `/home/agent/.gemini/config/skills/agentor-<safe-name>/SKILL.md` (with YAML frontmatter)
 
 ## Instructions
 
@@ -59,7 +59,7 @@ Platform context documents following the [AGENTS.md standard](https://agents.md/
 Instruction entries are merged into a single markdown document and written to:
 - Claude: `/home/agent/.claude/CLAUDE.md`
 - Codex: `/home/agent/.codex/AGENTS.md`
-- Gemini: `/home/agent/.gemini/GEMINI.md`
+- Antigravity: `/home/agent/.gemini/GEMINI.md` (`agy` loads it as a global rule)
 
 ## Environment Integration
 
