@@ -106,7 +106,8 @@ function tryClose(w: TmuxWindow) {
         class="tmux-tab"
         :class="{ active: w.index === activeWindowIndex }"
         @click="onTabClick(w)"
-        @mousedown="onMiddleClick($event, w)"
+        @mousedown.middle.prevent
+        @auxclick="onMiddleClick($event, w)"
       >
         <input
           v-if="editingTab === w.index"
