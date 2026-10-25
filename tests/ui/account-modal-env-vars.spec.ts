@@ -61,13 +61,13 @@ test.describe('Account modal — env vars', () => {
     // Agent OAuth credentials section: 3 agents, all "Not logged in" for a fresh user.
     const claude = page.locator('[data-testid="agent-cred-claude"]');
     const codex = page.locator('[data-testid="agent-cred-codex"]');
-    const gemini = page.locator('[data-testid="agent-cred-gemini"]');
+    const antigravity = page.locator('[data-testid="agent-cred-antigravity"]');
     await expect(claude).toBeVisible();
     await expect(codex).toBeVisible();
-    await expect(gemini).toBeVisible();
+    await expect(antigravity).toBeVisible();
     await expect(claude).toContainText(/Not logged in/i);
     await expect(codex).toContainText(/Not logged in/i);
-    await expect(gemini).toContainText(/Not logged in/i);
+    await expect(antigravity).toContainText(/Not logged in/i);
   });
 
   test('saves a predefined env var and persists across reload of the modal', async ({ page, context }) => {

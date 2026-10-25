@@ -24,7 +24,7 @@ Automatic image update detection and per-image or bulk updates for production de
 
 The `latest` images are rebuilt on a schedule so unpinned dependencies do not
 drift. Nothing in the repo is pinned to a version — the base images, every apt
-package, and the Claude / Codex / Gemini CLIs all resolve at build time — so a
+package, and the Claude / Codex / Antigravity CLIs all resolve at build time — so a
 rebuild of the same Dockerfile is what picks up upstream updates. Without a
 scheduled rebuild, `latest` would freeze at whatever was current on the last
 source change.
@@ -42,7 +42,7 @@ dispatch (Actions → Refresh Docker Images → Run workflow):
 2. **Publish under a dated tag only** — `refresh-YYYYMMDD`. `latest` is not
    touched yet.
 3. **Smoke-test on amd64 and arm64.** The worker image must report versions for
-   `claude`, `codex`, `gemini`, node, npm, git, tmux, chromium, code-server and
+   `claude`, `codex`, `agy`, node, npm, git, tmux, chromium, code-server and
    glab, and carry the expected binaries (`gh`, `glab`, `code`, `docker`, `dnsmasq`,
    `microsocks`, `x11vnc`, `Xvfb`, `maim`, `xdotool`, `sshd`). The orchestrator
    image must boot against a Docker socket and answer `GET /api/health` with
@@ -65,7 +65,7 @@ activity** — re-enable from the Actions tab if the daily run stops firing.
 
 ## Agent Usage Monitoring
 
-Polls agent usage APIs to show each user's remaining capacity in the sidebar. Works for OAuth-authenticated agents (per-user credential files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,gemini}.json`, or the per-user `CLAUDE_CODE_OAUTH_TOKEN` set in the Account modal). API key auth has no usage endpoints.
+Polls agent usage APIs to show each user's remaining capacity in the sidebar. Works for OAuth-authenticated agents (per-user credential files at `<DATA_DIR>/users/<userId>/credentials/{claude,codex,antigravity}.json`, or the per-user `CLAUDE_CODE_OAUTH_TOKEN` set in the Account modal). API key auth has no usage endpoints.
 
 **Architecture:**
 - `UsageChecker` (`usage-checker.ts`): Singleton + 5min polling. State is per-user — `Map<userId, Map<agentId, AgentState>>` — persisted to `usage.json` in the data directory. Each user's agents track their own fetch time and backoff independently. On restart, serves persisted results immediately; only re-fetches agents whose data is stale. Reads each user's credential files via `UserCredentialManager`, detects auth type per agent (OAuth > API key > none) per-user, fetches usage in parallel.
@@ -79,9 +79,9 @@ Polls agent usage APIs to show each user's remaining capacity in the sidebar. Wo
 |-------|----------|------|---------------|
 | Claude | `GET https://api.anthropic.com/api/oauth/usage` | Bearer + `anthropic-beta: oauth-2025-04-20` | Not needed (CLI handles it). Supports per-user `claude.json` OAuth or per-user `CLAUDE_CODE_OAUTH_TOKEN` from Account env vars |
 | Codex | `GET https://chatgpt.com/backend-api/wham/usage` | Bearer (+ optional `ChatGPT-Account-Id`) | Hardcoded client_id, refreshes when `last_refresh` > 8 days. Refreshed token is written back to that user's `codex.json`. |
-| Gemini | `POST https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota` | Bearer | Not implemented (CLI client_id/secret not available in orchestrator); reports error if token expired |
+| Antigravity | `POST https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist` (→ `cloudaicompanionProject`), then `:retrieveUserQuotaSummary` with that project | Bearer + `User-Agent: antigravity/cli/<version>` (older or unknown clients get only some model groups) | Not implemented (the CLI's OAuth client is not available in the orchestrator); reports an error once the 1 h access token has expired — any running `agy` refreshes it |
 
-**Normalized output:** All APIs are mapped to a common `UsageWindow` type with `label`, `utilization` (0-100%), and `resetsAt` (ISO 8601). Claude shows Session/Weekly/Sonnet windows, Codex shows Session/Weekly (+ Reserve when credits available), Gemini shows per-model-family windows (Pro/Flash). Progress bars use green (<50%), amber (50-79%), red (>=80%) coloring.
+**Normalized output:** All APIs are mapped to a common `UsageWindow` type with `label`, `utilization` (0-100%), and `resetsAt` (ISO 8601). Claude shows Session/Weekly/Sonnet windows, Codex shows Session/Weekly (+ Reserve when credits available), and Antigravity shows one window per model group (`Gemini`, `Claude and GPT` — the API's group name without "models"; a group with several buckets gets the window appended; a missing `remainingFraction` counts as exhausted, since proto3 JSON omits zeros). Progress bars use green (<50%), amber (50-79%), red (>=80%) coloring.
 
 ## Resource Monitoring
 

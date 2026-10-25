@@ -63,7 +63,7 @@ test.describe('Account agent credentials (per-user) API', () => {
     }
   });
 
-  test('returns 3 entries (claude, codex, gemini), all not configured for a fresh user', async () => {
+  test('returns 3 entries (claude, codex, antigravity), all not configured for a fresh user', async () => {
     const u = await createUserAndSignIn('cred-fresh');
     try {
       const { status, body } = await u.api.listAccountAgentCredentials();
@@ -71,7 +71,7 @@ test.describe('Account agent credentials (per-user) API', () => {
       expect(Array.isArray(body)).toBe(true);
       expect(body.length).toBe(3);
       const ids = body.map((c: { agentId: string }) => c.agentId).sort();
-      expect(ids).toEqual(['claude', 'codex', 'gemini']);
+      expect(ids).toEqual(['antigravity', 'claude', 'codex']);
       for (const c of body) {
         expect(typeof c.fileName).toBe('string');
         expect(c.fileName.length).toBeGreaterThan(0);

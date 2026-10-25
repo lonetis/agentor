@@ -27,7 +27,7 @@ function assertSafeUserId(userId: string): void {
 const CREDENTIAL_MOUNT_POINTS = [
   '.claude/.credentials.json',
   '.codex/auth.json',
-  '.gemini/oauth_creds.json',
+  '.gemini/antigravity-cli/antigravity-oauth-token',
 ];
 
 export class StorageManager {

@@ -9,7 +9,7 @@ defineRouteMeta({
         in: 'path',
         name: 'agentId',
         required: true,
-        schema: { type: 'string', enum: ['claude', 'codex', 'gemini'] },
+        schema: { type: 'string', enum: ['claude', 'codex', 'antigravity'] },
       },
     ],
     responses: {

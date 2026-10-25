@@ -41,7 +41,7 @@ function stripAnsi(text: string): string {
 export interface AgentCredentials {
   claude: boolean;
   codex: boolean;
-  gemini: boolean;
+  antigravity: boolean;
 }
 
 /**
@@ -70,7 +70,7 @@ export async function checkAgentCredentials(request: APIRequestContext): Promise
   return {
     claude: !!env.anthropicApiKey || !!env.claudeCodeOauthToken || hasCred('claude'),
     codex: !!env.openaiApiKey || hasCred('codex'),
-    gemini: !!env.geminiApiKey || hasCred('gemini'),
+    antigravity: !!env.geminiApiKey || hasCred('antigravity'),
   };
 }
 
@@ -156,7 +156,7 @@ export class TerminalWsClient {
   }
 
   /**
-   * Send text and press Enter (\r). Use for TUI apps (Claude, Codex, Gemini)
+   * Send text and press Enter (\r). Use for TUI apps (Claude, Codex, Antigravity)
    * that read raw terminal input where Enter = \r.
    */
   sendEnter(text: string): void {

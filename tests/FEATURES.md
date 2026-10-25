@@ -71,7 +71,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
   - **Custom environment variables section**: list of `{key, value}` rows with Add/Remove for any other env var. Keys validated `[A-Z_][A-Z0-9_]*`; reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.) and duplicates are rejected with an inline error.
   - All inputs (predefined + custom) are serialized into one `envVars` list and injected into every worker the user creates.
 - **SSH Access section**: `sshPublicKey` textarea (4 rows, monospace) with its OWN **"Save SSH key"** button hitting `PUT /api/account/ssh-key`. The SSH key is NOT an env var — on save the key is written only to `<DATA_DIR>/users/<userId>/ssh/authorized_keys` (empty string → empty file), which is bind-mounted read-only at `/home/agent/.ssh/authorized_keys` in every one of the user's workers. Used by the **SSH** app (Apps pane → Start).
-- **Agent OAuth credentials section**: per-agent (claude/codex/gemini) status indicator (`Logged in` green / `Not logged in` gray) plus a per-agent **Reset** button (two-step confirm) that overwrites the OAuth file with `{}` so the next CLI login writes fresh tokens. Login itself happens by running the agent CLI inside one of the user's workers — credentials live at `<DATA_DIR>/users/<userId>/credentials/` and are bind-mounted into all of the user's workers.
+- **Agent OAuth credentials section**: per-agent (claude/codex/antigravity) status indicator (`Logged in` green / `Not logged in` gray) plus a per-agent **Reset** button (two-step confirm) that overwrites the OAuth file with `{}` so the next CLI login writes fresh tokens. Login itself happens by running the agent CLI inside one of the user's workers — credentials live at `<DATA_DIR>/users/<userId>/credentials/` and are bind-mounted into all of the user's workers.
 - Success and error messages displayed per section
 - **MCP access section** (last section; hidden when MCP is disabled): the MCP server URL (`<public URL>/mcp`, copy button) with a `claude mcp add --transport http agentor <url>` example, and the list of **authorized applications** (OAuth clients the user approved: name, authorization date, scopes) each with a two-step **Revoke** (`Revoke` → `Confirm revoke`) that removes the app's consent and tokens; "No applications authorized." when empty
 - Backed by `/api/auth/update-user`, `/api/auth/change-email`, `/api/auth/change-password` (built-in better-auth) and Agentor's per-user `/api/account/env-vars`, `/api/account/ssh-key`, `/api/account/agent-credentials`, and `/api/account/oauth-apps` endpoints
@@ -294,7 +294,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 - **Environment** — dropdown selector with "Default" option + "Manage" button (opens environments modal)
 - **Repositories** — dynamic list with "+ Add repository" link, each row has RepoInput + remove button
 - **Volume Mounts** — dynamic list with "+ Add mount" link, each row has MountInput (source, target, read-only checkbox) + remove button
-- **Init Script** — preset dropdown (None, claude, codex, gemini, custom scripts) + "Manage" button (opens init scripts modal) + editable textarea (3 rows, monospace)
+- **Init Script** — preset dropdown (None, claude, codex, antigravity, custom scripts) + "Manage" button (opens init scripts modal) + editable textarea (3 rows, monospace)
 
 ### 6.2 Init Script Sync
 - Selecting a preset populates the textarea
@@ -515,9 +515,9 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 
 ### 14.1 Content
 - Loading state: "Loading..."
-- Per-agent row: name (Claude, Codex, Gemini) + "Fetched Xm ago" timestamp + plan type badge + auth badge (OAuth=green, API key=blue, not configured=gray)
+- Per-agent row: name (Claude, Codex, Antigravity) + "Fetched Xm ago" timestamp + plan type badge + auth badge (OAuth=green, API key=blue, not configured=gray)
 - Usage windows: progress bars per window
-  - Label (Session, Weekly, Sonnet, etc.)
+  - Label (Session, Weekly, Sonnet, etc.; Antigravity: one per model group, e.g. Gemini / Claude and GPT — full label on hover when truncated)
   - Color-coded: green (<50%), amber (50-79%), red (>=80%)
   - Percentage value (monospace)
   - Reset time (relative) with ISO tooltip
@@ -870,7 +870,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/init-scripts/:id` — get single
 - `PUT /api/init-scripts/:id` — update custom
 - `DELETE /api/init-scripts/:id` — delete custom
-- Built-in scripts: claude, codex, gemini
+- Built-in scripts: claude, codex, antigravity (`agy --dangerously-skip-permissions`)
 
 ### 24.11 Archived Workers
 - `GET /api/archived` — list. Each entry is the raw persisted `WorkerRecord`: `id` is the worker UUID (the WorkerStore key), `displayName` is the editable label, `status` is `archived`, plus `createdAt`/`updatedAt`/`archivedAt` and the config (`environmentId`, `repos`, `mounts`, `initScript`). It deliberately does NOT include the Docker-derived `containerId`/`containerName`/`imageName`/`imageId` (those exist only on the live `ContainerInfo`, discovered at runtime).
@@ -919,7 +919,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - `GET /api/account/agent-credentials` — returns `[{ agentId, fileName, configured }]` for the current user. `configured` is true when the per-user OAuth file at `<DATA_DIR>/users/<userId>/credentials/<fileName>` contains more than `{}`.
 - `DELETE /api/account/agent-credentials/:agentId` — overwrites that agent's per-user OAuth file with `{}` so the next CLI login writes a fresh token. Unknown agent ids return 400.
 - **Scoping**: env vars and credentials are strictly per-user. Each user's workers inherit only their own env vars; user A's worker can never read user B's tokens.
-- **Worker provisioning**: when a worker is created/rebuilt/unarchived, the orchestrator resolves the worker owner's `UserEnvVars` and bind-mounts the user's three credential files directly at the CLIs' expected paths — `/home/agent/.agent-data/.claude/.credentials.json`, `/home/agent/.agent-data/.codex/auth.json`, `/home/agent/.agent-data/.gemini/oauth_creds.json`. In directory mode, `StorageManager.ensureWorkerDirs` pre-creates the mountpoint files so Docker Desktop's virtiofs accepts the nested file bind. Writes from any of the user's workers update the same host file immediately, with no symlink indirection or restart dance.
+- **Worker provisioning**: when a worker is created/rebuilt/unarchived, the orchestrator resolves the worker owner's `UserEnvVars` and bind-mounts the user's three credential files directly at the CLIs' expected paths — `/home/agent/.agent-data/.claude/.credentials.json`, `/home/agent/.agent-data/.codex/auth.json`, `/home/agent/.agent-data/.gemini/antigravity-cli/antigravity-oauth-token` (Antigravity CLI's file token storage — workers have no D-Bus keyring). In directory mode, `StorageManager.ensureWorkerDirs` pre-creates the mountpoint files so Docker Desktop's virtiofs accepts the nested file bind. Writes from any of the user's workers update the same host file immediately, with no symlink indirection or restart dance.
 - **Precedence inside the worker**: agent + git tokens come from the user's uniform `UserEnvVars.envVars` list (rendered verbatim by `renderUserEnvVars`); the per-environment `envVars` field is exported by the entrypoint AFTER Docker's env array, so an Environment can override any per-user var (including `GITHUB_TOKEN`).
 - **User deletion cleanup**: a background `OrphanSweeper` runs at orchestrator startup and every 10 minutes; it reads the auth DB's user table and prunes any per-user `env-vars.json` row, `<DATA_DIR>/users/<userId>/` directory, and usage-state entry whose user is no longer present. Implemented as a timer rather than a middleware so nothing touches better-auth's request pipeline.
 
@@ -1005,9 +1005,15 @@ The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/ap
 - **Chrome DevTools MCP** (`chrome-devtools-mcp@latest`): Chrome DevTools Protocol access
 - Claude: configured in `~/.claude.json` under `mcpServers` (user scope)
 - Codex: configured in `~/.codex/config.toml` under `[mcp_servers.*]` sections
-- Gemini: configured in `~/.gemini/settings.json` under `mcpServers`
+- Antigravity: configured in `~/.gemini/config/mcp_config.json` under `mcpServers` (listed by `agy mcp list`)
 - Write-once: user modifications to config files are preserved on restart/rebuild
 - MCP packages are downloaded via `npx -y` on first agent use
+
+### 26.2 Antigravity CLI (`agy`)
+- Google Antigravity CLI replaces the Gemini CLI (shut down for personal accounts in June 2026); installed with Google's installer into `~/.local/bin/agy` and self-updating
+- `~/.gemini/antigravity-cli/settings.json` (write-once) trusts `/workspace` (`trustedWorkspaces`); when the user has a `GEMINI_API_KEY` but no OAuth login it also sets `modelProvider: "gemini"` (API-key mode). A `modelProvider: "gemini"` left behind after the key was removed is dropped on the next start, because `agy` refuses to start without the key
+- Instructions go to `~/.gemini/GEMINI.md` (a global rule for `agy`), capabilities to `~/.gemini/config/skills/agentor-<name>/SKILL.md`
+- Login: `agy` → Google OAuth prints a URL; the user signs in in their browser and pastes the code back. The token lands in the shared per-user credential file. Onboarding (color scheme, Terms of Service) is left to the user
 
 ---
 
@@ -1047,7 +1053,7 @@ The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/ap
 - The worker card's **Export** button (in the workspace group, running-only) downloads a single `.tar` bundle (`<displayName>-worker-export.tar`) via `GET /api/containers/:id/export`. The button uses `fetch` (not a bare anchor) so it can show a spinner + disable while the server materialises the bundle (which is slow when the `docker export` rootfs is included), then saves the response via a blob URL.
 - Bundle layout (outer uncompressed tar): `manifest.json` + `workspace.tar.gz` + `agents.tar.gz`, and (when `includeRootfs` is true — the default) `rootfs.tar.gz` (a `docker export` of the container filesystem, gzipped).
 - The manifest embeds the worker's own config (displayName, repos, mounts, initScript), the **full environment definition** (so it restores on another machine), and the worker's port + domain mappings (stripped of identity).
-- Per-user OAuth credential files (`.claude/.credentials.json`, `.codex/auth.json`, `.gemini/oauth_creds.json`) are **stripped** from `agents.tar.gz` — an export never carries another user's tokens.
+- Per-user OAuth credential files (`.claude/.credentials.json`, `.codex/auth.json`, `.gemini/antigravity-cli/antigravity-oauth-token`) are **stripped** from `agents.tar.gz` — an export never carries another user's tokens.
 - Validation: 401 unauth, 403 cross-user, 404 unknown worker; the worker must be running or stopped (archived workers have no container to export).
 
 ### 28.2 Import

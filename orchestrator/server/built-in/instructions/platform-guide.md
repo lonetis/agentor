@@ -46,7 +46,7 @@ The orchestrator also exposes session-authenticated routes under `$ORCHESTRATOR_
 - **Terminal:** tmux (your session is named `main` — you're already inside it)
 - **Utilities:** jq, curl, wget, tree, less, htop, btop, rsync, strace, file, man-db
 - **Network:** openssh-client/server, dnsutils, net-tools, iputils-ping
-- **MCP servers:** Playwright MCP (`@playwright/mcp@latest`) and Chrome DevTools MCP (`chrome-devtools-mcp@latest`) are pre-configured for Claude, Codex, and Gemini
+- **MCP servers:** Playwright MCP (`@playwright/mcp@latest`) and Chrome DevTools MCP (`chrome-devtools-mcp@latest`) are pre-configured for Claude, Codex, and Antigravity
 
 ### Display, browsers, and remote access
 
@@ -75,7 +75,7 @@ Three things survive container restarts, rebuilds, and archive/unarchive cycles:
 - Your agent configuration (under `~/.claude`, `~/.codex`, `~/.gemini`, `~/.agents`, `~/.claude.json`, `~/.vscode` — symlinked from a persistent volume)
 - DinD data (when Docker is enabled)
 
-OAuth credential files for Claude / Codex / Gemini are bind-mounted from the operator's per-user host storage — logging in once with any agent CLI propagates the token to every worker that user owns.
+OAuth credential files for Claude / Codex / Antigravity are bind-mounted from the operator's per-user host storage — logging in once with any agent CLI propagates the token to every worker that user owns.
 
 A permanent `delete` (not `archive`) wipes `/workspace` and the agent config volume. Archive keeps both intact for unarchiving later.
 

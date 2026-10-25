@@ -53,7 +53,7 @@ test.describe('Usage API (per-user)', () => {
       const ids = body.agents.map((a: { agentId: string }) => a.agentId);
       expect(ids).toContain('claude');
       expect(ids).toContain('codex');
-      expect(ids).toContain('gemini');
+      expect(ids).toContain('antigravity');
     });
 
     test('refresh-then-get returns same agent list', async ({ request }) => {
@@ -61,7 +61,7 @@ test.describe('Usage API (per-user)', () => {
       await api.refreshUsage();
       const { body } = await api.getUsageStatus();
       const ids = body.agents.map((a: { agentId: string }) => a.agentId).sort();
-      expect(ids).toEqual(['claude', 'codex', 'gemini']);
+      expect(ids).toEqual(['antigravity', 'claude', 'codex']);
     });
 
     test('agents have valid shape after refresh', async ({ request }) => {

@@ -7,8 +7,8 @@ import { TerminalWsClient } from '../helpers/terminal-ws';
  * - Claude: reads from ~/.claude.json (user scope); `claude mcp list` uses
  *   TUI rendering that can't be captured, so we verify via jq instead.
  * - Codex: `codex mcp list` produces plain text output — verify directly.
- * - Gemini: reads from ~/.gemini/settings.json; `gemini mcp list` produces
- *   no capturable output, so we verify via jq instead.
+ * - Antigravity: `agy mcp list` reads ~/.gemini/config/mcp_config.json and
+ *   prints a plain-text table — verify directly.
  */
 
 async function execInWorker(containerId: string, command: string, timeoutMs = 30_000): Promise<string> {
@@ -77,17 +77,19 @@ test.describe('MCP servers loaded by agent CLIs', () => {
     }
   });
 
-  test('gemini has playwright and chrome-devtools MCP servers in config', async () => {
-    // gemini mcp list produces no capturable terminal output — verify config directly
-    const output = await execInWorker(containerId, 'jq -r ".mcpServers | keys[]" ~/.gemini/settings.json 2>&1');
-    expect(output).toContain('playwright');
-    expect(output).toContain('chrome-devtools');
+  test('agy mcp list shows playwright and chrome-devtools', async () => {
+    const output = await execInWorker(containerId, 'agy mcp list 2>&1');
+    expect(output).toContain('@playwright/mcp@latest');
+    expect(output).toContain('chrome-devtools-mcp@latest');
   });
 
-  test('gemini MCP server entries have correct commands', async () => {
-    const pw = await execInWorker(containerId, 'jq -r ".mcpServers.playwright.args[1]" ~/.gemini/settings.json');
-    expect(pw).toContain('@playwright/mcp@latest');
-    const cd = await execInWorker(containerId, 'jq -r ".mcpServers[\\"chrome-devtools\\"].args[1]" ~/.gemini/settings.json');
-    expect(cd).toContain('chrome-devtools-mcp@latest');
+  test('antigravity MCP servers are enabled', async () => {
+    const output = await execInWorker(containerId, 'agy mcp list 2>&1');
+    // agy mcp list shows a STATUS column — both should be "enabled"
+    const lines = output.split('\n').filter(l => /^(playwright|chrome-devtools)\s/.test(l));
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line).toContain('enabled');
+    }
   });
 });

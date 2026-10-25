@@ -62,7 +62,7 @@ test.describe.serial('Agent data persistence — mount verification', () => {
     // to the host file and every worker the user owns sees the same credentials.
     const output = await execInWorker(
       containerId,
-      'stat -c "%F" ~/.claude/.credentials.json ~/.codex/auth.json ~/.gemini/oauth_creds.json 2>/dev/null',
+      'stat -c "%F" ~/.claude/.credentials.json ~/.codex/auth.json ~/.gemini/antigravity-cli/antigravity-oauth-token 2>/dev/null',
     );
     // Terminal echoes the command line before the output, so line counting is
     // fragile — count occurrences of each file type in the buffer instead.
@@ -113,22 +113,31 @@ test.describe.serial('Agent data persistence — mount verification', () => {
     expect(output).toContain('chrome-devtools-mcp@latest');
   });
 
-  test('gemini trustedFolders.json exists with workspace trust', async () => {
-    const output = await execInWorker(containerId, 'cat ~/.gemini/trustedFolders.json');
-    expect(output).toContain('TRUST_FOLDER');
-    expect(output).toContain('/workspace');
+  test('antigravity settings.json exists with workspace trust', async () => {
+    const output = await execInWorker(containerId, 'jq -c .trustedWorkspaces ~/.gemini/antigravity-cli/settings.json');
+    expect(output).toContain('["/workspace"]');
   });
 
-  test('gemini settings.json contains playwright MCP server', async () => {
-    const output = await execInWorker(containerId, 'cat ~/.gemini/settings.json');
+  test('antigravity mcp_config.json contains playwright MCP server', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.gemini/config/mcp_config.json');
     expect(output).toContain('playwright');
     expect(output).toContain('@playwright/mcp@latest');
   });
 
-  test('gemini settings.json contains chrome-devtools MCP server', async () => {
-    const output = await execInWorker(containerId, 'cat ~/.gemini/settings.json');
+  test('antigravity mcp_config.json contains chrome-devtools MCP server', async () => {
+    const output = await execInWorker(containerId, 'cat ~/.gemini/config/mcp_config.json');
     expect(output).toContain('chrome-devtools');
     expect(output).toContain('chrome-devtools-mcp@latest');
+  });
+
+  test('antigravity gets the instructions and capability skills', async () => {
+    const output = await execInWorker(
+      containerId,
+      'head -c 200 ~/.gemini/GEMINI.md; echo; head -5 ~/.gemini/config/skills/agentor-tmux/SKILL.md',
+    );
+    expect(output).toContain('platform-guide');
+    expect(output).toContain('---');
+    expect(output.toLowerCase()).toContain('name:');
   });
 
   test('built-in capability SKILL.md is written with real (non-empty) content', async () => {

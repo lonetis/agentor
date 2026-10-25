@@ -20,13 +20,13 @@ test.describe('Init Scripts Modal', () => {
     await expect(dialog.locator('h2')).toHaveText('Init Scripts');
   });
 
-  test('built-in scripts (claude, codex, gemini) are listed', async ({ page }) => {
+  test('built-in scripts (claude, codex, antigravity) are listed', async ({ page }) => {
     await goToDashboard(page);
     await page.locator('button:has-text("Init Scripts")').click();
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 10_000 });
 
-    const builtInScripts = ['claude', 'codex', 'gemini'];
+    const builtInScripts = ['claude', 'codex', 'antigravity'];
     for (const name of builtInScripts) {
       await expect(dialog.getByText(name, { exact: true })).toBeVisible({ timeout: 10_000 });
     }

@@ -24,8 +24,17 @@ interface AgentState {
  * agentId → state. The `userId` is implied by the file path. */
 type PersistedUserUsage = Record<string, { info: AgentUsageInfo; lastFetchTime: number; backoffUntil: number }>;
 
+/** Agents with a usage fetcher, in display order. Persisted state of any other
+ * agent id (one that was removed, e.g. `gemini`) is dropped on load. */
+const AGENT_IDS = ['claude', 'codex', 'antigravity'] as const;
+
 const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const CODEX_TOKEN_ENDPOINT = 'https://auth.openai.com/oauth/token';
+
+const ANTIGRAVITY_API_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
+/** The quota API reports only some model groups to clients it does not
+ * recognize as a current Antigravity CLI, so identify as one. */
+const ANTIGRAVITY_USER_AGENT = 'antigravity/cli/1.4.7';
 
 interface ClaudeCredFile {
   claudeAiOauth?: {
@@ -45,11 +54,15 @@ interface CodexCredFile {
   last_refresh?: string;
 }
 
-interface GeminiCredFile {
-  access_token?: string;
-  refresh_token?: string;
-  expiry_date?: number;
-  id_token?: string;
+/** Antigravity CLI's file token storage (`antigravity-oauth-token`). */
+interface AntigravityCredFile {
+  token?: {
+    access_token?: string;
+    refresh_token?: string;
+    /** RFC 3339 */
+    expiry?: string;
+  };
+  auth_method?: string;
 }
 
 /** Usage checker, per-user. Each user's OAuth credentials (stored under
@@ -178,18 +191,17 @@ export class UsageChecker {
     const now = Date.now();
     const existing = this.userStates.get(userId) ?? new Map<string, AgentState>();
 
-    const agentIds = ['claude', 'codex', 'gemini'] as const;
-    const fetchFns = [
-      () => this.fetchClaudeUsage(userId),
-      () => this.fetchCodexUsage(userId),
-      () => this.fetchGeminiUsage(userId),
-    ];
+    const fetchFns: Record<(typeof AGENT_IDS)[number], () => Promise<AgentUsageInfo>> = {
+      claude: () => this.fetchClaudeUsage(userId),
+      codex: () => this.fetchCodexUsage(userId),
+      antigravity: () => this.fetchAntigravityUsage(userId),
+    };
 
     const fetchers: Array<() => Promise<AgentUsageInfo>> = [];
-    for (let i = 0; i < agentIds.length; i++) {
-      const state = existing.get(agentIds[i]!);
+    for (const agentId of AGENT_IDS) {
+      const state = existing.get(agentId);
       if (!state || now - state.lastFetchTime >= POLL_INTERVAL_MS) {
-        fetchers.push(fetchFns[i]!);
+        fetchers.push(fetchFns[agentId]);
       }
     }
     if (fetchers.length === 0) return;
@@ -231,6 +243,7 @@ export class UsageChecker {
       const data = JSON.parse(raw) as PersistedUserUsage;
       const map = new Map<string, AgentState>();
       for (const [agentId, entry] of Object.entries(data)) {
+        if (!(AGENT_IDS as readonly string[]).includes(agentId)) continue;
         if (entry?.info) {
           map.set(agentId, {
             info: entry.info,
@@ -304,7 +317,7 @@ export class UsageChecker {
     const apiKeyName: Record<string, string> = {
       claude: 'ANTHROPIC_API_KEY',
       codex: 'OPENAI_API_KEY',
-      gemini: 'GEMINI_API_KEY',
+      antigravity: 'GEMINI_API_KEY',
     };
     const name = apiKeyName[agentId];
     if (name && getUserEnvVar(env, name)) return 'api-key';
@@ -516,17 +529,17 @@ export class UsageChecker {
     return data.access_token;
   }
 
-  // ─── Gemini ─────────────────────────────────────────────────
+  // ─── Antigravity ────────────────────────────────────────────
 
-  private async fetchGeminiUsage(userId: string): Promise<AgentUsageInfo> {
+  private async fetchAntigravityUsage(userId: string): Promise<AgentUsageInfo> {
     const now = new Date().toISOString();
-    const cred = await this.readCredFile<GeminiCredFile>(userId, 'gemini.json');
-    const token = cred?.access_token;
-    const authType = this.detectAuthType(userId, 'gemini', !!token);
+    const cred = await this.readCredFile<AntigravityCredFile>(userId, 'antigravity.json');
+    const token = cred?.token?.access_token;
+    const authType = this.detectAuthType(userId, 'antigravity', !!token);
 
     const base: AgentUsageInfo = {
-      agentId: 'gemini',
-      displayName: 'Gemini',
+      agentId: 'antigravity',
+      displayName: 'Antigravity',
       authType,
       usageAvailable: false,
       windows: [],
@@ -534,21 +547,45 @@ export class UsageChecker {
     };
     if (!token) return base;
 
-    if (cred?.expiry_date && cred.expiry_date < Date.now()) {
-      base.error = 'Token expired — run gemini in a worker to refresh';
+    const expiry = cred?.token?.expiry ? Date.parse(cred.token.expiry) : NaN;
+    if (expiry < Date.now()) {
+      base.error = 'Token expired — run agy in a worker to refresh';
       return base;
     }
 
-    if (this.inBackoff(userId, 'gemini', base)) return base;
+    if (this.inBackoff(userId, 'antigravity', base)) return base;
+
+    const post = (method: string, body: unknown) =>
+      fetch(`${ANTIGRAVITY_API_BASE}:${method}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'User-Agent': ANTIGRAVITY_USER_AGENT,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
 
     try {
-      const resp = await this.fetchWithBackoff(userId, 'gemini', base, () =>
-        fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: '{}',
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        }),
+      // Quota is tracked per Cloud AI Companion project — a shared consumer
+      // project for personal accounts, the user's own for business accounts.
+      const assistResp = await this.fetchWithBackoff(userId, 'antigravity', base, () =>
+        post('loadCodeAssist', { metadata: { ideType: 'ANTIGRAVITY' } }),
+      );
+      if (!assistResp) return base;
+      if (!assistResp.ok) {
+        base.error = `HTTP ${assistResp.status}`;
+        return base;
+      }
+      const assist = (await assistResp.json()) as { cloudaicompanionProject?: string };
+      if (!assist.cloudaicompanionProject) {
+        base.error = 'No Antigravity project — run agy in a worker to finish onboarding';
+        return base;
+      }
+
+      const resp = await this.fetchWithBackoff(userId, 'antigravity', base, () =>
+        post('retrieveUserQuotaSummary', { project: assist.cloudaicompanionProject }),
       );
       if (!resp) return base;
       if (!resp.ok) {
@@ -556,34 +593,21 @@ export class UsageChecker {
         return base;
       }
       const data = (await resp.json()) as {
-        buckets?: Array<{ modelId?: string; remainingFraction?: number; resetTime?: string; tokenType?: string }>;
+        groups?: Array<{
+          displayName?: string;
+          buckets?: Array<{ bucketId?: string; window?: string; resetTime?: string; remainingFraction?: number }>;
+        }>;
       };
       base.usageAvailable = true;
-      if (data.buckets && data.buckets.length > 0) {
-        const families: Record<string, { lowestRemaining: number; earliestReset: string | null }> = {};
-        for (const bucket of data.buckets) {
-          const modelId = bucket.modelId || '';
-          let family: string;
-          if (modelId.includes('-pro')) family = 'Pro';
-          else if (modelId.includes('-flash')) family = 'Flash';
-          else family = modelId;
-          if (!families[family]) families[family] = { lowestRemaining: 1, earliestReset: null };
-          const f = families[family]!;
-          const remaining = bucket.remainingFraction ?? 1;
-          if (remaining < f.lowestRemaining) f.lowestRemaining = remaining;
-          if (bucket.resetTime) {
-            if (!f.earliestReset || bucket.resetTime < f.earliestReset) f.earliestReset = bucket.resetTime;
-          }
-        }
-        const order = ['Pro', 'Flash'];
-        const sorted = Object.keys(families).sort((a, b) => {
-          const ai = order.indexOf(a);
-          const bi = order.indexOf(b);
-          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-        });
-        for (const family of sorted) {
-          const f = families[family]!;
-          base.windows.push({ label: family, utilization: Math.round((1 - f.lowestRemaining) * 100), resetsAt: f.earliestReset });
+      for (const group of data.groups ?? []) {
+        // "Gemini Models" → "Gemini", "Claude and GPT models" → "Claude and GPT"
+        const name = (group.displayName ?? '').replace(/\s+models$/i, '') || 'Models';
+        const buckets = group.buckets ?? [];
+        for (const bucket of buckets) {
+          const label = buckets.length > 1 ? `${name} (${bucket.window ?? bucket.bucketId ?? '?'})` : name;
+          // proto3 JSON omits zero values, so a missing fraction means exhausted.
+          const remaining = bucket.remainingFraction ?? 0;
+          base.windows.push({ label, utilization: Math.round((1 - remaining) * 100), resetsAt: bucket.resetTime ?? null });
         }
       }
     } catch (err: unknown) {

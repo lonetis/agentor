@@ -8,7 +8,7 @@ safe_name() {
     echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//'
 }
 
-# The three writers below stream their JSON array one compact object per line
+# The two writers below stream their JSON array one compact object per line
 # (`jq -c '.[]'`, the same idiom the entrypoint uses for repos) and extract
 # name/content per object — one `jq` per entry rather than two. `.content` is a
 # single JSON string, so a compact object is always exactly one line.
@@ -61,33 +61,5 @@ write_capabilities_md() {
         skill_dir="${base_dir}/agentor-${safe}"
         mkdir -p "$skill_dir"
         echo "$content" > "$skill_dir/SKILL.md"
-    done < <(echo "$CAPABILITIES" | jq -c '.[]')
-}
-
-# Write each CAPABILITIES JSON entry as a Gemini TOML command file.
-# Strips YAML frontmatter before writing.
-# Creates: <dir>/agentor-<safe-name>.toml
-# Usage: write_capabilities_toml ~/.gemini/commands
-write_capabilities_toml() {
-    local dir="$1"
-    [ -z "$CAPABILITIES" ] && return
-    local count
-    count=$(echo "$CAPABILITIES" | jq -r 'length' 2>/dev/null || echo 0)
-    [ "$count" -eq 0 ] && return
-
-    mkdir -p "$dir"
-    local entry name content safe body escaped
-    while IFS= read -r entry; do
-        name=$(echo "$entry" | jq -r '.name')
-        content=$(echo "$entry" | jq -r '.content')
-        safe=$(safe_name "$name")
-        body=$(echo "$content" | sed -n '/^---$/,/^---$/!p' | sed '/./,$!d')
-        escaped=$(echo "$body" | sed 's/\\/\\\\/g')
-        cat > "${dir}/agentor-${safe}.toml" <<TOMLEOF
-description = "${name}"
-prompt = """
-${escaped}
-"""
-TOMLEOF
     done < <(echo "$CAPABILITIES" | jq -c '.[]')
 }

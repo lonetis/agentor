@@ -36,16 +36,23 @@ const AGENT_CONFIGS: AgentConfig[] = [
     ],
   },
   {
-    id: 'gemini',
-    displayName: 'Gemini',
+    id: 'antigravity',
+    displayName: 'Antigravity',
     apiDomains: [
+      'cloudcode-pa.googleapis.com',
+      'daily-cloudcode-pa.googleapis.com',
+      'aicode.googleapis.com',
       'generativelanguage.googleapis.com',
       'accounts.google.com',
       'oauth2.googleapis.com',
       'www.googleapis.com',
-      'cloudcode-pa.googleapis.com',
-      'registry.npmjs.org',
-      'github.com',
+      'play.googleapis.com',
+      'lh3.googleusercontent.com',
+      'antigravity.google',
+      'antigravity-unleash.goog',
+      // Self-update: release manifest + binary download
+      'antigravity-cli-auto-updater-974169037036.us-central1.run.app',
+      'storage.googleapis.com',
     ],
   },
   {
