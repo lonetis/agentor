@@ -59,6 +59,7 @@ export function useTerminal() {
     }
   });
   let fitTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingFocusTarget: Element | null | undefined;
 
   function openTerminal(
     containerId: string,
@@ -133,6 +134,7 @@ export function useTerminal() {
       // Wait for the initial tmux screen redraw to finish, then refit,
       // scroll to bottom, and reveal the terminal in its final state.
       setTimeout(() => {
+        if (activeTerminal.value?.term !== term) return;
         fitAddon.fit();
         const dims2 = fitAddon.proposeDimensions();
         if (dims2 && dims2.cols > 0 && dims2.rows > 0 && ws.readyState === WebSocket.OPEN) {
@@ -140,6 +142,12 @@ export function useTerminal() {
         }
         term.scrollToBottom();
         containerEl.style.visibility = '';
+        // Apply activation focus once the textarea is visible, unless another
+        // control received focus while the connection was being established.
+        if (pendingFocusTarget !== undefined && containerEl.ownerDocument.activeElement === pendingFocusTarget) {
+          focusTerminal();
+        }
+        cancelFocus();
       }, 200);
     };
 
@@ -223,7 +231,22 @@ export function useTerminal() {
     }
   }
 
+  function focusTerminal() {
+    const t = activeTerminal.value;
+    if (!t) return;
+    if (t.containerEl.style.visibility === 'hidden') {
+      pendingFocusTarget = t.containerEl.ownerDocument.activeElement;
+    } else if (t.containerEl.isConnected && t.containerEl.getClientRects().length > 0) {
+      t.term.focus();
+    }
+  }
+
+  function cancelFocus() {
+    pendingFocusTarget = undefined;
+  }
+
   function closeTerminal() {
+    cancelFocus();
     const t = activeTerminal.value;
     if (!t) return;
     if (t.writeRafId !== null) cancelAnimationFrame(t.writeRafId);
@@ -244,6 +267,8 @@ export function useTerminal() {
     openTerminal,
     closeTerminal,
     fitTerminal,
+    focusTerminal,
+    cancelFocus,
     destroy,
   };
 }
