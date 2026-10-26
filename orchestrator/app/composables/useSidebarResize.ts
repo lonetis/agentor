@@ -92,15 +92,16 @@ export function useSidebarResize() {
   function checkMobile() {
     const wasMobile = isMobile.value;
     isMobile.value = window.innerWidth < MOBILE_BREAKPOINT;
-    // Auto-collapse when transitioning to mobile, auto-expand when leaving
+    // Mobile visibility is temporary; restore the desktop preference on return.
     if (isMobile.value && !wasMobile) {
       isCollapsed.value = true;
+    } else if (!isMobile.value && wasMobile) {
+      isCollapsed.value = state.value.sidebar.collapsed;
     }
-    // Clamp width down if the viewport shrank below the current size
-    const maxWidth = getMaxWidth();
-    if (sidebarWidth.value > maxWidth) {
-      sidebarWidth.value = maxWidth;
-      setSidebarWidth(maxWidth);
+    // Clamp only the rendered width. Viewport changes (e.g. docked DevTools)
+    // must not overwrite the user's width or prevent it from growing back.
+    if (!isDragging.value) {
+      sidebarWidth.value = Math.min(state.value.sidebar.width, getMaxWidth());
     }
   }
 

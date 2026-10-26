@@ -231,6 +231,93 @@ test.describe('Sidebar', () => {
     });
   });
 
+  test.describe('Viewport Resize', () => {
+    async function expectSidebarWidth(page: Page, width: number) {
+      await expect.poll(async () => {
+        const box = await page.locator('aside').boundingBox();
+        return box ? Math.round(box.width) : 0;
+      }).toBe(width);
+    }
+
+    async function storedSidebar(page: Page) {
+      return page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).sidebar, STORAGE_KEY);
+    }
+
+    test('restores the expanded sidebar and its width after a narrow viewport', async ({ page }) => {
+      await loadDashboardWithSidebarWidth(page, 1000);
+      await expectSidebarWidth(page, 1000);
+
+      // Docked DevTools can shrink the page below the mobile breakpoint.
+      await page.setViewportSize({ width: 700, height: 1080 });
+      await expect(page.locator('button[title="Expand sidebar"]')).toBeVisible();
+      await page.setViewportSize({ width: 1920, height: 1080 });
+
+      await expect(page.locator('button[title="Expand sidebar"]')).toHaveCount(0);
+      await expectSidebarWidth(page, 1000);
+      expect(await storedSidebar(page)).toMatchObject({ width: 1000, collapsed: false });
+    });
+
+    test('restores width after clamping within desktop viewports', async ({ page }) => {
+      await loadDashboardWithSidebarWidth(page, 1500);
+      await page.setViewportSize({ width: 1000, height: 1080 });
+      await expectSidebarWidth(page, 900);
+      await page.setViewportSize({ width: 1920, height: 1080 });
+
+      await expectSidebarWidth(page, 1500);
+      expect(await storedSidebar(page)).toMatchObject({ width: 1500, collapsed: false });
+    });
+
+    test('preserves a manually collapsed sidebar through viewport changes', async ({ page }) => {
+      await loadDashboardWithSidebarWidth(page, 1000);
+      await page.click('button[title="Collapse sidebar"]');
+      await expect(page.locator('button[title="Expand sidebar"]')).toBeVisible();
+
+      await page.setViewportSize({ width: 700, height: 1080 });
+      // Opening the mobile overlay must not replace the desktop preference.
+      await page.click('button[title="Expand sidebar"]');
+      await expect(page.locator('.sidebar-backdrop')).toBeVisible();
+      await page.setViewportSize({ width: 1920, height: 1080 });
+
+      await expect(page.locator('button[title="Expand sidebar"]')).toBeVisible();
+      await page.click('button[title="Expand sidebar"]');
+      await expectSidebarWidth(page, 1000);
+    });
+
+    test('preserves desktop preferences when reloading a narrow viewport', async ({ page }) => {
+      await loadDashboardWithSidebarWidth(page, 1000);
+      await page.setViewportSize({ width: 700, height: 1080 });
+      await expect(page.locator('button[title="Expand sidebar"]')).toBeVisible();
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect(page.locator('button[title="Expand sidebar"]')).toBeVisible();
+      await page.click('button[title="Expand sidebar"]');
+      await expectSidebarWidth(page, 320);
+      await page.click('button[title="Collapse sidebar"]');
+
+      await page.setViewportSize({ width: 1920, height: 1080 });
+      await expectSidebarWidth(page, 1000);
+      expect(await storedSidebar(page)).toMatchObject({ width: 1000, collapsed: false });
+    });
+
+    test('keeps an explicitly dragged width after resizing and reloading', async ({ page }) => {
+      await loadDashboardWithSidebarWidth(page, 1000);
+      const handle = await page.locator('.sidebar-handle').boundingBox();
+      expect(handle).not.toBeNull();
+      await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(500, handle!.y + handle!.height / 2);
+      await page.mouse.up();
+      await expectSidebarWidth(page, 500);
+
+      await page.setViewportSize({ width: 700, height: 1080 });
+      await expect(page.locator('button[title="Expand sidebar"]')).toBeVisible();
+      await page.setViewportSize({ width: 1920, height: 1080 });
+      await expectSidebarWidth(page, 500);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expectSidebarWidth(page, 500);
+      expect(await storedSidebar(page)).toMatchObject({ width: 500, collapsed: false });
+    });
+  });
+
   test.describe('Button Row Stacking', () => {
     async function buttonBoxes(page: Page) {
       const cap = await page.locator('aside button:has-text("Capabilities")').first().boundingBox();
