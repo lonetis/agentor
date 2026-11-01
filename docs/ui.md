@@ -39,6 +39,33 @@ Web-native tab bar inside the terminal pane — each tab represents a tmux windo
 - New tab name input next to "+" button — type a name before creating, or leave empty for auto-generated `shell-{4char}`
 - Click an already-active tab to inline-rename it (input replaces label, Enter to confirm, Escape to cancel)
 - 10k scrollback per terminal, Alt+scroll for fast scrolling
+- The bar's right edge holds pane actions (`#actions` slot) — currently the **touch keys** toggle (`aria-label` "Show/Hide touch keys")
+
+## Terminal Input, Selection & Touch
+
+`useTerminal` (one instance per tmux window) owns the xterm.js terminal and its WebSocket; `TerminalPane` wires the active window's instance to the toolbar, composer, text view and overlays.
+
+**Mouse protocol (selection fix).** xterm.js clears its selection on every "user input" event and treats mouse reports as input; with tmux `mouse on` (and any app asking tmux for any-motion tracking, e.g. crossterm TUIs) every mouse move was reported, so a selection vanished as soon as the pointer moved. xterm.js also disables local selection and touch scrolling while mouse reporting is on. The terminal therefore **never lets xterm.js enable mouse reporting**: parser hooks on `CSI ? Pm h/l` (plus RIS / DECSTR) record the requested protocol / encoding in a `MouseModeState` (`utils/terminal-mouse.ts`) and swallow those modes (other modes in a combined sequence are replayed). Clicks and drags are always local text selection (clicks were never forwarded to tmux); only the **wheel** is reported, encoded by `encodeWheelReport()` (SGR, SGR-pixels, urxvt, UTF-8, default) from a capture-phase `wheel` listener that also keeps xterm.js from turning the wheel into arrow keys. Ctrl+wheel stays browser zoom. Without application mouse tracking, xterm.js scrolls its own scrollback as usual.
+
+**Clipboard.** macOS: Cmd+C / Cmd+V (browser copy/paste events). Elsewhere: Ctrl+Shift+C or Ctrl+Insert copy, Ctrl+C copies *while text is selected* (then clears the selection, so the next Ctrl+C interrupts), Ctrl+Shift+V / Shift+Insert paste through the browser's native paste event (bracketed paste when the app enabled it). `utils/clipboard.ts` falls back to `execCommand('copy')` in insecure contexts (plain http on a LAN IP) where `navigator.clipboard` does not exist. A right-click context menu (`UContextMenu`, disabled on touch) offers Copy, Paste, Select all, Open text view, Compose text, font size and the touch keys toggle. Links in the output are clickable (`@xterm/addon-web-links`).
+
+**Touch** (`utils/terminal-touch.ts`, capture-phase listeners on `.terminal-surface`, which has `touch-action: none`):
+- one-finger swipe → scroll with momentum; becomes wheel reports to tmux (copy-mode scrollback, ~1 report per 4 rows) or local scrollback without app mouse tracking
+- long-press (450 ms) → selects the word under the finger (URLs/paths stay whole), drag to extend; then a floating **Copy / Select all / More… / ×** bar (`data-testid="terminal-selection-actions"`)
+- two-finger pinch → font size (persisted)
+- tap → left to the browser (focuses the terminal → soft keyboard; activates links)
+
+**Touch key toolbar** (`TerminalToolbar.vue`, `data-testid="terminal-toolbar"`, shown automatically on coarse-pointer devices, toggled from the tmux bar on any device): keyboard show/hide, Esc, Tab, latching **Ctrl** / **Alt** (applied to the next key, incl. the next character typed on the soft keyboard), arrows (hold to repeat), ⇧↵ (CSI-u Shift+Enter → newline in agents), ^C, Home/End/PgUp/PgDn, common symbols, font size −/+; fixed actions **Compose text**, **Paste**, **Select text**. Buttons prevent `mousedown` so tapping a key never closes the soft keyboard. Cursor keys respect DECCKM (`utils/terminal-keys.ts`).
+
+**Composer** (`TerminalComposer.vue`, `data-testid="terminal-composer"`): a native textarea (16 px, so iOS does not zoom) where autocorrect, swipe typing, dictation and long-press paste work. **Send** pastes the text and presses Enter after 50 ms (TUIs treat an Enter inside a paste as part of it); **Insert** only pastes. Ctrl/Cmd+Enter sends. It also opens as the fallback when the async clipboard is unavailable or denied.
+
+**Text view** (`TerminalTextView.vue`, `data-testid="terminal-text-view"`): the window's text incl. 3000 lines of tmux scrollback (`GET /api/containers/:id/panes/:windowIndex/capture?history=3000`, joined lines) as a natively selectable `<pre>` — OS selection handles, magnifier and copy menu on touch, Ctrl+F on desktop — plus Copy (selection or everything) and Reload. Falls back to the visible screen when the capture fails.
+
+**Connection.** A dropped socket shows a "Disconnected — reconnecting…" pill (`data-testid="terminal-disconnected"`) with **Reconnect now** and reconnects automatically with backoff (0.5 s → 15 s) while the page is visible, on `online`, and when the page becomes visible again (also after > 30 s in the background, since mobile browsers silently kill background sockets). tmux redraws the screen on re-attach.
+
+**Soft keyboard / viewport.** `plugins/viewport.client.ts` mirrors `visualViewport` into `--app-height` / `--app-offset-top`; the dashboard root uses `.app-shell` (fixed, sized to the visual viewport, safe-area padded), so the on-screen keyboard shrinks the layout (→ ResizeObserver → refit → tmux resize) instead of covering the terminal. Ignored while pinch-zoomed. xterm's hidden textarea and every terminal input use 16 px (no iOS focus zoom).
+
+**Preferences** (`useTerminalPrefs`, persisted in `useUiState` → `terminal`): `fontSize` (null = device default: 12 px on phones, 14 px otherwise; 8–28) and `toolbar` (`auto` | `show` | `hide`). Device facts come from `useDevice()` (`isTouch` = `(pointer: coarse)`, `isStandalone`, `isMac`).
 
 ## Sidebar Worker Tabs & Mapping Groups
 
@@ -135,6 +162,7 @@ All client-side UI state is consolidated into a single localStorage key (`agento
 - `panes.rootNode` — serialized `PaneNode` tree (split pane layout + open tabs)
 - `panes.focusedNodeId` — which leaf pane group is focused
 - `tmux.activeWindows` — `Record<containerId, windowIndex>` for restoring active tmux tab per terminal
+- `terminal.fontSize` — terminal font size in px (`null` = device default), `terminal.toolbar` — touch key toolbar mode (`auto` | `show` | `hide`)
 
 **Architecture:**
 - Module-level singleton ref, loaded from localStorage on first access

@@ -77,10 +77,24 @@ interface TmuxState {
   activeWindows: Record<string, number>;
 }
 
+/** `auto` shows the touch key toolbar only on touch (coarse-pointer) devices. */
+export type TerminalToolbarMode = 'auto' | 'show' | 'hide';
+
+interface TerminalState {
+  /** Terminal font size in px; null = device default (smaller on phones). */
+  fontSize: number | null;
+  toolbar: TerminalToolbarMode;
+}
+
+export const TERMINAL_FONT_SIZE_MIN = 8;
+export const TERMINAL_FONT_SIZE_MAX = 28;
+const TERMINAL_TOOLBAR_MODES: readonly TerminalToolbarMode[] = ['auto', 'show', 'hide'];
+
 export interface UiState {
   sidebar: SidebarState;
   panes: PaneState;
   tmux: TmuxState;
+  terminal: TerminalState;
 }
 
 const DEFAULT_PANELS: PanelStates = {
@@ -107,7 +121,15 @@ function defaultState(): UiState {
     tmux: {
       activeWindows: {},
     },
+    terminal: {
+      fontSize: null,
+      toolbar: 'auto',
+    },
   };
+}
+
+function clampFontSize(size: number): number {
+  return Math.min(TERMINAL_FONT_SIZE_MAX, Math.max(TERMINAL_FONT_SIZE_MIN, Math.round(size)));
 }
 
 function clampWidth(w: number): number {
@@ -154,6 +176,15 @@ function loadState(): UiState {
         if (parsed.tmux && typeof parsed.tmux === 'object') {
           if (parsed.tmux.activeWindows && typeof parsed.tmux.activeWindows === 'object') {
             base.tmux.activeWindows = parsed.tmux.activeWindows;
+          }
+        }
+        // Merge terminal preferences
+        if (parsed.terminal && typeof parsed.terminal === 'object') {
+          if (typeof parsed.terminal.fontSize === 'number' && Number.isFinite(parsed.terminal.fontSize)) {
+            base.terminal.fontSize = clampFontSize(parsed.terminal.fontSize);
+          }
+          if (TERMINAL_TOOLBAR_MODES.includes(parsed.terminal.toolbar)) {
+            base.terminal.toolbar = parsed.terminal.toolbar;
           }
         }
       }
@@ -256,6 +287,18 @@ export function useUiState() {
     scheduleWrite();
   }
 
+  // --- Terminal ---
+
+  function setTerminalFontSize(size: number | null) {
+    s.value.terminal.fontSize = size === null ? null : clampFontSize(size);
+    scheduleWrite();
+  }
+
+  function setTerminalToolbar(mode: TerminalToolbarMode) {
+    s.value.terminal.toolbar = mode;
+    scheduleWrite();
+  }
+
   return {
     state: s,
     setSidebarWidth,
@@ -266,6 +309,8 @@ export function useUiState() {
     setTmuxActiveWindow,
     getTmuxActiveWindow,
     removeTmuxActiveWindow,
+    setTerminalFontSize,
+    setTerminalToolbar,
   };
 }
 

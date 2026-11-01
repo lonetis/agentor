@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1514 tests** across 117 test files (~953 API + ~561 UI)
+- **~1520 tests** across 118 test files (~953 API + ~567 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -108,7 +108,7 @@ tests/
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
     mcp.ts                 # MCP client over the real OAuth flow (MCP SDK) + hand-driven OAuth steps + tool-call helpers
   api/                     # API endpoint tests (~953 tests across 70 files)
-  ui/                      # UI interaction tests (~561 tests across 47 files)
+  ui/                      # UI interaction tests (~567 tests across 48 files)
 ```
 
 ## Test Categories
@@ -188,7 +188,7 @@ tests/
 | `users.spec.ts` | 11 | `/api/users` admin API: list (roles, shape), create (user signs in; admin role; email lowercased), create validation (400s) + duplicate email 409, update name/email/role (+ 409 / 400 cases), an admin cannot demote, delete or reset the password of themselves, set password (new works, old fails, short 400), delete (gone from list, can't sign in), unknown ids 404, regular users 403 on every route, 401 unauth |
 | `account-profile.spec.ts` | 4 | `GET /api/account/me` (admin identity + role); a user updates their own name/email via `PATCH /api/account/profile`; profile validation (empty body/name, bad email 400, taken email 409, role cannot be escalated); 401 unauth |
 
-### UI Tests (~561 tests, 47 files)
+### UI Tests (~567 tests, 48 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -225,6 +225,7 @@ tests/
 | `apps-pane.spec.ts` | 9 | Apps pane for container, plus VS Code Tunnel and SSH singleton app types render with `Start` buttons and "Not running" empty state |
 | `workspace-upload.spec.ts` | 8 | Upload button, modal, drop zone, close |
 | `terminal-pane.spec.ts` | 9 | Terminal open, tmux tabs, xterm rows, create button, new tab creation, non-default tab has close button, main tab no close button, clicking Terminal twice opens two independent terminal tabs for the same worker and closing one leaves the other intact, keyboard typing produces WebSocket output |
+| `terminal-interaction.spec.ts` | 6 | Terminal selection & input in the browser (serial, one worker; waits for the init shell): **selection survives mouse movement while the app requests any-motion tracking** (`printf '\033[?1003h'`, verified via `#{mouse_any_flag}`; drag-select, hover around, `.xterm-selection` still rendered) + context-menu Copy read back from the clipboard; Ctrl+Shift+C copies and Ctrl+C without a selection still interrupts `sleep`; mouse wheel enters tmux copy-mode and scrolls (`#{pane_in_mode}`, `#{scroll_position}`); touch key toolbar shown via the tmux-bar toggle — Ctrl latch + typed `c` interrupts, Up recalls history; composer Send runs a command, text view shows the scrollback; context-menu font size persists in `agentor-ui-state` and resets. Assertions read shell-computed values from the capture API |
 | `tmux-tabs.spec.ts` | 9 | Tmux tab bar interactions |
 | `split-pane.spec.ts` | 3 | Placeholder, terminal pane, tab bar |
 | `theme-toggle.spec.ts` | 29 | Dark default, light switch, persistence, all modes |

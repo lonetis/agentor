@@ -123,6 +123,9 @@ function tryClose(w: TmuxWindow) {
         <span
           v-if="w.index !== defaultWindowIndex && editingTab !== w.index"
           class="tmux-tab-close"
+          role="button"
+          :aria-label="`Close terminal ${w.name}`"
+          :title="`Close terminal ${w.name}`"
           @click.stop="tryClose(w)"
         >
           &times;
@@ -132,14 +135,18 @@ function tryClose(w: TmuxWindow) {
         <input
           :value="newTabName"
           class="tmux-create-field"
+          aria-label="New terminal tab name"
           :placeholder="placeholderName"
           @input="newTabName = sanitizeName(($event.target as HTMLInputElement).value)"
           @keydown="onCreateKeydown"
         />
-        <button class="tmux-create-btn" @click="onCreate">
+        <button class="tmux-create-btn" aria-label="New terminal tab" title="New terminal tab" @click="onCreate">
           +
         </button>
       </div>
+    </div>
+    <div v-if="$slots.actions" class="tmux-bar-actions">
+      <slot name="actions" />
     </div>
   </div>
 </template>
@@ -295,4 +302,58 @@ function tryClose(w: TmuxWindow) {
   background: var(--terminal-hover-bg);
 }
 
+.tmux-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding-left: 4px;
+  border-left: 1px solid var(--terminal-bar-border);
+}
+
+/* Touch: bigger targets (the default bar is sized for a mouse). */
+@media (pointer: coarse) {
+  .tmux-tab-bar {
+    height: 38px;
+    min-height: 38px;
+  }
+
+  .tmux-tab {
+    height: 32px;
+    padding: 2px 10px;
+    font-size: 13px;
+  }
+
+  .tmux-tab-close {
+    width: 24px;
+    height: 24px;
+    font-size: 18px;
+  }
+
+  .tmux-create-input {
+    height: 30px;
+  }
+
+  .tmux-create-field {
+    /* 16px: iOS zooms the page into any smaller focused field. */
+    font-size: 16px;
+    width: 96px;
+  }
+
+  .tmux-create-btn {
+    width: 32px;
+    font-size: 18px;
+  }
+
+  .tmux-tab-edit {
+    height: 26px;
+    font-size: 16px;
+    width: 110px;
+  }
+
+  .tmux-bar-actions :deep(button) {
+    width: 32px;
+    height: 30px;
+  }
+}
 </style>

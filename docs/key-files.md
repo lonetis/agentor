@@ -130,7 +130,8 @@
 - `orchestrator/app/pages/setup.vue` - First-run admin creation form (redirects to `/login` when setup is complete)
 - `orchestrator/app/middleware/auth.global.ts` - Global client route guard (redirects to `/setup` or `/login` as needed)
 - `orchestrator/app/composables/useAuth.ts` - better-auth Vue client wrapper (session, user, isAdmin, signIn, signOut, admin + passkey + oauth-provider client plugins; `isOAuthAuthorizationPage()`, `followOAuthRedirect()`)
-- `orchestrator/app/plugins/xterm.client.ts` - Provides `$Terminal` and `$FitAddon` globally (avoids SSR import issues)
+- `orchestrator/app/plugins/xterm.client.ts` - Provides `$Terminal`, `$FitAddon` and `$WebLinksAddon` globally (avoids SSR import issues)
+- `orchestrator/app/plugins/viewport.client.ts` - Mirrors `window.visualViewport` into `--app-height` / `--app-offset-top` (the `.app-shell` follows the visible area above a soft keyboard; ignored while pinch-zoomed)
 - `orchestrator/app/components/AppLogo.vue` - The Agentor mark as an `<img>` (`data-testid="agentor-logo"`, decorative `alt` by default, sized by the caller) — sidebar header + login / setup / consent pages
 - `orchestrator/app/components/AppSidebar.vue` - Left sidebar (container list, archived workers, port mappings, domain mappings, usage panel, update notification, **signed-in user card + sign out + Users modal trigger for admins**)
 - `orchestrator/app/components/UsersModal.vue` - Admin-only user management (list, create, change role, reset password, delete) via `/api/users`
@@ -161,7 +162,10 @@
 - `orchestrator/app/components/PortMappingsPanel.vue` - Port mappings management
 - `orchestrator/app/components/RepoInput.vue` - Self-contained repo row (provider select + searchable repo picker with create + branch picker for any provider the user has a token for; plain inputs otherwise)
 - `orchestrator/app/components/SplitPaneLayout.vue` - Thin wrapper rendering PaneSplitNode at rootNode
-- `orchestrator/app/components/TerminalPane.vue` - Multi-terminal host with inner tmux tab bar (TmuxTabBar)
+- `orchestrator/app/components/TerminalPane.vue` - Multi-terminal host with inner tmux tab bar (TmuxTabBar); wires the active window's terminal to the touch toolbar, composer, text view, desktop context menu (`UContextMenu`), touch-selection actions and the disconnected pill
+- `orchestrator/app/components/TerminalToolbar.vue` - Touch key toolbar (Esc/Tab/latching Ctrl+Alt/arrows with repeat/⇧↵/^C/Home/End/PgUp/PgDn/symbols/font size + Compose/Paste/Select text); buttons never take focus
+- `orchestrator/app/components/TerminalComposer.vue` - Native text field for the terminal (autocorrect, dictation, paste) with Send (paste + Enter) / Insert
+- `orchestrator/app/components/TerminalTextView.vue` - Natively selectable plain-text view of a tmux window incl. 3000 lines of scrollback (capture API), Copy / Reload / Close
 - `orchestrator/app/components/TerminalPlaceholder.vue` - Empty state when no worker is open
 - `orchestrator/app/components/ThemeToggle.vue` - Three-way color mode toggle (Default/White/Dark)
 - `orchestrator/app/components/TmuxTabBar.vue` - Inner tmux window tab bar
@@ -189,7 +193,9 @@
 - `orchestrator/app/composables/useSidebarResize.ts` - Sidebar drag-to-resize
 - `orchestrator/app/composables/useSplitPanes.ts` - Pane state manager (tab CRUD, split/merge, resize, persisted)
 - `orchestrator/app/composables/useUiState.ts` - Unified UI state persistence (single localStorage key, debounced writes)
-- `orchestrator/app/composables/useTerminal.ts` - xterm.js lifecycle + WebSocket (manually managed with `destroy()`)
+- `orchestrator/app/composables/useTerminal.ts` - xterm.js lifecycle + WebSocket (manually managed with `destroy()`): mouse-mode interception (xterm never reports the mouse; wheel reports sent itself), wheel + touch scrolling, touch selection, clipboard key bindings, latched toolbar modifiers, auto-reconnect, font size; exposes status / selection / focus state and actions for the pane
+- `orchestrator/app/composables/useTerminalPrefs.ts` - Terminal font size + touch toolbar mode (persisted in `useUiState().terminal`, device defaults)
+- `orchestrator/app/composables/useDevice.ts` - Shared media-query facts: `isTouch` (`pointer: coarse`), `isStandalone` (installed PWA), `isMac`
 - `orchestrator/app/composables/useTmuxTabs.ts` - Tmux window management (fetch, poll, create, close, activate, rename)
 - `orchestrator/app/composables/useLogs.ts` - Log entry state, WebSocket connection, history fetch, client-side filtering
 - `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only)
@@ -197,6 +203,10 @@
 - `orchestrator/app/composables/useWorkerMetrics.ts` - Per-worker metrics polling (10s singleton; sidebar feeds each card a `metric` prop)
 - `orchestrator/app/utils/container-name.ts` - Utility for container name display (shortName helper)
 - `orchestrator/app/utils/format.ts` - `formatBytes` / `formatRate` helpers (metrics panels + worker cards)
+- `orchestrator/app/utils/terminal-mouse.ts` - Mouse-mode state (DECSET/DECRST bookkeeping), wheel report encoding (SGR / SGR-pixels / urxvt / UTF-8 / default), wheel delta accumulation
+- `orchestrator/app/utils/terminal-keys.ts` - Escape sequences for special keys with xterm modifier encoding, Ctrl-character mapping, latch application
+- `orchestrator/app/utils/terminal-touch.ts` - Touch gestures on the terminal (swipe scroll + momentum, long-press selection, pinch font size)
+- `orchestrator/app/utils/clipboard.ts` - `copyText` / `readText` with an `execCommand('copy')` fallback for insecure contexts
 - `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including GitProviderInfo, GitRepoInfo, GitBranchInfo, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, LogLevel, LogSource, LogEntry) + defines AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, WorkerSystemEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone, ChallengeType, BaseDomainConfig
 
 ## Worker

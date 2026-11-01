@@ -600,10 +600,30 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - xterm.js with WebSocket connection to Docker exec
 - 10,000 line scrollback
 - Alt+scroll for fast scrolling
-- Font: Menlo / Cascadia Code / Fira Code / JetBrains Mono (14px)
-- Auto-resize on container element resize (ResizeObserver)
+- Font: Menlo / SF Mono / Cascadia Code / Fira Code / JetBrains Mono / Roboto Mono; size from the terminal preferences (default 14px, 12px on phones; 8–28px)
+- Auto-resize on container element resize (ResizeObserver), incl. the soft keyboard opening (the app shell follows the visual viewport)
 - Theme-reactive (dark/light mode switching)
-- Native text selection override (Mac: altKey, others: shiftKey)
+- Clickable URLs in the output (web-links addon)
+- Automatic reconnect: a dropped connection shows a "Disconnected — reconnecting…" pill (`data-testid="terminal-disconnected"`) with **Reconnect now**; reconnects with backoff while the page is visible, when the network comes back, and when the page becomes visible again (also after >30s in the background)
+
+### 17.1a Selection & clipboard
+- Click-drag selects text locally — always (clicks/drags are never forwarded to tmux, no modifier key needed)
+- **The selection survives mouse movement**, also while an application (through tmux) requests any-motion mouse tracking (`CSI ?1003h`): xterm.js is never put into mouse-reporting mode; the requested modes are recorded and only the wheel is reported to the application
+- Mouse wheel: reported to tmux when it tracks the mouse (first wheel-up enters copy-mode, further ticks scroll the scrollback); Ctrl+wheel stays browser zoom; without mouse tracking the local scrollback scrolls
+- Copy: Cmd+C (macOS); Ctrl+Shift+C / Ctrl+Insert, or Ctrl+C while text is selected (selection then cleared, so the next Ctrl+C interrupts) elsewhere; Ctrl+C without a selection still sends the interrupt
+- Paste: Cmd+V (macOS); Ctrl+Shift+V / Shift+Insert elsewhere (native paste event → bracketed paste when the app enabled it)
+- Right-click context menu (not on touch devices): Copy (disabled without a selection), Paste, Select all, Open text view, Compose text, Larger / Smaller font, Reset font size, Show/Hide touch keys
+- Copy works on plain-http LAN origins too (legacy `execCommand('copy')` fallback); when clipboard reading is unavailable or denied, Paste opens the composer with a hint to long-press → Paste
+
+### 17.1b Touch & mobile input
+- Touch key toolbar (`data-testid="terminal-toolbar"`, `role="toolbar"`) below the terminal — shown automatically on touch (coarse-pointer) devices, toggled on any device from the keyboard button at the right of the tmux tab bar (`aria-label` "Show touch keys" / "Hide touch keys", `aria-pressed`); persisted (`terminal.toolbar`: auto / show / hide)
+  - Show/Hide keyboard (focus/blur the terminal), Esc, Tab, **Ctrl** and **Alt** latches (`data-key="ctrl"` / `"alt"`, `aria-pressed`; apply to the next toolbar key or the next character typed on the keyboard, then release), arrows (`data-key="up"` …; hold to repeat; application-cursor aware), ⇧↵ (newline in agents), ^C, Home, End, PgUp, PgDn (repeat), `/ - | ~ _`, smaller / larger font
+  - Fixed actions: **Compose text**, **Paste**, **Select text**
+  - Toolbar buttons never take focus, so tapping a key does not close the soft keyboard
+- Composer (`data-testid="terminal-composer"`): native multi-line text field (autocorrect, dictation, swipe typing, long-press paste; 16px so iOS does not zoom) with **Send** (paste + Enter), **Insert without Enter**, **Close composer**; Ctrl/Cmd+Enter sends, Escape closes
+- Text view (`data-testid="terminal-text-view"`): the window's text with 3000 lines of scrollback as natively selectable text (OS selection handles / copy menu), Copy (selection or everything), Reload, Close (Escape); falls back to the visible screen when the capture fails
+- Touch gestures on the terminal: swipe to scroll (with momentum; scrollback through tmux), long-press to select the word under the finger and drag to extend → floating **Copy / Select all / More… / ×** actions (`data-testid="terminal-selection-actions"`), two-finger pinch to change the font size, tap to focus (opens the soft keyboard) or open a link
+- No iOS zoom-on-focus (16px terminal inputs), no pull-to-refresh / overscroll bounce
 
 ### 17.2 Tmux Tab Bar (inner tab bar, 30px)
 - Per-window tab: name (max 120px, truncated) + close button (hidden for main window)
@@ -615,9 +635,12 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
   - Blur: commit
 - Close tab: click X or middle-click (with confirm dialog)
 - Main ("shell") window: cannot be closed or renamed
-- New tab creation: text input for name + "+" button
+- New tab creation: text input for name (`aria-label` "New terminal tab name") + "+" button (`aria-label` "New terminal tab")
   - Empty input uses auto-generated placeholder (shell-xxxx)
   - Name collisions generate random name
+- Close buttons are labelled (`Close terminal <name>`)
+- Right edge: pane actions (touch keys toggle)
+- Larger targets on touch devices (38px bar, 32px tabs, 16px inputs)
 - Polls for external changes every 3 seconds
 
 ---
