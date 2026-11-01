@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { useDialogLabel } from '~/composables/useDialogLabel';
+
 const open = defineModel<boolean>('open', { default: false });
+
+const { titleId, content: dialogContent } = useDialogLabel();
 
 const { user: currentUser } = useAuth();
 
@@ -45,6 +49,10 @@ async function refresh() {
 watch(open, (v) => {
   if (v) refresh();
 });
+
+function close() {
+  open.value = false;
+}
 
 function startCreate() {
   creating.value = true;
@@ -94,18 +102,18 @@ async function handleResetPassword(u: UserRow) {
 </script>
 
 <template>
-  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-3xl' }">
+  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-3xl modal-sheet' }" :content="dialogContent">
     <template #content>
-      <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto modal-sheet-body">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Users</h2>
+          <h2 :id="titleId" class="text-lg font-semibold text-gray-900 dark:text-white">Users</h2>
           <div class="flex gap-2">
             <UButton v-if="!creating" size="sm" @click="startCreate">New</UButton>
-            <UButton size="sm" color="neutral" variant="ghost" @click="open = false">Close</UButton>
+            <UButton size="sm" color="neutral" variant="ghost" @click="close">Close</UButton>
           </div>
         </div>
 
-        <p v-if="error" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+        <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
 
         <!-- Create form -->
         <div v-if="creating" class="p-4 rounded-lg border border-gray-200 dark:border-gray-800 space-y-3">
@@ -136,7 +144,7 @@ async function handleResetPassword(u: UserRow) {
             v-for="u in users"
             :key="u.id"
             :data-user-row="u.email"
-            class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-800"
+            class="flex flex-wrap items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-800"
           >
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
@@ -147,7 +155,7 @@ async function handleResetPassword(u: UserRow) {
               </div>
               <div class="text-xs text-gray-500 truncate">{{ u.email }}</div>
             </div>
-            <div class="flex gap-1">
+            <div class="flex gap-1 w-full sm:w-auto justify-end">
               <UButton
                 v-if="u.role !== 'admin'"
                 size="xs"

@@ -109,6 +109,25 @@ test.describe('Settings Modal', () => {
     await expect(dialog).toBeHidden({ timeout: 10_000 });
   });
 
+  test('settings are fetched when the modal opens, not at page load', async ({ page }) => {
+    const settingsRequests: string[] = [];
+    page.on('request', (req) => {
+      if (new URL(req.url()).pathname === '/api/settings') settingsRequests.push(req.method());
+    });
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'System');
+    const systemSettingsBtn = page.locator('button:has-text("System Settings")');
+    await expect(systemSettingsBtn).toBeVisible({ timeout: 10_000 });
+    // The modal is mounted with the dashboard — it must not fetch until opened.
+    expect(settingsRequests).toEqual([]);
+
+    await systemSettingsBtn.click();
+    const dialog = page.getByRole('dialog', { name: 'System Settings' });
+    await expect(dialog.getByText('Docker Network')).toBeVisible({ timeout: 10_000 });
+    expect(settingsRequests).toEqual(['GET']);
+  });
+
   test('settings items display key, label, and value', async ({ page }) => {
     const dialog = await openSettingsModal(page);
     await expect(dialog.getByText('Docker & Infrastructure')).toBeVisible({ timeout: 10_000 });

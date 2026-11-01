@@ -222,12 +222,14 @@ function update<K extends keyof RepoConfig>(field: K, value: RepoConfig[K]) {
 </script>
 
 <template>
-  <div class="flex gap-2 items-center">
+  <!-- Phones: provider + branch + remove on the first line, the repo field
+       full-width below it (order-last) so neither input collapses. -->
+  <div class="flex flex-wrap sm:flex-nowrap gap-2 items-center">
     <USelect
       :model-value="modelValue.provider"
       :items="providerOptions"
       size="xs"
-      class="w-32 shrink-0"
+      class="w-28 sm:w-32 shrink-0"
       aria-label="Git provider"
       @update:model-value="update('provider', $event)"
     />
@@ -235,7 +237,7 @@ function update<K extends keyof RepoConfig>(field: K, value: RepoConfig[K]) {
     <!-- Custom searchable repo dropdown -->
     <div
       v-if="browsable"
-      class="relative flex-1 min-w-0"
+      class="relative flex-1 min-w-0 order-last basis-full sm:order-none sm:basis-auto"
       @focusout="onContainerFocusout"
     >
       <UInput
@@ -245,6 +247,9 @@ function update<K extends keyof RepoConfig>(field: K, value: RepoConfig[K]) {
         class="w-full"
         placeholder="Search or create repository..."
         aria-label="Repository"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
         @focus="showDropdown = true"
         @click="showDropdown = true"
         @keydown.escape="showDropdown = false"
@@ -334,8 +339,11 @@ function update<K extends keyof RepoConfig>(field: K, value: RepoConfig[K]) {
       :model-value="modelValue.url"
       :placeholder="placeholder"
       size="xs"
-      class="flex-1 min-w-0"
+      class="flex-1 min-w-0 order-last basis-full sm:order-none sm:basis-auto"
       aria-label="Repository URL"
+      autocapitalize="off"
+      autocorrect="off"
+      spellcheck="false"
       @update:model-value="update('url', $event)"
     />
 
@@ -347,9 +355,12 @@ function update<K extends keyof RepoConfig>(field: K, value: RepoConfig[K]) {
       create-item="always"
       :loading="branchesLoading"
       size="xs"
-      class="w-44 shrink-0"
+      class="flex-1 min-w-0 sm:flex-none sm:w-44"
       :placeholder="defaultBranch ? `${defaultBranch} (default)` : 'branch (optional)'"
       aria-label="Branch"
+      autocapitalize="off"
+      autocorrect="off"
+      spellcheck="false"
       @update:model-value="update('branch', $event)"
       @create="update('branch', $event)"
     />
@@ -358,8 +369,11 @@ function update<K extends keyof RepoConfig>(field: K, value: RepoConfig[K]) {
       :model-value="modelValue.branch || ''"
       placeholder="branch (optional)"
       size="xs"
-      class="w-36 shrink-0"
+      class="flex-1 min-w-0 sm:flex-none sm:w-36"
       aria-label="Branch"
+      autocapitalize="off"
+      autocorrect="off"
+      spellcheck="false"
       @update:model-value="update('branch', $event)"
     />
 
@@ -369,6 +383,7 @@ function update<K extends keyof RepoConfig>(field: K, value: RepoConfig[K]) {
       color="neutral"
       variant="ghost"
       class="shrink-0"
+      aria-label="Remove repository"
       @click="emit('remove')"
     />
   </div>

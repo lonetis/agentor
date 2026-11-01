@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import type { ContainerInfo } from '~/types';
+import { useDialogLabel } from '~/composables/useDialogLabel';
 
 const open = defineModel<boolean>('open', { default: false });
 const emit = defineEmits<{ imported: [container: ContainerInfo] }>();
 
 const { importContainer } = useContainers();
+const { titleId, content: dialogContent } = useDialogLabel();
+const fileId = useId();
+const nameId = useId();
 
 const file = ref<File | null>(null);
 const displayName = ref('');
@@ -19,6 +23,10 @@ watch(open, (isOpen) => {
     error.value = '';
   }
 });
+
+function close() {
+  open.value = false;
+}
 
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement;
@@ -42,17 +50,18 @@ async function doImport() {
 </script>
 
 <template>
-  <UModal v-model:open="open">
+  <UModal v-model:open="open" :ui="{ content: 'modal-sheet' }" :content="dialogContent">
     <template #content>
-      <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Import Worker</h2>
+      <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto modal-sheet-body">
+        <h2 :id="titleId" class="text-lg font-semibold text-gray-900 dark:text-white">Import Worker</h2>
         <p class="text-xs text-gray-400 dark:text-gray-500">
           Restore a worker from an export bundle (<code class="text-gray-500 dark:text-gray-400">.tar</code>). A brand-new worker is created with its workspace, agent data, settings, and port/domain mappings restored.
         </p>
 
         <div class="space-y-1.5">
-          <label class="text-xs font-medium text-gray-600 dark:text-gray-300">Export bundle</label>
+          <label :for="fileId" class="text-xs font-medium text-gray-600 dark:text-gray-300">Export bundle</label>
           <input
+            :id="fileId"
             type="file"
             accept=".tar,application/x-tar,application/octet-stream"
             data-testid="import-file"
@@ -63,19 +72,19 @@ async function doImport() {
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-xs font-medium text-gray-600 dark:text-gray-300">
+          <label :for="nameId" class="text-xs font-medium text-gray-600 dark:text-gray-300">
             Display name <span class="text-gray-400">(optional)</span>
           </label>
-          <UInput v-model="displayName" size="sm" class="w-full" placeholder="Defaults to the exported worker's name" data-testid="import-name" />
+          <UInput :id="nameId" v-model="displayName" size="sm" class="w-full" placeholder="Defaults to the exported worker's name" data-testid="import-name" />
         </div>
 
-        <p v-if="error" class="text-sm text-red-600 dark:text-red-400" data-testid="import-error">{{ error }}</p>
+        <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400" data-testid="import-error">{{ error }}</p>
 
-        <div class="flex gap-3 pt-2">
+        <div class="flex flex-wrap gap-3 pt-2 modal-sheet-footer">
           <UButton class="flex-1" :loading="importing" :disabled="!file" data-testid="import-submit" @click="doImport">
             Import
           </UButton>
-          <UButton color="neutral" variant="outline" @click="open = false">Cancel</UButton>
+          <UButton color="neutral" variant="outline" @click="close">Cancel</UButton>
         </div>
       </div>
     </template>

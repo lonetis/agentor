@@ -187,25 +187,45 @@ function handleSave() {
 
     <!-- Resource Limits -->
     <fieldset>
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Resource Limits</legend>
-      <div class="grid grid-cols-2 gap-4">
+      <legend class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Resource Limits</legend>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <UFormField label="CPU" hint="0 = unrestricted">
-          <UInput v-model.number="form.cpuLimit" type="number" :min="0" :step="0.5" placeholder="0" class="w-full" :disabled="readOnly" />
+          <UInput
+            v-model.number="form.cpuLimit"
+            type="number"
+            inputmode="decimal"
+            :min="0"
+            :step="0.5"
+            placeholder="0"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            class="w-full"
+            :disabled="readOnly"
+          />
         </UFormField>
         <UFormField label="Memory" hint="e.g. 4g, 512m, empty = unrestricted">
-          <UInput v-model="form.memoryLimit" placeholder="" class="w-full" :disabled="readOnly" />
+          <UInput
+            v-model="form.memoryLimit"
+            placeholder=""
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            class="w-full"
+            :disabled="readOnly"
+          />
         </UFormField>
       </div>
     </fieldset>
 
     <!-- Docker-in-Docker -->
     <fieldset>
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Docker</legend>
+      <legend class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Docker</legend>
       <label class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" :class="readOnly ? 'cursor-default' : 'cursor-pointer'">
         <UCheckbox v-model="form.dockerEnabled" :disabled="readOnly" />
         Enable Docker-in-Docker
       </label>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+      <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
         Runs a Docker daemon inside the worker container. Requires privileged mode.
       </p>
     </fieldset>
@@ -213,8 +233,8 @@ function handleSave() {
     <!-- Credentials (signed-in user's OAuth files — same files every worker
          this user creates will inherit) -->
     <fieldset v-if="credentials.length > 0">
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Your agent OAuth credentials</legend>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+      <legend class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Your agent OAuth credentials</legend>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
         Log in once inside any of your workers — credentials are stored per user and shared across all of your workers. Manage them in Account → Agent OAuth credentials.
       </p>
       <div class="space-y-1">
@@ -223,7 +243,7 @@ function handleSave() {
           :key="cred.agentId"
           class="flex items-center gap-2 text-xs font-mono px-2 py-1 bg-gray-100/60 dark:bg-gray-800/50 rounded"
         >
-          <UIcon name="i-heroicons-key" class="text-gray-400 dark:text-gray-500 w-3 h-3 shrink-0" />
+          <UIcon name="i-lucide-key-round" class="text-gray-400 dark:text-gray-500 w-3 h-3 shrink-0" />
           <span class="text-gray-500 dark:text-gray-400">{{ cred.agentId }}</span>
           <span class="text-gray-400 dark:text-gray-600">&mdash;</span>
           <span :class="cred.configured ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-600'">
@@ -235,12 +255,12 @@ function handleSave() {
 
     <!-- Network Access -->
     <fieldset>
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Network Access</legend>
+      <legend class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Network Access</legend>
       <div class="flex flex-wrap gap-3 mb-3">
         <label
           v-for="opt in networkModeOptions"
           :key="opt.value"
-          class="flex items-center gap-2 px-3 py-1.5 rounded-md border transition-colors"
+          class="flex items-center gap-2 px-3 py-1.5 rounded-md border transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-(--ui-bg)"
           :class="[
             form.networkMode === opt.value
               ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:text-primary-400'
@@ -265,6 +285,9 @@ function handleSave() {
             v-model="form.allowedDomains"
             :rows="4"
             placeholder="*.example.com&#10;api.myservice.com"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
             class="w-full font-mono text-xs"
             :disabled="readOnly"
           />
@@ -282,15 +305,16 @@ function handleSave() {
       >
         <button
           type="button"
-          class="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+          class="flex items-center gap-1 text-left text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          :aria-expanded="showPmDomains"
           @click="showPmDomains = !showPmDomains"
         >
           <UIcon
-            :name="showPmDomains ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'"
+            :name="showPmDomains ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
             class="w-3 h-3"
           />
           {{ packageManagerDomains?.length || 0 }} package manager domains
-          <span class="text-gray-400 dark:text-gray-600">(configurable via PACKAGE_MANAGER_DOMAINS env var)</span>
+          <span class="text-gray-500 dark:text-gray-400">(configurable via PACKAGE_MANAGER_DOMAINS env var)</span>
         </button>
         <div v-if="showPmDomains" class="mt-1.5 max-h-48 overflow-y-auto rounded border border-gray-300 dark:border-gray-700 bg-gray-100/60 dark:bg-gray-800/50 p-2">
           <div
@@ -310,15 +334,16 @@ function handleSave() {
       >
         <button
           type="button"
-          class="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+          class="flex items-center gap-1 text-left text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          :aria-expanded="showAgentDomains"
           @click="showAgentDomains = !showAgentDomains"
         >
           <UIcon
-            :name="showAgentDomains ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'"
+            :name="showAgentDomains ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
             class="w-3 h-3"
           />
           {{ agentApiDomains.length }} agent API domains
-          <span class="text-gray-400 dark:text-gray-600">(always allowed so the agent can reach its model)</span>
+          <span class="text-gray-500 dark:text-gray-400">(always allowed so the agent can reach its model)</span>
         </button>
         <div v-if="showAgentDomains" class="mt-1.5 max-h-48 overflow-y-auto rounded border border-gray-300 dark:border-gray-700 bg-gray-100/60 dark:bg-gray-800/50 p-2">
           <div
@@ -334,8 +359,8 @@ function handleSave() {
 
     <!-- Git providers -->
     <fieldset v-if="gitProviders.length > 0">
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Git Providers</legend>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+      <legend class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Git Providers</legend>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
         Workers get your tokens for the checked providers, and git, gh and glab are signed in to them. Uncheck a provider to keep its credentials out of workers running untrusted code (a token set in this environment's env vars is dropped too) — its public repositories still clone.
       </p>
       <div class="mb-2">
@@ -353,15 +378,15 @@ function handleSave() {
         >
           <UCheckbox :model-value="isGitProviderEnabled(provider.id)" @update:model-value="toggleGitProvider(provider.id)" :disabled="readOnly" />
           {{ provider.displayName }}
-          <span class="text-xs font-mono text-gray-400 dark:text-gray-500">{{ provider.url.replace(/^https?:\/\//, '') }}</span>
+          <span class="text-xs font-mono text-gray-500 dark:text-gray-400">{{ provider.url.replace(/^https?:\/\//, '') }}</span>
         </label>
       </div>
     </fieldset>
 
     <!-- Expose APIs -->
     <fieldset>
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Expose APIs</legend>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+      <legend class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Expose APIs</legend>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
         Allow workers to call orchestrator APIs. Capabilities for disabled APIs are automatically excluded.
       </p>
       <div class="space-y-1.5">
@@ -382,8 +407,8 @@ function handleSave() {
 
     <!-- Capabilities -->
     <fieldset v-if="allCapabilities.length > 0">
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Capabilities</legend>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+      <legend class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Capabilities</legend>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
         Select which capabilities are available to agents in this environment.
       </p>
       <div class="mb-2">
@@ -413,8 +438,8 @@ function handleSave() {
 
     <!-- Instructions -->
     <fieldset v-if="allInstructions.length > 0">
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Instructions</legend>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+      <legend class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Instructions</legend>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
         Select which instructions are injected into agents in this environment.
       </p>
       <div class="mb-2">
@@ -444,22 +469,22 @@ function handleSave() {
 
     <!-- Environment Variables -->
     <fieldset>
-      <legend class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Environment Variables</legend>
+      <legend class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Environment Variables</legend>
 
       <!-- Worker system env vars (read-only) — what the orchestrator injects into
            every worker. These are infrastructural only; orchestrator-wide settings
            (auth, dashboard, ACME, logging) are NOT passed to workers. -->
       <div v-if="systemEnvVars.length > 0" class="mb-3">
-        <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">Provided to the worker by the orchestrator (read-only)</div>
+        <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Provided to the worker by the orchestrator (read-only)</div>
         <div class="space-y-1">
           <div
             v-for="v in systemEnvVars"
             :key="v.name"
             class="flex items-start gap-2 text-xs px-2 py-1 bg-gray-100/60 dark:bg-gray-800/50 rounded"
           >
-            <UIcon name="i-heroicons-lock-closed" class="text-gray-400 dark:text-gray-500 w-3 h-3 shrink-0 mt-0.5" />
+            <UIcon name="i-lucide-lock" class="text-gray-400 dark:text-gray-500 w-3 h-3 shrink-0 mt-0.5" />
             <span class="font-mono text-gray-500 dark:text-gray-400 shrink-0">{{ v.name }}</span>
-            <span class="text-gray-400 dark:text-gray-500">{{ v.description }}</span>
+            <span class="text-gray-500 dark:text-gray-400">{{ v.description }}</span>
           </div>
         </div>
       </div>
@@ -469,6 +494,9 @@ function handleSave() {
           v-model="form.envVars"
           :rows="3"
           placeholder="MY_VAR=value&#10;ANOTHER=123"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
           class="w-full font-mono text-xs"
         />
       </UFormField>
@@ -480,13 +508,16 @@ function handleSave() {
         v-model="form.setupScript"
         :rows="4"
         placeholder="#!/bin/bash&#10;# Install dependencies before the agent starts"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
         class="w-full font-mono text-xs"
         :disabled="readOnly"
       />
     </UFormField>
 
     <!-- Actions -->
-    <div class="flex gap-3 pt-2">
+    <div class="flex gap-3 pt-2 modal-sheet-footer">
       <UButton v-if="!readOnly" @click="handleSave" :disabled="!form.name.trim()">
         {{ environment ? 'Update' : 'Create' }}
       </UButton>

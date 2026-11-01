@@ -16,20 +16,28 @@ function update(field: keyof MountConfig, value: string | boolean) {
 </script>
 
 <template>
-  <div class="flex gap-2 items-center">
+  <div class="flex flex-wrap sm:flex-nowrap gap-2 items-center">
     <UInput
       :model-value="modelValue.source"
       placeholder="Host path"
+      aria-label="Host path"
+      autocapitalize="off"
+      autocorrect="off"
+      spellcheck="false"
       size="xs"
-      class="flex-1"
+      class="flex-1 min-w-[8rem]"
       @update:model-value="update('source', $event)"
     />
-    <span class="text-gray-400 dark:text-gray-500 text-xs">:</span>
+    <span class="text-gray-400 dark:text-gray-500 text-xs" aria-hidden="true">:</span>
     <UInput
       :model-value="modelValue.target"
       placeholder="Container path"
+      aria-label="Container path"
+      autocapitalize="off"
+      autocorrect="off"
+      spellcheck="false"
       size="xs"
-      class="flex-1"
+      class="flex-1 min-w-[8rem]"
       @update:model-value="update('target', $event)"
     />
     <UCheckbox
@@ -43,6 +51,7 @@ function update(field: keyof MountConfig, value: string | boolean) {
       size="xs"
       color="neutral"
       variant="ghost"
+      aria-label="Remove mount"
       @click="emit('remove')"
     />
   </div>
