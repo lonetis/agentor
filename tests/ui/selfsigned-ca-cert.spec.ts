@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { goToDashboard, selectSidebarTab } from '../helpers/ui-helpers';
 import { ApiClient } from '../helpers/api-client';
 
@@ -24,6 +25,30 @@ test.describe('Self-Signed CA Certificate UI', () => {
       const caCertBtn = aside.locator('button:has-text("CA cert")');
       await expect(caCertBtn).toBeVisible({ timeout: 10_000 });
     }
+  });
+
+  test('CA cert button downloads agentor-ca.crt in place without a popup', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const { body: mapperStatus } = await api.getDomainMapperStatus();
+    const hasSelfSigned = mapperStatus.baseDomainConfigs?.some(
+      (c: { challengeType: string }) => c.challengeType === 'selfsigned'
+    );
+    test.skip(!mapperStatus.enabled || !hasSelfSigned, 'needs a selfsigned base domain');
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'Domains');
+    const caCertBtn = page.locator('aside button:has-text("CA cert")');
+    await expect(caCertBtn).toBeVisible({ timeout: 10_000 });
+
+    // An installed PWA would open window.open targets in an in-app browser.
+    const popups: string[] = [];
+    page.on('popup', (popup) => popups.push(popup.url()));
+    const [download] = await Promise.all([page.waitForEvent('download'), caCertBtn.click()]);
+
+    expect(download.suggestedFilename()).toBe('agentor-ca.crt');
+    expect(await readFile((await download.path())!, 'utf8')).toContain('-----BEGIN CERTIFICATE-----');
+    expect(popups).toEqual([]);
+    expect(page.context().pages()).toHaveLength(1);
   });
 
   test('CA cert button hidden when no selfsigned domains', async ({ page, request }) => {

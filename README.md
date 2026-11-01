@@ -46,6 +46,7 @@ All agents are installed in a single unified worker image. Start any agent via i
 - **Worker export/import** — download a worker as a portable `.tar` bundle (settings, environment, mappings, workspace + agent data, and an optional `docker export` of the filesystem) and restore it as a new worker, even on another machine
 - **Centralized logging** — collects logs from all containers (orchestrator, workers, traefik) with NDJSON storage, log rotation, and a live-streaming log viewer in the dashboard
 - **Theme toggle** — switch between system default, light, and dark mode
+- **Installable app & mobile-friendly UI** — install Agentor to your home screen or desktop (Chrome / Edge / Android, iOS via Share → Add to Home Screen); touch-optimised sidebar, modals and terminal; an offline / server-restarting screen that reconnects by itself. Requires HTTPS (the dashboard subdomain or your own reverse proxy) or `localhost`
 - **API docs** — auto-generated OpenAPI 3.1.0 spec with interactive Scalar UI at `/api/docs`
 - **MCP server** — let an AI agent (Claude Code, Codex, …) drive Agentor over the Model Context Protocol: create and manage workers, run commands, talk to agents in tmux, see and click the virtual desktop, move files, and manage environments, mappings, users and more. Agents sign in with your account via OAuth and are revocable at any time
 
@@ -125,6 +126,22 @@ Open **http://localhost:3000**
 
 > [!NOTE]
 > The Traefik reverse proxy (`agentor-traefik`) is managed automatically by the orchestrator and handles both port mappings and domain mappings on the same container. It is created when the first port/domain mapping is added (or the dashboard subdomain is configured) and removed when all of those are gone. Mapped ports are arbitrary — no fixed ranges — but `80`/`443` are reserved when domain routing is active.
+
+---
+
+## Install as an app
+
+Agentor can be installed like a native app on desktops, phones and tablets:
+
+- **Chrome / Edge / Android** — click the **Install app** button in the sidebar footer (next to your account), or use the browser's own *Install* menu entry.
+- **iPhone / iPad** — in Safari tap **Share → Add to Home Screen** (the sidebar footer shows a reminder).
+
+Notes:
+
+- Installing needs a secure origin: open the dashboard over **HTTPS** (the Traefik dashboard subdomain, or your own reverse proxy) or on `http://localhost`. Over plain `http://` on a LAN address the dashboard works as usual, but cannot be installed.
+- If the dashboard sits behind HTTP basic auth (`DASHBOARD_AUTH_USER`), sign in once in the browser before installing.
+- iOS home-screen apps keep their own cookies, so sign in to Agentor again inside the installed app.
+- When the server is unreachable or restarting (for example during an update), the app shows an "Agentor is unreachable" screen and returns to the dashboard on its own once the server is back. After an orchestrator update the dashboard reloads itself.
 
 ---
 

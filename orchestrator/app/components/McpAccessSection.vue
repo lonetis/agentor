@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import { copyText } from '~/utils/clipboard';
+
 /**
  * Account modal section for MCP access: the MCP server URL to configure in an
  * agent (Claude Code, Codex, …) and the OAuth applications the user has
  * authorized, each revocable. Hidden when MCP is disabled on the server.
  */
 const props = defineProps<{ active: boolean }>();
+
+const toast = useToast();
 
 interface AuthorizedApp {
   clientId: string;
@@ -43,9 +47,16 @@ watch(() => props.active, (active) => {
 }, { immediate: true });
 
 async function copy(text: string) {
-  await navigator.clipboard.writeText(text);
-  copied.value = true;
-  setTimeout(() => (copied.value = false), 1500);
+  if (await copyText(text)) {
+    copied.value = true;
+    setTimeout(() => (copied.value = false), 1500);
+    return;
+  }
+  toast.add({
+    title: 'Copy failed — select the URL and copy it manually',
+    color: 'error',
+    icon: 'i-lucide-alert-circle',
+  });
 }
 
 async function revoke(app: AuthorizedApp) {
@@ -75,7 +86,7 @@ async function revoke(app: AuthorizedApp) {
         everything you can do in the dashboard.
       </p>
       <div class="flex items-center gap-2">
-        <code class="flex-1 min-w-0 truncate rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs" data-testid="mcp-url">{{ mcpUrl }}</code>
+        <code class="flex-1 min-w-0 truncate select-all rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs" data-testid="mcp-url">{{ mcpUrl }}</code>
         <UButton size="xs" color="neutral" variant="ghost" :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'" aria-label="Copy MCP URL" @click="copy(mcpUrl)" />
       </div>
       <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -110,7 +121,7 @@ async function revoke(app: AuthorizedApp) {
           </UButton>
         </div>
       </div>
-      <p v-if="error" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+      <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
     </section>
   </div>
 </template>

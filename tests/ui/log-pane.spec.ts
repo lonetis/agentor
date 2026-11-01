@@ -149,6 +149,46 @@ test.describe('Log Pane', () => {
 
     // Button should have active class
     await expect(orchBtn).toHaveClass(/log-filter-btn-active/);
+    await expect(orchBtn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('icon buttons and the search field have accessible names', async ({ page }) => {
+    await openLogPane(page);
+
+    await expect(page.getByRole('button', { name: 'Auto-scroll to bottom' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Clear all logs' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Search logs' })).toBeVisible();
+  });
+
+  test('long messages wrap instead of being cut off', async ({ page }) => {
+    // Serve a known history page so the row content is deterministic (live
+    // entries from the socket still append after it).
+    const longMessage = `wrap-probe ${'0123456789 abcdefghij '.repeat(40)}${'x'.repeat(300)}`;
+    await page.route((url) => url.pathname === '/api/logs', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          entries: [{ timestamp: new Date().toISOString(), level: 'warn', source: 'orchestrator', message: longMessage }],
+          hasMore: false,
+        }),
+      }),
+    );
+    await openLogPane(page);
+
+    const entry = page.locator('.log-entry').filter({ hasText: 'wrap-probe' });
+    await expect(entry).toHaveCount(1, { timeout: 10_000 });
+    await expect(entry.locator('.log-timestamp')).toHaveText(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
+
+    const message = entry.locator('.log-message');
+    expect(await message.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('pre-wrap');
+    // The full message is laid out over several lines inside the pane, and
+    // the long unbroken run does not widen the scroll container.
+    const lineHeight = await message.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+    const box = await message.boundingBox();
+    expect(box!.height).toBeGreaterThan(lineHeight * 2);
+    const overflow = await page.locator('.log-entries').evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
   });
 
   test('log pane state saved to localStorage', async ({ page }) => {

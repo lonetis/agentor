@@ -323,6 +323,32 @@ test.describe('Usage Panel', () => {
     await page.unrouteAll({ behavior: 'wait' });
   });
 
+  test('a failed usage load shows an error with Retry instead of loading forever', async ({ page }) => {
+    let failing = true;
+    await page.route('**/api/usage', (route) =>
+      failing
+        ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ statusMessage: 'usage store unavailable' }) })
+        : route.continue(),
+    );
+
+    await goToDashboard(page);
+    await selectSidebarTab(page, 'Usage');
+    const aside = page.locator('aside');
+
+    const alert = aside.getByRole('alert').filter({ hasText: "Couldn't load usage" });
+    await expect(alert).toBeVisible({ timeout: 10_000 });
+    await expect(alert.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(aside.getByText('Loading...')).toHaveCount(0);
+
+    // Retry loads the usage once the API answers again.
+    failing = false;
+    await alert.getByRole('button', { name: 'Retry' }).click();
+    await expect(aside.getByText('Claude', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(alert).toHaveCount(0);
+
+    await page.unrouteAll({ behavior: 'wait' });
+  });
+
   test('switching away and back to Usage tab preserves content', async ({ page }) => {
     await goToDashboard(page);
     await selectSidebarTab(page, 'Usage');

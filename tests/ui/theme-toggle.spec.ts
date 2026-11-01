@@ -539,4 +539,29 @@ test.describe('Theme Toggle', () => {
       expect(classes).toContain('shadow-sm');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // 10. Accessibility
+  // -------------------------------------------------------------------------
+  test.describe('Accessibility', () => {
+    test('only the active theme button is marked as pressed', async ({ page }) => {
+      await freshStart(page);
+      await expect(darkButton(page)).toHaveAttribute('aria-pressed', 'true');
+      await expect(defaultButton(page)).toHaveAttribute('aria-pressed', 'false');
+      await expect(lightButton(page)).toHaveAttribute('aria-pressed', 'false');
+
+      await lightButton(page).click();
+      await expect(lightButton(page)).toHaveAttribute('aria-pressed', 'true');
+      await expect(darkButton(page)).toHaveAttribute('aria-pressed', 'false');
+      await expect(defaultButton(page)).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    test('theme buttons are named after their mode', async ({ page }) => {
+      await freshStart(page);
+      const group = themeToggleGroup(page);
+      await expect(group.getByRole('button', { name: 'Default theme' })).toHaveCount(1);
+      await expect(group.getByRole('button', { name: 'White theme' })).toHaveCount(1);
+      await expect(group.getByRole('button', { name: 'Dark theme' })).toHaveCount(1);
+    });
+  });
 });

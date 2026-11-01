@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { PREDEFINED_ENV_VAR_KEYS } from '../../shared/types';
 import type { UserSshKey } from '../../shared/types';
+import { useDialogLabel } from '~/composables/useDialogLabel';
 
 const open = defineModel<boolean>('open', { default: false });
+
+const { titleId, content: dialogContent } = useDialogLabel();
+
+function close() {
+  open.value = false;
+}
 
 const { client, user: currentUser } = useAuth();
 
@@ -450,12 +457,12 @@ async function handleDeletePasskey(p: PasskeyRow) {
 </script>
 
 <template>
-  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-lg' }">
+  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-lg modal-sheet' }" :content="dialogContent">
     <template #content>
-      <div class="p-6 space-y-6 max-h-[90vh] overflow-y-auto">
+      <div class="p-6 space-y-6 max-h-[90vh] overflow-y-auto modal-sheet-body">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Account settings</h2>
-          <UButton size="sm" color="neutral" variant="ghost" @click="open = false">Close</UButton>
+          <h2 :id="titleId" class="text-lg font-semibold text-gray-900 dark:text-white">Account settings</h2>
+          <UButton size="sm" color="neutral" variant="ghost" @click="close">Close</UButton>
         </div>
 
         <!-- Profile section -->
@@ -468,8 +475,8 @@ async function handleDeletePasskey(p: PasskeyRow) {
             <UInput v-model="profile.email" type="email" autocomplete="email" class="w-full" />
           </UFormField>
 
-          <p v-if="profileError" class="text-sm text-red-600 dark:text-red-400">{{ profileError }}</p>
-          <p v-if="profileSuccess" class="text-sm text-emerald-600 dark:text-emerald-400">{{ profileSuccess }}</p>
+          <p v-if="profileError" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ profileError }}</p>
+          <p v-if="profileSuccess" role="status" class="text-sm text-emerald-600 dark:text-emerald-400">{{ profileSuccess }}</p>
 
           <div class="flex justify-end">
             <UButton size="sm" :loading="profileLoading" @click="handleProfileSave">Save profile</UButton>
@@ -516,8 +523,8 @@ async function handleDeletePasskey(p: PasskeyRow) {
             <UInput v-model="password.confirm" type="password" autocomplete="new-password" class="w-full" />
           </UFormField>
 
-          <p v-if="passwordError" class="text-sm text-red-600 dark:text-red-400">{{ passwordError }}</p>
-          <p v-if="passwordSuccess" class="text-sm text-emerald-600 dark:text-emerald-400">{{ passwordSuccess }}</p>
+          <p v-if="passwordError" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ passwordError }}</p>
+          <p v-if="passwordSuccess" role="status" class="text-sm text-emerald-600 dark:text-emerald-400">{{ passwordSuccess }}</p>
 
           <div class="flex justify-end">
             <UButton size="sm" :loading="passwordLoading" @click="handlePasswordSave">
@@ -581,8 +588,8 @@ async function handleDeletePasskey(p: PasskeyRow) {
             <UFormField label="Name (optional)">
               <UInput v-model="passkeyAddName" placeholder="e.g. MacBook Touch ID" class="w-full" />
             </UFormField>
-            <p v-if="passkeyError" class="text-sm text-red-600 dark:text-red-400">{{ passkeyError }}</p>
-            <p v-if="passkeySuccess" class="text-sm text-emerald-600 dark:text-emerald-400">{{ passkeySuccess }}</p>
+            <p v-if="passkeyError" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ passkeyError }}</p>
+            <p v-if="passkeySuccess" role="status" class="text-sm text-emerald-600 dark:text-emerald-400">{{ passkeySuccess }}</p>
             <div class="flex justify-end">
               <UButton size="sm" :loading="passkeyAddLoading" icon="i-lucide-plus" @click="handleAddPasskey">
                 Add passkey
@@ -610,7 +617,10 @@ async function handleDeletePasskey(p: PasskeyRow) {
                 v-model="predefinedEnv[key]"
                 :type="envVisible[key] ? 'text' : 'password'"
                 autocomplete="off"
-                class="flex-1 font-mono"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+                class="flex-1 min-w-0 font-mono"
                 :data-testid="`env-${key}`"
               />
               <UButton
@@ -618,6 +628,8 @@ async function handleDeletePasskey(p: PasskeyRow) {
                 color="neutral"
                 variant="ghost"
                 :icon="envVisible[key] ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                :aria-label="`Show ${key}`"
+                :aria-pressed="!!envVisible[key]"
                 @click="toggleVisible(key)"
               />
             </div>
@@ -638,18 +650,31 @@ async function handleDeletePasskey(p: PasskeyRow) {
           <div v-if="customEnv.length === 0" class="text-sm text-gray-500 dark:text-gray-400 italic">
             None configured.
           </div>
+          <!-- Phones: KEY full width, value + toggles below it. -->
           <div
             v-for="(row, idx) in customEnv"
             :key="idx"
-            class="flex items-center gap-2"
+            class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 sm:flex"
             data-testid="custom-env-row"
           >
-            <UInput v-model="row.key" placeholder="KEY" class="w-40" data-testid="custom-env-key" />
+            <UInput
+              v-model="row.key"
+              placeholder="KEY"
+              autocapitalize="characters"
+              autocorrect="off"
+              spellcheck="false"
+              class="col-span-3 sm:col-span-1 sm:w-40"
+              data-testid="custom-env-key"
+            />
             <UInput
               v-model="row.value"
               :type="envVisible[`custom-${idx}`] ? 'text' : 'password'"
               placeholder="value"
-              class="flex-1"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              class="flex-1 min-w-0"
               data-testid="custom-env-value"
             />
             <UButton
@@ -657,6 +682,8 @@ async function handleDeletePasskey(p: PasskeyRow) {
               color="neutral"
               variant="ghost"
               :icon="envVisible[`custom-${idx}`] ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+              aria-label="Show value"
+              :aria-pressed="!!envVisible[`custom-${idx}`]"
               @click="toggleVisible(`custom-${idx}`)"
             />
             <UButton
@@ -664,12 +691,13 @@ async function handleDeletePasskey(p: PasskeyRow) {
               color="error"
               variant="ghost"
               icon="i-lucide-x"
+              aria-label="Remove variable"
               @click="removeCustomEnvVar(idx)"
             />
           </div>
 
-          <p v-if="envError" class="text-sm text-red-600 dark:text-red-400" data-testid="env-error">{{ envError }}</p>
-          <p v-if="envSuccess" class="text-sm text-emerald-600 dark:text-emerald-400" data-testid="env-success">{{ envSuccess }}</p>
+          <p v-if="envError" role="alert" class="text-sm text-red-600 dark:text-red-400" data-testid="env-error">{{ envError }}</p>
+          <p v-if="envSuccess" role="status" class="text-sm text-emerald-600 dark:text-emerald-400" data-testid="env-success">{{ envSuccess }}</p>
           <div class="flex justify-end">
             <UButton size="sm" :loading="envLoading" @click="handleEnvSave" data-testid="env-save">Save env vars</UButton>
           </div>
@@ -691,14 +719,16 @@ async function handleDeletePasskey(p: PasskeyRow) {
               v-model="sshKey"
               :rows="4"
               autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
               spellcheck="false"
               class="w-full font-mono text-xs"
               :ui="{ base: 'w-full' }"
               data-testid="env-sshPublicKey"
             />
           </UFormField>
-          <p v-if="sshError" class="text-sm text-red-600 dark:text-red-400" data-testid="ssh-error">{{ sshError }}</p>
-          <p v-if="sshSuccess" class="text-sm text-emerald-600 dark:text-emerald-400" data-testid="ssh-success">{{ sshSuccess }}</p>
+          <p v-if="sshError" role="alert" class="text-sm text-red-600 dark:text-red-400" data-testid="ssh-error">{{ sshError }}</p>
+          <p v-if="sshSuccess" role="status" class="text-sm text-emerald-600 dark:text-emerald-400" data-testid="ssh-success">{{ sshSuccess }}</p>
           <div class="flex justify-end">
             <UButton size="sm" :loading="sshLoading" @click="handleSshSave" data-testid="env-save-ssh">Save SSH key</UButton>
           </div>
@@ -754,8 +784,8 @@ async function handleDeletePasskey(p: PasskeyRow) {
               </div>
             </div>
           </div>
-          <p v-if="credResetError" class="text-sm text-red-600 dark:text-red-400">{{ credResetError }}</p>
-          <p v-if="credResetSuccess" class="text-sm text-emerald-600 dark:text-emerald-400">{{ credResetSuccess }}</p>
+          <p v-if="credResetError" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ credResetError }}</p>
+          <p v-if="credResetSuccess" role="status" class="text-sm text-emerald-600 dark:text-emerald-400">{{ credResetSuccess }}</p>
         </section>
 
         <McpAccessSection :active="open" />

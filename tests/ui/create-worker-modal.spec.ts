@@ -11,6 +11,12 @@ test.describe('Create Worker Modal', () => {
     await expect(page.locator('[role="dialog"] h2:has-text("New Worker")')).toBeVisible();
   });
 
+  test('dialog is named by its heading', async ({ page }) => {
+    await goToDashboard(page);
+    await openCreateWorkerModal(page);
+    await expect(page.getByRole('dialog', { name: 'New Worker' })).toBeVisible();
+  });
+
   test('has a Display name input with generated placeholder', async ({ page }) => {
     await goToDashboard(page);
     await openCreateWorkerModal(page);
@@ -196,6 +202,25 @@ test.describe('Create Worker Modal', () => {
 
     // Read-only checkbox labeled "ro"
     await expect(dialog.getByText('ro', { exact: true })).toBeVisible();
+  });
+
+  test('the "ro" label toggles its own mount row checkbox', async ({ page }) => {
+    await goToDashboard(page);
+    await openCreateWorkerModal(page);
+    const dialog = page.locator('[role="dialog"]');
+    await dialog.locator('button:has-text("Add mount")').click();
+
+    const hostPathInput = dialog.locator('input[placeholder="Host path"]');
+    await expect(hostPathInput).toBeVisible();
+    const mountRow = hostPathInput.locator('xpath=ancestor::div[contains(@class, "flex")][contains(@class, "gap-2")]');
+    const readOnly = mountRow.getByRole('checkbox');
+    await expect(readOnly).toHaveAttribute('aria-checked', 'false');
+
+    // Regression: the label used to share its id with every control in the
+    // list, so clicking it focused the Host path input instead.
+    await dialog.getByText('ro', { exact: true }).click();
+    await expect(readOnly).toHaveAttribute('aria-checked', 'true');
+    await expect(hostPathInput).not.toBeFocused();
   });
 
   test('clicking + Add mount multiple times adds multiple mount rows', async ({ page }) => {

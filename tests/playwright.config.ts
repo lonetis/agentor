@@ -59,6 +59,9 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         viewport: { width: 1920, height: 1080 },
         storageState: resolve(__dirname, '.auth/admin-ui.json'),
+        // Specs stub /api requests with page.route, which a controlling
+        // service worker would bypass. Only ui/pwa.spec.ts opts back in.
+        serviceWorkers: 'block',
       },
     },
   ],

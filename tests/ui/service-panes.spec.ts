@@ -150,6 +150,21 @@ test.describe.serial('Service Panes — UI', () => {
     await expect(openLink.or(page.locator('main').locator('text=is starting...'))).toBeVisible({ timeout: 60_000 });
   });
 
+  test('running desktop iframe is titled, may go fullscreen and keeps "Open in tab"', async ({ page }) => {
+    test.setTimeout(180_000);
+    await goToDashboard(page);
+    const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
+    await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
+    await card.locator('button').nth(2).click();
+    // The iframe only renders once the desktop service reports running.
+    const iframe = page.locator('main iframe');
+    await expect(iframe).toBeVisible({ timeout: 90_000 });
+    await expect(iframe).toHaveAttribute('title', 'Desktop for this worker');
+    await expect(iframe).toHaveAttribute('allow', /fullscreen/);
+    await expect(page.locator('main').getByText('Desktop running', { exact: true })).toBeVisible();
+    await expect(page.locator('main').getByText('Open in tab', { exact: true })).toBeVisible();
+  });
+
   test('service pane renders iframe when service is running', async ({ page }) => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();

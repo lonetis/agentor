@@ -22,14 +22,14 @@ const formattedDate = computed(() => {
       <h3 class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate" :title="worker.displayName || shortName(worker.id)">
         {{ worker.displayName || shortName(worker.id) }}
       </h3>
-      <p class="text-[10px] text-gray-400 dark:text-gray-600 leading-tight">{{ formattedDate }}</p>
+      <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">{{ formattedDate }}</p>
     </div>
     <div class="flex items-center gap-1 shrink-0">
       <UTooltip text="Unarchive">
-        <UButton size="xs" color="primary" variant="subtle" icon="i-lucide-archive-restore" @click="emit('unarchive', worker.id)" />
+        <UButton size="xs" color="primary" variant="subtle" icon="i-lucide-archive-restore" aria-label="Unarchive" class="pointer-coarse:p-2" @click="emit('unarchive', worker.id)" />
       </UTooltip>
       <UTooltip text="Delete">
-        <UButton size="xs" color="error" variant="subtle" icon="i-lucide-trash-2" @click="emit('delete', worker.id)" />
+        <UButton size="xs" color="error" variant="subtle" icon="i-lucide-trash-2" aria-label="Delete" class="pointer-coarse:p-2" @click="emit('delete', worker.id)" />
       </UTooltip>
     </div>
   </div>

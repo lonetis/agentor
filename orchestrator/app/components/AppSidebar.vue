@@ -6,6 +6,8 @@ const props = defineProps<{
   tabs: Tab[];
   activeTabId: string | null;
   archivedWorkers: ArchivedWorker[];
+  /** Workers with a lifecycle action in flight (their card shows a spinner). */
+  busyIds: ReadonlySet<string>;
 }>();
 
 const emit = defineEmits<{
@@ -41,7 +43,7 @@ const { state: uiState, setActiveTab } = useUiState();
 const { refreshing: usageRefreshing, refresh: usageRefresh } = useUsage();
 const { workers: workerMetrics } = useWorkerMetrics();
 const { mappings: portMappings } = usePortMappings();
-const { mappings: domainMappings } = useDomainMappings();
+const { mappings: domainMappings, status: domainMapperStatus } = useDomainMappings();
 
 // O(1) lookup of a worker's metrics, rebuilt only when the metrics list changes
 // (avoids a linear scan per card per render in the worker v-for).
@@ -64,10 +66,6 @@ const activeContainers = computed(() =>
 const stoppedContainers = computed(() =>
   props.containers.filter((c) => c.status === 'stopped'),
 );
-
-const { data: domainMapperStatus } = useFetch<{ enabled: boolean }>('/api/domain-mapper/status', {
-  default: () => ({ enabled: false }),
-});
 
 interface SidebarTabDef {
   id: string;
@@ -120,6 +118,7 @@ function selectTab(id: string) {
 // that every tab fits (no overflow), the dropdown disappears entirely.
 const tabBarRef = ref<HTMLElement>();
 const moreContainerRef = ref<HTMLElement>();
+const moreButtonRef = ref<HTMLButtonElement>();
 const moreOpen = ref(false);
 const hasOverflow = ref(false);
 const overflowingIds = ref<Set<string>>(new Set());
@@ -202,24 +201,66 @@ function onTabBarWheel(e: WheelEvent) {
   e.preventDefault();
 }
 
-function onClickOutside(e: MouseEvent) {
+// pointerdown, not mousedown: iOS sends no compatibility mousedown for a tap
+// on something that is not clickable.
+function onPointerDownOutside(e: PointerEvent) {
   if (moreContainerRef.value && !moreContainerRef.value.contains(e.target as Node)) {
     moreOpen.value = false;
   }
 }
 
+// Capture phase + preventDefault: the dropdown closes first, so the page-level
+// Escape handler (which closes the phone sidebar overlay) leaves it alone.
+function onDropdownKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return;
+  e.preventDefault();
+  moreOpen.value = false;
+  moreButtonRef.value?.focus();
+}
+
+function removeDropdownListeners() {
+  document.removeEventListener('pointerdown', onPointerDownOutside);
+  document.removeEventListener('keydown', onDropdownKeydown, true);
+}
+
 watch(moreOpen, (open) => {
   if (open) {
-    document.addEventListener('mousedown', onClickOutside);
+    document.addEventListener('pointerdown', onPointerDownOutside);
+    document.addEventListener('keydown', onDropdownKeydown, true);
   } else {
-    document.removeEventListener('mousedown', onClickOutside);
+    removeDropdownListeners();
   }
 });
+
+// Width the absolutely-positioned More button covers at the bar's right edge.
+const MORE_BUTTON_WIDTH = 34;
+
+/** Scrolls the tab bar so the active tab is fully visible (e.g. a persisted
+ * active tab past the right edge after a reload, or one picked from More). */
+function revealActiveTab(behavior: ScrollBehavior) {
+  const bar = tabBarRef.value;
+  const el = bar?.querySelector<HTMLElement>(`[data-tab-id="${activeTab.value}"]`);
+  if (!bar || !el) return;
+  const reserve = hasOverflow.value ? MORE_BUTTON_WIDTH : 0;
+  const left = el.offsetLeft;
+  const right = left + el.offsetWidth;
+  if (left < bar.scrollLeft) {
+    bar.scrollTo({ left, behavior });
+  } else if (right > bar.scrollLeft + bar.clientWidth - reserve) {
+    bar.scrollTo({ left: right - bar.clientWidth + reserve, behavior });
+  }
+}
+
+watch(activeTab, () => nextTick(() => revealActiveTab('smooth')));
 
 let resizeObs: ResizeObserver | null = null;
 
 onMounted(() => {
-  nextTick(recalcOverflow);
+  nextTick(() => {
+    recalcOverflow();
+    // 'instant': the bar's CSS scroll-behavior is smooth, which 'auto' would follow.
+    revealActiveTab('instant');
+  });
   if (tabBarRef.value) {
     resizeObs = new ResizeObserver(() => recalcOverflow());
     resizeObs.observe(tabBarRef.value);
@@ -229,35 +270,39 @@ onMounted(() => {
 onUnmounted(() => {
   resizeObs?.disconnect();
   if (scrollRaf) cancelAnimationFrame(scrollRaf);
-  document.removeEventListener('mousedown', onClickOutside);
+  removeDropdownListeners();
 });
 
-watch(visibleTabs, () => nextTick(recalcOverflow));
+// Watch a signature, not the array: visibleTabs is rebuilt on every poll.
+watch(
+  () => visibleTabs.value.map((t) => `${t.id}:${t.badge ?? ''}`).join('|'),
+  () => nextTick(recalcOverflow),
+);
 
-function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string | null): boolean {
-  if (!activeTabId) return false;
-  const tab = tabs.find((t) => t.id === activeTabId);
-  return tab?.containerId === containerId;
-}
+const activeContainerId = computed(
+  () => props.tabs.find((t) => t.id === props.activeTabId)?.containerId ?? null,
+);
 </script>
 
 <template>
-  <aside class="relative bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 min-w-0">
+  <aside aria-label="Sidebar" class="relative bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 min-w-0">
     <!-- Header -->
-    <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
+    <div class="sidebar-header p-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2.5 min-w-0">
-          <AppLogo class="h-9 shrink-0" />
+          <AppLogo class="agentor-header-logo h-9 shrink-0" />
           <div class="min-w-0 leading-tight">
             <h1 class="text-lg font-bold text-gray-900 dark:text-white">Agentor</h1>
-            <p class="text-xs text-gray-500">Orchestrator</p>
+            <p class="sidebar-subtitle text-xs text-gray-500">Orchestrator</p>
           </div>
         </div>
         <div class="flex items-center gap-1">
           <ThemeToggle />
           <button
-            class="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
+            type="button"
+            class="p-1 pointer-coarse:p-2 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
             title="Collapse sidebar"
+            aria-expanded="true"
             @click="emit('toggleCollapse')"
           >
             <UIcon name="i-lucide-chevrons-left" class="size-4" />
@@ -301,16 +346,19 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
       <nav
         ref="tabBarRef"
         class="sidebar-tab-bar"
+        aria-label="Sidebar sections"
         @scroll.passive="onScroll"
         @wheel="onTabBarWheel"
       >
         <button
           v-for="tab in visibleTabs"
           :key="tab.id"
+          type="button"
           :data-tab-id="tab.id"
           class="sidebar-tab"
           :class="{ 'sidebar-tab-active': activeTab === tab.id }"
           :title="tab.label"
+          :aria-current="activeTab === tab.id ? 'true' : undefined"
           @click="selectTab(tab.id)"
         >
           <UIcon :name="tab.icon" class="size-3.5 flex-shrink-0" />
@@ -322,9 +370,14 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
       <!-- More button — only rendered when tabs actually overflow the bar. -->
       <button
         v-if="hasOverflow"
+        ref="moreButtonRef"
+        type="button"
         class="sidebar-tab-more-btn"
         :class="{ 'sidebar-tab-active': activeInOverflow }"
         title="More tabs"
+        aria-label="More tabs"
+        aria-haspopup="true"
+        :aria-expanded="moreOpen"
         @click="moreOpen = !moreOpen"
       >
         <UIcon name="i-lucide-chevrons-right" class="size-3.5" />
@@ -335,6 +388,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
         <button
           v-for="tab in overflowingTabs"
           :key="tab.id"
+          type="button"
           class="sidebar-tab-dropdown-item"
           :class="{ 'sidebar-tab-dropdown-item-active': activeTab === tab.id }"
           @click="selectTab(tab.id)"
@@ -347,10 +401,10 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
     </div>
 
     <!-- Tab content -->
-    <div class="flex-1 overflow-y-auto min-h-0">
+    <div class="flex-1 overflow-y-auto overscroll-contain min-h-0">
       <!-- Workers / Stopped (same card list, different source + empty copy) -->
       <div v-if="activeTab === 'workers' || activeTab === 'stopped'" class="p-3">
-        <div v-if="currentWorkerList.length === 0" class="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
+        <div v-if="currentWorkerList.length === 0" class="text-gray-500 dark:text-gray-400 text-sm text-center py-8">
           {{ activeTab === 'stopped' ? 'No stopped workers.' : 'No workers yet.' }}
         </div>
         <div class="space-y-2">
@@ -358,7 +412,8 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             v-for="c in currentWorkerList"
             :key="c.id"
             :container="c"
-            :is-active="isContainerActive(c.id, tabs, activeTabId)"
+            :is-active="c.id === activeContainerId"
+            :busy="busyIds.has(c.id)"
             :metric="metricFor(c.id)"
             @open-terminal="(cid) => emit('openTerminal', cid)"
             @open-desktop="(cid) => emit('openDesktop', cid)"
@@ -377,7 +432,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
 
       <!-- Archived -->
       <div v-if="activeTab === 'archived'" class="p-3">
-        <div v-if="archivedWorkers.length === 0" class="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
+        <div v-if="archivedWorkers.length === 0" class="text-gray-500 dark:text-gray-400 text-sm text-center py-8">
           No archived workers.
         </div>
         <div class="space-y-2">
@@ -505,6 +560,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
             </div>
           </div>
         </button>
+        <PwaInstallButton />
         <UButton
           size="xs"
           color="neutral"
@@ -512,7 +568,7 @@ function isContainerActive(containerId: string, tabs: Tab[], activeTabId: string
           icon="i-lucide-log-out"
           aria-label="Sign out"
           title="Sign out"
-          class="flex-shrink-0"
+          class="flex-shrink-0 pointer-coarse:p-2"
           @click="signOut"
         />
       </div>

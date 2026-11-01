@@ -22,6 +22,9 @@ const { initScripts } = useInitScripts();
 
 const displayLabel = computed(() => props.container.displayName || shortName(props.container.id));
 
+const { titleId, content: dialogContent } = useDialogLabel();
+const ids = { name: useId(), env: useId(), repos: useId(), mounts: useId(), init: useId() };
+
 // ─── Editable settings form ──────────────────────────────────────────────
 // `displayName` is a live edit (applied without rebuild). `environmentId`,
 // `repos`, `mounts`, and `initScript` are baked into the container at create
@@ -93,6 +96,19 @@ const nameValid = computed(() => {
 });
 const canSave = computed(() => anyDirty.value && nameValid.value);
 
+// The modal mounts on first open, so the environment and init-script lists can
+// arrive after the form was filled: complete the default environment and
+// re-match an untouched script against the presets once they are known.
+watch(defaultEnvironmentId, (id) => {
+  if (!form.environmentId && !props.container.environmentId) form.environmentId = id;
+});
+watch(initScripts, (scripts) => {
+  if (initDirty.value) return;
+  const script = form.initScript.trim();
+  const match = script ? scripts.find((p) => p.content === script) : undefined;
+  if (match) selectedPreset.value = match.id;
+});
+
 function buildPatch(): UpdateContainerSettingsRequest {
   return {
     displayName: form.displayName.trim(),
@@ -110,6 +126,10 @@ function buildPatch(): UpdateContainerSettingsRequest {
   };
 }
 
+function close() {
+  open.value = false;
+}
+
 function save(rebuild: boolean) {
   if (!canSave.value) return;
   emit('update', props.container.id, buildPatch(), rebuild);
@@ -125,54 +145,64 @@ function rebuildNow() {
 const portMappings = ref<PortMapping[]>([]);
 const domainMappings = ref<DomainMapping[]>([]);
 const appInstances = ref<AppInstanceInfo[]>([]);
-const loaded = ref(false);
+
+// Reloaded on every open so the info reflects mappings / apps changed since;
+// responses superseded by a newer load are dropped.
+let detailsLoad = 0;
 
 async function loadDetails() {
-  if (loaded.value) return;
-  loaded.value = true;
+  const load = ++detailsLoad;
+  const { id, containerName, status } = props.container;
+  const isCurrent = () => load === detailsLoad;
 
-  const fetches: Promise<void>[] = [];
-
-  fetches.push(
+  const fetches: Promise<void>[] = [
     $fetch<PortMapping[]>('/api/port-mappings')
-      .then((all) => { portMappings.value = all.filter((m) => m.containerName === props.container.containerName); })
-      .catch(() => {}),
-  );
-
-  fetches.push(
+      .then((all) => { if (isCurrent()) portMappings.value = all.filter((m) => m.containerName === containerName); })
+      .catch((err) => console.warn('[worker-settings] could not load port mappings', err)),
     $fetch<DomainMapping[]>('/api/domain-mappings')
-      .then((all) => { domainMappings.value = all.filter((m) => m.containerName === props.container.containerName); })
-      .catch(() => {}),
-  );
+      .then((all) => { if (isCurrent()) domainMappings.value = all.filter((m) => m.containerName === containerName); })
+      .catch((err) => console.warn('[worker-settings] could not load domain mappings', err)),
+  ];
 
-  if (props.container.status === 'running') {
+  if (status === 'running') {
     fetches.push(
-      $fetch<AppInstanceInfo[]>(`/api/containers/${props.container.id}/apps`)
-        .then((apps) => { appInstances.value = apps; })
-        .catch(() => {}),
+      $fetch<AppInstanceInfo[]>(`/api/containers/${id}/apps`)
+        .then((apps) => { if (isCurrent()) appInstances.value = apps; })
+        .catch((err) => console.warn('[worker-settings] could not load app instances', err)),
     );
+  } else {
+    appInstances.value = [];
   }
 
   await Promise.all(fetches);
 }
 
+// Immediate: the card mounts this modal already open on first use.
 watch(open, (isOpen) => {
   if (isOpen) {
     resetFormFromContainer();
     loadDetails();
   }
-});
+}, { immediate: true });
 
 watch(() => props.container.id, () => {
   portMappings.value = [];
   domainMappings.value = [];
   appInstances.value = [];
-  loaded.value = false;
   if (open.value) {
     resetFormFromContainer();
     loadDetails();
   }
 });
+
+function portTypeLabel(pm: PortMapping): string {
+  return pm.type === 'localhost' ? 'internal' : 'external';
+}
+
+function domainHost(dm: DomainMapping): string {
+  const host = dm.subdomain ? `${dm.subdomain}.${dm.baseDomain}` : dm.baseDomain;
+  return `${dm.wildcard ? '*.' : ''}${host}${dm.path || ''}`;
+}
 
 const shortImageId = computed(() => {
   const id = props.container.imageId || '';
@@ -186,12 +216,12 @@ const formattedCreatedAt = computed(() => {
 </script>
 
 <template>
-  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-2xl' }">
+  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-2xl modal-sheet' }" :content="dialogContent">
     <template #content>
-      <div class="p-5 max-h-[90vh] overflow-y-auto">
+      <div class="modal-sheet-body p-5 max-h-[90vh] overflow-y-auto">
         <!-- Header -->
         <div class="flex items-center justify-between mb-5 gap-3">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white truncate" :title="displayLabel">
+          <h2 :id="titleId" class="text-lg font-semibold text-gray-900 dark:text-white truncate" :title="displayLabel">
             {{ displayLabel }}
             <span class="text-gray-400 dark:text-gray-500 font-normal">— Settings</span>
           </h2>
@@ -208,10 +238,10 @@ const formattedCreatedAt = computed(() => {
         <!-- Pending rebuild banner -->
         <div
           v-if="container.pendingRebuild"
-          class="mb-5 flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3 py-2"
+          class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3 py-2"
         >
           <span class="text-xs text-amber-700 dark:text-amber-300">
-            Settings changes are saved but not yet applied. Rebuild to apply them to the running worker.
+            Settings changes are saved but not yet applied. Rebuild the worker to apply them.
           </span>
           <UButton size="xs" color="warning" variant="solid" icon="i-lucide-hammer" @click="rebuildNow">
             Rebuild now
@@ -221,7 +251,7 @@ const formattedCreatedAt = computed(() => {
         <div class="space-y-5">
           <!-- Worker identity (read-only) -->
           <section>
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Worker</h3>
+            <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Worker</h3>
             <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
               <dt class="text-gray-500 dark:text-gray-400">Worker ID</dt>
               <dd class="text-gray-900 dark:text-white font-mono text-xs truncate" :title="container.id">{{ container.id }}</dd>
@@ -242,34 +272,34 @@ const formattedCreatedAt = computed(() => {
 
           <!-- Editable settings -->
           <section class="space-y-4">
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Settings</h3>
+            <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Settings</h3>
 
             <!-- Display name (live) -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Display name</label>
+                <label :for="ids.name" class="text-sm font-medium text-gray-700 dark:text-gray-300">Display name</label>
                 <UBadge color="success" variant="subtle" size="xs">no rebuild needed</UBadge>
               </div>
-              <UInput v-model="form.displayName" class="w-full" placeholder="Worker label" />
+              <UInput :id="ids.name" v-model="form.displayName" class="w-full" placeholder="Worker label" />
               <p v-if="!nameValid" class="text-xs text-red-500 mt-1">Name must be 1–100 characters.</p>
             </div>
 
             <!-- Environment (rebuild) -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Environment</label>
+                <label :for="ids.env" class="text-sm font-medium text-gray-700 dark:text-gray-300">Environment</label>
                 <UBadge color="warning" variant="subtle" size="xs">requires rebuild</UBadge>
               </div>
-              <USelect v-model="form.environmentId" :items="environmentOptions" class="w-full" />
+              <USelect :id="ids.env" v-model="form.environmentId" :items="environmentOptions" class="w-full" />
             </div>
 
             <!-- Repositories (rebuild) -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Repositories</label>
+                <span :id="ids.repos" class="text-sm font-medium text-gray-700 dark:text-gray-300">Repositories</span>
                 <UBadge color="warning" variant="subtle" size="xs">requires rebuild</UBadge>
               </div>
-              <div class="space-y-2">
+              <div class="space-y-2" role="group" :aria-labelledby="ids.repos">
                 <RepoInput
                   v-for="(repo, idx) in form.repos"
                   :key="repoKeys[idx]"
@@ -285,10 +315,10 @@ const formattedCreatedAt = computed(() => {
             <!-- Volume mounts (rebuild) -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Volume Mounts</label>
+                <span :id="ids.mounts" class="text-sm font-medium text-gray-700 dark:text-gray-300">Volume Mounts</span>
                 <UBadge color="warning" variant="subtle" size="xs">requires rebuild</UBadge>
               </div>
-              <div class="space-y-2">
+              <div class="space-y-2" role="group" :aria-labelledby="ids.mounts">
                 <MountInput
                   v-for="(mount, idx) in form.mounts"
                   :key="idx"
@@ -303,22 +333,26 @@ const formattedCreatedAt = computed(() => {
             <!-- Init script (rebuild) -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Init Script</label>
+                <label :for="ids.init" class="text-sm font-medium text-gray-700 dark:text-gray-300">Init Script</label>
                 <UBadge color="warning" variant="subtle" size="xs">requires rebuild</UBadge>
               </div>
               <div class="space-y-2">
-                <USelect v-model="selectedPreset" :items="presetOptions" class="w-full" />
+                <USelect :id="ids.init" v-model="selectedPreset" :items="presetOptions" class="w-full" />
                 <UTextarea
                   v-model="form.initScript"
                   :rows="3"
                   placeholder="#!/bin/bash&#10;# Script to run in tmux on startup"
+                  aria-label="Init script content"
+                  autocapitalize="off"
+                  autocorrect="off"
+                  spellcheck="false"
                   class="w-full font-mono text-xs"
                 />
               </div>
             </div>
 
             <!-- Save actions -->
-            <div class="flex items-center gap-2 pt-1">
+            <div class="modal-sheet-footer flex flex-wrap items-center gap-2 pt-1">
               <UButton :disabled="!canSave" @click="save(false)">Save</UButton>
               <UButton
                 v-if="rebuildDirty"
@@ -330,24 +364,24 @@ const formattedCreatedAt = computed(() => {
               >
                 Save &amp; Rebuild
               </UButton>
-              <span v-if="rebuildDirty" class="text-xs text-amber-600 dark:text-amber-400">
+              <span v-if="rebuildDirty" class="basis-full sm:basis-auto text-xs text-amber-600 dark:text-amber-400">
                 Changes require a rebuild to take effect.
               </span>
               <div class="flex-1" />
-              <UButton color="neutral" variant="outline" @click="open = false">Close</UButton>
+              <UButton color="neutral" variant="outline" @click="close">Close</UButton>
             </div>
           </section>
 
           <!-- Port Mappings (read-only) -->
           <section v-if="portMappings.length > 0">
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Port Mappings</h3>
+            <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Port Mappings</h3>
             <div class="space-y-1.5">
               <div v-for="pm in portMappings" :key="pm.externalPort" class="flex items-center gap-2 text-sm">
                 <span class="font-mono text-xs text-gray-900 dark:text-white">:{{ pm.externalPort }}</span>
                 <span class="text-gray-400">&rarr;</span>
                 <span class="font-mono text-xs text-gray-900 dark:text-white">:{{ pm.internalPort }}</span>
-                <UBadge :color="pm.type === 'external' ? 'warning' : 'neutral'" variant="subtle" size="xs">
-                  {{ pm.type }}
+                <UBadge :color="pm.type === 'localhost' ? 'info' : 'warning'" variant="subtle" size="xs">
+                  {{ portTypeLabel(pm) }}
                 </UBadge>
                 <span v-if="pm.appType" class="text-gray-400 text-xs">{{ pm.appType }}</span>
               </div>
@@ -356,13 +390,14 @@ const formattedCreatedAt = computed(() => {
 
           <!-- Domain Mappings (read-only) -->
           <section v-if="domainMappings.length > 0">
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Domain Mappings</h3>
+            <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Domain Mappings</h3>
             <div class="space-y-1.5">
               <div v-for="dm in domainMappings" :key="dm.id" class="flex items-center gap-2 text-sm">
-                <span class="font-mono text-xs text-gray-900 dark:text-white truncate">{{ dm.subdomain }}.{{ dm.baseDomain }}</span>
+                <span class="font-mono text-xs text-gray-900 dark:text-white truncate min-w-0" :title="domainHost(dm)">{{ domainHost(dm) }}</span>
                 <span class="text-gray-400">&rarr;</span>
                 <span class="font-mono text-xs text-gray-900 dark:text-white">:{{ dm.internalPort }}</span>
                 <UBadge color="neutral" variant="subtle" size="xs">{{ dm.protocol }}</UBadge>
+                <UBadge v-if="dm.wildcard" color="neutral" variant="subtle" size="xs">wildcard</UBadge>
                 <UBadge v-if="dm.basicAuth" color="warning" variant="subtle" size="xs">auth</UBadge>
               </div>
             </div>
@@ -370,7 +405,7 @@ const formattedCreatedAt = computed(() => {
 
           <!-- App Instances (read-only) -->
           <section v-if="appInstances.length > 0">
-            <h3 class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">App Instances</h3>
+            <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">App Instances</h3>
             <div class="space-y-1.5">
               <div v-for="app in appInstances" :key="app.id" class="flex items-center gap-2 text-sm">
                 <span class="text-gray-900 dark:text-white text-xs">{{ app.appType }}</span>

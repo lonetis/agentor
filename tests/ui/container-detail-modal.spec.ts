@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { goToDashboard, findButtonByTooltip } from '../helpers/ui-helpers';
-import { createWorker, cleanupWorker } from '../helpers/worker-lifecycle';
+import { createWorker, cleanupWorker, uniquePort } from '../helpers/worker-lifecycle';
 import { ApiClient } from '../helpers/api-client';
 
 // The worker "detail" view is now an editable Worker Settings modal: a read-only
@@ -152,6 +152,28 @@ test.describe.serial('Worker Settings Modal', () => {
     await page.locator(`h3:has-text("${displayName}")`).first().click();
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     await expect(dialog.locator('h2')).toContainText(displayName);
+  });
+
+  test('dialog is named by its heading', async ({ page }) => {
+    const dialog = await openModal(page);
+    const labelledBy = await dialog.getAttribute('aria-labelledby');
+    expect(labelledBy).toBeTruthy();
+    await expect(dialog.locator('h2')).toHaveAttribute('id', labelledBy!);
+  });
+
+  test('Port Mappings info labels a localhost mapping "internal" like the Ports panel', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    const port = uniquePort();
+    const { status } = await api.createPortMapping({ externalPort: port, type: 'localhost', workerId, internalPort: 3000 });
+    expect(status).toBe(201);
+    try {
+      const dialog = await openModal(page);
+      await expect(dialog.getByText('Port Mappings', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(dialog.getByText(`:${port}`, { exact: true })).toBeVisible();
+      await expect(dialog.getByText('internal', { exact: true })).toBeVisible();
+    } finally {
+      await api.deletePortMapping(port);
+    }
   });
 });
 

@@ -25,14 +25,16 @@ const portTooltip = computed(() => {
 </script>
 
 <template>
-  <div class="flex items-center justify-between px-3 py-1.5 text-xs border-b border-gray-200 dark:border-gray-800 last:border-0">
+  <div class="flex items-center justify-between px-3 py-1.5 text-xs border-b border-(--terminal-bar-border) last:border-0">
     <div class="flex items-center gap-2 min-w-0">
       <span
         class="w-1.5 h-1.5 rounded-full flex-shrink-0"
         :class="instance.status === 'running' ? 'bg-green-500' : 'bg-gray-500'"
+        role="img"
+        :aria-label="instance.status"
       />
       <span class="text-gray-700 dark:text-gray-300 font-mono truncate">{{ instance.id }}</span>
-      <span class="text-gray-400 dark:text-gray-500 flex-shrink-0" :title="portTooltip">
+      <span class="text-gray-500 dark:text-gray-400 flex-shrink-0" :title="portTooltip">
         {{ portLabel }}
       </span>
     </div>
@@ -41,6 +43,7 @@ const portTooltip = computed(() => {
         size="xs"
         color="neutral"
         variant="ghost"
+        class="pointer-coarse:p-2"
         @click="emit('stop', instance.appType, instance.id)"
       >
         Stop

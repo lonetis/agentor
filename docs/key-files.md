@@ -10,8 +10,10 @@
 - `docs/assets/` - README artwork: `agentor-logo-light.png` / `agentor-logo-dark.png` (wordmark + tagline for GitHub's light / dark theme via `<picture>`). Not part of the app bundle.
 
 ## Orchestrator — Config
-- `orchestrator/app.config.ts` - App-level configuration
-- `orchestrator/public/` - Static files served at the site root: the favicon set (`favicon.ico`, `favicon-16x16/32x32/48x48.png`, `apple-touch-icon.png`, `android-chrome-192x192/512x512.png`) + `site.webmanifest`; linked from `nuxt.config.ts` → `app.head.link`
+- `orchestrator/app/app.config.ts` - Nuxt UI app config: `primary: 'blue'`, `neutral: 'gray'`, toaster viewport clear of the safe-area insets. Must stay in `app/` (a root-level one is ignored under `compatibilityVersion: 4`)
+- `orchestrator/public/` - Static files served at the site root: the favicon set (`favicon.ico`, `favicon-16x16/32x32/48x48.png`, `apple-touch-icon.png`, `android-chrome-192x192/512x512.png`), the maskable PWA icons (`maskable-icon-192x192.png` / `maskable-icon-512x512.png`) + `site.webmanifest` (installable standalone app); linked from `nuxt.config.ts` → `app.head.link`
+- `orchestrator/public/sw.js` - Service worker: offline / server-unreachable fallback for top-level same-origin navigations only (network-first, `offline.html` on a network error or 502/503/504); `BYPASS` prefixes (API, assets, icons, WebSockets, editor/desktop proxies, MCP, OAuth discovery) never touched (+ Chromium static routes); caches only `offline.html` (`CACHE` — bump it when that page changes)
+- `orchestrator/public/offline.html` - Self-contained "Agentor is unreachable" page (inline CSS/JS, follows the colour mode) that polls `/api/health` every 5s (30s after repeated reloads) and reconnects on `online`
 
 ## Orchestrator — Shared
 - `orchestrator/shared/types.ts` - Shared TypeScript interfaces used by both server and client (RepoConfig, GitProviderType, GitProviderInfo, GitRepoInfo, GitBranchInfo, GitRepoList, GitBranchList, MountConfig, TmuxWindow, AppInstanceInfo, NetworkMode, ServiceStatus, ContainerInfo, ContainerStatus, CreateContainerRequest, ImageUpdateInfo, UpdateStatus, ApplyResult, PruneResult, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, WorkerMetrics, WorkerMetricsStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, UserEnvVar, UserEnvVars, UserEnvVarsInput, UserSshKey, PREDEFINED_ENV_VAR_KEYS, UpdatableImage, LogLevel, LogSource, LogEntry). `UserEnvVars` is `{ userId, createdAt, updatedAt, envVars: UserEnvVar[] }` (`UserEnvVar = { key, value }` — a uniform list, no hardcoded fields); `UserEnvVarsInput = { envVars? }`; `UserSshKey = { sshPublicKey }`; `PREDEFINED_ENV_VAR_KEYS` is the predefined-key UI affordance list (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) — extend it to add a predefined input (git provider token variables are added on top by the Account modal). All user-owned resource types now carry a `userId` field (required for Container/Worker/PortMapping/DomainMapping, nullable for Capability/Instruction/InitScript/Environment where `null` = built-in/global).
@@ -19,7 +21,7 @@
 ## Orchestrator — Server
 - `orchestrator/Dockerfile` - Multi-stage Node 22 Alpine build (includes python3/make/g++ for better-sqlite3 native build; copies `.npmrc` before `npm ci`)
 - `orchestrator/.npmrc` - `legacy-peer-deps=true` (better-auth 1.7's optional framework peers otherwise break npm's resolver)
-- `orchestrator/nuxt.config.ts` - Nuxt configuration (modules, SPA mode, Nitro WebSocket)
+- `orchestrator/nuxt.config.ts` - Nuxt configuration (modules, SPA mode, Nitro WebSocket) incl. the PWA head (`lang`, viewport, `apple-mobile-web-app-*` / `mobile-web-app-capable` meta, manifest link with `crossorigin: use-credentials`), `routeRules` (`cache-control: no-cache` for `/sw.js`, `/offline.html`, `/site.webmanifest`) and the local `@nuxt/icon` setup (`provider: 'server'`, `localApiEndpoint: '/_nuxt_icon'`, lucide server bundle, explicit client icon bundle — never `scan`)
 - `orchestrator/server/plugins/services.ts` - Nitro startup: init Auth (better-auth + migrations) + Logger + LogStore + LogBroadcaster + LogCollector + Docker + ContainerManager + PortMappingStore + DomainMappingStore + TraefikManager + EnvironmentStore + CapabilityStore + InstructionStore + InitScriptStore + WorkerStore + UpdateChecker + UsageChecker
 - `orchestrator/server/utils/config.ts` - Environment variable parsing (includes `betterAuthSecret`, the resolved `publicBaseUrl`, `mcpEnabled`, `gitlabInstances` from `GITLAB_INSTANCES` via `parseGitLabInstances`)
 - `orchestrator/server/utils/auth.ts` - better-auth singleton + admin plugin + @better-auth/passkey plugin + jwt / @better-auth/mcp / @better-auth/cimd (OAuth 2.1 provider for MCP clients); exports `useAuth()`, `migrateAuth()`, `hasAnyUsers()`, `setUserRoleDirect()`, `getCredentialSummary()`, `removeUserPassword()`, `getMcpAuthConfig()`, `MCP_PATH`, `MCP_SCOPE`. Implements `resolveUser()` for passkey-first registration via the setup-token store.
@@ -121,61 +123,68 @@
 - `orchestrator/server/routes/ws/terminal/` - WebSocket terminal routes (crossws)
 
 ## Orchestrator — Client (app/)
-- `orchestrator/app/assets/css/main.css` - CSS custom properties for theming (--pane-tab-*, --terminal-*, --scrollbar-*) + dark/light mode overrides
+- `orchestrator/app/assets/css/main.css` - CSS custom properties for theming (--pane-tab-*, --terminal-*, --scrollbar-*) + dark/light mode overrides; sidebar / phone overlay / expand button styles, touch & focus rules (coarse-pointer targets, `touch-action: manipulation`, iOS 16px inputs, inset focus rings, reduced motion), light-mode `--ui-primary` = primary-600, the `.modal-sheet` / `.modal-sheet-body` / `.modal-sheet-footer` phone-sheet contract, and the `.app-shell` / terminal block
 - `orchestrator/app/assets/img/agentor-symbol.png` - The Agentor mark (transparent PNG) bundled via Vite for `AppLogo.vue`
-- `orchestrator/app/app.vue` - Nuxt app root component
-- `orchestrator/app/pages/index.vue` - Dashboard page (sidebar + split pane layout + modals)
+- `orchestrator/app/app.vue` - Nuxt app root component; sets the single reactive `theme-color` meta (`#f9fafb` light / `#030712` dark)
+- `orchestrator/app/spa-loading-template.html` - Launch screen until the SPA mounts (`#030712` / `#f9fafb` under `html.light`, 192px app icon) — bridges the installed app's splash screen
+- `orchestrator/app/pages/index.vue` - Dashboard page (sidebar + split pane layout + modals): `.app-shell isolate` root, phone overlay sidebar (closes on Escape / backdrop / when a pane opens, `inert` sidebar & main, focus handoff, skip link), `--pane-leading-inset` for the expand button, lifecycle actions through `runAction` (`busyIds` + error toasts), New Worker modal state shared via `useState('create-worker-modal-open')`
 - `orchestrator/app/pages/login.vue` - Sign-in form (email/password + passkey; redirects to `/`, or continues an OAuth authorization)
 - `orchestrator/app/pages/oauth/consent.vue` - OAuth consent screen for MCP clients
 - `orchestrator/app/pages/setup.vue` - First-run admin creation form (redirects to `/login` when setup is complete)
 - `orchestrator/app/middleware/auth.global.ts` - Global client route guard (redirects to `/setup` or `/login` as needed)
 - `orchestrator/app/composables/useAuth.ts` - better-auth Vue client wrapper (session, user, isAdmin, signIn, signOut, admin + passkey + oauth-provider client plugins; `isOAuthAuthorizationPage()`, `followOAuthRedirect()`)
-- `orchestrator/app/plugins/xterm.client.ts` - Provides `$Terminal` and `$FitAddon` globally (avoids SSR import issues)
+- `orchestrator/app/plugins/pwa.client.ts` - PWA bootstrap: `initPwa()`, then registers `/sw.js` (scope `/`, `updateViaCache: 'none'`) after load in production + secure contexts only; unregisters our worker in dev; reports `<html data-pwa-sw="unsupported|dev|insecure|registered|failed">`
+- `orchestrator/app/plugins/viewport.client.ts` - Mirrors `window.visualViewport` into `--app-height` / `--app-offset-top` (the `.app-shell` follows the visible area above a soft keyboard; ignored while pinch-zoomed)
 - `orchestrator/app/components/AppLogo.vue` - The Agentor mark as an `<img>` (`data-testid="agentor-logo"`, decorative `alt` by default, sized by the caller) — sidebar header + login / setup / consent pages
-- `orchestrator/app/components/AppSidebar.vue` - Left sidebar (container list, archived workers, port mappings, domain mappings, usage panel, update notification, **signed-in user card + sign out + Users modal trigger for admins**)
+- `orchestrator/app/components/AppSidebar.vue` - Left sidebar (container list, archived workers, port mappings, domain mappings, usage panel, update notification, **signed-in user card + PWA install button + sign out + Users modal trigger for admins**); `<aside>` / `<nav>` landmarks, `aria-current` tabs, More-tabs dropdown (closes on outside pointerdown / Escape); passes `busyIds` to the worker cards
 - `orchestrator/app/components/UsersModal.vue` - Admin-only user management (list, create, change role, reset password, delete) via `/api/users`
 - `orchestrator/app/components/McpAccessSection.vue` - Account modal section: MCP server URL + setup command, authorized OAuth applications with Revoke
 - `orchestrator/app/components/AccountModal.vue` - Self-service account modal: profile (name + email), password (change/set/remove with two-step confirm), passkeys (list/add/remove with two-step confirm). Backed by `client.passkey.*`, `client.changePassword`, `client.changeEmail`, `client.updateUser` and Agentor's custom `/api/account/*` endpoints.
 - `orchestrator/app/components/AppInstanceRow.vue` - Single app row in AppsPane
+- `orchestrator/app/components/PwaInstallButton.vue` - Sidebar-footer install affordance: icon-only **Install app** (browser prompt) or, on iOS, an **Add to Home Screen** hint popover with Dismiss; renders nothing when installed
 - `orchestrator/app/components/AppsPane.vue` - App instances for a container
 - `orchestrator/app/components/ArchivedWorkerCard.vue` - Archived worker card in sidebar
-- `orchestrator/app/components/ContainerCard.vue` - Worker card (controls, upload/download, archive, detail modal)
-- `orchestrator/app/components/ContainerDetailModal.vue` - Detail modal (auto-displays all `agentor.*` Docker labels)
+- `orchestrator/app/components/ContainerCard.vue` - Worker card (controls, upload/download, archive, detail modal): truncating name with the status badge kept visible, `busy` spinner, `aria-label` = tooltip on every icon button, action row that wraps on touch screens; Worker Settings / Upload modals mounted on first open
+- `orchestrator/app/components/ContainerDetailModal.vue` - Worker Settings modal (identity, editable settings with live / rebuild tiers, port / domain mapping + app info reloaded on every open; phone sheet)
 - `orchestrator/app/components/CreateContainerModal.vue` - New worker modal (environment selector, init preset, repos)
-- `orchestrator/app/components/ServicePane.vue` - Unified iframe pane for desktop (noVNC) and editor (code-server)
-- `orchestrator/app/components/DomainMappingsPanel.vue` - Domain mapping CRUD panel (subdomain, protocol, basic auth)
+- `orchestrator/app/components/ServicePane.vue` - Unified iframe pane for desktop (noVNC) and editor (code-server): titled iframe (fullscreen allowed), "Open in tab" hidden in iOS home-screen apps
+- `orchestrator/app/components/DomainMappingsPanel.vue` - Domain mapping CRUD panel (subdomain, protocol, basic auth; CA cert downloaded in place via `<a download>`)
 - `orchestrator/app/components/EnvironmentEditor.vue` - Environment form (resources, network, Docker, expose APIs, capabilities, instructions, scripts)
 - `orchestrator/app/components/EnvironmentsModal.vue` - Environment list + editor (CRUD)
 - `orchestrator/app/components/CapabilitiesModal.vue` - Capabilities management modal (list, view built-in, create/edit/delete custom)
 - `orchestrator/app/components/InstructionsModal.vue` - Instructions management modal (same pattern as CapabilitiesModal)
 - `orchestrator/app/components/InitScriptsModal.vue` - Init scripts management modal (list, view built-in, create/edit/delete custom)
-- `orchestrator/app/components/SettingsModal.vue` - System settings viewer (auto-renders categorized sections from `/api/settings`)
-- `orchestrator/app/components/FileDropZone.vue` - Drag-and-drop file zone for uploads
+- `orchestrator/app/components/SettingsModal.vue` - System settings viewer (auto-renders categorized sections from `/api/settings`, fetched each time the modal opens; load errors shown)
+- `orchestrator/app/components/FileDropZone.vue` - Drag-and-drop file zone for uploads (click / tap opens a multi-file picker; separate **Choose a folder** button where `webkitdirectory` is supported; keyboard-operable)
 - `orchestrator/app/components/MountInput.vue` - Form input for a single host bind-mount config
-- `orchestrator/app/components/LogPane.vue` - Log viewer pane (filter bar, color-coded entries, auto-scroll, WebSocket live stream)
-- `orchestrator/app/components/PaneContent.vue` - Renders active tab content (Terminal/Desktop/Editor/Apps/Logs/Placeholder)
+- `orchestrator/app/components/LogPane.vue` - Log viewer pane (filter bar, color-coded entries with light/dark `--log-*` colours, wrapping messages, 640px container-query layout, auto-scroll, WebSocket live stream)
+- `orchestrator/app/components/PaneContent.vue` - Renders active tab content (Terminal/Desktop/Editor/Apps/Logs/Placeholder); tabs mount on first activation and stay alive in a `PaneTabHost`
+- `orchestrator/app/components/PaneTabHost.vue` - `v-show` host for one pane tab; provides `PANE_ACTIVE_KEY` so the tab's pollers pause while another tab of the group is shown
 - `orchestrator/app/components/PaneDropOverlay.vue` - 5-zone drop overlay during tab drag (left/right/top/bottom/center)
-- `orchestrator/app/components/PaneGroupTabBar.vue` - Per-leaf tab bar (HTML5 draggable tabs, drop target)
-- `orchestrator/app/components/PaneSeparator.vue` - Resizable separator between pane nodes (horizontal or vertical)
-- `orchestrator/app/components/PaneSplitNode.vue` - Recursive component rendering PaneNode tree (leaf → tab bar + content, container → flex children + separators)
+- `orchestrator/app/components/PaneGroupTabBar.vue` - Per-leaf tab bar (HTML5 draggable tabs, drop target; ARIA `tablist` / `tab` with keyboard navigation, named close buttons, `--pane-leading-inset` padding)
+- `orchestrator/app/components/PaneSeparator.vue` - Resizable separator between pane nodes (horizontal or vertical): Pointer Events + capture, rAF-coalesced resize, keyboard-operable `role="separator"`, hairline divider
+- `orchestrator/app/components/PaneSplitNode.vue` - Recursive component rendering PaneNode tree (leaf → tab bar + content, container → flex children + separators); focuses a leaf on `pointerdown`, passes `atLeadingEdge` to the top-left leaf
 - `orchestrator/app/components/PortMappingsPanel.vue` - Port mappings management
 - `orchestrator/app/components/RepoInput.vue` - Self-contained repo row (provider select + searchable repo picker with create + branch picker for any provider the user has a token for; plain inputs otherwise)
 - `orchestrator/app/components/SplitPaneLayout.vue` - Thin wrapper rendering PaneSplitNode at rootNode
-- `orchestrator/app/components/TerminalPane.vue` - Multi-terminal host with inner tmux tab bar (TmuxTabBar)
-- `orchestrator/app/components/TerminalPlaceholder.vue` - Empty state when no worker is open
-- `orchestrator/app/components/ThemeToggle.vue` - Three-way color mode toggle (Default/White/Dark)
+- `orchestrator/app/components/TerminalPane.vue` - Multi-terminal host with inner tmux tab bar (TmuxTabBar); wires the active window's terminal to the touch toolbar, composer, text view, desktop context menu (`UContextMenu`), touch-selection actions and the disconnected pill
+- `orchestrator/app/components/TerminalToolbar.vue` - Touch key toolbar (Esc/Tab/latching Ctrl+Alt/arrows with repeat/⇧↵/^C/Home/End/PgUp/PgDn/symbols/font size + Compose/Paste/Select text); buttons never take focus
+- `orchestrator/app/components/TerminalComposer.vue` - Native text field for the terminal (autocorrect, dictation, paste) with Send (paste + Enter) / Insert
+- `orchestrator/app/components/TerminalTextView.vue` - Natively selectable plain-text view of a tmux window incl. 3000 lines of scrollback (capture API), Copy / Reload / Close
+- `orchestrator/app/components/TerminalPlaceholder.vue` - Empty state when no worker is open, with a **Create worker** button (shared `useState('create-worker-modal-open')`)
+- `orchestrator/app/components/ThemeToggle.vue` - Three-way color mode toggle (Default/White/Dark; lucide icons, `aria-pressed`, named `<Mode> theme`)
 - `orchestrator/app/components/TmuxTabBar.vue` - Inner tmux window tab bar
 - `orchestrator/app/components/UpdateNotification.vue` - Sidebar update notification (image digests, one-click update)
 - `orchestrator/app/components/VsCodeAppRow.vue` - Apps-pane row for the `vscode` app type (auth flow, machine name, Stop button)
 - `orchestrator/app/components/SshAppRow.vue` - Apps-pane row for the `ssh` app type (ssh command with external port, missing-public-key warning, Stop button)
-- `orchestrator/app/components/UsagePanel.vue` - Agent usage monitoring panel (progress bars, auth badges, reset times)
+- `orchestrator/app/components/UsagePanel.vue` - Agent usage monitoring panel (`role="progressbar"` bars, auth badges, reset times; "Couldn't load usage" + Retry when the first load fails)
 - `orchestrator/app/components/ImportWorkerModal.vue` - Import a worker from an export bundle (file picker + optional display name)
 - `orchestrator/app/components/UploadModal.vue` - Modal for workspace file uploads
-- `orchestrator/app/composables/useApps.ts` - App CRUD + polling
+- `orchestrator/app/composables/useApps.ts` - App CRUD + polling (app types fetched once per page load; instance polling paused while the Apps tab is hidden)
 - `orchestrator/app/composables/useArchivedWorkers.ts` - Archived workers list + polling
-- `orchestrator/app/composables/useContainers.ts` - Container CRUD + polling
-- `orchestrator/app/composables/useContainerServiceStatus.ts` - Service status polling (5s) for desktop/editor
-- `orchestrator/app/composables/useDomainMappings.ts` - Domain mapping CRUD + polling
+- `orchestrator/app/composables/useContainers.ts` - Container CRUD + polling (module-level list on one shared 10s poller; `refresh()` applies only the newest response)
+- `orchestrator/app/composables/useContainerServiceStatus.ts` - Service status polling (5s, pane-scoped) for desktop/editor; reports not running only after 3 consecutive failures
+- `orchestrator/app/composables/useDomainMappings.ts` - Domain mapping CRUD + shared polling; `status` (domain mapper status) fetched once
 - `orchestrator/app/composables/useInitScriptSync.ts` - Bidirectional sync between init script dropdown and init script textarea
 - `orchestrator/app/composables/useDragTab.ts` - Tab drag-and-drop (HTML5 DnD)
 - `orchestrator/app/composables/useEnvironments.ts` - Environment CRUD
@@ -184,19 +193,28 @@
 - `orchestrator/app/composables/useGitRepos.ts` - Module-level per-provider repo store (60s staleness, `invalidate()`), branch fetch, repo creation
 - `orchestrator/app/composables/useGitProviders.ts` - Git provider list singleton (`refresh()`, `ready()`)
 - `orchestrator/app/composables/useInitScripts.ts` - Init script CRUD
-- `orchestrator/app/composables/usePolling.ts` - Polling lifecycle helper (start/stop with onMounted/onUnmounted)
-- `orchestrator/app/composables/usePortMappings.ts` - Port mapping CRUD + polling
-- `orchestrator/app/composables/useSidebarResize.ts` - Sidebar drag-to-resize
+- `orchestrator/app/composables/usePolling.ts` - Polling primitives: `createPoller` (self-rescheduling, no overlap, `trigger()`, immediate refresh of stale data when re-enabled), `usePolling` (component-scoped; pauses while the page is hidden / offline or its pane tab is hidden), `createSharedPoller` (one module-level poll per data set), `PANE_ACTIVE_KEY`, `pageVisible`, `isPageActive()`
+- `orchestrator/app/composables/usePortMappings.ts` - Port mapping CRUD + shared polling
+- `orchestrator/app/composables/useSidebarResize.ts` - Sidebar resize (Pointer Events drag, `nudgeWidth()` for arrow keys) + collapse; mobile mode from `matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px)')` (starts collapsed, not persisted)
 - `orchestrator/app/composables/useSplitPanes.ts` - Pane state manager (tab CRUD, split/merge, resize, persisted)
-- `orchestrator/app/composables/useUiState.ts` - Unified UI state persistence (single localStorage key, debounced writes)
-- `orchestrator/app/composables/useTerminal.ts` - xterm.js lifecycle + WebSocket (manually managed with `destroy()`)
-- `orchestrator/app/composables/useTmuxTabs.ts` - Tmux window management (fetch, poll, create, close, activate, rename)
-- `orchestrator/app/composables/useLogs.ts` - Log entry state, WebSocket connection, history fetch, client-side filtering
-- `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only)
-- `orchestrator/app/composables/useUsage.ts` - Agent usage status polling (60s)
-- `orchestrator/app/composables/useWorkerMetrics.ts` - Per-worker metrics polling (10s singleton; sidebar feeds each card a `metric` prop)
+- `orchestrator/app/composables/useUiState.ts` - Unified UI state persistence (single localStorage key, debounced writes flushed on `pagehide` / when the page is hidden)
+- `orchestrator/app/composables/useTerminal.ts` - xterm.js lifecycle + WebSocket (manually managed with `destroy()`); `loadTerminalClasses()` imports xterm.js + addons lazily on the first terminal pane (not in the entry chunk); mouse-mode interception (xterm never reports the mouse; wheel reports sent itself), wheel + touch scrolling, touch selection, clipboard key bindings, latched toolbar modifiers, auto-reconnect, font size; exposes status / selection / focus state and actions for the pane
+- `orchestrator/app/composables/useTerminalPrefs.ts` - Terminal font size + touch toolbar mode (persisted in `useUiState().terminal`, device defaults)
+- `orchestrator/app/composables/useDevice.ts` - Shared media-query facts: `isTouch` (`pointer: coarse`), `isStandalone` (installed PWA), `isMac`
+- `orchestrator/app/composables/useTmuxTabs.ts` - Tmux window management (fetch, poll — paused while the terminal tab or page is hidden, create, close, activate, rename; restores the saved active window)
+- `orchestrator/app/composables/useLogs.ts` - Log entry state (stamped `_k` / `_t`), WebSocket connection (open only while a Logs pane is mounted; closes after 60s hidden), rAF-batched live ingest, history fetch, shared client-side filtering
+- `orchestrator/app/composables/useUpdates.ts` - Update status polling + apply (production mode only); after an orchestrator update waits for the new server, then reloads the page
+- `orchestrator/app/composables/useUsage.ts` - Agent usage status (shared 5 min poller; `error` + `retry()`, last status kept on failure)
+- `orchestrator/app/composables/useWorkerMetrics.ts` - Per-worker metrics polling (10s shared poller; sidebar feeds each card a `metric` prop)
+- `orchestrator/app/composables/usePwa.ts` - Install prompt + launch handling: `initPwa()` (captures `beforeinstallprompt`, `appinstalled`, `launchQueue` deep links) and `usePwa()` → `canInstall`, `showIosHint`, `install()`, `dismissIosHint()`
+- `orchestrator/app/composables/useDialogLabel.ts` - `{ titleId, content }` that names a `UModal` after the `<h2>` it renders itself
 - `orchestrator/app/utils/container-name.ts` - Utility for container name display (shortName helper)
 - `orchestrator/app/utils/format.ts` - `formatBytes` / `formatRate` helpers (metrics panels + worker cards)
+- `orchestrator/app/utils/assign-if-changed.ts` - `assignIfChanged(ref, next)`: assign only when the JSON differs (no re-render for unchanged poll results)
+- `orchestrator/app/utils/terminal-mouse.ts` - Mouse-mode state (DECSET/DECRST bookkeeping), wheel report encoding (SGR / SGR-pixels / urxvt / UTF-8 / default), wheel delta accumulation
+- `orchestrator/app/utils/terminal-keys.ts` - Escape sequences for special keys with xterm modifier encoding, Ctrl-character mapping, latch application
+- `orchestrator/app/utils/terminal-touch.ts` - Touch gestures on the terminal (swipe scroll + momentum, long-press selection, pinch font size)
+- `orchestrator/app/utils/clipboard.ts` - `copyText` / `readText` with an `execCommand('copy')` fallback for insecure contexts
 - `orchestrator/app/types/index.ts` - Client-side TypeScript types: re-exports shared types (including GitProviderInfo, GitRepoInfo, GitBranchInfo, AgentAuthType, UsageWindow, AgentUsageInfo, AgentUsageStatus, ExposeApis, CapabilityInfo, InstructionInfo, InitScriptInfo, CredentialInfo, LogLevel, LogSource, LogEntry) + defines AppTypeInfo, PortMapping, DomainMapping, DomainMapperStatus, EnvironmentInfo, WorkerSystemEnvVar, ArchivedWorker, TabType, Tab, SplitDirection, PaneLeafNode, PaneContainerNode, PaneNode, DragPayload, DropZone, ChallengeType, BaseDomainConfig
 
 ## Worker
@@ -215,7 +233,7 @@
 - `worker/agents/antigravity/setup.sh` - Antigravity CLI (`agy`) settings (workspace trust, API-key mode) + MCP config + capabilities/instructions writing
 
 ## Tests
-- `tests/playwright.config.ts` - Playwright config (two projects: api + ui, parallel workers, timeouts)
+- `tests/playwright.config.ts` - Playwright config (two projects: api + ui, parallel workers, timeouts; the ui project blocks service workers)
 - `tests/helpers/api-client.ts` - Typed API wrapper for all endpoints (returns `{ status, body }`)
 - `tests/helpers/worker-lifecycle.ts` - Container create/cleanup helpers with timeouts
 - `tests/helpers/terminal-ws.ts` - WebSocket terminal client with ANSI stripping
@@ -224,7 +242,7 @@
 - `tests/helpers/webauthn.ts` - Install/dispose Chrome DevTools virtual WebAuthn authenticator for end-to-end passkey tests (`installVirtualAuthenticator(page)`)
 - `tests/helpers/mcp.ts` - MCP test client: full OAuth flow through the MCP SDK (`connectMcp`), hand-driven OAuth steps (`registerPublicClient`, `authorizationRequest`, `approveAuthorization`, `obtainTokens`, `requestTokens`), tool-call helpers (`callJson`, `callError`)
 - `tests/api/*.spec.ts` - API integration tests (70 files; incl. worker-metrics, worker-export-import, git-repos, gitlab, gitlab-worker, git-provider-access, mcp-oauth, mcp-tools, mcp-platform, worker-exec, tmux-io, desktop-control, users)
-- `tests/ui/*.spec.ts` - UI integration tests (47 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh, gitlab-repo-input, mcp-oauth, branding)
+- `tests/ui/*.spec.ts` - UI integration tests (53 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh, gitlab-repo-input, mcp-oauth, branding, terminal-interaction, terminal-touch, pwa (the only spec that allows service workers), mobile-layout + mobile-modals (390x844 touch context), polling)
 - `tests/docker/gitlab-mock/server.mjs` - Self-managed GitLab stand-in for the dockerized stack (REST API v4 subset + git smart HTTP via `git http-backend`, anonymous fetch of public projects; 2-item pages, bogus `Link` hosts, keyset project listing, 500 for deep offset membership pages); configured as `GITLAB_INSTANCES=mock=http://gitlab-mock:8080`
 - `tests/FEATURES.md` - Feature inventory driving test coverage
 - `tests/TESTS.md` - Test suite documentation with counts per file

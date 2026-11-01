@@ -34,6 +34,24 @@ test.describe('Branding', () => {
     await expectHeadLink(page, 'link[rel="manifest"][href="/site.webmanifest"]');
   });
 
+  test('document head carries the installable-app and mobile metadata', async ({ page }) => {
+    await goToDashboard(page);
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    const viewport = page.locator('head meta[name="viewport"]');
+    await expect(viewport).toHaveCount(1);
+    await expect(viewport).toHaveAttribute('content', /viewport-fit=cover/);
+    // Pinch-zoom must stay available (accessibility).
+    await expect(viewport).not.toHaveAttribute('content', /maximum-scale|user-scalable/);
+    await expect(page.locator('head meta[name="apple-mobile-web-app-title"]')).toHaveAttribute('content', 'Agentor');
+    await expect(page.locator('head meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+    await expect(page.locator('head meta[name="mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+    // Credentials keep the manifest loadable behind the dashboard's basic auth.
+    await expect(page.locator('head link[rel="manifest"][href="/site.webmanifest"]')).toHaveAttribute(
+      'crossorigin',
+      'use-credentials',
+    );
+  });
+
   test('favicon and app icons are served from the site root', async ({ request }) => {
     const icons = [
       '/favicon.ico',
@@ -43,6 +61,8 @@ test.describe('Branding', () => {
       '/apple-touch-icon.png',
       '/android-chrome-192x192.png',
       '/android-chrome-512x512.png',
+      '/maskable-icon-192x192.png',
+      '/maskable-icon-512x512.png',
     ];
     for (const path of icons) {
       const res = await request.get(path);
@@ -59,9 +79,11 @@ test.describe('Branding', () => {
     expect(manifest.name).toBe('Agentor');
     expect(manifest.short_name).toBe('Agentor');
     expect(manifest.start_url).toBe('/');
-    expect(manifest.icons.map((i: { src: string }) => i.src)).toEqual([
-      '/android-chrome-192x192.png',
-      '/android-chrome-512x512.png',
+    expect(manifest.icons.map((i: { src: string; purpose: string }) => [i.src, i.purpose])).toEqual([
+      ['/android-chrome-192x192.png', 'any'],
+      ['/android-chrome-512x512.png', 'any'],
+      ['/maskable-icon-192x192.png', 'maskable'],
+      ['/maskable-icon-512x512.png', 'maskable'],
     ]);
   });
 });

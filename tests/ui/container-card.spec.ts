@@ -52,6 +52,30 @@ test.describe.serial('Container Card', () => {
     expect(text!.trim()).toMatch(/^[a-f0-9]{10}$/);
   });
 
+  test('a long display name is truncated and keeps the status badge inside the card', async ({ page, request }) => {
+    const api = new ApiClient(request);
+    // Keep the current name as a prefix so every other locator still matches
+    // the card even if renaming back were to fail.
+    const longName = `${displayName}-${'x'.repeat(90 - displayName.length - 1)}`;
+    expect((await api.renameContainer(containerId, longName)).status).toBe(200);
+    try {
+      await goToDashboard(page);
+      const card = page.locator('.rounded-lg').filter({ hasText: longName }).first();
+      const badge = card.locator('text=running');
+      await expect(badge).toBeVisible({ timeout: 60_000 });
+      const heading = card.locator('h3');
+      await expect(heading).toHaveText(longName);
+      // The name is clipped instead of pushing the badge out of the card.
+      expect(await heading.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+      const cardBox = (await card.boundingBox())!;
+      const badgeBox = (await badge.boundingBox())!;
+      expect(badgeBox.x).toBeGreaterThanOrEqual(cardBox.x);
+      expect(badgeBox.x + badgeBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width);
+    } finally {
+      expect((await api.renameContainer(containerId, displayName)).status).toBe(200);
+    }
+  });
+
   // ─── 2. View Buttons (running state) ─────────────────────────
 
   test('running card shows icon buttons (Terminal, Desktop, Editor, Apps, Upload, Download)', async ({ page }) => {
@@ -64,6 +88,17 @@ test.describe.serial('Container Card', () => {
     const count = await iconButtons.count();
     // 9 buttons: Terminal, Desktop, Editor, Apps, Upload, Download + Stop, Archive, Remove
     expect(count).toBeGreaterThanOrEqual(9);
+  });
+
+  test('icon buttons expose their tooltip text as the accessible name', async ({ page }) => {
+    await goToDashboard(page);
+    const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
+    await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
+    for (const name of ['Terminal', 'Editor', 'Desktop', 'Apps', 'Upload to Workspace', 'Download Workspace', 'Export worker', 'Settings', 'Stop', 'Rebuild', 'Archive', 'Remove']) {
+      await expect(card.getByRole('button', { name, exact: true })).toBeVisible();
+    }
+    // Button order is part of the contract (index-based clicks elsewhere).
+    await expect(card.locator('button').first()).toHaveAttribute('aria-label', 'Terminal');
   });
 
   // ─── 3. Action Buttons ───────────────────────────────────────

@@ -216,8 +216,23 @@ const challengeColors: Record<string, string> = {
   selfsigned: 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300',
 };
 
+// An in-place download: window.open would spawn an in-app browser in an
+// installed (standalone) PWA.
 function downloadCaCert() {
-  window.open('/api/domain-mapper/ca-cert', '_blank');
+  const a = document.createElement('a');
+  a.href = '/api/domain-mapper/ca-cert';
+  a.download = 'agentor-ca.crt';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function openForm() {
+  showForm.value = true;
+}
+
+function closeForm() {
+  showForm.value = false;
 }
 </script>
 
@@ -240,6 +255,7 @@ function downloadCaCert() {
               p.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:opacity-80',
             ]"
             :title="p.disabled ? 'No TLS configured' : ''"
+            :aria-pressed="formProtocols.has(p.value)"
             @click="!p.disabled && toggleProtocol(p.value)"
           >
             {{ p.label }}
@@ -247,7 +263,8 @@ function downloadCaCert() {
         </div>
         <select
           v-model="formWorkerId"
-          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
+          aria-label="Worker"
+          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/40 flex-1 min-w-0"
         >
           <option value="" disabled>Worker</option>
           <option v-for="c in runningContainers" :key="c.id" :value="c.id">
@@ -260,7 +277,11 @@ function downloadCaCert() {
           v-model="formSubdomain"
           type="text"
           placeholder="subdomain (optional)"
-          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
+          aria-label="Subdomain (optional)"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/40 flex-1 min-w-0"
         />
         <div v-if="multiDomain" class="flex shrink-0">
           <button
@@ -274,6 +295,7 @@ function downloadCaCert() {
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-300 dark:border-gray-600',
             ]"
             :title="`${getChallengeType(d)}${getDnsProvider(d) ? ':' + getDnsProvider(d) : ''}`"
+            :aria-pressed="formBaseDomains.has(d)"
             @click="toggleBaseDomain(d)"
           >
             .{{ d }}
@@ -287,13 +309,21 @@ function downloadCaCert() {
           v-model="formPath"
           type="text"
           placeholder="path (optional, e.g. /api)"
-          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
+          aria-label="Path (optional)"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/40 flex-1 min-w-0"
         />
         <input
           v-model.number="formInternalPort"
           type="number"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          enterkeyhint="done"
           placeholder="Internal port"
-          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
+          aria-label="Internal port"
+          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/40 flex-1 min-w-0"
         />
       </div>
       <label
@@ -346,13 +376,20 @@ function downloadCaCert() {
             v-model="formAuthUsername"
             type="text"
             placeholder="Username"
-            class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
+            aria-label="Username"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/40 flex-1 min-w-0"
           />
           <input
             v-model="formAuthPassword"
             type="password"
             placeholder="Password"
-            class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
+            aria-label="Password"
+            autocomplete="new-password"
+            class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/40 flex-1 min-w-0"
           />
         </div>
       </div>
@@ -373,6 +410,7 @@ function downloadCaCert() {
       </div>
       <p
         v-if="formError"
+        role="alert"
         class="text-red-600 dark:text-red-400 text-[10px] flex items-start gap-1"
         data-testid="domain-mapping-error"
       >
@@ -380,7 +418,7 @@ function downloadCaCert() {
         <span class="flex-1 min-w-0">{{ formError }}</span>
       </p>
       <div class="flex gap-1.5 justify-end">
-        <UButton size="xs" color="neutral" variant="ghost" @click="showForm = false">
+        <UButton size="xs" color="neutral" variant="ghost" @click="closeForm">
           Cancel
         </UButton>
         <UButton size="xs" color="primary" variant="solid" @click="handleCreate">
@@ -390,7 +428,7 @@ function downloadCaCert() {
     </div>
 
     <div v-if="!showForm" class="flex gap-1.5 items-center">
-      <UButton size="xs" color="primary" variant="solid" @click="showForm = true">
+      <UButton size="xs" color="primary" variant="solid" @click="openForm">
         + Map
       </UButton>
       <UButton
@@ -407,13 +445,14 @@ function downloadCaCert() {
     </div>
 
     <!-- Mappings list, grouped by worker -->
-    <div v-if="mappings.length === 0 && !showForm" class="text-gray-400 dark:text-gray-500 text-xs text-center py-1">
+    <div v-if="mappings.length === 0 && !showForm" class="text-gray-500 dark:text-gray-400 text-xs text-center py-1">
       No active domain mappings
     </div>
     <div v-for="g in groupedMappings" :key="g.workerId" class="flex flex-col gap-1">
       <button
         type="button"
         class="flex items-center gap-1.5 w-full text-left text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800/60 rounded px-1 py-1 transition-colors min-w-0"
+        :aria-expanded="!collapsedGroups.has(g.workerId)"
         @click="toggleGroup(g.workerId)"
       >
         <UIcon
@@ -456,12 +495,16 @@ function downloadCaCert() {
             v-if="m.basicAuth"
             name="i-lucide-lock"
             class="size-3 text-amber-500 shrink-0"
+            role="img"
+            aria-label="Basic auth enabled"
           />
           <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>
           <span class="text-gray-500 dark:text-gray-400 font-mono shrink-0">:{{ m.internalPort }}</span>
           <button
-            class="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5 ml-auto"
+            type="button"
+            class="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5 ml-auto pointer-coarse:p-2 pointer-coarse:-my-1.5"
             title="Remove mapping"
+            aria-label="Remove mapping"
             @click="removeMapping(m.id)"
           >
             <UIcon name="i-lucide-x" class="size-3" />

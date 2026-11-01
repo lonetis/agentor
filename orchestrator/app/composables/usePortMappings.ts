@@ -1,18 +1,21 @@
 import type { PortMapping } from '~/types';
+import { createSharedPoller } from '~/composables/usePolling';
+import { assignIfChanged } from '~/utils/assign-if-changed';
 
-// Module-level singleton — the sidebar and the Port Mappings panel share one
-// list and a single poller (matching useWorkerMetrics/useUsage), so opening the
-// panel does not spin up a second 10s poll or a divergent copy of the data.
+// Module-level singleton: the sidebar and the Port Mappings panel share one
+// list and a single poll.
 const mappings = ref<PortMapping[]>([]);
-let initialized = false;
 
 async function fetchMappings() {
   try {
-    mappings.value = await $fetch<PortMapping[]>('/api/port-mappings');
-  } catch {
-    mappings.value = [];
+    assignIfChanged(mappings, await $fetch<PortMapping[]>('/api/port-mappings'));
+  } catch (err) {
+    // Keep the last list: a transient failure should not empty the panel.
+    console.warn('[port-mappings] Failed to load port mappings:', err);
   }
 }
+
+const poller = createSharedPoller(fetchMappings, 10_000);
 
 async function createMapping(opts: {
   externalPort: number;
@@ -26,21 +29,17 @@ async function createMapping(opts: {
     method: 'POST',
     body: opts,
   });
-  await fetchMappings();
+  await poller.trigger();
   return result;
 }
 
 async function removeMapping(port: number) {
   await $fetch(`/api/port-mappings/${port}`, { method: 'DELETE' });
-  await fetchMappings();
+  await poller.trigger();
 }
 
 export function usePortMappings() {
-  if (!initialized) {
-    initialized = true;
-    fetchMappings();
-  }
-  usePolling(fetchMappings, 10_000);
+  poller.use();
 
   return {
     mappings,

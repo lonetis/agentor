@@ -56,6 +56,14 @@ function toggleGroup(workerId: string) {
   collapsedGroups.value = new Set(s);
 }
 
+function openForm() {
+  showForm.value = true;
+}
+
+function closeForm() {
+  showForm.value = false;
+}
+
 function resetForm() {
   formType.value = 'localhost';
   formExternalPort.value = undefined;
@@ -92,14 +100,16 @@ async function handleCreate() {
       <div class="flex gap-1.5">
         <select
           v-model="formType"
-          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs shrink-0"
+          aria-label="Mapping type"
+          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/40 shrink-0"
         >
           <option value="localhost">internal</option>
           <option value="external">external</option>
         </select>
         <select
           v-model="formWorkerId"
-          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
+          aria-label="Worker"
+          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/40 flex-1 min-w-0"
         >
           <option value="" disabled>Worker</option>
           <option v-for="c in runningContainers" :key="c.id" :value="c.id">
@@ -111,38 +121,47 @@ async function handleCreate() {
         <input
           v-model.number="formExternalPort"
           type="number"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          enterkeyhint="done"
           placeholder="External port"
-          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
+          aria-label="External port"
+          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/40 flex-1 min-w-0"
         />
         <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>
         <input
           v-model.number="formInternalPort"
           type="number"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          enterkeyhint="done"
           placeholder="Internal port"
-          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-1 text-xs flex-1 min-w-0"
+          aria-label="Internal port"
+          class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/40 flex-1 min-w-0"
         />
         <UButton size="xs" color="primary" variant="solid" class="shrink-0" @click="handleCreate">
           Add
         </UButton>
       </div>
-      <p v-if="formError" class="text-red-500 dark:text-red-400 text-[11px]">{{ formError }}</p>
-      <UButton size="xs" color="neutral" variant="ghost" class="self-end" @click="showForm = false">
+      <p v-if="formError" role="alert" class="text-red-500 dark:text-red-400 text-[11px]">{{ formError }}</p>
+      <UButton size="xs" color="neutral" variant="ghost" class="self-end" @click="closeForm">
         Cancel
       </UButton>
     </div>
 
-    <UButton v-if="!showForm" size="xs" color="primary" variant="solid" class="self-start" @click="showForm = true">
+    <UButton v-if="!showForm" size="xs" color="primary" variant="solid" class="self-start" @click="openForm">
       + Map
     </UButton>
 
     <!-- Mappings list, grouped by worker -->
-    <div v-if="mappings.length === 0 && !showForm" class="text-gray-400 dark:text-gray-500 text-xs text-center py-1">
+    <div v-if="mappings.length === 0 && !showForm" class="text-gray-500 dark:text-gray-400 text-xs text-center py-1">
       No active port mappings
     </div>
     <div v-for="g in groupedMappings" :key="g.workerId" class="flex flex-col gap-1">
       <button
         type="button"
         class="flex items-center gap-1.5 w-full text-left text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800/60 rounded px-1 py-1 transition-colors min-w-0"
+        :aria-expanded="!collapsedGroups.has(g.workerId)"
         @click="toggleGroup(g.workerId)"
       >
         <UIcon
@@ -170,8 +189,10 @@ async function handleCreate() {
           <span class="text-gray-400 dark:text-gray-600 shrink-0">&rarr;</span>
           <span class="text-gray-500 dark:text-gray-400 font-mono truncate min-w-0 flex-1">:{{ m.internalPort }}</span>
           <button
-            class="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5"
+            type="button"
+            class="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5 pointer-coarse:p-2 pointer-coarse:-my-1.5"
             title="Remove mapping"
+            aria-label="Remove mapping"
             @click="removeMapping(m.externalPort)"
           >
             <UIcon name="i-lucide-x" class="size-3" />

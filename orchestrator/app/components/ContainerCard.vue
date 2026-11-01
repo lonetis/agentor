@@ -6,6 +6,8 @@ const props = defineProps<{
   isActive: boolean;
   /** Live resource metrics for this worker (polled once in the sidebar). */
   metric?: WorkerMetrics | null;
+  /** A lifecycle action (stop, restart, rebuild, …) is in flight for this worker. */
+  busy?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -27,11 +29,28 @@ const toast = useToast();
 const showDetail = ref(false);
 const showUpload = ref(false);
 
+// The modals mount on first open only: each one fetches environments / init
+// scripts on mount, which multiplied by every card on every list refresh. They
+// stay mounted afterwards so their close transition can play.
+const detailMounted = ref(false);
+const uploadMounted = ref(false);
+
+function openDetail() {
+  detailMounted.value = true;
+  showDetail.value = true;
+}
+
+function openUpload() {
+  uploadMounted.value = true;
+  showUpload.value = true;
+}
+
 // Export is slow (the server materialises the bundle — incl. a docker export of
 // the filesystem — before the download starts), so drive it with fetch and show
 // a spinner on the button until the bundle is ready, then save it. Handled here
 // (not via an anchor) precisely so the button can reflect the in-progress state.
 const exporting = ref(false);
+const exportLabel = computed(() => (exporting.value ? 'Preparing export…' : 'Export worker'));
 async function doExport() {
   if (exporting.value) return;
   exporting.value = true;
@@ -85,6 +104,7 @@ const shortImageId = computed(() => {
 
 const isRunning = computed(() => props.container.status === 'running');
 const isStopped = computed(() => props.container.status === 'stopped');
+const isTransitioning = computed(() => props.container.status === 'creating' || props.container.status === 'removing');
 
 function metricColor(p: number) {
   return p >= 80
@@ -113,13 +133,13 @@ function onHScrollWheel(e: WheelEvent) {
       isActive ? 'bg-blue-50/60 dark:bg-gray-800/60 border-blue-500/50 shadow-lg shadow-blue-500/10' : 'bg-gray-100/60 dark:bg-gray-800/40 border-gray-300/50 dark:border-gray-700/50',
     ]"
   >
-    <!-- Name + image ID + status (clickable for settings): non-wrapping,
-         scrollable when the card is narrow -->
-    <div class="card-header flex items-center gap-2 mb-2" @wheel="onHScrollWheel">
+    <!-- Name (truncated, clickable for settings) + image ID + status. The name
+         shrinks so the status badge always stays in view. -->
+    <div class="flex items-center gap-2 mb-2">
       <h3
-        class="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+        class="text-sm font-semibold text-gray-900 dark:text-white truncate min-w-0 flex-1 cursor-pointer hover:opacity-80 transition-opacity"
         :title="displayLabel"
-        @click="showDetail = true"
+        @click="openDetail"
       >
         {{ displayLabel }}
       </h3>
@@ -127,10 +147,23 @@ function onHScrollWheel(e: WheelEvent) {
         <UTooltip v-if="container.pendingRebuild" text="Settings changed — rebuild to apply">
           <UBadge color="warning" variant="subtle" size="xs">rebuild pending</UBadge>
         </UTooltip>
-        <span v-if="shortImageId" class="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+        <span v-if="shortImageId" class="text-[10px] text-gray-500 dark:text-gray-400 font-mono">
           {{ shortImageId }}
         </span>
-        <UBadge :color="statusColor" variant="subtle" size="xs">
+        <UIcon
+          v-if="busy"
+          name="i-lucide-loader-circle"
+          class="size-3.5 animate-spin text-gray-400"
+          role="img"
+          aria-label="Working"
+        />
+        <UBadge
+          :color="statusColor"
+          variant="subtle"
+          size="xs"
+          :icon="isTransitioning ? 'i-lucide-loader-circle' : undefined"
+          :ui="{ leadingIcon: 'animate-spin' }"
+        >
           {{ container.status }}
         </UBadge>
       </div>
@@ -166,79 +199,82 @@ function onHScrollWheel(e: WheelEvent) {
       </span>
     </div>
 
-    <!-- Actions: all left-aligned, grouped with dividers, scrollable when narrow -->
-    <div class="card-actions flex items-center gap-1.5" @wheel="onHScrollWheel">
+    <!-- Actions: all left-aligned, grouped with dividers. Scrollable when narrow
+         with a mouse; wraps on touch screens, where the buttons are larger. -->
+    <div class="card-actions flex items-center gap-1.5 pointer-coarse:flex-wrap pointer-coarse:gap-y-2" @wheel="onHScrollWheel">
       <!-- Views (running only) -->
       <template v-if="isRunning">
         <div class="flex items-center gap-0.5 flex-shrink-0">
           <UTooltip text="Terminal">
-            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-terminal" @click="emit('openTerminal', container.id)" />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-terminal" aria-label="Terminal" class="pointer-coarse:p-2" @click="emit('openTerminal', container.id)" />
           </UTooltip>
           <UTooltip text="Editor">
-            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-code" @click="emit('openEditor', container.id)" />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-code" aria-label="Editor" class="pointer-coarse:p-2" @click="emit('openEditor', container.id)" />
           </UTooltip>
           <UTooltip text="Desktop">
-            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-monitor" @click="emit('openDesktop', container.id)" />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-monitor" aria-label="Desktop" class="pointer-coarse:p-2" @click="emit('openDesktop', container.id)" />
           </UTooltip>
           <UTooltip text="Apps">
-            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-layout-grid" @click="emit('openApps', container.id)" />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-layout-grid" aria-label="Apps" class="pointer-coarse:p-2" @click="emit('openApps', container.id)" />
           </UTooltip>
         </div>
 
-        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
+        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" aria-hidden="true" />
 
         <!-- Workspace (running only): upload, download, export -->
         <div class="flex items-center gap-0.5 flex-shrink-0">
           <UTooltip text="Upload to Workspace">
-            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-upload" @click="showUpload = true" />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-upload" aria-label="Upload to Workspace" class="pointer-coarse:p-2" @click="openUpload" />
           </UTooltip>
           <UTooltip text="Download Workspace">
-            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-download" @click="emit('downloadWorkspace', container.id)" />
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-download" aria-label="Download Workspace" class="pointer-coarse:p-2" @click="emit('downloadWorkspace', container.id)" />
           </UTooltip>
-          <UTooltip :text="exporting ? 'Preparing export…' : 'Export worker'">
-            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-package" :loading="exporting" :disabled="exporting" @click="doExport" />
+          <UTooltip :text="exportLabel">
+            <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-package" :aria-label="exportLabel" class="pointer-coarse:p-2" :loading="exporting" :disabled="exporting" @click="doExport" />
           </UTooltip>
         </div>
 
-        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
+        <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" aria-hidden="true" />
       </template>
 
       <!-- Lifecycle -->
       <div class="flex items-center gap-0.5 flex-shrink-0">
         <UTooltip text="Settings">
-          <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-pencil" @click="showDetail = true" />
+          <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-pencil" aria-label="Settings" class="pointer-coarse:p-2" @click="openDetail" />
         </UTooltip>
         <UTooltip v-if="isStopped" text="Restart">
-          <UButton size="xs" color="success" variant="subtle" icon="i-lucide-refresh-cw" @click="emit('restart', container.id)" />
+          <UButton size="xs" color="success" variant="subtle" icon="i-lucide-refresh-cw" aria-label="Restart" class="pointer-coarse:p-2" @click="emit('restart', container.id)" />
         </UTooltip>
         <UTooltip v-if="isRunning" text="Stop">
-          <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-square" @click="emit('stop', container.id)" />
+          <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-square" aria-label="Stop" class="pointer-coarse:p-2" @click="emit('stop', container.id)" />
         </UTooltip>
         <UTooltip text="Rebuild">
-          <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-hammer" @click="emit('rebuild', container.id)" />
+          <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-hammer" aria-label="Rebuild" class="pointer-coarse:p-2" @click="emit('rebuild', container.id)" />
         </UTooltip>
       </div>
 
-      <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
+      <span class="w-px h-4 bg-gray-300 dark:bg-gray-600 flex-shrink-0" aria-hidden="true" />
 
       <!-- Destructive -->
       <div class="flex items-center gap-0.5 flex-shrink-0">
         <UTooltip text="Archive">
-          <UButton size="xs" color="warning" variant="subtle" icon="i-lucide-archive" @click="emit('archive', container.id)" />
+          <UButton size="xs" color="warning" variant="subtle" icon="i-lucide-archive" aria-label="Archive" class="pointer-coarse:p-2" @click="emit('archive', container.id)" />
         </UTooltip>
         <UTooltip text="Remove">
-          <UButton size="xs" color="error" variant="subtle" icon="i-lucide-trash-2" @click="emit('remove', container.id)" />
+          <UButton size="xs" color="error" variant="subtle" icon="i-lucide-trash-2" aria-label="Remove" class="pointer-coarse:p-2" @click="emit('remove', container.id)" />
         </UTooltip>
       </div>
     </div>
 
     <UploadModal
+      v-if="uploadMounted"
       v-model:open="showUpload"
       :container-id="container.id"
       :container-name="displayLabel"
     />
 
     <ContainerDetailModal
+      v-if="detailMounted"
       v-model:open="showDetail"
       :container="container"
       :status-color="statusColor"
@@ -249,16 +285,14 @@ function onHScrollWheel(e: WheelEvent) {
 </template>
 
 <style scoped>
-/* Horizontal scroll for the header, metrics, and action rows when they overflow
-   a narrow card, with the scrollbar hidden (scroll via trackpad or wheel — see
-   onHScrollWheel). None of the strips wrap onto a second line. */
-.card-header,
+/* Horizontal scroll for the metrics and action rows when they overflow a narrow
+   card, with the scrollbar hidden (scroll via trackpad or wheel — see
+   onHScrollWheel). */
 .card-metrics,
 .card-actions {
   overflow-x: auto;
   scrollbar-width: none;
 }
-.card-header::-webkit-scrollbar,
 .card-metrics::-webkit-scrollbar,
 .card-actions::-webkit-scrollbar {
   display: none;

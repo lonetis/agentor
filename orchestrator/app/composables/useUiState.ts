@@ -77,10 +77,24 @@ interface TmuxState {
   activeWindows: Record<string, number>;
 }
 
+/** `auto` shows the touch key toolbar only on touch (coarse-pointer) devices. */
+export type TerminalToolbarMode = 'auto' | 'show' | 'hide';
+
+interface TerminalState {
+  /** Terminal font size in px; null = device default (smaller on phones). */
+  fontSize: number | null;
+  toolbar: TerminalToolbarMode;
+}
+
+export const TERMINAL_FONT_SIZE_MIN = 8;
+export const TERMINAL_FONT_SIZE_MAX = 28;
+const TERMINAL_TOOLBAR_MODES: readonly TerminalToolbarMode[] = ['auto', 'show', 'hide'];
+
 export interface UiState {
   sidebar: SidebarState;
   panes: PaneState;
   tmux: TmuxState;
+  terminal: TerminalState;
 }
 
 const DEFAULT_PANELS: PanelStates = {
@@ -107,7 +121,15 @@ function defaultState(): UiState {
     tmux: {
       activeWindows: {},
     },
+    terminal: {
+      fontSize: null,
+      toolbar: 'auto',
+    },
   };
+}
+
+function clampFontSize(size: number): number {
+  return Math.min(TERMINAL_FONT_SIZE_MAX, Math.max(TERMINAL_FONT_SIZE_MIN, Math.round(size)));
 }
 
 function clampWidth(w: number): number {
@@ -156,6 +178,15 @@ function loadState(): UiState {
             base.tmux.activeWindows = parsed.tmux.activeWindows;
           }
         }
+        // Merge terminal preferences
+        if (parsed.terminal && typeof parsed.terminal === 'object') {
+          if (typeof parsed.terminal.fontSize === 'number' && Number.isFinite(parsed.terminal.fontSize)) {
+            base.terminal.fontSize = clampFontSize(parsed.terminal.fontSize);
+          }
+          if (TERMINAL_TOOLBAR_MODES.includes(parsed.terminal.toolbar)) {
+            base.terminal.toolbar = parsed.terminal.toolbar;
+          }
+        }
       }
     }
   } catch {
@@ -192,6 +223,10 @@ function flushWrite() {
   if (state) writeToStorage(state.value);
 }
 
+function flushIfHidden() {
+  if (document.visibilityState === 'hidden') flushWrite();
+}
+
 function ensureState(): Ref<UiState> {
   if (!state) {
     state = ref(loadState()) as Ref<UiState>;
@@ -199,9 +234,11 @@ function ensureState(): Ref<UiState> {
     // Write immediately so the key exists on fresh start
     writeToStorage(state.value);
 
-    // Flush on page unload
+    // Flush when the page goes away. iOS Safari and backgrounded / killed PWAs
+    // never fire beforeunload, so also flush on pagehide and when hidden.
     if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', flushWrite);
+      window.addEventListener('pagehide', flushWrite);
+      document.addEventListener('visibilitychange', flushIfHidden);
     }
   }
   return state;
@@ -256,6 +293,18 @@ export function useUiState() {
     scheduleWrite();
   }
 
+  // --- Terminal ---
+
+  function setTerminalFontSize(size: number | null) {
+    s.value.terminal.fontSize = size === null ? null : clampFontSize(size);
+    scheduleWrite();
+  }
+
+  function setTerminalToolbar(mode: TerminalToolbarMode) {
+    s.value.terminal.toolbar = mode;
+    scheduleWrite();
+  }
+
   return {
     state: s,
     setSidebarWidth,
@@ -266,13 +315,16 @@ export function useUiState() {
     setTmuxActiveWindow,
     getTmuxActiveWindow,
     removeTmuxActiveWindow,
+    setTerminalFontSize,
+    setTerminalToolbar,
   };
 }
 
 // For testing: reset module state
 export function _resetUiState() {
   if (typeof window !== 'undefined') {
-    window.removeEventListener('beforeunload', flushWrite);
+    window.removeEventListener('pagehide', flushWrite);
+    document.removeEventListener('visibilitychange', flushIfHidden);
   }
   if (writeTimer) {
     clearTimeout(writeTimer);

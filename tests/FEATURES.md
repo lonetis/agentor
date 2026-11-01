@@ -56,24 +56,26 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Create user form (name, email, password, role)
 - Change role action (promote to admin / demote to user)
 - Delete user action (with confirmation)
-- Backed by the `/api/users` REST API (§24.19) — the same routes the MCP user tools use; errors (e.g. duplicate email, demoting yourself) are shown in the modal
+- Backed by the `/api/users` REST API (§24.19) — the same routes the MCP user tools use; errors (e.g. duplicate email, demoting yourself) are shown in the modal (`role="alert"`)
+- On phones each row's actions (Make admin / Demote, Reset password, Delete) wrap onto their own right-aligned line
 
 ### 0.9 Account Card
-- Sidebar footer (pinned to bottom, always visible across tabs) shows the current user's avatar, name, email, admin badge, and a Sign out icon button
+- Sidebar footer (pinned to bottom, always visible across tabs) shows the current user's avatar, name, email, admin badge, and a Sign out icon button (between them the PWA install button when the app can be installed, §1.7)
 - Clicking the user info (avatar/name/email area) opens the Account modal
 
 ### 0.9b Account Modal (self-service)
-- Accessible from the sidebar footer by clicking the user info area
+- Accessible from the sidebar footer by clicking the user info area; the dialog is named "Account settings" and is a full-screen sheet on phones (its Close button stays reachable)
 - **Profile section**: edit name and email, Save button. Email changes apply immediately (no verification email sent — Agentor does not send email).
 - **Change password section**: current password + new password (min 8 chars) + confirm new password. Server rejects the wrong current password.
 - **Environment variables**: stored per user as a single uniform list of `{key, value}` pairs keyed by the env var NAME (no hardcoded fields). The modal splits this into two sections that share one **"Save env vars"** button (`PUT /api/account/env-vars`, which replaces the whole list):
   - **Predefined environment variables section**: one masked password input (show/hide eye toggle) per key in `PREDEFINED_ENV_VAR_KEYS` (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) **plus every git provider's token variable** from `/api/git-providers` (so each self-managed GitLab in `GITLAB_INSTANCES` adds a `GITLAB_<NAME>_TOKEN` input), each labeled by the env var NAME (e.g. "GITHUB_TOKEN", not "GitHub token"); provider token inputs carry a hint naming the provider (e.g. "GitLab (acme) token"). Providers load before the stored env vars are split, so a saved provider token always shows in its predefined slot, never as a custom row. This list is purely a UI affordance — adding a key to `PREDEFINED_ENV_VAR_KEYS` in `orchestrator/shared/types.ts` adds an input, nothing else.
-  - **Custom environment variables section**: list of `{key, value}` rows with Add/Remove for any other env var. Keys validated `[A-Z_][A-Z0-9_]*`; reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.) and duplicates are rejected with an inline error.
+  - **Custom environment variables section**: list of `{key, value}` rows with Add/Remove for any other env var. Keys validated `[A-Z_][A-Z0-9_]*`; reserved names (`ENVIRONMENT`, `WORKER`, `ORCHESTRATOR_URL`, etc.) and duplicates are rejected with an inline error. On phones a row stacks (KEY full width, value + buttons below).
+  - Eye toggles are named "Show <KEY>" (predefined) / "Show value" (custom) and expose `aria-pressed`; the custom remove button is "Remove variable"; KEY / value / SSH inputs have autocapitalize / autocorrect / spellcheck off
   - All inputs (predefined + custom) are serialized into one `envVars` list and injected into every worker the user creates.
 - **SSH Access section**: `sshPublicKey` textarea (4 rows, monospace) with its OWN **"Save SSH key"** button hitting `PUT /api/account/ssh-key`. The SSH key is NOT an env var — on save the key is written only to `<DATA_DIR>/users/<userId>/ssh/authorized_keys` (empty string → empty file), which is bind-mounted read-only at `/home/agent/.ssh/authorized_keys` in every one of the user's workers. Used by the **SSH** app (Apps pane → Start).
 - **Agent OAuth credentials section**: per-agent (claude/codex/antigravity) status indicator (`Logged in` green / `Not logged in` gray) plus a per-agent **Reset** button (two-step confirm) that overwrites the OAuth file with `{}` so the next CLI login writes fresh tokens. Login itself happens by running the agent CLI inside one of the user's workers — credentials live at `<DATA_DIR>/users/<userId>/credentials/` and are bind-mounted into all of the user's workers.
-- Success and error messages displayed per section
-- **MCP access section** (last section; hidden when MCP is disabled): the MCP server URL (`<public URL>/mcp`, copy button) with a `claude mcp add --transport http agentor <url>` example, and the list of **authorized applications** (OAuth clients the user approved: name, authorization date, scopes) each with a two-step **Revoke** (`Revoke` → `Confirm revoke`) that removes the app's consent and tokens; "No applications authorized." when empty
+- Success (`role="status"`) and error (`role="alert"`) messages displayed per section
+- **MCP access section** (last section; hidden when MCP is disabled): the MCP server URL (`<public URL>/mcp`, selected entirely on tap, copy button — works on plain-http LAN origins too, shows a check mark for 1.5s, or the toast "Copy failed — select the URL and copy it manually") with a `claude mcp add --transport http agentor <url>` example, and the list of **authorized applications** (OAuth clients the user approved: name, authorization date, scopes) each with a two-step **Revoke** (`Revoke` → `Confirm revoke`) that removes the app's consent and tokens; "No applications authorized." when empty
 - Backed by `/api/auth/update-user`, `/api/auth/change-email`, `/api/auth/change-password` (built-in better-auth) and Agentor's per-user `/api/account/env-vars`, `/api/account/ssh-key`, `/api/account/agent-credentials`, and `/api/account/oauth-apps` endpoints
 
 ### 0.9c Admin Password Reset
@@ -93,7 +95,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ### 0.12 Passkey (WebAuthn) Authentication
 - **Conditional enablement**: Passkeys are only available when the dashboard is served over Traefik with both `DASHBOARD_SUBDOMAIN` and `DASHBOARD_BASE_DOMAIN` set. When disabled, the passkey plugin is not registered at all and every passkey UI element is hidden via the `passkeysEnabled` flag on `GET /api/setup/status`. WebAuthn config (when enabled): `rpID = <subdomain>.<base>` (override with `BETTER_AUTH_RP_ID`), `origin = https://<subdomain>.<base>`, `rpName = 'Agentor'`. Users must access the dashboard via the Traefik URL for passkey flows to work. Without a Traefik dashboard, passkeys are also enabled when `BETTER_AUTH_URL` is an `https://` URL (the dashboard sits behind an existing reverse proxy at a stable HTTPS origin): `rpID = <its host>` (or `BETTER_AUTH_RP_ID`), `origin = <its origin>`.
-- **Setup page** has a Password / Passkey toggle (only shown when passkeys are enabled). The Passkey path creates the initial admin via `POST /api/setup/create-admin-passkey-token` and `client.passkey.addPasskey({ context: token })` — no password required.
+- **Setup page** has a Password / Passkey toggle (only shown when passkeys are enabled; the buttons expose `aria-pressed`). The Passkey path creates the initial admin via `POST /api/setup/create-admin-passkey-token` and `client.passkey.addPasskey({ context: token })` — no password required.
 - **Login page** shows a "Sign in with passkey" button under the password form (only when passkeys are enabled). Conditional UI auto-fill is enabled but disabled when `navigator.webdriver` is set (avoids races in automation).
 - **Account modal — Passkeys section**: lists registered passkeys (name, "Added <date>", Remove button), Add passkey form (with optional name), two-step confirmation for removal.
 - **Account modal — Password section**: heading switches between "Change password" and "Set a password" depending on whether the user has one. "Remove password" button (two-step confirm) shown only when the user also has a passkey. "Set password" path uses `POST /api/account/set-password` and does not require a current password.
@@ -121,13 +123,18 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Page loads with the Agentor mark, "Agentor" title and "Orchestrator" subtitle
 - Browser title contains "Agentor"
 - Left sidebar + main content area layout
-- Main content area shows placeholder when no panes are open ("Create a worker from the sidebar to get started")
-- Floating hamburger button appears when sidebar is collapsed
+- Main content area shows placeholder when no panes are open ("Create a worker from the sidebar to get started") on the terminal background, with a **Create worker** button (icon plus) that opens the New Worker modal (shared state with the sidebar's "+ New Worker")
+- Floating hamburger button appears when sidebar is collapsed (see §2.2)
+- A "Skip to panes" link (visible on keyboard focus) jumps to the pane area (`<main id="main-content">`)
+- Landmarks: `<aside aria-label="Sidebar">`, `<nav aria-label="Sidebar sections">`, `<main>`; login, setup and OAuth consent pages also use one `<main>` landmark (with `min-h-dvh` and safe-area padding)
+- Primary colour is blue and neutrals are gray (Nuxt UI app config); in light mode solid primary elements use the 600 shade for contrast
+- Worker lifecycle actions (stop, restart, rebuild, remove, archive, save settings, unarchive, delete archived, create) ignore repeated clicks while one is running for that worker (the card shows a busy spinner, §4.1) and report failures as an error toast ("<Action> failed" + the server message) instead of failing silently; the native confirm dialogs are unchanged
 
 ### 1.2 Sidebar Header
 - Agentor mark (`AppLogo`, `data-testid="agentor-logo"`, decorative `alt=""`) beside the "Agentor" heading with "Orchestrator" subtitle — the heading stays a real `<h1>` text
 - ThemeToggle component (3 buttons: System/Light/Dark)
-- Collapse sidebar button (double-chevron icon)
+- Collapse sidebar button (double-chevron icon, `aria-expanded="true"`)
+- Landscape phones (height ≤ 500px): compact header — less padding, no "Orchestrator" subtitle, smaller mark
 
 ### 1.3 Sidebar Action Buttons
 - "+ New Worker" button opens create worker modal
@@ -147,6 +154,9 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - **Usage** — always visible, has refresh button
 - **Images** — always visible
 - **Settings** — always visible, contains "Logs" button, "System Settings" button, and "API Docs" link
+- The active section tab carries `aria-current="true"`; empty-state texts and System card headers use higher-contrast grays
+- Footer: account card (opens Account settings), the PWA install button (§1.7, only when installable) and Sign out
+- Touch screens get larger targets for the section tabs, More button, dropdown items, system links, collapse and sign-out buttons; keyboard focus shows an inset focus ring on tabs, More, dropdown items and system links
 
 ### 1.5 Sidebar Tab Bar Overflow
 - All tab buttons (Workers / Stopped / Archived / Ports / Domains / Usage / System) are rendered in a horizontally scrollable row
@@ -155,14 +165,45 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - A tab with at least 20% of its width visible stays out of the dropdown — this gives a small hysteresis zone so tabs don't pop in and out while scrolling past them
 - Scrolling the tab bar updates the dropdown live — tabs that become visible drop out, tabs that scroll off join
 - Once the sidebar is wide enough that every tab is fully visible (or at least 20% visible after scrolling), the "More" button disappears entirely
+- The More button is named "More tabs" with `aria-haspopup` / `aria-expanded`; the dropdown closes on an outside tap / click and on Escape, which returns focus to the More button (and does not also close the phone overlay)
+- The active tab is scrolled into view on load (e.g. a persisted active tab past the right edge after a reload) and whenever it changes (e.g. picked from the More dropdown)
 
----
 
 ### 1.6 Branding & Favicon
 - Every page links the favicon set from `<head>`: `favicon.ico` (16–256 px embedded sizes), `favicon-16x16.png` / `favicon-32x32.png` / `favicon-48x48.png`, `apple-touch-icon.png` (180×180) and the web manifest `site.webmanifest`
-- The icon files, `android-chrome-192x192.png` / `android-chrome-512x512.png` and the manifest are served from the site root (`orchestrator/public/`); the manifest names the app `Agentor`, uses navy `#0f172a` as theme/background colour, `start_url: /`, and lists the two android-chrome icons
-- No `theme-color` meta tag — the colour mode is user-selectable, so no fixed browser-chrome colour is asserted
+- The icon files, `android-chrome-192x192.png` / `android-chrome-512x512.png`, `maskable-icon-192x192.png` / `maskable-icon-512x512.png` and the manifest are served from the site root (`orchestrator/public/`); the manifest names the app `Agentor`, uses `#030712` as theme/background colour, `id` / `scope` / `start_url: /`, and lists four icons: the two android-chrome icons (`purpose: any`) and the two maskable icons (`purpose: maskable`); every icon is a PNG whose pixel size matches its `sizes`
+- Exactly one `theme-color` meta tag, which follows the colour mode: `#f9fafb` in light mode, `#030712` in dark mode (§1.7)
 - The README shows the full wordmark logo (`docs/assets/agentor-logo-light.png`, dark variant via `<picture>`); it is not part of the app
+
+### 1.7 Progressive Web App
+- **Installable**: `site.webmanifest` describes a standalone app (`id` / `scope` / `start_url` `/`, `display: standalone`, `orientation: any`, `#030712` background / theme, `launch_handler` `focus-existing`) with `any` and `maskable` icons (no white frame on Android adaptive icons). The manifest link is sent with credentials (`crossorigin="use-credentials"`), so installing works behind the dashboard's basic auth
+- **Head metadata**: `<html lang="en">`; one viewport meta `width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content` (pinch-zoom allowed — no `maximum-scale` / `user-scalable`); `application-name`, `mobile-web-app-capable` and `apple-mobile-web-app-capable` (`yes`), `apple-mobile-web-app-title` `Agentor`, `apple-mobile-web-app-status-bar-style`, `format-detection` `telephone=no`
+- **Theme colour**: exactly one `theme-color` meta that switches with the colour mode (`#f9fafb` light / `#030712` dark)
+- **Service worker** (`/sw.js`): registered at scope `/` only in production builds on a secure context (HTTPS or localhost); `<html data-pwa-sw>` reports `registered`, `dev` (dev server — our worker is unregistered), `insecure` (plain http on a LAN address — no worker, no install), `unsupported` or `failed`. It caches only `offline.html` and answers only top-level page navigations (network-first); API, WebSocket, editor / desktop proxy, MCP, OAuth discovery, icon and asset requests never go through it
+- **Offline / unreachable fallback**: when a page navigation fails (offline) or the proxy answers 502 / 503 / 504 (orchestrator restarting), the worker serves a self-contained page: heading "Agentor is unreachable", "You are offline, or the server is restarting. This page reconnects automatically.", a **Retry** button and the status "Checking again in N s.". It checks `/api/health` every 5s (30s after 3 consecutive reloads within 60s) and on the browser's `online` event, and returns to the dashboard on its own. It follows the colour mode and loads nothing from the server
+- `/sw.js`, `/offline.html` and `/site.webmanifest` are served with `cache-control: no-cache` and without a session
+- A session check that fails because the server is unreachable (network error / 5xx) shows the offline page instead of redirecting to `/login` (when the worker controls the page); a real signed-out state still goes to `/login`. The offline page's **Retry** returns to the dashboard
+- **Install button**: once the browser offers installation (`beforeinstallprompt`), an icon-only **Install app** button appears in the sidebar footer between Account settings and Sign out; clicking it opens the browser's install prompt, after which the button disappears. On iPhone / iPad (not installed) the footer instead shows an **Add to Home Screen** button whose popover says "Tap Share, then Add to Home Screen." with **Dismiss** (hides it for good, `localStorage` `agentor-ios-install-hint-dismissed`). Neither shows when the app runs installed
+- **Launches**: launching the installed app focuses the open window; a deep link (e.g. an OAuth authorize URL) navigates that window
+- **After an orchestrator self-update** the "Reconnecting..." overlay stays up until the new server answers (after an observed outage, or after ~30s) and the page then reloads itself to load the new client build
+- **Launch screen**: until the app has mounted, a full-screen `#030712` (`#f9fafb` in light mode) background with the app icon is shown instead of a blank page
+- **Local icons**: lucide icons are served by the orchestrator (`/_nuxt_icon`) and the always-visible chrome icons ship in the client bundle; the login page and dashboard never request `api.iconify.design`
+- **iOS home-screen app**: keeps its own cookies (sign in again inside the app); the Desktop / Editor panes hide "Open in tab" there (§18)
+
+### 1.8 Phones, touch & keyboard
+- The whole dashboard is sized to the visible viewport (follows the soft keyboard) and padded for the notch / home indicator
+- **Modal sheets**: below 640px every modal (New Worker, Worker Settings, Upload, Account settings, Environments, Capabilities / Instructions / Init Scripts, System Settings, Users, Import Worker) fills the visible viewport; action rows (Create / Cancel, Save / Save & Rebuild, Import, Upload, Update, Close …) are sticky at the bottom and always on screen. Desktop modals are unchanged
+- **Dialog names**: every modal is named by its heading (`getByRole('dialog', { name: 'New Worker' | 'Account settings' | 'Environments' | 'Capabilities' | 'Instructions' | 'Init Scripts' | 'System Settings' | 'Users' | 'Import Worker' | 'Upload to Workspace' | '<name> — Settings' })`)
+- No double-tap-zoom delay or grey tap flash on controls, no iOS long-press callout on tabs, and iOS does not zoom the page when focusing a form field (fields are 16px on iOS touch devices); pinch-zoom stays available
+- Larger touch targets on coarse pointers (sidebar tabs, links, card / footer / app-row / mapping buttons, filter buttons)
+- Technical inputs (repo URL, branch, paths, env vars, scripts, SSH key, domains, ports, CPU / memory) do not autocapitalise, autocorrect or spellcheck; port inputs show a numeric keyboard
+- Reduced motion: the sidebar slide, update / status pulses and progress-bar transitions respect `prefers-reduced-motion`
+- Errors in forms and panels are announced (`role="alert"`), success messages in Account settings with `role="status"`
+
+### 1.9 Background polling
+- Polls pause while the browser tab is hidden or the device is offline; when the page is shown again (or back online), data older than one interval refreshes immediately
+- A pane tab hidden behind another tab of its group stops polling (Apps instances 5s, Desktop / Editor status 5s, tmux windows 3s) and refreshes at once when shown again; pane contents stay mounted, so sockets and iframes survive
+- The worker list (10s), port mappings (10s), domain mappings (10s), worker metrics (10s) and usage (5 min) each run on one shared poller however many components use them; an unchanged result is not re-rendered, and a failed port / domain mapping poll keeps the last list. Polls never overlap; the app type list is fetched once per page load
 
 ---
 
@@ -174,13 +215,19 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Dragging below the 120px collapse threshold snaps the sidebar closed on release (VS Code-style) while preserving the last valid width for re-expand
 - Width persisted to localStorage (persistence clamp 200–3000; runtime re-clamped to 90% of viewport on window resize)
 - No width transition while actively dragging — the sidebar tracks the cursor instantly
+- Works with mouse, touch and pen (Pointer Events with pointer capture); larger hit area on touch screens
+- The handle is a focusable separator (`role="separator"`, `aria-label="Resize sidebar"`, `aria-valuenow` = width, `aria-valuemin`); ArrowLeft / ArrowRight shrink / grow the sidebar by 16px and persist the width
+- Not shown in the mobile layout (§2.2)
 
 ### 2.2 Collapse/Expand
 - Collapse button (double-chevron) hides sidebar
-- Expand button (floating) restores sidebar
+- Expand button (`title="Expand sidebar"`, `aria-expanded="false"`, 32px) restores sidebar. It sits at the top-left inside the first pane tab bar; while the sidebar is collapsed that tab bar is padded 40px on the left (`--pane-leading-inset`), so the button never covers the first tab
 - Collapse state persisted to localStorage across reloads
-- Mobile auto-collapse at <768px viewport (transient, not persisted)
-- Mobile: sidebar overlays as fixed panel with backdrop; clicking backdrop closes sidebar
+- A collapsed sidebar is `inert` (not in the tab order). Collapsing moves focus to the Expand button, expanding to the Collapse button
+- **Mobile layout** — viewport narrower than 768px, or a touch screen at most 500px high (landscape phones): the sidebar starts collapsed (transient, not persisted) and opens as an overlay `min(320px, 100vw − 56px)` wide, sized to the visible viewport (follows the soft keyboard, clears the notch / home indicator), with a shadow and a strip of backdrop
+  - Closes on a backdrop tap, on Escape (unless a dialog is open — the dialog closes first and the overlay stays) and whenever a pane opens (Terminal / Desktop / Editor / Apps / Logs, also after create, import and rebuild)
+  - While it is open the pane area is `inert`; when it closes because a pane opened, focus moves to the Expand button only if it was inside the overlay
+  - A modal opened from the overlay is painted on top of the overlay
 
 ### 2.3 Panel Collapse States
 - Each panel section (Archived, Port Mappings, Domain Mappings, Usage, Images, Settings) independently collapsible
@@ -194,9 +241,11 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 
 ### 3.1 Toggle
 - Three-way toggle: Default (system), White (light), Dark (dark)
-- Icons: monitor (default), sun (light), moon (dark)
+- Icons (lucide): monitor (default), sun (light), moon (dark)
 - Active button highlighted with shadow
+- Buttons are named "Default theme", "White theme", "Dark theme" (tooltips Default / White / Dark); only the active one has `aria-pressed="true"`; larger touch targets on touch screens
 - Default preference: dark
+- The browser / installed-app title bar colour (`theme-color`) follows the mode (§1.7)
 
 ### 3.2 Persistence
 - Theme preference persisted across reloads via @nuxtjs/color-mode
@@ -208,9 +257,10 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 ## 4. Container Cards (Worker Cards in Sidebar)
 
 ### 4.1 Card Content
-- Display name (`displayName`, truncated with title tooltip; falls back to `shortName(id)` only if the label were ever empty). The display name is free-form (spaces / mixed case allowed) and is NOT the worker's internal identity — the internal `id` is an immutable UUID v4.
-- Status badge: running (green), stopped (neutral), creating (warning), error (error), removing (warning)
-- Short image ID in monospace (first 10 chars)
+- Display name (`displayName` in an `<h3>`, truncated with an ellipsis and the full name as title tooltip; falls back to `shortName(id)` only if the label were ever empty). A long name never pushes the status badge out of the card — the badge group always stays visible on the right, and the header does not scroll. The display name is free-form (spaces / mixed case allowed) and is NOT the worker's internal identity — the internal `id` is an immutable UUID v4.
+- Status badge: running (green), stopped (neutral), creating (warning), error (error), removing (warning); `creating` and `removing` show a spinning loader icon
+- While a lifecycle action for the worker is in flight (§1.1), a spinner (`role="img"`, `aria-label="Working"`) appears next to the status badge; no buttons are disabled
+- Short image ID in monospace (first 10 chars, higher-contrast gray)
 - Active card: blue-tinted background with blue border and shadow
 - Clicking name/status area opens detail modal
 
@@ -233,10 +283,13 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Upload button (tooltip) — opens upload modal
 - Download button (tooltip) — downloads workspace as .tar.gz
 - Export button (tooltip "Export worker", icon `i-lucide-package`) — sits in the **workspace** group right next to Download Workspace (so running-only). While the bundle is being prepared it shows a spinner and is disabled (tooltip reads "Preparing export…"), then downloads a full worker export bundle (see §28)
+- Every icon button's accessible name equals its tooltip text: Terminal, Editor, Desktop, Apps, Upload to Workspace, Download Workspace, Export worker / Preparing export…, Settings, Restart / Stop, Rebuild, Archive, Remove; the group dividers are hidden from assistive tech
 
 ### 4.2a Action row layout
 - All action buttons are **left-aligned** (no right-side spacer) and organised into logical groups separated by thin vertical divider lines: **views** (terminal/editor/desktop/apps) | **workspace** (upload/download/export) | **lifecycle** (settings/restart-or-stop/rebuild) | **destructive** (archive/remove). The views + workspace groups appear only when running; lifecycle + destructive are always present (no dangling leading/trailing dividers).
 - The row (`.card-actions`) is a single non-wrapping flex strip with `overflow-x: auto` and a hidden scrollbar; when the sidebar/card is too narrow it scrolls horizontally. A vertical mouse-wheel over the row scrolls it horizontally.
+- On touch screens (coarse pointer) the row wraps onto several lines instead of scrolling, with larger (≈36px) buttons.
+- The Worker Settings and Upload modals are created only when first opened (not per card on every list refresh)
 
 ### 4.3 Action Buttons
 - "Stop" — visible when running, stops the container
@@ -259,16 +312,18 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 The worker "detail" view is a fully editable **Worker Settings modal** (no more read-only view). It shows only worker-related settings — environment-specific settings (CPU/memory, network, Docker, capabilities, instructions, setup script, env vars, exposed APIs) live in the Environments modal, not here.
 
 ### 5.1 Content
-- Header: `<displayName> — Settings` + status badge (color-coded) + an amber `Rebuild pending` badge when there are unapplied rebuild-requiring edits
-- Pending-rebuild banner (only when `pendingRebuild`): "Settings changes are saved but not yet applied…" + a "Rebuild now" button
+- Header: `<displayName> — Settings` + status badge (color-coded) + an amber `Rebuild pending` badge when there are unapplied rebuild-requiring edits; the dialog is named by this heading
+- Pending-rebuild banner (only when `pendingRebuild`): "Settings changes are saved but not yet applied. Rebuild the worker to apply them." + a "Rebuild now" button
 - **Worker** section (read-only identity): Worker ID (the immutable worker UUID `container.id`, monospace), Container ID (the Docker `container.containerId`, first 12 chars), Image (`container.imageName`), Image ID (first 12 chars), Created timestamp
 - **Settings** section (editable):
-  - **Display name** — `<input>`, tagged `no rebuild needed` (applied without a rebuild)
-  - **Environment** — `<select>` of available environments, tagged `requires rebuild`
-  - **Repositories** — RepoInput rows + "+ Add repository", tagged `requires rebuild`
-  - **Volume Mounts** — MountInput rows + "+ Add mount", tagged `requires rebuild`
-  - **Init Script** — preset `<select>` + textarea (synced via `useInitScriptSync`), tagged `requires rebuild`
-- **Info** sections (read-only, shown only when present): Port Mappings, Domain Mappings, App Instances
+  - **Display name** — `<input>` with a `<label for>`, tagged `no rebuild needed` (applied without a rebuild)
+  - **Environment** — `<select>` of available environments (labelled), tagged `requires rebuild`
+  - **Repositories** — RepoInput rows + "+ Add repository" in a labelled group (`role="group"`), tagged `requires rebuild`
+  - **Volume Mounts** — MountInput rows + "+ Add mount" in a labelled group, tagged `requires rebuild`
+  - **Init Script** — preset `<select>` (labelled "Init Script") + textarea named "Init script content" (no autocorrect / autocapitalize / spellcheck; synced via `useInitScriptSync`), tagged `requires rebuild`
+- **Info** sections (read-only, shown only when present, reloaded every time the modal opens): Port Mappings (`:<external>` → `:<internal>` with an `internal` (blue) / `external` (orange) type label like the Ports panel), Domain Mappings (full host — `*.` prefix for wildcard mappings, a bare base domain without a leading dot, plus the path — and a `wildcard` badge), App Instances
+- Section headings are small uppercase gray labels
+- The banner and the save row wrap on narrow screens (the "Changes require a rebuild…" hint takes its own line on phones); below 640px the modal is a full-screen sheet with a sticky save row
 
 ### 5.2 Settings editing tiers
 - **Live** — `displayName`. Saving applies it to the running worker immediately (the `PATCH` updates the stored label and in-memory state; no recreation).
@@ -283,7 +338,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 ### 5.4 Interactions
 - Opens when clicking the worker name or the Settings pencil (§4.1a)
 - Close via Escape key or clicking the overlay
-- Re-openable; the form re-initialises from the worker each time it opens
+- Re-openable; the form re-initialises from the worker each time it opens. An unchanged form never looks dirty (the default environment and a matching init-script preset are filled in once their lists arrive), so Save stays disabled until something changes
 
 ---
 
@@ -292,9 +347,10 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 ### 6.1 Form Fields
 - **Display name** — free-form text input (NO keystroke sanitization — spaces and mixed case are preserved), placeholder is a suggested display name fetched from `GET /api/containers/generate-name`. Not required to be unique. The client sends only this value; it does NOT send or choose the internal `name`.
 - **Environment** — dropdown selector with "Default" option + "Manage" button (opens environments modal)
-- **Repositories** — dynamic list with "+ Add repository" link, each row has RepoInput + remove button
-- **Volume Mounts** — dynamic list with "+ Add mount" link, each row has MountInput (source, target, read-only checkbox) + remove button
-- **Init Script** — preset dropdown (None, claude, codex, antigravity, custom scripts) + "Manage" button (opens init scripts modal) + editable textarea (3 rows, monospace)
+- **Repositories** — dynamic list with "+ Add repository" link in a labelled group (`role="group"`, "Repositories"), each row has RepoInput + remove button ("Remove repository")
+- **Volume Mounts** — dynamic list with "+ Add mount" link in a labelled group ("Volume Mounts"), each row has MountInput (source "Host path", target "Container path", read-only checkbox — clicking its "ro" label toggles that row's checkbox) + remove button ("Remove mount"); rows wrap on narrow screens
+- **Init Script** — preset dropdown (None, claude, codex, antigravity, custom scripts; labelled "Init Script") + "Manage" button (opens init scripts modal) + editable textarea named "Init script content" (3 rows, monospace, no autocorrect / autocapitalize / spellcheck)
+- The dialog is named "New Worker" (its heading); on phones (<640px) it is a full-screen sheet with a sticky Create / Cancel row
 
 ### 6.2 Init Script Sync
 - Selecting a preset populates the textarea
@@ -311,6 +367,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 - Self-contained per row: both the Create Worker and the Worker Settings modals get the full picker; repo lists are shared per provider (refetched after 60s, when the Create Worker modal opens, or after saving env vars), branch state stays with its row (rows have stable keys, so removing an earlier row never mixes up state)
 - The searchable dropdown lights up **immediately** after a token is saved in the Account modal — `useGitProviders()` is a refreshable singleton whose `refresh()` is called on a successful env-vars save, so the `tokenConfigured` gate no longer stays stale until a full page reload (regression fix).
 - When a token is set but the provider request fails (bad token, missing scopes, rate limit, unreachable instance), the dropdown surfaces the error inline (red row with an alert icon), instead of showing a silently-empty list.
+- On phones a row wraps: provider, branch and remove stay on the first line and the repository field takes a full-width line of its own (wider than 200px on a 390px screen); repo and branch inputs have autocapitalize / autocorrect / spellcheck off
 
 ### 6.4 Actions
 - "Create" button — validates, creates container, auto-opens terminal tab, closes modal, resets form
@@ -335,12 +392,12 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 ## 7. Environments Modal
 
 ### 7.1 List View
-- "Environments" title + "New" button + "Close" button
+- "Environments" title + "New" button + "Close" button (dialog named "Environments"; full-screen sheet on phones)
 - Per-environment row: name + "Built-in" badge (if applicable) + "View" (built-in) / "Edit" + "Delete" (custom)
 
 ### 7.2 Editor View (EnvironmentEditor)
 - **Name** — text input (disabled in read-only/view mode)
-- **Resource Limits** — CPU (number, step 0.5, "0 = unrestricted"), Memory (text, "e.g. 4g, 512m")
+- **Resource Limits** — CPU (number, step 0.5, "0 = unrestricted", decimal keypad on phones), Memory (text, "e.g. 4g, 512m"); side by side from 640px, stacked on phones
 - **Docker** — "Enable Docker-in-Docker" checkbox with description
 - **Credentials** — read-only display of credential file status per agent (configured/not set)
 - **Network Access** — radio button group styled as cards:
@@ -351,13 +408,15 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
   - Block all (no outbound)
   - Agent API domains collapsible viewer (shown in restricted modes except block-all)
   - Package manager domains collapsible viewer with count
+  - The mode cards show a focus ring when focused from the keyboard; the domain viewers expose `aria-expanded`
 - **Git Providers** — "Select All" toggle + one checkbox per git provider (display name + host), all checked by default (= `enabledGitProviderIds: null`, which also covers providers configured later). Unchecking a provider keeps its credentials out of the environment's workers (see §27.3); unchecking Select All deselects every provider (`[]`, for running untrusted code); checking every provider again stores `null`. On save, ids of providers no longer configured are dropped
 - **Expose APIs** — 3 checkboxes: Port Mappings, Domain Mappings, Usage Monitoring
 - **Capabilities** — "Select All" toggle + per-capability checkbox with name and "Built-in" badge
 - **Instructions** — "Select All" toggle + per-entry checkbox with name and "Built-in" badge
 - **Environment Variables** — a read-only "Provided to the worker by the orchestrator" list (lock icon, name + description, from `GET /api/worker-env-vars`) + custom textarea (KEY=VALUE format). The read-only list shows ONLY the env vars a worker actually receives from the orchestrator (`ENVIRONMENT`, `CAPABILITIES`, `INSTRUCTIONS`, `WORKER`, `ORCHESTRATOR_URL`, `WORKER_CONTAINER_NAME`, `EXPOSE_PORT_MAPPINGS`, `EXPOSE_DOMAIN_MAPPINGS`, `EXPOSE_USAGE`). Orchestrator-wide settings (BETTER_AUTH_*, DASHBOARD_*, ACME_*, BASE_DOMAINS, LOG_*) are intentionally NOT shown here because they are never passed to workers.
 - **Setup Script** — textarea (4 rows, monospace)
-- **Actions** — "Create"/"Update" + "Cancel"/"Close"
+- **Actions** — "Create"/"Update" + "Cancel"/"Close" (sticky at the bottom on phones)
+- Section legends are bold, high-contrast headings; icons are lucide
 
 ### 7.3 Validations
 - Name cannot be empty
@@ -368,14 +427,14 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 ## 8. Capabilities Modal
 
 ### 8.1 List View
-- "Capabilities" title + "New" button + "Close" button
+- "Capabilities" title + "New" button + "Close" button (dialog named "Capabilities"; full-screen sheet on phones — the same applies to the Instructions and Init Scripts modals)
 - Per-capability row: name + "Built-in" badge + "View" (built-in) / "Edit" + "Delete" (custom)
 - Empty state: "No capabilities yet. Create one to get started."
 
 ### 8.2 Editor View
 - Name input (disabled in view mode)
 - Content textarea (16 rows, monospace, YAML frontmatter + Markdown, disabled in view mode)
-- "Create"/"Update" button (hidden in view mode) + "Cancel"/"Close"
+- "Create"/"Update" button (hidden in view mode) + "Cancel"/"Close" (sticky at the bottom on phones)
 - Save disabled if name or content empty
 
 ---
@@ -408,9 +467,9 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 ## 11. Settings Modal
 
 ### 11.1 Content
-- "System Settings" title + "Expand all" / "Collapse all" buttons
+- "System Settings" title (names the dialog) + "Expand all" / "Collapse all" buttons
 - Description: "Read-only view of all system configuration"
-- Loading state: "Loading settings..."
+- Loading state: "Loading settings..."; a failed load shows the error (`role="alert"`) instead of an empty list
 - Collapsible sections by category: Docker, Worker Defaults, Git Providers (`GITLAB_INSTANCES` + clone domains per provider; tokens are per-user), Domain Mapping, Network, Logging, Authentication, Init Scripts, App Types. (The legacy Agent Authentication section is removed — agent API keys and OAuth tokens are per-user and managed from the Account modal.)
 - Logging section exposes `LOG_LEVEL`, `LOG_MAX_SIZE` (human-readable megabytes), `LOG_MAX_FILES`.
 - Authentication section exposes better-auth settings: `BETTER_AUTH_SECRET` (status badge — value is never returned), `BETTER_AUTH_URL` (the public URL / OAuth issuer origin; shows the auto-derived value with `(auto)` when unset), `MCP_ENABLED` (the MCP server URL, or `disabled — <reason>`), `BETTER_AUTH_TRUSTED_ORIGINS` (list, or "none" fallback), `BETTER_AUTH_RP_ID` (shows the auto-derived `<subdomain>.<baseDomain>` value when unset and the dashboard domain is configured, the host of an https `BETTER_AUTH_URL` with `(auto)` when there is no dashboard domain, or "passkeys disabled" when none of these applies).
@@ -421,10 +480,11 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
   - String/Number type: monospace text (or em-dash for null)
 
 ### 11.2 Interactions
-- Section headers expand/collapse
+- Section headers expand/collapse (`aria-expanded`)
 - "Expand all" / "Collapse all" buttons
-- "Close" button
-- Settings refresh when modal opens
+- "Close" button (sticky at the bottom on phones)
+- `/api/settings` is fetched each time the modal opens — never at dashboard load (non-admins would get a 403) and not when it closes
+- On phones each setting stacks its label above its value
 
 ---
 
@@ -436,17 +496,20 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 - "No active mappings" message
 
 ### 12.2 Create Form (toggled by "+ Map" button)
-- Type dropdown: "internal" / "external" (the stored values are `localhost` / `external`)
-- Worker dropdown (only running containers, disabled placeholder "Worker")
-- External port input (placeholder "Ext port")
+- Type dropdown: "internal" / "external" (the stored values are `localhost` / `external`; named "Mapping type")
+- Worker dropdown (only running containers, disabled placeholder "Worker"; named "Worker")
+- External port input (placeholder "Ext port"; named "External port")
 - Arrow indicator (→)
-- Internal port input (placeholder "Int port")
+- Internal port input (placeholder "Int port"; named "Internal port")
+- Port inputs bring up the numeric keyboard on phones (`inputmode="numeric"`, `enterkeyhint="done"`); all fields have visible borders and a focus ring
 - "Add" button
 - "Cancel" button (hides form)
+- Form errors are announced (`role="alert"`)
 
 ### 12.3 Mapping List
 - Mappings are **grouped by their owning worker**. Each group is a collapsible section: a header button (chevron + worker label + count badge) followed by the group's mapping rows. The worker label is resolved from the live container list / archived workers by id (`displayName`, fallback `shortName(m.workerId)`); the raw UUID is not printed. Groups default to **expanded**; clicking a header toggles its rows (collapse/expand) — the header stays visible while collapsed. Collapse state is per-group and component-local (resets on reload). Groups are sorted by worker label.
-- Per-mapping row (indented under its group): type badge (blue "internal" / orange "external") + external port (monospace, `:<port>`) + arrow + internal port (monospace, `:<port>`) + remove (X) button. The worker label is shown once in the group header, not repeated per row.
+- Per-mapping row (indented under its group): type badge (blue "internal" / orange "external") + external port (monospace, `:<port>`) + arrow + internal port (monospace, `:<port>`) + remove (X) button (named "Remove mapping", larger on touch screens). The worker label is shown once in the group header, not repeated per row.
+- Group headers expose `aria-expanded`
 - Delete removes mapping immediately
 
 ---
@@ -460,26 +523,28 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 - "No active domain mappings" message
 
 ### 13.3 Create Form (toggled by "+ Map" button)
-- Protocol toggle buttons: http, https, tcp (segmented group)
+- Protocol toggle buttons: http, https, tcp (segmented group, `aria-pressed`)
   - https/tcp disabled when no TLS configured on selected base domains
   - TCP exclusive (deselects http/https); http and https can combine
 - Worker dropdown (only running containers)
 - Subdomain text input (optional — empty maps bare domain)
-- Base domain toggle (multi-select when multiple; toggles individual domains on/off)
+- Base domain toggle (multi-select when multiple; toggles individual domains on/off; `aria-pressed`)
 - When multiple protocols and/or multiple base domains selected, creates cartesian product via batch API
 - Path input (optional, hidden for TCP — e.g. /api; prefix stripped before forwarding)
 - Internal port input
 - Basic auth checkbox (hidden for TCP)
-  - When enabled: username + password inputs
+  - When enabled: username + password inputs (named "Username" / "Password"; the browser does not autofill the dashboard login into them)
 - Wildcard subdomain checkbox
   - Enabled only when all selected base domains have challenge type `none`, `dns`, or `selfsigned` (disabled with tooltip for `http` HTTP-01 ACME)
   - When checked, shows live match preview `matches *.<sub>.<baseDomain>`
   - Auto-unchecks and reverts to false when the user selects a base domain that cannot issue wildcard certs
 - "Cancel" and "Add" buttons
+- Fields are named ("Worker", "Subdomain (optional)", "Path (optional)", "Internal port"), bordered with a focus ring; subdomain / path / username have autocapitalize / autocorrect / spellcheck off; the internal port shows a numeric keyboard
+- The error message (`data-testid="domain-mapping-error"`) is announced (`role="alert"`)
 
 ### 13.4 Mapping List
 - Mappings are **grouped by their owning worker**, identical to the Port Mappings panel (§12.3): a collapsible header (chevron + worker label + count badge) per worker, default expanded, click to toggle, sorted by worker label, collapse state component-local.
-- Per-mapping row (indented under its group): protocol badge (blue=http, green=https, purple=tcp) + challenge type badge + optional indigo `wildcard` badge + full domain with path (if set) + lock icon (if basic auth) + arrow + internal port (`:<port>`) + remove button. The worker label is shown once in the group header, not repeated per row.
+- Per-mapping row (indented under its group): protocol badge (blue=http, green=https, purple=tcp) + challenge type badge + optional indigo `wildcard` badge + full domain with path (if set) + lock icon (if basic auth; named "Basic auth enabled") + arrow + internal port (`:<port>`) + remove button ("Remove mapping"). The worker label is shown once in the group header, not repeated per row. Group headers expose `aria-expanded`.
 - Wildcard mappings display the host with a `*.` prefix in the list
 - Challenge type badges: none (gray), http (emerald), dns (cyan), selfsigned/self (amber)
 
@@ -490,7 +555,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 
 ### 13.6 Self-Signed CA Certificate
 - "CA cert" download button shown when any base domain uses `selfsigned` challenge type
-- Downloads PEM file (`agentor-ca.crt`) via `GET /api/domain-mapper/ca-cert`
+- Downloads PEM file (`agentor-ca.crt`) via `GET /api/domain-mapper/ca-cert` in place — no popup window or new tab (also works in the installed app)
 - User must trust this CA in their browser/OS to avoid TLS warnings
 - Self-signed domains use wildcard certificates signed by this CA
 - Per-wildcard-host certs (`sub.domain.com` with SAN `*.sub.domain.com`) are auto-generated on demand the first time a wildcard mapping targets that host, and reused for subsequent mappings
@@ -514,9 +579,9 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 > Per-user. The panel shows only the signed-in user's usage. `/api/usage` and `/api/usage/refresh` both require an authenticated session (return 401 otherwise) and are scoped to `requireAuth(event).user.id`. The orchestrator polls each user that has OAuth credentials independently. Workers fetch the same data via `/api/worker-self/usage` (no session needed — the user is identified via the calling worker's owner).
 
 ### 14.1 Content
-- Loading state: "Loading..."
-- Per-agent row: name (Claude, Codex, Antigravity) + "Fetched Xm ago" timestamp + plan type badge + auth badge (OAuth=green, API key=blue, not configured=gray)
-- Usage windows: progress bars per window
+- Loading state: "Loading..."; if the first load fails, a red `role="alert"` row "Couldn't load usage" (error text as its tooltip) with a **Retry** button replaces it — Retry loads the usage again. A failed poll after a successful one keeps the last data
+- Per-agent row: name (Claude, Codex, Antigravity) + "Fetched Xm ago" timestamp + plan type badge + auth badge (OAuth=green, API key=blue, not configured=gray); badges are normal case (not uppercased), small text 10px
+- Usage windows: progress bars per window (`role="progressbar"` with `aria-valuenow` / `aria-valuemin` / `aria-valuemax`, named "<Agent> <Window> usage"; the fill animation honours reduced motion)
   - Label (Session, Weekly, Sonnet, etc.; Antigravity: one per model group, e.g. Gemini / Claude and GPT — full label on hover when truncated)
   - Color-coded: green (<50%), amber (50-79%), red (>=80%)
   - Percentage value (monospace)
@@ -527,7 +592,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 ### 14.2 Interactions
 - Refresh button (spinning icon while refreshing, disabled during refresh)
 - Section collapse/expand
-- Timestamps update every 30 seconds
+- Timestamps update every 30 seconds (paused while the page is hidden)
 
 > There is no whole-host/system metrics card — host CPU/RAM/disk are inherently OS- and runtime-dependent, so only per-worker metrics are surfaced (see §4.1b), computed entirely through the Docker API.
 
@@ -537,7 +602,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 
 ### 15.1 Content
 - Per-image row: image name (orchestrator, worker, traefik)
-- Production mode indicators: digest values, update available (amber pulsing dot + old→new digest), error, current (green check), not found
+- Production mode indicators: digest values, update available (amber pulsing dot — no pulse with reduced motion — + old→new digest), error (the error detail on hover; apply errors are announced with `role="alert"`), current (green check), not found
 - Per-image "Update" button (production mode, when update available)
 - "Update All" button (production mode, when any updates available)
 - "Re-check" / "Check for updates" button
@@ -546,7 +611,7 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 - Private registries: the orchestrator authenticates its own pulls (worker image, orchestrator self-update, Traefik) and update checks with `REGISTRY_CREDENTIALS` (`host=user:password,...`) or a mounted docker `config.json` (inline `auths`); registries other than GHCR/Docker Hub get their token from the realm in their own `WWW-Authenticate` challenge (Bearer) or are queried with Basic auth. A fully qualified `ORCHESTRATOR_IMAGE` (`registry.example.com/me/agentor-orchestrator:tag`) is used without `WORKER_IMAGE_PREFIX`
 
 ### 15.2 Restarting State
-- Blue overlay with spinner + "Reconnecting..." + description when orchestrator restarts
+- Blue overlay (`role="status"`) with spinner + "Reconnecting..." + description when orchestrator restarts. It stays up until the new server answers — after an observed outage, or after ~30s — and then the page reloads itself to load the new client build (installed apps need no manual reload)
 
 ---
 
@@ -562,10 +627,14 @@ The worker "detail" view is a fully editable **Worker Settings modal** (no more 
 Every pane type supports **multiple simultaneous instances**. Clicking the Terminal, Desktop, Editor, Apps, or Logs action button opens a brand-new tab each time — the same (container, type) pair can be opened any number of times and arranged side-by-side via the existing drag-to-split interactions. Each tab has its own unique id, independent xterm.js instance, iframe, or component state; backing services (tmux window attach, noVNC, code-server, app instance polling, log stream) already tolerate multiple concurrent clients so no additional reconciliation is required. Closing one tab does not affect sibling tabs of the same type.
 
 ### 16.2 Tab Bar (PaneGroupTabBar)
-- Per-tab: type icon + "[Container] - [Type]" label (truncated 140px) + close button (visible on hover, middle-click also closes)
+- Per-tab: type icon + "[Container] - [Type]" label (truncated at 140px, 180px from 640px wide; the full label as tooltip) + close button (visible on hover / focus, middle-click also closes)
 - Active tab: highlighted background + accent bottom border
+- ARIA tabs: the bar is a `tablist` named "Open panes"; each tab is a `tab` with `aria-selected`, its label as accessible name and a roving `tabindex` (only the active tab is in the tab order)
+- Keyboard: ArrowLeft / ArrowRight / Home / End activate and focus a neighbouring tab, Enter / Space activate, Delete closes
+- Close button: named "Close <label>" (e.g. "Close my-worker - Terminal"), tooltip "Close tab", not in the tab order. On touch screens only the active tab shows a larger (28px) close button; inactive tabs show none, so tapping one always activates it
 - Draggable tabs (HTML5 DnD)
 - Drop insert indicator (vertical blue line)
+- While the sidebar is collapsed, the top-left tab bar leaves 40px on its left for the expand button (§2.2)
 
 ### 16.3 Pane Splitting
 - Drag tab to edge (left/right/top/bottom, 25% threshold) to split
@@ -575,16 +644,20 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - Same-direction splits insert as siblings (no unnecessary nesting)
 
 ### 16.4 Pane Separator Resize
-- 4px separator between panes (12px hit area)
-- Drag to resize adjacent panes
-- Blue highlight on hover/drag
+- 4px separator between panes (12px hit area, ±12px more on touch screens) with a 1px hairline dividing the panes
+- Drag to resize adjacent panes — with mouse, touch or pen (Pointer Events with pointer capture); at most one resize per animation frame
+- Accent-colour highlight on hover / focus / drag
 - Cursor: col-resize (horizontal) or row-resize (vertical)
 - Pointer events disabled on iframes/xterm during drag
+- Keyboard: focusable `separator` named "Resize panes" (`aria-valuenow` = position in %); ArrowLeft / ArrowRight (side-by-side panes) or ArrowUp / ArrowDown (stacked panes) move it by 16px
 
 ### 16.5 Focus
-- Blue top border on focused pane group (when multiple panes exist)
-- Mousedown on pane focuses it
+- Top border in the theme accent colour on the focused pane group (when multiple panes exist)
+- Pressing (mouse, touch or pen — `pointerdown`) on a pane focuses it
 - New tabs open in focused group
+
+### 16.5a Hidden tabs
+- A tab is created on its first activation and then stays mounted while other tabs of its group are shown (sockets, iframes and scrollback survive); its polling pauses while it is hidden (§1.9)
 
 ### 16.6 Persistence
 - Entire pane layout (tree structure, tabs, focused node) persisted to localStorage
@@ -600,10 +673,30 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - xterm.js with WebSocket connection to Docker exec
 - 10,000 line scrollback
 - Alt+scroll for fast scrolling
-- Font: Menlo / Cascadia Code / Fira Code / JetBrains Mono (14px)
-- Auto-resize on container element resize (ResizeObserver)
+- Font: Menlo / SF Mono / Cascadia Code / Fira Code / JetBrains Mono / Roboto Mono; size from the terminal preferences (default 14px, 12px on phones; 8–28px)
+- Auto-resize on container element resize (ResizeObserver), incl. the soft keyboard opening (the app shell follows the visual viewport)
 - Theme-reactive (dark/light mode switching)
-- Native text selection override (Mac: altKey, others: shiftKey)
+- Clickable URLs in the output (web-links addon)
+- Automatic reconnect: a dropped connection shows a "Disconnected — reconnecting…" pill (`data-testid="terminal-disconnected"`) with **Reconnect now**; reconnects with backoff while the page is visible, when the network comes back, and when the page becomes visible again (also after >30s in the background)
+
+### 17.1a Selection & clipboard
+- Click-drag selects text locally — always (clicks/drags are never forwarded to tmux, no modifier key needed)
+- **The selection survives mouse movement**, also while an application (through tmux) requests any-motion mouse tracking (`CSI ?1003h`): xterm.js is never put into mouse-reporting mode; the requested modes are recorded and only the wheel is reported to the application
+- Mouse wheel: reported to tmux when it tracks the mouse (first wheel-up enters copy-mode, further ticks scroll the scrollback); Ctrl+wheel stays browser zoom; without mouse tracking the local scrollback scrolls
+- Copy: Cmd+C (macOS); Ctrl+Shift+C / Ctrl+Insert, or Ctrl+C while text is selected (selection then cleared, so the next Ctrl+C interrupts) elsewhere; Ctrl+C without a selection still sends the interrupt
+- Paste: Cmd+V (macOS); Ctrl+Shift+V / Shift+Insert elsewhere (native paste event → bracketed paste when the app enabled it)
+- Right-click context menu (not on touch devices): Copy (disabled without a selection), Paste, Select all, Open text view, Compose text, Larger / Smaller font, Reset font size, Show/Hide touch keys
+- Copy works on plain-http LAN origins too (legacy `execCommand('copy')` fallback); when clipboard reading is unavailable or denied, Paste opens the composer with a hint to long-press → Paste
+
+### 17.1b Touch & mobile input
+- Touch key toolbar (`data-testid="terminal-toolbar"`, `role="toolbar"`) below the terminal — shown automatically on touch (coarse-pointer) devices, toggled on any device from the keyboard button at the right of the tmux tab bar (`aria-label` "Show touch keys" / "Hide touch keys", `aria-pressed`); persisted (`terminal.toolbar`: auto / show / hide)
+  - Show/Hide keyboard (focus/blur the terminal), Esc, Tab, **Ctrl** and **Alt** latches (`data-key="ctrl"` / `"alt"`, `aria-pressed`; apply to the next toolbar key or the next character typed on the keyboard, then release), arrows (`data-key="up"` …; hold to repeat; application-cursor aware), ⇧↵ (newline in agents), ^C, Home, End, PgUp, PgDn (repeat), `/ - | ~ _`, smaller / larger font
+  - Fixed actions: **Compose text**, **Paste**, **Select text**
+  - Toolbar buttons never take focus, so tapping a key does not close the soft keyboard
+- Composer (`data-testid="terminal-composer"`): native multi-line text field (autocorrect, dictation, swipe typing, long-press paste; 16px so iOS does not zoom) with **Send** (paste + Enter), **Insert without Enter**, **Close composer**; Ctrl/Cmd+Enter sends, Escape closes
+- Text view (`data-testid="terminal-text-view"`): the window's text with 3000 lines of scrollback as natively selectable text (OS selection handles / copy menu), Copy (selection or everything), Reload, Close (Escape); falls back to the visible screen when the capture fails
+- Touch gestures on the terminal: swipe to scroll (with momentum; scrollback through tmux), long-press to select the word under the finger and drag to extend → floating **Copy / Select all / More… / ×** actions (`data-testid="terminal-selection-actions"`), two-finger pinch to change the font size, tap to focus (opens the soft keyboard) or open a link
+- No iOS zoom-on-focus (16px terminal inputs), no pull-to-refresh / overscroll bounce
 
 ### 17.2 Tmux Tab Bar (inner tab bar, 30px)
 - Per-window tab: name (max 120px, truncated) + close button (hidden for main window)
@@ -615,9 +708,12 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
   - Blur: commit
 - Close tab: click X or middle-click (with confirm dialog)
 - Main ("shell") window: cannot be closed or renamed
-- New tab creation: text input for name + "+" button
+- New tab creation: text input for name (`aria-label` "New terminal tab name") + "+" button (`aria-label` "New terminal tab")
   - Empty input uses auto-generated placeholder (shell-xxxx)
   - Name collisions generate random name
+- Close buttons are labelled (`Close terminal <name>`)
+- Right edge: pane actions (touch keys toggle)
+- Larger targets on touch devices (38px bar, 32px tabs, 16px inputs)
 - Polls for external changes every 3 seconds
 
 ---
@@ -625,30 +721,36 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 ## 18. Service Panes (Desktop & Editor)
 
 ### 18.1 Desktop (noVNC)
-- Starting state: large icon + "Desktop is starting..." text
-- Running state: green pulsing dot + "Desktop running" + "Open in tab" link + full iframe
-- Service status polled every 5 seconds
+- Starting state: large icon + spinner + "Desktop is starting..." text on the terminal background
+- Running state: a 30px header in the terminal bar colours with a green pulsing dot (no pulse with reduced motion) + "Desktop running" + an "Open in tab" button (external-link icon) over the full iframe
+- The iframe is titled "Desktop for this worker" and may go fullscreen (`allow` includes `fullscreen`, plus `allowfullscreen`)
+- "Open in tab" is hidden in an iOS home-screen app (the new tab would open in Safari, signed out)
+- Service status polled every 5 seconds while the tab is shown; a single failed status check no longer reloads the iframe — it is torn down only after 3 failures in a row or when the server reports the service stopped
 
 ### 18.2 Editor (code-server)
 - Same pattern as Desktop
-- "Editor is starting..." → "Editor running" + iframe
+- "Editor is starting..." → "Editor running" + iframe (titled "Editor for this worker")
 - "Open in tab" opens in new browser tab
-- Clipboard permissions enabled on iframe
+- Clipboard permissions (`clipboard-read; clipboard-write`) and fullscreen enabled on iframe
 
 ---
 
 ## 19. Apps Pane
 
 ### 19.1 Content
-- "Apps" heading
+- "Apps" heading; the pane uses the terminal theme surfaces (terminal background, bar-coloured cards) and less padding on phones
 - Empty state: "No app types available"
 - Per app type: name, description, and either:
-  - **Multi-instance** (chromium, socks5): "+ New Instance" button (always shown, up to `maxInstances`).
-  - **Singleton** (vscode, ssh): "Start" button shown only when no instance is running; hidden once one exists (Stop lives on the row).
+  - **Multi-instance** (chromium, socks5): "+ New Instance" button (soft style; always shown, up to `maxInstances`).
+  - **Singleton** (vscode, ssh): "Start" button (soft style, play icon) shown only when no instance is running; hidden once one exists (Stop lives on the row).
+- A failed start (other than 409 "already running") shows the error toast "Could not start app"
+- Status dots are named by their status (`role="img"`); Stop buttons are larger on touch screens
 - Empty-state label per app type: "No running instances" (multi-instance) or "Not running" (singleton).
 - Per instance (chromium/socks5): status dot (green/gray), instance ID (monospace), port label with tooltip, "Stop" button.
-- Per instance (vscode — `VsCodeAppRow`): status dot (green=running, amber=auth_required), instance ID `vscode`, status label (`Stopped` / `Waiting for GitHub authentication` / `Connected as <machineName>`), "Stop" button. In `auth_required` the row also shows the clickable `https://github.com/login/device` URL plus the monospace device code with a copy button. In `running` the row shows an instruction to install **Remote - Tunnels** in a local VS Code and connect to the machine name.
-- Per instance (ssh — `SshAppRow`): status dot, instance ID `ssh`, port label `:22 → host :<externalPort>`, "Stop" button. When running with a public key configured the row shows the SSH command `ssh agent@<host> -p <externalPort>` with a copy-to-clipboard button. When the user's `sshPublicKey` is empty the row shows an amber warning pointing to **Account → SSH Access**.
+- Per instance (vscode — `VsCodeAppRow`): status dot (green=running, amber=auth_required), instance ID `vscode`, status label (`Stopped` / `Waiting for GitHub authentication` / `Connected as <machineName>`), "Stop" button. In `auth_required` the row also shows the clickable `https://github.com/login/device` URL plus the monospace device code with a copy button ("Copy code <code>"). The status label truncates (full text on hover). In `running` the row shows an instruction to install **Remote - Tunnels** in a local VS Code and connect to the machine name.
+- Per instance (ssh — `SshAppRow`): status dot, instance ID `ssh`, port label `:22 → host :<externalPort>`, "Stop" button. When running with a public key configured the row shows the SSH command `ssh agent@<host> -p <externalPort>` (selected entirely on tap) with a copy-to-clipboard button ("Copy SSH command"). When the user's `sshPublicKey` is empty the row shows an amber warning pointing to **Account → SSH Access**.
+
+- Copy buttons work on plain-http LAN origins too (clipboard fallback): the icon turns into a check mark for 1.5s, or the toast "Copy failed — select the text and copy it manually" appears
 
 ### 19.2 App Types
 - **Chromium** — CDP, ports 9222–9322, `maxInstances: 10`
@@ -669,8 +771,9 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 
 ### 20.1 Upload Modal
 - Opens from upload icon button on container card
-- Title "Upload to Workspace" + target path description
-- FileDropZone: drag files/folders, click to browse (folder mode), file list with remove/clear
+- Title "Upload to Workspace" (names the dialog) + target path description; full-screen sheet with a sticky Upload / Cancel row on phones
+- FileDropZone: drag files/folders, click / tap to pick files (plain multi-file picker — works on phones), a separate "Choose a folder" button for folders, file list with remove/clear (§22)
+- Upload errors are announced (`role="alert"`)
 - "Upload (N files)" button (disabled when empty, loading during upload)
 - Auto-closes on success
 
@@ -692,6 +795,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - "Archived [date]" text
 - "Unarchive" button (primary/blue)
 - "Delete" button (error/red)
+- Both buttons carry those names as `aria-label` and get larger touch targets; the date text has higher contrast
 
 ### 21.3 Interactions
 - Unarchive: recreates container from stored metadata, preserves workspace
@@ -703,14 +807,17 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 
 ### 22.1 Drop Zone
 - Dashed-border area with cloud-upload icon
-- "Drop files or folders here" + "or click to browse folders"
+- "Drop files or folders here" + "or click to choose files" ("Tap to choose files" on touch devices)
+- Clicking / tapping the zone opens a plain multi-file picker (exactly one non-`webkitdirectory` file input)
+- A "Choose a folder" button below the zone opens the folder picker — only rendered where the browser supports `webkitdirectory`
+- Keyboard-operable: the zone is a `button` named "Choose files to upload" (Enter / Space, focus ring)
 - Blue highlight on dragover
-- Recursive folder processing via FileSystemEntry API
+- Recursive folder processing via FileSystemEntry API (dropped folders)
 
 ### 22.2 File List
 - Count + total size summary
 - "Clear all" link
-- Scrollable list (max 128px): filename + remove button (visible on hover)
+- Scrollable list (max 128px): filename + remove button (named "Remove <file>"; visible on hover, on keyboard focus and always on touch screens)
 
 ---
 
@@ -725,13 +832,17 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - Source filter buttons: Orch, Worker, Traefik (toggle each source on/off)
 - Level filter buttons: DBG, INF, WRN, ERR (toggle each level on/off)
 - When no filters active, all entries shown (buttons appear inactive)
-- Active filter button shows accent border color
-- Search input with 300ms debounce — filters entries by message substring
+- Active filter button shows accent border color; `aria-pressed="true"` marks the explicitly selected filters
+- Search input with 300ms debounce — filters entries by message substring (named "Search logs"; no autocorrect / autocapitalize / spellcheck)
+- Icon buttons are named "Auto-scroll to bottom" (`aria-pressed`) and "Clear all logs"
+- Filter buttons are at least 32px tall on touch screens; at pane widths of 640px or less the search field takes a full line
 
 ### 23.3 Log Entries
 - Each entry shows: timestamp (HH:MM:SS.mmm) + level badge + source badge + source ID (for container logs) + message
+- Long messages wrap (no ellipsis, no horizontal overflow); at pane widths of 640px or less each row wraps with the message on its own line and the source ID capped at 40%
 - Level badges color-coded: debug (gray), info (blue), warn (amber), error (red)
 - Source badges color-coded: orchestrator (purple), worker (green), traefik (orange)
+- Badge and row colours have light-theme and dark-theme variants (readable in both modes)
 - Source ID shows display name or container name (hidden for orchestrator entries)
 - Error-level entries: red text
 - Warn-level entries: amber text
@@ -756,12 +867,13 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 
 ### 23.6 Actions
 - Clear button: clears all log files (with confirmation dialog)
-- Status bar: green/red connection dot + "Connected"/"Disconnected" text + entry count
+- Status bar: green/red connection dot + "Connected"/"Disconnected" text (`role="status"`) + entry count
 
 ### 23.7 Live Streaming
-- WebSocket connection to `/ws/logs` for real-time log entries
+- WebSocket connection to `/ws/logs` for real-time log entries; bursts are rendered once per animation frame
 - Auto-reconnect on disconnect (3s delay)
-- History loaded from REST API on mount (500 most recent entries)
+- The socket is open only while at least one Logs pane is mounted — closing the last Logs tab disconnects it (entries are kept) — and closes after the page has been hidden for 60s; showing the page again refetches history and reconnects
+- History loaded from REST API on mount (500 most recent entries); all open Logs tabs share one filtered list and one history fetch per filter change
 - Client-side soft cap of 50,000 entries — older entries are evicted only while the user is at the bottom (auto-scroll on); when scrolled into history, eviction is paused so the viewport never collapses under the user. Evicted entries are recoverable via scroll-up since they are still on disk.
 
 ---
@@ -981,14 +1093,14 @@ The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/ap
 
 ### 25.1 localStorage Key
 - Single key: `agentor-ui-state`
-- 500ms debounced writes + `beforeunload` flush
+- 500ms debounced writes, flushed on `pagehide` and when the page becomes hidden (iOS Safari and backgrounded / killed PWAs never fire `beforeunload`)
 
 ### 25.2 Persisted State
 - Sidebar width (persistence clamp 200–3000, runtime-clamped to 90% of viewport)
 - Sidebar collapsed state
 - Panel collapse states (archived, portMappings, domainMappings, usage, images, settings)
 - Split pane tree (rootNode + focusedNodeId)
-- Tmux active windows per container
+- Tmux active windows per container — reopening a terminal tab restores the worker's last active tmux window (falls back to the first window when it is gone)
 
 ### 25.3 Graceful Degradation
 - Corrupt localStorage: falls back to defaults
@@ -1057,7 +1169,7 @@ The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/ap
 - Validation: 401 unauth, 403 cross-user, 404 unknown worker; the worker must be running or stopped (archived workers have no container to export).
 
 ### 28.2 Import
-- The sidebar **Import worker** button opens the Import Worker modal: a file picker for the `.tar` bundle (`data-testid="import-file"`), an optional Display name (`data-testid="import-name"`), and an **Import** button (`data-testid="import-submit"`, disabled until a file is chosen).
+- The sidebar **Import worker** button opens the Import Worker modal (dialog named "Import Worker"; full-screen sheet with a sticky Import / Cancel row on phones): a file picker for the `.tar` bundle (`data-testid="import-file"`, labelled "Export bundle"), an optional Display name (`data-testid="import-name"`, labelled "Display name" — clicking a label focuses / opens its input), and an **Import** button (`data-testid="import-submit"`, disabled until a file is chosen). Errors are announced (`role="alert"`).
 - Import streams the bundle as the raw request body to `POST /api/containers/import` (no multipart buffering — bundles can be multi-GB), creates a **brand-new worker** (fresh UUID, `containerName = agentor-worker-<id>`), and on success opens a terminal tab for it.
 - Restore steps: resolve/create the environment (built-in reused by id; a user's same-named env reused; otherwise the embedded definition is recreated as a new custom env) → import `rootfs.tar.gz` into a per-worker image (`agentor-import-<id>`) when present, replicating the standard image's entrypoint/env so it boots — **falls back to the standard worker image if the rootfs import fails** → create the container stopped → restore the workspace + agent-data volumes via `putArchive` → start → recreate port/domain mappings (skipping conflicts and base domains not configured on this machine).
 - A worker restored with a captured filesystem persists its per-worker image link (`importedImage` on the WorkerRecord) so the rootfs survives rebuild/unarchive; the image is removed on permanent delete.

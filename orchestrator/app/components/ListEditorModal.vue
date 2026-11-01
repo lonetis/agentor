@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useDialogLabel } from '~/composables/useDialogLabel';
+
 interface ResourceItem {
   id: string;
   name: string;
@@ -31,11 +33,17 @@ const emit = defineEmits<{
 
 const open = defineModel<boolean>('open', { default: false });
 
+const { titleId, content: dialogContent } = useDialogLabel();
+
 const editingId = ref<string | null>(null);
 const creating = ref(false);
 const viewing = ref<string | null>(null);
 const editForm = reactive({ name: '', content: '' });
 const showEditor = computed(() => creating.value || editingId.value !== null || viewing.value !== null);
+
+function close() {
+  open.value = false;
+}
 
 function startCreate() {
   editingId.value = null;
@@ -85,16 +93,16 @@ function handleDelete(id: string) {
 </script>
 
 <template>
-  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-4xl' }">
+  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-4xl modal-sheet' }" :content="dialogContent">
     <template #content>
-      <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto modal-sheet-body">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ title }}</h2>
+          <h2 :id="titleId" class="text-lg font-semibold text-gray-900 dark:text-white">{{ title }}</h2>
           <div class="flex gap-2">
             <UButton v-if="!showEditor" size="sm" @click="startCreate">
               New
             </UButton>
-            <UButton size="sm" color="neutral" variant="ghost" @click="open = false">
+            <UButton size="sm" color="neutral" variant="ghost" @click="close">
               Close
             </UButton>
           </div>
@@ -150,11 +158,14 @@ function handleDelete(id: string) {
               v-model="editForm.content"
               :rows="contentRows"
               :placeholder="contentPlaceholder"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
               class="w-full font-mono text-xs"
               :disabled="!!viewing"
             />
           </UFormField>
-          <div class="flex gap-3">
+          <div class="flex gap-3 modal-sheet-footer">
             <UButton v-if="!viewing" :disabled="!editForm.name.trim() || !editForm.content.trim()" @click="handleSave">
               {{ editingId ? 'Update' : 'Create' }}
             </UButton>

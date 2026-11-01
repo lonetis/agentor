@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GitProviderInfo, MountConfig, RepoConfig, CreateContainerRequest } from '~/types';
+import { useDialogLabel } from '~/composables/useDialogLabel';
 
 const props = defineProps<{
   gitProviders: GitProviderInfo[];
@@ -13,6 +14,13 @@ const emit = defineEmits<{
 }>();
 
 const open = defineModel<boolean>('open', { default: false });
+
+const { titleId, content: dialogContent } = useDialogLabel();
+// The repo / mount lists are labelled groups rather than UFormFields: a
+// UFormField shares one id across every control inside it, so a mount row's
+// "ro" label would focus the first Host path input instead of its checkbox.
+const reposLabelId = useId();
+const mountsLabelId = useId();
 
 const { environments, defaultEnvironmentId } = useEnvironments();
 
@@ -118,10 +126,15 @@ function reset() {
 </script>
 
 <template>
-  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-3xl' }" @after:leave="emit('after:leave')">
+  <UModal
+    v-model:open="open"
+    :ui="{ content: 'sm:max-w-3xl modal-sheet' }"
+    :content="dialogContent"
+    @after:leave="emit('after:leave')"
+  >
     <template #content>
-      <div class="p-6 space-y-5 max-h-[90vh] overflow-y-auto">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">New Worker</h2>
+      <div class="p-6 space-y-5 max-h-[90vh] overflow-y-auto modal-sheet-body">
+        <h2 :id="titleId" class="text-lg font-semibold text-gray-900 dark:text-white">New Worker</h2>
 
         <UFormField label="Display name">
           <UInput
@@ -145,8 +158,9 @@ function reset() {
           </div>
         </UFormField>
 
-        <UFormField label="Repositories">
-          <div class="space-y-2">
+        <div role="group" :aria-labelledby="reposLabelId">
+          <span :id="reposLabelId" class="block text-sm font-medium text-default">Repositories</span>
+          <div class="mt-1 space-y-2">
             <RepoInput
               v-for="(repo, idx) in form.repos"
               :key="repoKeys[idx]"
@@ -164,10 +178,11 @@ function reset() {
           >
             + Add repository
           </UButton>
-        </UFormField>
+        </div>
 
-        <UFormField label="Volume Mounts">
-          <div class="space-y-2">
+        <div role="group" :aria-labelledby="mountsLabelId">
+          <span :id="mountsLabelId" class="block text-sm font-medium text-default">Volume Mounts</span>
+          <div class="mt-1 space-y-2">
             <MountInput
               v-for="(mount, idx) in form.mounts"
               :key="idx"
@@ -184,10 +199,13 @@ function reset() {
           >
             + Add mount
           </UButton>
-        </UFormField>
+        </div>
 
-        <UFormField label="Init Script" hint="Script to run in tmux on startup">
-          <div class="space-y-2">
+        <!-- The textarea sits outside the UFormField so the "Init Script" label
+             keeps naming the preset select (a UFormField hands its id to every
+             control inside it, the last one with an explicit id winning). -->
+        <div class="space-y-2">
+          <UFormField label="Init Script" hint="Script to run in tmux on startup">
             <div class="flex gap-2">
               <USelect v-model="selectedPreset" :items="presetOptions" class="flex-1" />
               <UButton
@@ -199,16 +217,20 @@ function reset() {
                 Manage
               </UButton>
             </div>
-            <UTextarea
-              v-model="form.initScript"
-              :rows="3"
-              placeholder="#!/bin/bash&#10;# Script to run in tmux on startup"
-              class="w-full font-mono text-xs"
-            />
-          </div>
-        </UFormField>
+          </UFormField>
+          <UTextarea
+            v-model="form.initScript"
+            :rows="3"
+            placeholder="#!/bin/bash&#10;# Script to run in tmux on startup"
+            aria-label="Init script content"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            class="w-full font-mono text-xs"
+          />
+        </div>
 
-        <div class="flex gap-3 pt-2">
+        <div class="flex flex-wrap gap-3 pt-2 modal-sheet-footer">
           <UButton class="flex-1" @click="submit">
             Create
           </UButton>

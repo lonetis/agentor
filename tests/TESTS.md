@@ -4,9 +4,9 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1514 tests** across 117 test files (~953 API + ~561 UI)
+- **~1561 tests** across 123 test files (~953 API + ~608 UI)
 - **API tests**: headless, no browser needed, fast execution
-- **UI tests**: Desktop Chrome (1920x1080), real browser interactions
+- **UI tests**: Desktop Chrome (1920x1080), real browser interactions; the phone specs (`mobile-layout`, `mobile-modals`, `terminal-touch`) use a 390x844 `hasTouch` / `isMobile` context
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
 - Parallel execution with up to 8 workers (configurable)
 - All tests independent and self-cleaning
@@ -108,7 +108,7 @@ tests/
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
     mcp.ts                 # MCP client over the real OAuth flow (MCP SDK) + hand-driven OAuth steps + tool-call helpers
   api/                     # API endpoint tests (~953 tests across 70 files)
-  ui/                      # UI interaction tests (~561 tests across 47 files)
+  ui/                      # UI interaction tests (~608 tests across 53 files)
 ```
 
 ## Test Categories
@@ -188,24 +188,24 @@ tests/
 | `users.spec.ts` | 11 | `/api/users` admin API: list (roles, shape), create (user signs in; admin role; email lowercased), create validation (400s) + duplicate email 409, update name/email/role (+ 409 / 400 cases), an admin cannot demote, delete or reset the password of themselves, set password (new works, old fails, short 400), delete (gone from list, can't sign in), unknown ids 404, regular users 403 on every route, 401 unauth |
 | `account-profile.spec.ts` | 4 | `GET /api/account/me` (admin identity + role); a user updates their own name/email via `PATCH /api/account/profile`; profile validation (empty body/name, bad email 400, taken email 409, role cannot be escalated); 401 unauth |
 
-### UI Tests (~561 tests, 47 files)
+### UI Tests (~608 tests, 53 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `login.spec.ts` | 4 | Login page renders with email/password fields + passkey button, wrong credentials show error, correct credentials redirect to dashboard, unauthenticated `/` redirects to `/login` (uses fresh storageState) |
-| `passkey-management.spec.ts` | 5 | Register passkey via account modal, sign in with registered passkey, remove password after passkey, cannot remove last passkey, set new password after going passwordless. Uses CDP virtual WebAuthn authenticator (`tests/helpers/webauthn.ts`). |
+| `passkey-management.spec.ts` | 5 | Register passkey via account modal, sign in with registered passkey, remove password after passkey, cannot remove last passkey, set new password after going passwordless. Uses CDP virtual WebAuthn authenticator (`tests/helpers/webauthn.ts`). The modal's Close button is looked up with `{ name: 'Close', exact: true }` (pane tabs now have `Close <label>` buttons). |
 | `route-guard.spec.ts` | 6 | Unauth user on `/` → `/login`, unauth user on `/login` stays, unauth user on `/setup` (when complete) → `/login`, `/api/setup/status` public, signed-in user visiting `/login` redirected to `/`, signed-in user on `/` loads dashboard |
 | `users-modal.spec.ts` | 6 | Admin opens Users modal from System tab, create user via modal, promote + demote user, delete user, reset password, regular user does not see System tab (the modal now uses the `/api/users` REST API) |
 | `account-modal.spec.ts` | 5 | Opens from sidebar footer, updates name (persists after reload), updates email (new email can sign in), changes password (new password can sign in), Close button dismisses modal |
 | `account-modal-env-vars.spec.ts` | 5 | Predefined (one masked input per `PREDEFINED_ENV_VAR_KEYS` entry, labeled by the env var NAME e.g. `GITHUB_TOKEN`, incl. `GITLAB_TOKEN`) / Custom env vars / SSH Access / Agent OAuth credentials sections render; a predefined env var saves via **Save env vars** and persists across reload; custom env var add+save+reload round-trip; invalid custom key surfaces an inline error; SSH public key saves via the **separate** Save SSH key button (own `/api/account/ssh-key` endpoint) and persists across reload |
-| `dashboard.spec.ts` | 11 | Page load, title, buttons, sections, images, sidebar labels |
-| `sidebar.spec.ts` | 27 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design, Capabilities/Instructions/Init Scripts row stacks vertically on narrow sidebar, tab bar horizontal scroll + overflow dropdown (20% visibility threshold, live updates on scroll, hidden when all tabs fit) |
-| `create-worker-modal.spec.ts` | 31 | Open/close, form fields, free-form **Display name** input (placeholder is the `generate-name` suggestion; no keystroke sanitization; client sends only `{ displayName }`, never `name`), add repo/mount, environment dropdown, init preset dropdown, Create action, dropdown populates newly created environments, selecting a preset populates init-script textarea |
+| `dashboard.spec.ts` | 12 | Page load, title, buttons, sections, images, sidebar labels; the empty-pane placeholder's **Create worker** button opens the New Worker modal |
+| `sidebar.spec.ts` | 31 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design, Capabilities/Instructions/Init Scripts row stacks vertically on narrow sidebar, tab bar horizontal scroll + overflow dropdown (20% visibility threshold, live updates on scroll, hidden when all tabs fit); a collapsed sidebar is inert and focus follows the toggle (Expand ↔ Collapse button); the active tab carries `aria-current`; Escape closes the More dropdown and returns focus to the More button; the resize handle is a `separator` that ArrowRight grows by 16px (`aria-valuenow`, aside width and persisted `agentor-ui-state`) |
+| `create-worker-modal.spec.ts` | 33 | Open/close, form fields, free-form **Display name** input (placeholder is the `generate-name` suggestion; no keystroke sanitization; client sends only `{ displayName }`, never `name`), add repo/mount, environment dropdown, init preset dropdown, Create action, dropdown populates newly created environments, selecting a preset populates init-script textarea; the dialog is named by its heading (`getByRole('dialog', { name: 'New Worker' })`); clicking a mount row's "ro" label toggles that row's checkbox (not the Host path input) |
 | `cross-modal-navigation.spec.ts` | 6 | Manage button navigation between modals |
-| `container-card.spec.ts` | 16 | Display name, status, buttons, icons, stop/restart/archive, Restart hidden when running, archive action hides card after confirmation, icon-only action buttons, compact card design, **Settings pencil opens the Worker Settings modal and renames via the display-name field + Save (no recreation; old label gone, new label persists)** |
+| `container-card.spec.ts` | 18 | Display name, status, buttons, icons, stop/restart/archive, Restart hidden when running, archive action hides card after confirmation, icon-only action buttons, compact card design, **Settings pencil opens the Worker Settings modal and renames via the display-name field + Save (no recreation; old label gone, new label persists)**; a 90-char display name is truncated (`scrollWidth > clientWidth`) while the `running` badge stays inside the card; every icon button's accessible name equals its tooltip (all 12 running-card buttons by exact role name) |
 | `stopped-workers.spec.ts` | 4 | Stopped tab exists in the sidebar and sits before Archived; a stopped worker appears in the Stopped tab and is absent from the Workers tab (mutually exclusive lists); restarting from the Stopped tab moves the worker back to Workers |
 | `rebuild.spec.ts` | 6 | Rebuild button visibility (running + stopped), confirm dialog dismiss cancels, rebuild state transition, display name preserved, new container ID after rebuild |
-| `container-detail-modal.spec.ts` | 17 | Editable Worker Settings modal: opens via name + Settings pencil, header shows `<displayName> — Settings`, read-only **Worker** identity section (Worker ID = the worker UUID `container.id` in monospace, Container ID = the Docker `containerId`, Image = `imageName`, Image ID, Created), editable **Settings** section exposes Display name/Environment/Repositories/Volume Mounts/Init Script with `no rebuild needed` vs `requires rebuild` tags, display-name field pre-filled, Save disabled when unchanged, environment-specific sections (CPU/Memory/Network/Setup Script/Exposed APIs) are absent, close (Escape + overlay) + re-open, custom environment reflected in the Environment selector |
+| `container-detail-modal.spec.ts` | 19 | Editable Worker Settings modal: opens via name + Settings pencil, header shows `<displayName> — Settings`, read-only **Worker** identity section (Worker ID = the worker UUID `container.id` in monospace, Container ID = the Docker `containerId`, Image = `imageName`, Image ID, Created), editable **Settings** section exposes Display name/Environment/Repositories/Volume Mounts/Init Script with `no rebuild needed` vs `requires rebuild` tags, display-name field pre-filled, Save disabled when unchanged, environment-specific sections (CPU/Memory/Network/Setup Script/Exposed APIs) are absent, close (Escape + overlay) + re-open, custom environment reflected in the Environment selector; the dialog is named by its heading (`aria-labelledby` = the `<h2>` id); a `localhost` port mapping is labelled `internal` in Port Mappings like the Ports panel |
 | `worker-settings-modal.spec.ts` | 3 | Behavioural: a pure display-name change does not offer "Save & Rebuild" and shows no pending badge (persists across reload); editing the init script reveals "Save & Rebuild" + the rebuild hint, plain Save flags the card `rebuild pending` and the re-opened modal shows the pending banner + "Rebuild now"; "Save & Rebuild" applies the change and clears the pending state |
 | `environments-modal.spec.ts` | 25 | Open/close, pre-created env, create button, form fields (network, Docker, resources), Setup Script, Init Script, Create button, create-via-form flow, custom env Edit/Delete buttons, edit existing environment, network mode dropdown options, Git Providers picker (Select All + every provider checked by default; deselecting GitHub saves a list without it and shows it unchecked on re-open; unchecking Select All saves `[]`) |
 | `environment-editor-network.spec.ts` | 11 | Network mode selector, custom domains, package manager toggle |
@@ -216,29 +216,35 @@ tests/
 | `init-scripts-modal.spec.ts` | 9 | Init scripts modal list, view built-in, create/edit/delete |
 | `init-scripts-crud.spec.ts` | 8 | Init scripts CRUD operations via UI |
 | `init-preset-selector.spec.ts` | 6 | Default None, textarea, Custom/None sync |
-| `settings-modal.spec.ts` | 10 | Settings modal content, sections, expand/collapse |
+| `settings-modal.spec.ts` | 11 | Settings modal content, sections, expand/collapse; `/api/settings` is requested only when the modal opens (no request at dashboard load or when opening the System tab, exactly one GET once the "System Settings" dialog shows its content) |
 | `port-mappings-panel.spec.ts` | 14 | Section, button, API-created mappings, type labels (local + ext), delete button, form open/close, form fields (type selector, worker dropdown, port inputs), delete interaction, create-via-UI form submission flow, **grouped-by-worker collapsible group header (chevron + display name + count badge), default expanded, click to collapse/expand rows** |
 | `domain-mappings-panel.spec.ts` | 49 | Status API, section visibility, form open/close, protocol selector, basic auth checkbox, TCP protocol hides auth, auth checkbox shows username/password inputs, base domain display, API-created mapping display, protocol badge, path input visibility, TCP hides path, path display in mapping list, wildcard checkbox visibility and enabled state, wildcard live match preview, wildcard mapping list display (`*.host` prefix + `wildcard` badge), wildcard checkbox remains visible/enabled when TCP is selected, TCP wildcard mapping list display (tcp + wildcard badges), TCP form shows explanatory hint in place of Basic auth, **grouped-by-worker collapsible group header (collapse/expand rows)** |
 | `domain-mappings-panel-advanced.spec.ts` | 27 | Advanced domain mapping panel interactions, TCP-to-HTTP restores path input |
-| `selfsigned-ca-cert.spec.ts` | 8 | Self-signed CA certificate download UI |
-| `service-panes.spec.ts` | 12 | Desktop and editor service panes |
+| `selfsigned-ca-cert.spec.ts` | 4 | Self-signed CA certificate download UI; **CA cert** downloads `agentor-ca.crt` (PEM) in place — no popup, the context keeps one page (skipped without a selfsigned base domain) |
+| `service-panes.spec.ts` | 13 | Desktop and editor service panes; the running desktop iframe is titled "Desktop for this worker", allows `fullscreen` and keeps "Desktop running" + "Open in tab" |
 | `apps-pane.spec.ts` | 9 | Apps pane for container, plus VS Code Tunnel and SSH singleton app types render with `Start` buttons and "Not running" empty state |
-| `workspace-upload.spec.ts` | 8 | Upload button, modal, drop zone, close |
+| `workspace-upload.spec.ts` | 9 | Upload button, modal, drop zone, close; the drop zone has exactly one plain (non-`webkitdirectory`) file input — picking `notes.txt` lists it and enables "Upload (1 file)" |
 | `terminal-pane.spec.ts` | 9 | Terminal open, tmux tabs, xterm rows, create button, new tab creation, non-default tab has close button, main tab no close button, clicking Terminal twice opens two independent terminal tabs for the same worker and closing one leaves the other intact, keyboard typing produces WebSocket output |
+| `terminal-touch.spec.ts` | 4 | Terminal on a phone (390x844 `hasTouch` / `isMobile`, serial, one worker; real CDP touch events): the touch key toolbar shows by itself (`Hide touch keys` pressed); a swipe down enters tmux copy-mode and scrolls (`#{pane_in_mode}`, `#{scroll_position}`); a long-press selects the word under the finger and the floating Copy puts it on the clipboard; a pinch-out enlarges the font and persists it in `agentor-ui-state` |
+| `terminal-interaction.spec.ts` | 6 | Terminal selection & input in the browser (serial, one worker; waits for the init shell): **selection survives mouse movement while the app requests any-motion tracking** (`printf '\033[?1003h'`, verified via `#{mouse_any_flag}`; drag-select, hover around, `.xterm-selection` still rendered) + context-menu Copy read back from the clipboard; Ctrl+Shift+C copies and Ctrl+C without a selection still interrupts `sleep`; mouse wheel enters tmux copy-mode and scrolls (`#{pane_in_mode}`, `#{scroll_position}`); touch key toolbar shown via the tmux-bar toggle — Ctrl latch + typed `c` interrupts, Up recalls history; composer Send runs a command, text view shows the scrollback; context-menu font size persists in `agentor-ui-state` and resets. Assertions read shell-computed values from the capture API |
 | `tmux-tabs.spec.ts` | 9 | Tmux tab bar interactions |
-| `split-pane.spec.ts` | 3 | Placeholder, terminal pane, tab bar |
-| `theme-toggle.spec.ts` | 29 | Dark default, light switch, persistence, all modes |
+| `split-pane.spec.ts` | 5 | Placeholder, terminal pane, tab bar; pane tabs are ARIA tabs (tablist "Open panes", `role=tab`, `aria-selected`, `tabindex=0` on the active one) with a close button named `Close <name> - Terminal`; ArrowLeft activates and focuses the previous tab |
+| `theme-toggle.spec.ts` | 31 | Dark default, light switch, persistence, all modes; only the active theme button has `aria-pressed="true"` (before and after switching); buttons are named Default / White / Dark theme |
 | `ui-state-persistence.spec.ts` | 25 | UI state persistence across reloads, viewport clamp, drag-to-collapse |
-| `usage-panel.spec.ts` | 24 | Usage panel display, progress bars, auth badges |
+| `usage-panel.spec.ts` | 25 | Usage panel display, progress bars, auth badges; a failed `/api/usage` load (500) shows the `role=alert` row "Couldn't load usage" with **Retry** instead of "Loading...", and Retry loads the agents once the API answers again |
 | `update-notification.spec.ts` | 24 | Images section, image names, toggle, update status |
 | `archived-workers.spec.ts` | 10 | Archived section, collapsible, UI archive, worker card (name, Unarchive, Delete buttons), Unarchive action flow, Delete action flow, archived section count badge, archived-date text, multi-archived visibility |
-| `log-pane.spec.ts` | 17 | Logs button visibility, open log pane, filter bar, source/level filter buttons, search input, status bar, entries/empty state, entry structure, tab bar, clicking Logs again opens a second independent tab, closing one tab leaves the sibling intact, entry count, source filter toggle, localStorage persistence, scroll-to-top triggers loadMore and prepends older entries, tab close |
+| `log-pane.spec.ts` | 19 | Logs button visibility, open log pane, filter bar, source/level filter buttons, search input, status bar, entries/empty state, entry structure, tab bar, clicking Logs again opens a second independent tab, closing one tab leaves the sibling intact, entry count, source filter toggle, localStorage persistence, scroll-to-top triggers loadMore and prepends older entries, tab close; icon buttons and the search field have accessible names ("Auto-scroll to bottom", "Clear all logs", "Search logs"); a long stubbed message wraps (`white-space: pre-wrap`, taller than two lines, no horizontal overflow) with an `HH:MM:SS.mmm` timestamp; the source filter toggle also sets `aria-pressed` |
 | `worker-card-actions.spec.ts` | 3 | Refactored worker card: the running card exposes the Export button (tooltip), the action row is a horizontally-scrollable strip (`overflow-x: auto`), and per-worker live metrics (`data-testid="worker-metrics"`) render CPU%/RAM% from a stubbed `/api/worker-metrics` |
 | `import-worker-modal.spec.ts` | 2 | Import Worker modal opens from the sidebar Import button with file + name inputs and a disabled Import button; choosing a `.tar` file enables Import and shows the file name |
 | `github-autocomplete-refresh.spec.ts` | 1 | Regression: saving env vars in the Account modal refetches `/api/git-providers` (so the repo autocomplete gate updates without a page reload); env-vars PUT is stubbed so no real account state is mutated |
 | `gitlab-repo-input.spec.ts` | 4 | Repo picker + Account modal with the GitLab mock (own user with GITLAB_MOCK_TOKEN; skipped without the mock): the provider select lists GitHub / GitLab / GitLab (mock); searching and picking a nested project (`group/sub/project`) loads its branches (`main (default)` placeholder, `feature-x` option); typing `group/sub/<name>` offers public/private create; the Account modal shows `GITLAB_TOKEN` and a pre-filled, hinted `GITLAB_MOCK_TOKEN` predefined input |
 | `mcp-oauth.spec.ts` | 7 | OAuth in the browser: a signed-in user approves an app on the consent page (client name, redirect origin, `agentor` scope description, email) → redirect with code + state; Deny → `access_denied`; a signed-out user lands on `/login` with the OAuth notice, signs in, and continues to consent + code; a consent page opened after the session ended goes to `/login` with the signed query and resumes; the consent page links http(s) client homepages but never a `javascript:` client_uri; the consent page refuses direct visits; Account modal → MCP access shows the `/mcp` URL and revokes an authorized app (two-step) |
-| `branding.spec.ts` | 5 | Agentor mark + favicon: the sidebar header renders the mark (`data-testid="agentor-logo"`, decoded — `naturalWidth > 0`) beside the "Agentor" heading + "Orchestrator" subtitle; `<head>` links `favicon.ico`, the 16/32 px PNG icons, `apple-touch-icon.png` and `site.webmanifest`; every icon file is served from the site root with an `image/*` content type; the manifest names `Agentor`, `start_url: /` and the two android-chrome icons; the login page (fresh context) shows the mark above the "Agentor" heading |
+| `branding.spec.ts` | 6 | Agentor mark + favicon: the sidebar header renders the mark (`data-testid="agentor-logo"`, decoded — `naturalWidth > 0`) beside the "Agentor" heading + "Orchestrator" subtitle; `<head>` links `favicon.ico`, the 16/32 px PNG icons, `apple-touch-icon.png` and `site.webmanifest`; every icon file (incl. both maskable PNGs) is served from the site root with an `image/*` content type; the manifest names `Agentor`, `start_url: /` and four icons (two `any` android-chrome + two `maskable`); the document head carries the installable-app metadata (`lang=en`, one viewport meta with `viewport-fit=cover` and no `maximum-scale` / `user-scalable`, `apple-mobile-web-app-title` Agentor, `apple-mobile-web-app-capable` + `mobile-web-app-capable` yes, manifest link `crossorigin=use-credentials`); the login page (fresh context) shows the mark above the "Agentor" heading |
+| `pwa.spec.ts` | 7 | Progressive Web App (serviceWorkers `allow` + Chromium `--ignore-certificate-errors`, its own Playwright worker): the manifest describes an installable standalone app (`id` / `scope` / `start_url` `/`, `#030712`, `any` + `maskable` icons at 192/512 whose PNG IHDR size matches `sizes`); `/sw.js` (javascript), `/offline.html` (self-contained, "Retry", no external `src`/`href`) and the manifest are served `no-cache` without a session; the worker registers at the root scope and caches `offline.html`; page navigations come from the worker while `/api/containers` bypasses it; `setOffline` shows the "Agentor is unreachable" page with Retry and it returns to the dashboard on its own once back online; exactly one `theme-color` meta that follows the colour mode (`#f9fafb` / `#030712`); a fake `beforeinstallprompt` shows **Install app**, clicking it calls `prompt()` and hides the button. The service-worker tests skip when `data-pwa-sw` is `dev` / `insecure` / `unsupported` / `failed` |
+| `mobile-layout.spec.ts` | 7 | Phone shell (390x844 `hasTouch` / `isMobile`): the sidebar starts collapsed and opens as an overlay (≤334px wide, `<main>` inert, Collapse button focused); Escape closes it and focuses the expand button; tapping the backdrop closes it; opening a pane (System → Logs) closes it; the expand button does not cover the first pane tab; a modal opened from the overlay is painted on top of it (`elementFromPoint`) and Escape closes only the dialog; the empty-pane **Create worker** button opens the New Worker modal |
+| `mobile-modals.spec.ts` | 2 | Phone modal sheets (390x844 `hasTouch` / `isMobile`): New Worker opened from the overlay is a full-width sheet (x≈0, width 390) whose repository field is wider than 200px and whose Cancel is fully in the viewport, Escape closes it; Account settings is a full-width sheet whose exact `Close` button is fully in the viewport and closes it |
+| `polling.spec.ts` | 3 | Client polling: the worker list is polled by one shared timer (1–2 `/api/containers` polls in 12s, ≥5s apart); polling pauses while `document.visibilityState` is `hidden` (no request for 12s) and refreshes within 3s when visible again; a Desktop tab (restored for a fake worker via `agentor-ui-state`, stubbed status) stops polling `desktop/status` while a Logs tab of its group is shown and polls again within 3s of re-activation |
 
 ## Design Decisions
 
@@ -252,6 +258,16 @@ tests/
 - `getByText('Text', { exact: true })` to avoid case-insensitive substring matches
 - `h1:has-text("Agentor")` instead of `text=Agentor` (avoids matching container names)
 - Button counting instead of `button svg`/`button img` (Nuxt UI renders icons variably)
+- Role queries with accessible names for the named chrome: dialogs by heading (`getByRole('dialog', { name: 'New Worker' })`), worker-card icon buttons by tooltip text, pane tabs as `role="tab"`. Use `exact: true` for short names (`Close` would also match `Close <tab label>`, `Close composer`, `Close text view`)
+
+### Service workers
+- The `ui` project sets `serviceWorkers: 'block'` so the production build's PWA worker never intercepts navigations and `page.route` stubs keep working
+- Only `ui/pwa.spec.ts` opts in (`serviceWorkers: 'allow'`) and launches Chromium with `--ignore-certificate-errors` — Chromium refuses to register a worker whose script comes from a self-signed origin even with `ignoreHTTPSErrors`, so without it the worker tests could not run on `https://dash.docker.localhost`. The launch option is worker-scoped, so that file gets its own Playwright worker
+- Its worker-dependent tests skip on `<html data-pwa-sw>` = `dev` / `insecure` / `unsupported` / `failed`
+
+### Phone layouts
+- `mobile-layout`, `mobile-modals` and `terminal-touch` run with `test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })`: the sidebar starts collapsed (open it with `button[title="Expand sidebar"]`), modals are full-screen sheets, the terminal shows its touch toolbar
+- An emulated iPhone / iPad user agent adds an **Add to Home Screen** button to the sidebar footer; dismiss it with `localStorage['agentor-ios-install-hint-dismissed'] = '1'` (via `addInitScript`) when a test counts footer buttons
 
 ### Timeouts
 - Container creation: 90s (workers take time to start Docker containers)
@@ -296,11 +312,11 @@ tests/
 
 ## Updating Test Counts
 
-Run this to get current per-file counts:
+Playwright's own listing is exact (it expands tests declared in loops and ignores conditional `test.skip(...)` calls inside test bodies):
 ```bash
 cd tests
-for f in api/*.spec.ts ui/*.spec.ts; do
-  count=$(grep -cE "^\s*test(\.(skip|only))?\(" "$f" 2>/dev/null || echo 0)
-  echo "$f: $count"
-done
+npx playwright test --list ui | grep -oE "› ui/[a-z0-9-]+\.spec\.ts" | sort | uniq -c
+npx playwright test --list api | grep -oE "› api/[a-z0-9-]+\.spec\.ts" | sort | uniq -c
 ```
+
+Older rows were counted with a grep loop (`grep -cE "^\s*test(\.(skip|only))?\(" <file>`), which over-counts `test.skip(...)` calls and misses looped tests — when you touch a spec, update its row from the listing above.

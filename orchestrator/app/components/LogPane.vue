@@ -52,16 +52,6 @@ function isLevelActive(level: LogLevel): boolean {
   return filters.levels.length === 0 || filters.levels.includes(level);
 }
 
-function formatTimestamp(ts: string): string {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      + '.' + String(d.getMilliseconds()).padStart(3, '0');
-  } catch {
-    return ts;
-  }
-}
-
 function handleClear() {
   if (confirm('Clear all log files? This cannot be undone.')) {
     clearLogs();
@@ -148,8 +138,10 @@ const levels: { id: LogLevel; label: string }[] = [
         <button
           v-for="s in sources"
           :key="s.id"
+          type="button"
           class="log-filter-btn"
           :class="{ 'log-filter-btn-active': isSourceActive(s.id), [`log-source-${s.id}`]: isSourceActive(s.id) }"
+          :aria-pressed="filters.sources.includes(s.id)"
           @click="toggleSource(s.id)"
         >
           {{ s.label }}
@@ -161,8 +153,10 @@ const levels: { id: LogLevel; label: string }[] = [
         <button
           v-for="l in levels"
           :key="l.id"
+          type="button"
           class="log-filter-btn"
           :class="{ 'log-filter-btn-active': isLevelActive(l.id), [`log-level-${l.id}`]: isLevelActive(l.id) }"
+          :aria-pressed="filters.levels.includes(l.id)"
           @click="toggleLevel(l.id)"
         >
           {{ l.label }}
@@ -174,21 +168,30 @@ const levels: { id: LogLevel; label: string }[] = [
         type="text"
         class="log-search-input"
         placeholder="Search logs..."
+        aria-label="Search logs"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
         @input="onSearchInput(searchInput)"
       >
 
       <div class="log-filter-actions">
         <button
+          type="button"
           class="log-filter-btn"
           :class="{ 'log-filter-btn-active': autoScroll }"
           title="Auto-scroll to bottom"
+          aria-label="Auto-scroll to bottom"
+          :aria-pressed="autoScroll"
           @click="autoScroll = !autoScroll"
         >
           <UIcon name="i-lucide-arrow-down-to-line" class="size-3.5" />
         </button>
         <button
+          type="button"
           class="log-filter-btn"
           title="Clear all logs"
+          aria-label="Clear all logs"
           @click="handleClear"
         >
           <UIcon name="i-lucide-trash-2" class="size-3.5" />
@@ -212,12 +215,13 @@ const levels: { id: LogLevel; label: string }[] = [
         No log entries{{ filters.sources.length > 0 || filters.levels.length > 0 || filters.search ? ' matching filters' : '' }}.
       </div>
       <div
-        v-for="(entry, i) in filteredEntries"
-        :key="`${entry.timestamp}-${i}`"
+        v-for="entry in filteredEntries"
+        :key="entry._k"
+        v-memo="[entry._k]"
         class="log-entry"
         :class="`log-entry-${entry.level}`"
       >
-        <span class="log-timestamp">{{ formatTimestamp(entry.timestamp) }}</span>
+        <span class="log-timestamp">{{ entry._t }}</span>
         <span class="log-level-badge" :class="`log-level-${entry.level}`">{{ entry.level.toUpperCase() }}</span>
         <span class="log-source-badge" :class="`log-source-${entry.source}`">{{ entry.source }}</span>
         <span v-if="entry.sourceId && entry.source !== 'orchestrator'" class="log-source-id">{{ entry.sourceName || entry.sourceId }}</span>
@@ -228,21 +232,58 @@ const levels: { id: LogLevel; label: string }[] = [
     <!-- Status bar -->
     <div class="log-status-bar">
       <span class="log-status-dot" :class="connected ? 'log-status-connected' : 'log-status-disconnected'" />
-      <span class="log-status-text">{{ connected ? 'Connected' : 'Disconnected' }}</span>
+      <span class="log-status-text" role="status">{{ connected ? 'Connected' : 'Disconnected' }}</span>
       <span class="log-status-count">{{ filteredEntries.length }} entries</span>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* Badge and row colours per theme (the shared --terminal-* palette has no
+   per-level / per-source tones). The light values keep text at AA contrast. */
 .log-pane {
+  --log-debug-bg: #eaeef2;
+  --log-debug-fg: #57606a;
+  --log-info-bg: #ddf4ff;
+  --log-info-fg: #0969da;
+  --log-warn-bg: #fff8c5;
+  --log-warn-fg: #9a6700;
+  --log-error-bg: #ffebe9;
+  --log-error-fg: #cf222e;
+  --log-orch-bg: #fbefff;
+  --log-orch-fg: #8250df;
+  --log-worker-bg: #dafbe1;
+  --log-worker-fg: #1a7f37;
+  --log-traefik-bg: #fff1e5;
+  --log-traefik-fg: #bc4c00;
+  --log-warn-row: #9a6700;
+
   display: flex;
   flex-direction: column;
   height: 100%;
+  container-type: inline-size;
   background: var(--terminal-bg);
   color: var(--terminal-text);
   font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Menlo', monospace;
   font-size: 12px;
+}
+
+.dark .log-pane {
+  --log-debug-bg: #30363d;
+  --log-debug-fg: #8b949e;
+  --log-info-bg: #0d419d33;
+  --log-info-fg: #58a6ff;
+  --log-warn-bg: #9e6a0033;
+  --log-warn-fg: #d29922;
+  --log-error-bg: #da363433;
+  --log-error-fg: #f85149;
+  --log-orch-bg: #8b5cf633;
+  --log-orch-fg: #a78bfa;
+  --log-worker-bg: #22c55e33;
+  --log-worker-fg: #4ade80;
+  --log-traefik-bg: #f9731633;
+  --log-traefik-fg: #fb923c;
+  --log-warn-row: #d29922;
 }
 
 .log-filter-bar {
@@ -295,6 +336,13 @@ const levels: { id: LogLevel; label: string }[] = [
   border-color: var(--terminal-accent);
 }
 
+@media (pointer: coarse) {
+  .log-filter-btn {
+    min-height: 32px;
+    padding: 4px 10px;
+  }
+}
+
 .log-search-input {
   padding: 3px 8px;
   border-radius: 4px;
@@ -311,6 +359,10 @@ const levels: { id: LogLevel; label: string }[] = [
   border-color: var(--terminal-accent);
 }
 
+.log-search-input:focus-visible {
+  box-shadow: 0 0 0 1px var(--terminal-accent);
+}
+
 .log-search-input::placeholder {
   color: var(--terminal-text-dimmed);
 }
@@ -325,7 +377,16 @@ const levels: { id: LogLevel; label: string }[] = [
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 4px 0;
+}
+
+/* Firefox has no ::-webkit-scrollbar. Chromium ignores those pseudo-elements
+   once scrollbar-color is set, so it only applies where they are missing. */
+@supports not selector(::-webkit-scrollbar) {
+  .log-entries {
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
 }
 
 .log-entries::-webkit-scrollbar {
@@ -348,7 +409,7 @@ const levels: { id: LogLevel; label: string }[] = [
 .log-empty {
   padding: 32px;
   text-align: center;
-  color: var(--terminal-text-dimmed);
+  color: var(--terminal-text-muted);
 }
 
 .log-pagination-indicator {
@@ -358,7 +419,7 @@ const levels: { id: LogLevel; label: string }[] = [
   gap: 6px;
   padding: 8px 12px;
   font-size: 11px;
-  color: var(--terminal-text-dimmed);
+  color: var(--terminal-text-muted);
   border-bottom: 1px dashed var(--terminal-bar-border);
 }
 
@@ -380,7 +441,6 @@ const levels: { id: LogLevel; label: string }[] = [
   gap: 8px;
   padding: 1px 12px;
   line-height: 1.6;
-  white-space: nowrap;
 }
 
 .log-entry:hover {
@@ -388,16 +448,17 @@ const levels: { id: LogLevel; label: string }[] = [
 }
 
 .log-entry-error {
-  color: #f85149;
+  color: var(--terminal-danger);
 }
 
 .log-entry-warn {
-  color: #d29922;
+  color: var(--log-warn-row);
 }
 
 .log-timestamp {
-  color: var(--terminal-text-dimmed);
+  color: var(--terminal-text-muted);
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .log-level-badge {
@@ -408,12 +469,13 @@ const levels: { id: LogLevel; label: string }[] = [
   flex-shrink: 0;
   min-width: 44px;
   text-align: center;
+  white-space: nowrap;
 }
 
-.log-level-debug { background: #30363d; color: #8b949e; }
-.log-level-info { background: #0d419d33; color: #58a6ff; }
-.log-level-warn { background: #9e6a0033; color: #d29922; }
-.log-level-error { background: #da363433; color: #f85149; }
+.log-level-debug { background: var(--log-debug-bg); color: var(--log-debug-fg); }
+.log-level-info { background: var(--log-info-bg); color: var(--log-info-fg); }
+.log-level-warn { background: var(--log-warn-bg); color: var(--log-warn-fg); }
+.log-level-error { background: var(--log-error-bg); color: var(--log-error-fg); }
 
 .log-source-badge {
   padding: 0 4px;
@@ -423,11 +485,12 @@ const levels: { id: LogLevel; label: string }[] = [
   flex-shrink: 0;
   min-width: 60px;
   text-align: center;
+  white-space: nowrap;
 }
 
-.log-source-orchestrator { background: #8b5cf633; color: #a78bfa; }
-.log-source-worker { background: #22c55e33; color: #4ade80; }
-.log-source-traefik { background: #f9731633; color: #fb923c; }
+.log-source-orchestrator { background: var(--log-orch-bg); color: var(--log-orch-fg); }
+.log-source-worker { background: var(--log-worker-bg); color: var(--log-worker-fg); }
+.log-source-traefik { background: var(--log-traefik-bg); color: var(--log-traefik-fg); }
 
 .log-source-id {
   color: var(--terminal-text-muted);
@@ -436,11 +499,36 @@ const levels: { id: LogLevel; label: string }[] = [
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .log-message {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Narrow panes and phones: the message gets its own full-width line. */
+@container (max-width: 640px) {
+  .log-entry {
+    flex-wrap: wrap;
+    column-gap: 6px;
+    row-gap: 0;
+  }
+
+  .log-message {
+    flex-basis: 100%;
+  }
+
+  .log-source-id {
+    max-width: 40%;
+  }
+
+  .log-search-input {
+    flex: 1 1 100%;
+    width: auto;
+  }
 }
 
 .log-status-bar {

@@ -114,7 +114,7 @@ async function handlePasskeySignIn() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4">
+  <main class="min-h-dvh flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
     <div class="w-full max-w-sm">
       <div class="text-center mb-8">
         <AppLogo class="block h-16 mx-auto mb-4" />
@@ -135,6 +135,9 @@ async function handlePasskeySignIn() {
               type="email"
               placeholder="you@example.com"
               :autocomplete="passkeysEnabled ? 'email webauthn' : 'email'"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
               autofocus
               class="w-full"
             />
@@ -150,7 +153,7 @@ async function handlePasskeySignIn() {
             />
           </UFormField>
 
-          <p v-if="error" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+          <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
 
           <UButton type="submit" :loading="loading" block color="primary">Sign in</UButton>
         </form>
@@ -176,5 +179,5 @@ async function handlePasskeySignIn() {
         </template>
       </div>
     </div>
-  </div>
+  </main>
 </template>

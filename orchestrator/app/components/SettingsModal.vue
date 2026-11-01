@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { useDialogLabel } from '~/composables/useDialogLabel';
+
 const open = defineModel<boolean>('open', { default: false });
+
+const { titleId, content: dialogContent } = useDialogLabel();
 
 interface SettingItem {
   key: string;
@@ -14,10 +18,21 @@ interface SettingSection {
   items: SettingItem[];
 }
 
-const { data: sections, status } = useFetch<SettingSection[]>('/api/settings', {
+// The modal is mounted with the dashboard, but /api/settings is admin-only and
+// only needed while the modal is open — fetch on open, never at page load.
+const { data: sections, status, error, execute } = useFetch<SettingSection[]>('/api/settings', {
   default: () => [],
-  watch: [open],
+  immediate: false,
+  watch: false,
 });
+
+watch(open, (isOpen) => {
+  if (isOpen) execute();
+}, { immediate: true });
+
+function close() {
+  open.value = false;
+}
 
 const expandedSections = ref<Set<string>>(new Set());
 
@@ -58,22 +73,24 @@ function statusColor(value: string): BadgeColor {
 </script>
 
 <template>
-  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-3xl' }">
+  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-3xl modal-sheet' }" :content="dialogContent">
     <template #content>
-      <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto modal-sheet-body">
         <!-- Header -->
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">System Settings</h2>
+          <h2 :id="titleId" class="text-lg font-semibold text-gray-900 dark:text-white">System Settings</h2>
           <div class="flex items-center gap-2">
             <button
-              class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              type="button"
+              class="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
               @click="expandAll"
             >
               Expand all
             </button>
-            <span class="text-gray-300 dark:text-gray-600">|</span>
+            <span class="text-gray-300 dark:text-gray-600" aria-hidden="true">|</span>
             <button
-              class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              type="button"
+              class="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
               @click="collapseAll"
             >
               Collapse all
@@ -87,9 +104,13 @@ function statusColor(value: string): BadgeColor {
         </p>
 
         <!-- Loading -->
-        <div v-if="status === 'pending'" class="text-center py-8 text-gray-400">
+        <div v-if="status === 'pending'" class="text-center py-8 text-gray-500 dark:text-gray-400">
           Loading settings...
         </div>
+
+        <p v-else-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">
+          {{ fetchErrorMessage(error, 'Failed to load settings') }}
+        </p>
 
         <!-- Sections -->
         <div v-else class="space-y-2">
@@ -100,12 +121,14 @@ function statusColor(value: string): BadgeColor {
           >
             <!-- Section header -->
             <button
+              type="button"
               class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-left"
+              :aria-expanded="isSectionExpanded(section.id)"
               @click="toggleSection(section.id)"
             >
               <div class="flex items-center gap-2">
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ section.label }}</span>
-                <span class="text-xs text-gray-400 dark:text-gray-500">{{ section.items.length }} items</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ section.items.length }} items</span>
               </div>
               <UIcon name="i-lucide-chevron-down" class="size-4 text-gray-400 transition-transform" :class="isSectionExpanded(section.id) ? '' : '-rotate-90'" />
             </button>
@@ -115,12 +138,12 @@ function statusColor(value: string): BadgeColor {
               <div
                 v-for="item in section.items"
                 :key="item.key"
-                class="px-4 py-2.5 flex items-start gap-4"
+                class="px-4 py-2.5 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4"
               >
                 <!-- Label -->
-                <div class="flex-shrink-0 w-48 min-w-0">
+                <div class="flex-shrink-0 sm:w-48 min-w-0">
                   <span class="text-xs font-medium text-gray-600 dark:text-gray-300 break-words">{{ item.label }}</span>
-                  <div class="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate" :title="item.key">
+                  <div class="text-[10px] text-gray-500 font-mono truncate" :title="item.key">
                     {{ item.key }}
                   </div>
                 </div>
@@ -175,8 +198,8 @@ function statusColor(value: string): BadgeColor {
         </div>
 
         <!-- Footer -->
-        <div class="flex justify-end pt-2">
-          <UButton color="neutral" variant="outline" size="sm" @click="open = false">
+        <div class="flex justify-end pt-2 modal-sheet-footer">
+          <UButton color="neutral" variant="outline" size="sm" @click="close">
             Close
           </UButton>
         </div>

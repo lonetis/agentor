@@ -92,7 +92,7 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4">
+  <main class="min-h-dvh flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
     <div class="w-full max-w-md">
       <div class="text-center mb-8">
         <AppLogo class="block h-16 mx-auto mb-4" />
@@ -111,6 +111,7 @@ async function handleSubmit() {
             :class="mode === 'password'
               ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm font-medium'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'"
+            :aria-pressed="mode === 'password'"
             @click="mode = 'password'"
           >
             Password
@@ -121,6 +122,7 @@ async function handleSubmit() {
             :class="mode === 'passkey'
               ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm font-medium'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'"
+            :aria-pressed="mode === 'passkey'"
             @click="mode = 'passkey'"
           >
             Passkey
@@ -133,7 +135,16 @@ async function handleSubmit() {
           </UFormField>
 
           <UFormField label="Email" required>
-            <UInput v-model="email" type="email" placeholder="admin@example.com" autocomplete="email" class="w-full" />
+            <UInput
+              v-model="email"
+              type="email"
+              placeholder="admin@example.com"
+              autocomplete="email"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              class="w-full"
+            />
           </UFormField>
 
           <template v-if="mode === 'password'">
@@ -150,7 +161,7 @@ async function handleSubmit() {
             Your browser will prompt you to register a passkey on this device. You won't need a password.
           </p>
 
-          <p v-if="error" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+          <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
 
           <UButton type="submit" :loading="loading" block color="primary">
             {{ mode === 'passkey' ? 'Create admin with passkey' : 'Create admin & sign in' }}
@@ -158,5 +169,5 @@ async function handleSubmit() {
         </form>
       </div>
     </div>
-  </div>
+  </main>
 </template>

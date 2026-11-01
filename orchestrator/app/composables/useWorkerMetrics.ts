@@ -1,23 +1,23 @@
 import type { WorkerMetrics, WorkerMetricsStatus } from '~/types';
+import { createSharedPoller } from '~/composables/usePolling';
+import { assignIfChanged } from '~/utils/assign-if-changed';
 
-// Module-level singleton — every ContainerCard reads from one poll.
+// Module-level singleton: every ContainerCard reads from one poll.
 const workers = ref<WorkerMetrics[]>([]);
-let initialized = false;
 
 async function fetchWorkerMetrics() {
   try {
     const status = await $fetch<WorkerMetricsStatus>('/api/worker-metrics');
-    workers.value = status.workers;
-  } catch {
+    assignIfChanged(workers, status.workers);
+  } catch (err) {
     // Keep the last good sample on a transient failure.
+    console.warn('[worker-metrics] Failed to load worker metrics:', err);
   }
 }
 
+const poller = createSharedPoller(fetchWorkerMetrics, 10_000);
+
 export function useWorkerMetrics() {
-  if (!initialized) {
-    initialized = true;
-    fetchWorkerMetrics();
-  }
-  usePolling(() => fetchWorkerMetrics(), 10_000);
-  return { workers, refresh: fetchWorkerMetrics };
+  poller.use();
+  return { workers, refresh: poller.trigger };
 }

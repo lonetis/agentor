@@ -74,7 +74,7 @@ async function respond(accept: boolean) {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4">
+  <main class="min-h-dvh flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
     <div class="w-full max-w-md">
       <div class="text-center mb-8">
         <AppLogo class="block h-16 mx-auto mb-4" />
@@ -114,7 +114,7 @@ async function respond(accept: boolean) {
           Only approve applications you trust. You can revoke access at any time from your account settings.
         </p>
 
-        <p v-if="error" class="mt-4 text-sm text-red-600 dark:text-red-400" data-testid="oauth-consent-error">{{ error }}</p>
+        <p v-if="error" role="alert" class="mt-4 text-sm text-red-600 dark:text-red-400" data-testid="oauth-consent-error">{{ error }}</p>
 
         <div class="mt-6 flex gap-3">
           <UButton
@@ -141,5 +141,5 @@ async function respond(accept: boolean) {
         </div>
       </div>
     </div>
-  </div>
+  </main>
 </template>

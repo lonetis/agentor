@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { AgentUsageInfo } from '~/types';
 
-const { status } = useUsage();
+const { status, error, retry } = useUsage();
 
+// Ticks the relative times ("5m ago"); pauses while the page is hidden and
+// catches up as soon as it is shown again.
 const now = ref(Date.now());
-let nowTimer: ReturnType<typeof setInterval> | null = null;
-onMounted(() => { nowTimer = setInterval(() => { now.value = Date.now(); }, 30_000); });
-onUnmounted(() => { if (nowTimer) clearInterval(nowTimer); });
+usePolling(() => { now.value = Date.now(); }, 30_000);
 
 function barColor(utilization: number): string {
   if (utilization >= 80) return 'bg-red-500';
@@ -59,7 +59,23 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
 
 <template>
   <div>
-    <div v-if="!status" class="text-[10px] text-gray-400 dark:text-gray-600 italic">
+    <div
+      v-if="!status && error"
+      role="alert"
+      class="flex items-center gap-2 text-[10px] text-red-600 dark:text-red-400"
+      :title="error"
+    >
+      <span>Couldn't load usage</span>
+      <button
+        type="button"
+        class="font-medium underline underline-offset-2 hover:no-underline"
+        @click="retry()"
+      >
+        Retry
+      </button>
+    </div>
+
+    <div v-else-if="!status" class="text-[10px] text-gray-400 dark:text-gray-600 italic">
       Loading...
     </div>
 
@@ -70,18 +86,18 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
           <span>{{ agent.displayName }}</span>
           <span
             v-if="fetchedAgo(agent.lastFetchTime)"
-            class="text-[9px] text-gray-400 dark:text-gray-500 font-normal"
+            class="text-[10px] text-gray-400 dark:text-gray-500 font-normal normal-case tracking-normal"
           >
             {{ fetchedAgo(agent.lastFetchTime) }}
           </span>
           <span
             v-if="agent.planType"
-            class="px-1 py-0.5 text-[9px] font-medium rounded bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300"
+            class="px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal rounded bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300"
           >
             {{ agent.planType }}
           </span>
           <span
-            class="ml-auto px-1 py-0.5 text-[9px] font-medium rounded"
+            class="ml-auto px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal rounded"
             :class="authBadge(agent).class"
           >
             {{ authBadge(agent).label }}
@@ -92,9 +108,17 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
         <div v-if="agent.windows.length > 0" class="px-3 py-2.5 space-y-1">
           <div v-for="(w, i) in agent.windows" :key="i" class="flex items-center gap-1.5">
             <span class="text-[10px] text-gray-500 dark:text-gray-400 w-11 text-right flex-shrink-0 truncate" :title="w.label">{{ w.label }}</span>
-            <div class="flex-1 h-1.5 rounded-full overflow-hidden" :class="trackColor(w.utilization)">
+            <div
+              class="flex-1 h-1.5 rounded-full overflow-hidden"
+              :class="trackColor(w.utilization)"
+              role="progressbar"
+              :aria-valuenow="Math.round(w.utilization)"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              :aria-label="`${agent.displayName} ${w.label} usage`"
+            >
               <div
-                class="h-full rounded-full transition-all duration-500"
+                class="h-full rounded-full motion-safe:transition-all duration-500"
                 :class="barColor(w.utilization)"
                 :style="{ width: `${Math.min(100, w.utilization)}%` }"
               />
@@ -104,7 +128,7 @@ function authBadge(agent: AgentUsageInfo): { label: string; class: string } {
             </span>
             <span
               v-if="w.resetsAt"
-              class="text-[9px] text-gray-400 dark:text-gray-500 w-10 text-right flex-shrink-0"
+              class="text-[10px] text-gray-400 dark:text-gray-500 w-10 text-right flex-shrink-0"
               :title="w.resetsAt"
             >
               {{ relativeTime(w.resetsAt, now) }}

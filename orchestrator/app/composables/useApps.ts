@@ -1,26 +1,40 @@
 import type { AppTypeInfo, AppInstanceInfo } from '~/types';
+import { assignIfChanged } from '~/utils/assign-if-changed';
+
+let appTypesRequest: Promise<AppTypeInfo[]> | null = null;
+
+// The app registry is static for a running orchestrator, so one request serves
+// every Apps tab.
+function loadAppTypes(): Promise<AppTypeInfo[]> {
+  appTypesRequest ??= $fetch<AppTypeInfo[]>('/api/app-types').catch((err: unknown) => {
+    appTypesRequest = null; // let the next Apps tab retry
+    throw err;
+  });
+  return appTypesRequest;
+}
 
 export function useApps(containerId: Ref<string | undefined>) {
   const appTypes = ref<AppTypeInfo[]>([]);
   const instances = ref<AppInstanceInfo[]>([]);
 
-  async function fetchAppTypes() {
-    appTypes.value = await $fetch<AppTypeInfo[]>('/api/app-types');
-  }
-
   async function fetchInstances() {
-    if (!containerId.value) {
+    const id = containerId.value;
+    if (!id) {
       instances.value = [];
       return;
     }
     try {
-      instances.value = await $fetch<AppInstanceInfo[]>(
-        `/api/containers/${containerId.value}/apps`
-      );
-    } catch {
+      const list = await $fetch<AppInstanceInfo[]>(`/api/containers/${id}/apps`);
+      if (id === containerId.value) assignIfChanged(instances, list);
+    } catch (err) {
+      if (id !== containerId.value) return;
+      console.warn(`[apps] Failed to list the app instances of ${id}:`, err);
       instances.value = [];
     }
   }
+
+  // Each poll runs several `docker exec`s, so it pauses while the Apps tab is hidden.
+  const poller = usePolling(fetchInstances, 5_000);
 
   async function createInstance(appType: string) {
     if (!containerId.value) return;
@@ -28,7 +42,7 @@ export function useApps(containerId: Ref<string | undefined>) {
       `/api/containers/${containerId.value}/apps/${appType}`,
       { method: 'POST' }
     );
-    await fetchInstances();
+    await poller.trigger();
     return result;
   }
 
@@ -38,20 +52,14 @@ export function useApps(containerId: Ref<string | undefined>) {
       `/api/containers/${containerId.value}/apps/${appType}/${instanceId}`,
       { method: 'DELETE' }
     );
-    await fetchInstances();
+    await poller.trigger();
   }
 
-  const { start, stop } = usePolling(() => {
-    if (containerId.value) fetchInstances();
-  }, 5_000);
+  watch(containerId, () => { void poller.trigger(); }, { immediate: true });
 
-  watch(containerId, () => {
-    stop();
-    fetchInstances();
-    start();
-  }, { immediate: true });
-
-  fetchAppTypes();
+  loadAppTypes()
+    .then((types) => { appTypes.value = types; })
+    .catch((err: unknown) => { console.warn('[apps] Failed to load app types:', err); });
 
   return {
     appTypes,

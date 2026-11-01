@@ -38,6 +38,14 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('text=Create a worker from the sidebar')).toBeVisible();
   });
 
+  test('placeholder "Create worker" button opens the New Worker modal', async ({ page }) => {
+    await goToDashboard(page);
+    const main = page.locator('main');
+    await expect(main.getByText('Create a worker from the sidebar to get started')).toBeVisible();
+    await main.getByRole('button', { name: 'Create worker' }).click();
+    await expect(page.locator('[role="dialog"] h2')).toHaveText('New Worker', { timeout: 10_000 });
+  });
+
   test('shows Ports tab in sidebar', async ({ page }) => {
     await goToDashboard(page);
     await expectSidebarTabExists(page, 'Ports');

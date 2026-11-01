@@ -82,18 +82,24 @@ The orchestrator container has no `agentor.managed` label — it is found via `o
 The log pane opens via the "Logs" button in the System tab's Quick Links section. It renders as a split pane tab (type `'logs'`). Each click opens a new tab instance, so multiple Logs panes can coexist — they share the same underlying in-memory log buffer and WebSocket but each pane has its own viewport and scroll position.
 
 **Features**:
-- Live WebSocket streaming with auto-reconnect (3s)
-- Filter by source (orchestrator, worker, traefik) — toggle buttons
-- Filter by level (debug, info, warn, error) — toggle buttons
-- Text search with 300ms debounce
+- Live WebSocket streaming with auto-reconnect (3s); incoming entries are buffered and rendered once per animation frame
+- The `/ws/logs` socket is open only while at least one Logs pane is mounted (the last one to close disconnects it; entries are kept) and closes after the page has been hidden for 60s — showing the page again refetches history and reconnects
+- Filter by source (orchestrator, worker, traefik) — toggle buttons (`aria-pressed`)
+- Filter by level (debug, info, warn, error) — toggle buttons (`aria-pressed`)
+- Text search with 300ms debounce (`aria-label="Search logs"`)
+- All open Logs panes share one filtered list and one history fetch per filter change
 - Auto-scroll to bottom (disables on manual scroll up, re-enables at bottom)
+- Long messages wrap (`white-space: pre-wrap`, `overflow-wrap: anywhere`) instead of being cut off; at 640px pane width or narrower (container query) each row wraps with the message on its own line
 - Color-coded level badges: debug (gray), info (blue), warn (amber), error (red)
 - Color-coded source badges: orchestrator (purple), worker (green), traefik (orange)
+- Badge and warn-row colours come from `--log-*` variables with light- and dark-theme values; error rows use `--terminal-danger`
 - Source ID display for container logs (display name or container name)
-- Status bar: connection indicator + entry count
+- Status bar: connection indicator (`role="status"`) + entry count
 - Clear all logs button (with confirmation)
-- Client-side buffer: max 5000 entries
+- Client-side soft cap: 50,000 entries (older ones evicted only while auto-scroll is on; scroll up to re-fetch them)
 - History fetch on mount (500 most recent entries via REST API)
+
+UI details (accessibility, layout, lifecycle) are in @docs/ui.md → Log Pane.
 
 ## API Endpoints
 

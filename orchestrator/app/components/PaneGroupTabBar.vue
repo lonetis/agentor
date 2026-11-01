@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import type { PaneLeafNode, DragPayload } from '~/types';
+import type { PaneLeafNode, DragPayload, Tab } from '~/types';
 
 const props = defineProps<{
   group: PaneLeafNode;
   isFocused: boolean;
+  /** This bar sits at the top-left of the panes, where the expand-sidebar button floats. */
+  leadingInset?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +34,63 @@ const typeLabels: Record<string, string> = {
 
 const dropInsertIndex = ref<number | null>(null);
 const tabBarEl = ref<HTMLElement | null>(null);
+
+function tabLabel(tab: Tab): string {
+  return tab.type === 'logs' ? 'Logs' : `${tab.containerName} - ${typeLabels[tab.type] ?? tab.type}`;
+}
+
+const tabLabels = computed(() => props.group.tabs.map(tabLabel));
+
+function tabElements(): HTMLElement[] {
+  return Array.from(tabBarEl.value?.querySelectorAll<HTMLElement>('.tab-item') ?? []);
+}
+
+function focusActiveTab() {
+  nextTick(() => {
+    const index = props.group.tabs.findIndex((t) => t.id === props.group.activeTabId);
+    if (index >= 0) tabElements()[index]?.focus();
+  });
+}
+
+// Keyboard model of the WAI-ARIA tabs pattern (automatic activation).
+function onTabKeydown(e: KeyboardEvent, index: number) {
+  // Ignore keys bubbling up from the close button.
+  if (e.target !== e.currentTarget) return;
+  const tabs = props.group.tabs;
+  const tab = tabs[index];
+  if (!tab) return;
+
+  let next: number | null = null;
+  switch (e.key) {
+    case 'Enter':
+    case ' ':
+      e.preventDefault();
+      emit('activate', tab.id);
+      return;
+    case 'Delete':
+      e.preventDefault();
+      emit('close', tab.id);
+      focusActiveTab();
+      return;
+    case 'ArrowLeft':
+      next = (index - 1 + tabs.length) % tabs.length;
+      break;
+    case 'ArrowRight':
+      next = (index + 1) % tabs.length;
+      break;
+    case 'Home':
+      next = 0;
+      break;
+    case 'End':
+      next = tabs.length - 1;
+      break;
+    default:
+      return;
+  }
+  e.preventDefault();
+  emit('activate', tabs[next]!.id);
+  tabElements()[next]?.focus();
+}
 
 function onMiddleClick(e: MouseEvent, tabId: string) {
   if (e.button === 1) {
@@ -105,33 +164,51 @@ const insertIndicatorLeft = computed(() => {
     ref="tabBarEl"
     class="pane-tab-bar flex items-end border-b overflow-x-auto relative"
     style="background: var(--pane-tab-bg); border-color: var(--pane-tab-border);"
-    @mousedown="emit('focusGroup')"
+    :style="leadingInset ? { paddingLeft: 'var(--pane-leading-inset, 0px)' } : undefined"
+    role="tablist"
+    aria-label="Open panes"
+    @pointerdown="emit('focusGroup')"
     @dragover="onTabBarDragOver"
     @dragleave="onTabBarDragLeave"
     @drop="onTabBarDrop"
   >
     <div
-      v-for="tab in group.tabs"
+      v-for="(tab, index) in group.tabs"
       :key="tab.id"
-      class="tab-item flex items-center gap-1.5 px-3 h-[36px] text-xs cursor-pointer select-none group shrink-0 border-b-2"
+      class="tab-item flex items-center gap-1.5 px-3 pointer-coarse:pr-1 h-[36px] text-xs cursor-pointer select-none group shrink-0 border-b-2"
       :style="{ borderRightColor: 'var(--pane-tab-border)' }"
       :class="tab.id === group.activeTabId
         ? 'pane-tab-active border-r'
         : 'pane-tab-inactive border-r border-b-transparent'"
+      role="tab"
+      :aria-label="tabLabels[index]"
+      aria-keyshortcuts="Delete"
+      :aria-selected="tab.id === group.activeTabId"
+      :tabindex="tab.id === group.activeTabId ? 0 : -1"
+      :title="tabLabels[index]"
       draggable="true"
       @dragstart="onTabDragStart(tab.id, $event)"
       @click="emit('activate', tab.id)"
+      @keydown="onTabKeydown($event, index)"
       @mousedown.middle.prevent
       @auxclick="onMiddleClick($event, tab.id)"
     >
       <UIcon :name="typeIcons[tab.type] ?? 'i-lucide-file'" class="size-3.5 shrink-0" />
-      <span class="truncate max-w-[140px]">{{ tab.type === 'logs' ? 'Logs' : `${tab.containerName} - ${typeLabels[tab.type] ?? tab.type}` }}</span>
+      <span class="truncate max-w-[140px] sm:max-w-[180px]">{{ tabLabels[index] }}</span>
+      <!-- On touch only the active tab's close button shows and takes taps, so a
+           tap on an inactive tab always activates it instead of closing it. -->
       <button
-        class="ml-1 w-4 h-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity shrink-0 pane-tab-close"
-        :class="tab.id === group.activeTabId ? 'opacity-60' : ''"
+        type="button"
+        tabindex="-1"
+        :aria-label="`Close ${tabLabels[index]}`"
+        title="Close tab"
+        class="pane-tab-close ml-1 size-4 flex items-center justify-center rounded transition-opacity shrink-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+        :class="tab.id === group.activeTabId
+          ? 'opacity-60 pointer-coarse:opacity-100 pointer-coarse:size-7'
+          : 'opacity-0 pointer-coarse:opacity-0 pointer-coarse:pointer-events-none'"
         @click.stop="emit('close', tab.id)"
       >
-        <UIcon name="i-lucide-x" class="size-3" />
+        <UIcon name="i-lucide-x" class="size-3 pointer-coarse:size-4" />
       </button>
     </div>
 
