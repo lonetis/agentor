@@ -9,29 +9,30 @@ const activeTabId = computed(() => props.group.activeTabId);
 
 // Track tabs that have been activated at least once.
 // v-if creates the component on first activation (proper dimensions available),
-// v-show keeps it alive after that so switching is instant.
+// PaneTabHost keeps it alive (v-show) after that so switching is instant and
+// sockets survive, while pausing its polling when hidden.
 const mountedTabIds = ref(new Set<string>());
 
 watch(activeTabId, (id) => {
   if (id) mountedTabIds.value.add(id);
 }, { immediate: true });
 
-// Clean up entries for tabs that have been removed from this group
-watch(() => props.group.tabs, (tabs) => {
-  const currentIds = new Set(tabs.map(t => t.id));
+// Clean up entries for tabs that have been removed from this group. Watching
+// the id list (not the tabs deeply) skips unrelated tab changes such as renames.
+watch(() => props.group.tabs.map((t) => t.id).join('|'), () => {
+  const currentIds = new Set(props.group.tabs.map((t) => t.id));
   for (const id of mountedTabIds.value) {
     if (!currentIds.has(id)) mountedTabIds.value.delete(id);
   }
-}, { deep: true });
+});
 </script>
 
 <template>
   <div class="absolute inset-0">
     <template v-for="tab in group.tabs" :key="tab.id">
-      <div
+      <PaneTabHost
         v-if="mountedTabIds.has(tab.id)"
-        v-show="tab.id === activeTabId"
-        class="absolute inset-0"
+        :active="tab.id === activeTabId"
       >
         <TerminalPane
           v-if="tab.type === 'terminal'"
@@ -60,7 +61,7 @@ watch(() => props.group.tabs, (tabs) => {
         <LogPane
           v-else-if="tab.type === 'logs'"
         />
-      </div>
+      </PaneTabHost>
     </template>
     <TerminalPlaceholder v-if="!group.tabs.length" />
   </div>

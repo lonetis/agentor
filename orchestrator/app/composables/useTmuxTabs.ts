@@ -1,16 +1,44 @@
 import type { TmuxWindow } from '~/types';
+import { PANE_ACTIVE_KEY, createPoller, isPageActive } from '~/composables/usePolling';
 
 const POLL_INTERVAL = 3000;
 
+function signatureOf(list: TmuxWindow[]): string {
+  return list.map((w) => `${w.index}:${w.name}:${w.active}`).join('|');
+}
+
 export function useTmuxTabs(containerId: Ref<string>) {
+  const paneActive = inject(PANE_ACTIVE_KEY, null);
   const { getTmuxActiveWindow, setTmuxActiveWindow } = useUiState();
   const windows = ref<TmuxWindow[]>([]);
   const activeWindowIndex = ref<number | null>(null);
 
   const defaultWindowIndex = 0;
 
-  let pollTimer: ReturnType<typeof setTimeout> | null = null;
   let fetchGeneration = 0;
+  // Signature of `windows`: an unchanged poll result is not reassigned, so
+  // watchers of the list only run on real changes.
+  let windowsSignature = '';
+  // The active window this instance persisted last, so polling only writes the
+  // UI state when the selection actually changed.
+  let persistedIndex: number | null = null;
+  let fetchFailing = false;
+
+  const poller = createPoller(
+    fetchWindows,
+    POLL_INTERVAL,
+    () => (paneActive?.value ?? true) && isPageActive(),
+  );
+
+  function setWindows(list: TmuxWindow[]) {
+    windows.value = list;
+    windowsSignature = signatureOf(list);
+  }
+
+  function persistActiveWindow(index: number) {
+    persistedIndex = index;
+    setTmuxActiveWindow(containerId.value, index);
+  }
 
   async function fetchWindows() {
     const currentGeneration = ++fetchGeneration;
@@ -19,8 +47,9 @@ export function useTmuxTabs(containerId: Ref<string>) {
 
       // Discard stale response if containerId changed during fetch
       if (currentGeneration !== fetchGeneration) return;
+      fetchFailing = false;
 
-      windows.value = data;
+      if (signatureOf(data) !== windowsSignature) setWindows(data);
 
       // If active window was removed externally, pick first available
       if (activeWindowIndex.value != null && !data.some((w) => w.index === activeWindowIndex.value)) {
@@ -33,38 +62,32 @@ export function useTmuxTabs(containerId: Ref<string>) {
       }
 
       // Persist for reopen
-      if (activeWindowIndex.value != null) {
-        setTmuxActiveWindow(containerId.value, activeWindowIndex.value);
+      if (activeWindowIndex.value != null && activeWindowIndex.value !== persistedIndex) {
+        persistActiveWindow(activeWindowIndex.value);
       }
-    } catch {
-      // Container may be stopped or removed
+    } catch (err) {
+      // The container may be stopped or removed: log once per failure streak.
+      if (!fetchFailing) console.warn(`[tmux] Failed to list the windows of ${containerId.value}:`, err);
+      fetchFailing = true;
     }
   }
 
   async function init() {
-    await fetchWindows();
-
-    // Restore last active window if it still exists
+    // Select the window saved for this container before the first fetch, which
+    // keeps it when it still exists (and falls back to the first window).
     const saved = getTmuxActiveWindow(containerId.value);
-    if (saved != null && windows.value.some((w) => w.index === saved)) {
-      activeWindowIndex.value = saved;
-    } else if (windows.value.length > 0 && activeWindowIndex.value == null) {
-      activeWindowIndex.value = windows.value[0]!.index;
-    }
+    if (saved != null) activeWindowIndex.value = saved;
 
+    await poller.trigger();
     startPolling();
   }
 
   function startPolling() {
-    stopPolling();
-    pollTimer = setInterval(() => fetchWindows(), POLL_INTERVAL);
+    poller.start();
   }
 
   function stopPolling() {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
+    poller.stop();
   }
 
   async function createWindow(name?: string): Promise<TmuxWindow | null> {
@@ -75,9 +98,10 @@ export function useTmuxTabs(containerId: Ref<string>) {
       );
       await fetchWindows();
       activeWindowIndex.value = window.index;
-      setTmuxActiveWindow(containerId.value, window.index);
+      persistActiveWindow(window.index);
       return window;
-    } catch {
+    } catch (err) {
+      console.warn(`[tmux] Failed to create a window in ${containerId.value}:`, err);
       return null;
     }
   }
@@ -92,9 +116,11 @@ export function useTmuxTabs(containerId: Ref<string>) {
       // Update windows array
       const win = windows.value.find((w) => w.index === windowIndex);
       if (win) win.name = newName;
+      windowsSignature = signatureOf(windows.value);
 
       return true;
-    } catch {
+    } catch (err) {
+      console.warn(`[tmux] Failed to rename window ${windowIndex} of ${containerId.value}:`, err);
       return false;
     }
   }
@@ -104,37 +130,40 @@ export function useTmuxTabs(containerId: Ref<string>) {
       await $fetch(`/api/containers/${containerId.value}/panes/${windowIndex}`, {
         method: 'DELETE',
       });
-    } catch {
-      // Window may already be gone
+    } catch (err) {
+      // Window may already be gone; the next poll shows the real list.
+      console.warn(`[tmux] Failed to close window ${windowIndex} of ${containerId.value}:`, err);
     }
-    windows.value = windows.value.filter((w) => w.index !== windowIndex);
+    setWindows(windows.value.filter((w) => w.index !== windowIndex));
     if (activeWindowIndex.value === windowIndex) {
       activeWindowIndex.value = windows.value.length > 0 ? windows.value[0]!.index : null;
     }
     if (activeWindowIndex.value != null) {
-      setTmuxActiveWindow(containerId.value, activeWindowIndex.value);
+      persistActiveWindow(activeWindowIndex.value);
     }
   }
 
   function activateWindow(windowIndex: number) {
     activeWindowIndex.value = windowIndex;
-    setTmuxActiveWindow(containerId.value, windowIndex);
+    persistActiveWindow(windowIndex);
   }
 
   function destroy() {
-    stopPolling();
+    poller.dispose();
   }
 
   // Re-init when containerId changes
   watch(containerId, () => {
     stopPolling();
-    windows.value = [];
+    setWindows([]);
     activeWindowIndex.value = null;
-    init();
+    persistedIndex = null;
+    fetchFailing = false;
+    void init();
   });
 
   // Start on creation
-  init();
+  void init();
 
   return {
     windows,

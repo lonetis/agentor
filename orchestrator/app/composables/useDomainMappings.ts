@@ -1,4 +1,6 @@
 import type { DomainMapping, DomainMapperStatus } from '~/types';
+import { createSharedPoller } from '~/composables/usePolling';
+import { assignIfChanged } from '~/utils/assign-if-changed';
 
 interface DomainMappingInput {
   subdomain: string;
@@ -11,35 +13,40 @@ interface DomainMappingInput {
   basicAuth?: { username: string; password: string };
 }
 
-// Module-level singleton — the sidebar and the Domain Mappings panel share one
-// list/status and a single poller (matching useWorkerMetrics/useUsage), so
-// opening the panel does not start a second 10s poll or a divergent copy.
+// Module-level singleton: the sidebar and the Domain Mappings panel share one
+// list, one mapper status and a single poll.
 const mappings = ref<DomainMapping[]>([]);
 const status = ref<DomainMapperStatus>({ enabled: false, baseDomains: [], baseDomainConfigs: [], totalMappings: 0 });
-let initialized = false;
+let statusRequested = false;
 
 async function fetchMappings() {
   try {
-    mappings.value = await $fetch<DomainMapping[]>('/api/domain-mappings');
-  } catch {
-    mappings.value = [];
+    assignIfChanged(mappings, await $fetch<DomainMapping[]>('/api/domain-mappings'));
+  } catch (err) {
+    // Keep the last list: a transient failure should not empty the panel.
+    console.warn('[domain-mappings] Failed to load domain mappings:', err);
   }
 }
 
+// The mapper status reflects orchestrator configuration, so it is fetched once
+// (again on the next use if that failed) instead of polled.
 async function fetchStatus() {
   try {
-    status.value = await $fetch<DomainMapperStatus>('/api/domain-mapper/status');
-  } catch {
-    status.value = { enabled: false, baseDomains: [], baseDomainConfigs: [], totalMappings: 0 };
+    assignIfChanged(status, await $fetch<DomainMapperStatus>('/api/domain-mapper/status'));
+  } catch (err) {
+    statusRequested = false;
+    console.warn('[domain-mappings] Failed to load the domain mapper status:', err);
   }
 }
+
+const poller = createSharedPoller(fetchMappings, 10_000);
 
 async function createMapping(opts: DomainMappingInput) {
   const result = await $fetch<DomainMapping>('/api/domain-mappings', {
     method: 'POST',
     body: opts,
   });
-  await fetchMappings();
+  await poller.trigger();
   return result;
 }
 
@@ -48,22 +55,21 @@ async function createMappings(items: DomainMappingInput[]) {
     method: 'POST',
     body: { items },
   });
-  await fetchMappings();
+  await poller.trigger();
   return result;
 }
 
 async function removeMapping(id: string) {
   await $fetch(`/api/domain-mappings/${id}`, { method: 'DELETE' });
-  await fetchMappings();
+  await poller.trigger();
 }
 
 export function useDomainMappings() {
-  if (!initialized) {
-    initialized = true;
-    fetchMappings();
-    fetchStatus();
+  if (!statusRequested) {
+    statusRequested = true;
+    void fetchStatus();
   }
-  usePolling(fetchMappings, 10_000);
+  poller.use();
 
   return {
     mappings,
