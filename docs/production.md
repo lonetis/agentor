@@ -7,12 +7,12 @@ Automatic image update detection and per-image or bulk updates for production de
 **Architecture:**
 - `UpdateChecker` (`update-checker.ts`): Registry-agnostic digest checker. Parses image references (`parseImageRef`) to handle GHCR (`ghcr.io/org/repo:tag`), Docker Hub user images (`user/repo:tag`), and official images (`traefik:v3` → `library/traefik`). Token acquisition (`getRegistryToken`) handles GHCR (Basic auth + Bearer) and Docker Hub (anonymous token) separately; any other registry is asked for its `WWW-Authenticate` challenge and authenticated against the realm it names (Bearer token) or with Basic auth. Polls every 5 minutes.
 - `UpdateNotification.vue`: Sidebar component showing per-image status with individual "Update" buttons and a bulk "Update All" button
-- `useUpdates.ts`: composable for update status polling (60s), `applyUpdates()` for bulk, `applyImage(key)` for per-image updates
+- `useUpdates.ts`: composable for update status polling (60s), `applyUpdates()` for bulk, `applyImage(key)` for per-image updates, `pollHealth()` for the orchestrator restart (see step 3 below)
 
 **Update flow:**
 1. Worker: pull new image → workers use new image on next create (existing workers keep the previous image until rebuilt)
 2. Traefik: pull new image → recreate Traefik container (via `TraefikManager.forceRecreate()`) → TLS certs persist on named volume
-3. Orchestrator: pull new image → create replacement container with temp name (`-next`) → spawn a one-shot swapper container (`-swapper`, `AutoRemove: true`) that uses the Docker socket to stop→remove→rename→start the replacement → UI polls `/api/health` until server returns. The swapper is needed because stopping the orchestrator's own container kills the Node.js process, so the remaining steps (remove, create, start) can't run in-process.
+3. Orchestrator: pull new image → create replacement container with temp name (`-next`) → spawn a one-shot swapper container (`-swapper`, `AutoRemove: true`) that uses the Docker socket to stop→remove→rename→start the replacement → UI keeps the "Reconnecting..." overlay up and polls `/api/health` every 2s until the new server answers (a healthy probe only counts after an observed outage, or after ~30s since the swap must then have happened between two probes; it gives up after 5 minutes), then reloads the page to load the new client build — so installed PWAs need no manual reload. The swapper is needed because stopping the orchestrator's own container kills the Node.js process, so the remaining steps (remove, create, start) can't run in-process.
 
 **Private registries:** `registry-auth.ts` resolves credentials per registry host — first from `REGISTRY_CREDENTIALS` (`host=username:password`, comma-separated; `docker.io` for Docker Hub), then from a docker `config.json` (`$DOCKER_CONFIG/config.json` or `~/.docker/config.json`, inline `auths` only, re-read on every lookup). They are passed to every pull the orchestrator makes (`authconfig`) and to the digest checks. Without either, pulls and checks stay anonymous. `ORCHESTRATOR_IMAGE` may be fully qualified (its first path segment is a registry host), in which case `WORKER_IMAGE_PREFIX` is not prepended — so a self-built orchestrator in its own registry is checked and updated in place instead of being swapped for the prefixed upstream image.
 
@@ -70,8 +70,8 @@ Polls agent usage APIs to show each user's remaining capacity in the sidebar. Wo
 **Architecture:**
 - `UsageChecker` (`usage-checker.ts`): Singleton + 5min polling. State is per-user — `Map<userId, Map<agentId, AgentState>>` — persisted to `usage.json` in the data directory. Each user's agents track their own fetch time and backoff independently. On restart, serves persisted results immediately; only re-fetches agents whose data is stale. Reads each user's credential files via `UserCredentialManager`, detects auth type per agent (OAuth > API key > none) per-user, fetches usage in parallel.
 - `/api/usage` and `/api/usage/refresh` are auth-gated. Each call returns only `requireAuth(event).user.id`'s state — users never see one another's usage.
-- `UsagePanel.vue`: Sidebar component showing per-agent auth badge + progress bars per usage window + "Fetched Xm ago" relative timestamp (for the signed-in user only)
-- `useUsage.ts`: composable for 5min polling of `/api/usage`
+- `UsagePanel.vue`: Sidebar component showing per-agent auth badge + progress bars per usage window (`role="progressbar"`, `aria-label="<Agent> <Window> usage"`) + "Fetched Xm ago" relative timestamp (for the signed-in user only; the 30s clock pauses while the page is hidden). If the first load fails it shows a `role="alert"` row "Couldn't load usage" (error text as title) with a **Retry** button instead of "Loading..." forever
+- `useUsage.ts`: composable for 5min polling of `/api/usage` (one shared poller, paused while the page is hidden / offline); exposes `error` and `retry()`, and a failed poll after a successful one keeps the last data
 
 **Supported agents:**
 

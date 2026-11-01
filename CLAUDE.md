@@ -1,6 +1,6 @@
 # Agent Orchestrator (Agentor)
 
-Docker orchestrator that spawns isolated AI coding agent workers, each in its own container with terminal access via a web dashboard. All agent CLIs (Claude, Codex, Antigravity) are pre-installed in a single unified worker image. Includes a modular app system (Chromium, SOCKS5 proxy, VS Code Tunnel, SSH server), a unified Traefik reverse proxy for both TCP port mappings and HTTP/HTTPS/TCP domain routing, GitHub / GitLab integration (gitlab.com + any number of self-managed GitLab servers via `GITLAB_INSTANCES`; one provider-agnostic repo/branch API and picker, per-user tokens, `gh` / `glab` signed in inside workers, per-environment `enabledGitProviderIds` selection that keeps the other providers' credentials out of workers, e.g. all of them for untrusted code — see @docs/worker.md → Git Provider System and @docs/environments.md → Git Provider Access), a VS Code editor (code-server), live per-worker resource monitoring (CPU/RAM/disk/network via the Docker API), worker export/import (portable `.tar` bundles incl. an optional `docker export` of the filesystem), an OAuth-protected **MCP server** (`/mcp`) whose tools are generated from the REST API's OpenAPI spec so an AI agent can control the whole platform, and an automatic update mechanism for production deployments.
+Docker orchestrator that spawns isolated AI coding agent workers, each in its own container with terminal access via a web dashboard. All agent CLIs (Claude, Codex, Antigravity) are pre-installed in a single unified worker image. Includes a modular app system (Chromium, SOCKS5 proxy, VS Code Tunnel, SSH server), a unified Traefik reverse proxy for both TCP port mappings and HTTP/HTTPS/TCP domain routing, GitHub / GitLab integration (gitlab.com + any number of self-managed GitLab servers via `GITLAB_INSTANCES`; one provider-agnostic repo/branch API and picker, per-user tokens, `gh` / `glab` signed in inside workers, per-environment `enabledGitProviderIds` selection that keeps the other providers' credentials out of workers, e.g. all of them for untrusted code — see @docs/worker.md → Git Provider System and @docs/environments.md → Git Provider Access), a VS Code editor (code-server), live per-worker resource monitoring (CPU/RAM/disk/network via the Docker API), worker export/import (portable `.tar` bundles incl. an optional `docker export` of the filesystem), an OAuth-protected **MCP server** (`/mcp`) whose tools are generated from the REST API's OpenAPI spec so an AI agent can control the whole platform, and an automatic update mechanism for production deployments. The dashboard is an installable **PWA** (manifest + maskable icons, a navigation-only service worker with an offline / server-restarting page, install button) and works on phones and tablets (overlay sidebar, full-screen modal sheets, touch terminal, pointer + keyboard resizing) — see @docs/ui.md → Progressive Web App and Mobile & Touch Layout.
 
 ## Architecture
 
@@ -10,6 +10,7 @@ Browser (Vue 3/Nuxt UI) <--HTTP/JSON--> Orchestrator (Nuxt 3/Nitro) <--dockerode
 Browser (xterm.js)       <--WebSocket--> Nitro (crossws)             <--docker stream--> Worker (tmux)
 Browser (noVNC iframe)   <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (websockify <--> x11vnc <--> Xvfb)
 Browser (code-server)    <--HTTP/WS----> Nitro (proxy)               <--HTTP/WS-------> Worker (code-server on port 8443)
+Browser (service worker) --navigations-> Nitro (SPA)  — offline.html on network error / 502-504; API/WS/proxy traffic bypasses it
 Local VS Code            <--tunnel-----> Microsoft Relay              <--tunnel--------> Worker (vscode app → code tunnel)
 Local ssh client         <--TCP--------> Traefik (ext :22xxx)         <--TCP-----------> Worker (ssh app → sshd :22)
 Orchestrator             <--docker exec-> apps/*/manage.sh (start/stop/list app instances in worker)
@@ -30,7 +31,7 @@ Three managed containers:
 | Architecture | @docs/architecture.md | Storage modes (volume vs directory), worker state & persistence, WorkerStore, Docker labels |
 | Worker System | @docs/worker.md | Unified worker image, init scripts, agents, per-user git identity, DinD, host bind mounts, startup sequence |
 | Networking | @docs/networking.md | Unified Traefik proxy (port mappings + domain mappings), TLS challenges, self-signed certs, config drift detection |
-| UI | @docs/ui.md | Split pane layout, tmux tab integration, theme system, VS Code editor, UI state persistence |
+| UI | @docs/ui.md | Split pane layout, tmux tab integration, terminal input & touch, sidebar/worker card, theme system, VS Code editor, UI state persistence, polling, PWA (service worker, install), mobile & touch layout, modals & forms |
 | Environments | @docs/environments.md | Environment system, network firewall, git provider access, capabilities, instructions, worker API exposure |
 | Logging | @docs/logging.md | Centralized logging, log collection, rotation, WebSocket streaming, log pane UI |
 | Production | @docs/production.md | Update mechanism, daily CI image dependency refresh, agent usage monitoring |
@@ -46,8 +47,9 @@ Three managed containers:
 ## Tech Stack
 
 - Framework: Nuxt 3 (SPA mode), Nitro server, Vue 3
-- UI: Nuxt UI v3, Tailwind CSS v4
-- Terminal: xterm.js 5 (@xterm/xterm + @xterm/addon-fit)
+- UI: Nuxt UI v3, Tailwind CSS v4, @nuxt/icon with locally served lucide icons (@iconify-json/lucide; no runtime calls to api.iconify.design)
+- PWA: hand-written web manifest + service worker (`public/sw.js`, offline fallback for navigations only) — no PWA module
+- Terminal: xterm.js 5 (@xterm/xterm + @xterm/addon-fit + @xterm/addon-web-links), loaded lazily with the first terminal pane
 - Auth: better-auth 1.7 + admin plugin (user management, RBAC) + @better-auth/passkey (WebAuthn passwordless) + jwt + @better-auth/mcp (OAuth 2.1 provider for MCP clients) + @better-auth/cimd (client metadata documents), better-sqlite3 (SQLite database for users/sessions/passkeys/OAuth clients)
 - MCP: @modelcontextprotocol/server 2 (stateless Streamable HTTP, 2025 + 2026-07-28 protocol eras), mcp-from-openapi (OpenAPI → MCP tool definitions + request building)
 - Backend: dockerode 4, nanoid 5, crossws (WebSocket, bundled with Nitro), ws (WebSocket client for noVNC proxy), tar-stream (archive packing)
@@ -126,6 +128,12 @@ See @docs/testing.md for full details (writing tests, conventions, helpers, debu
 - **`useEventListener` is VueUse**, not a Nuxt built-in — use manual `addEventListener`/`removeEventListener` in lifecycle hooks
 - **Reka UI tooltip hover in tests** — `locator.hover()` does not reliably trigger Reka UI tooltips; use `page.mouse.move(x, y)` with exact bounding box coordinates instead. Also `getByRole('tooltip', { name })` fails to match accessible names — check `[role="tooltip"]` text content directly
 - **Nuxt 4 compatibility mode** (`future.compatibilityVersion: 4`) makes `app/` the source root — pages, components, composables, and assets go under `app/`, not the project root
+- **`app.config.ts` lives in `orchestrator/app/`** — with `compatibilityVersion: 4` a root-level `app.config.ts` is silently ignored (Nuxt UI then falls back to green primary / slate neutral)
+- **The service worker (`public/sw.js`) only handles top-level navigations to SPA pages** — any new server path prefix that must reach the server directly (proxy, OAuth, downloads) belongs in its `BYPASS` list; bump `CACHE` whenever `offline.html` changes. It only registers in production builds over HTTPS / localhost (`<html data-pwa-sw>` says why not). See @docs/ui.md → Progressive Web App
+- **`@nuxt/icon` runs with `provider: 'server'` + a local lucide bundle** — use `i-lucide-*` icons (add always-visible ones to `icon.clientBundle.icons` in `nuxt.config.ts`); never enable `clientBundle.scan` (its regex reads Tailwind classes such as `ps-4` as icon collections and breaks the production build)
+- **A `UModal` that renders its own heading is unnamed** — Nuxt UI only adds a `DialogTitle` for the `title` prop; use `useDialogLabel()` (`<UModal :content="content">` + `<h2 :id="titleId">`) and the `modal-sheet` / `modal-sheet-body` / `modal-sheet-footer` classes for phone sheets
+- **Dark-mode overrides in scoped `<style>`: write `.dark .x`, not `:global(.dark) .x`** — Vue compiles the latter to a bare `.dark {}` rule (the `.x` part is dropped), so the override never applies
+- **The Playwright `ui` project blocks service workers** (`serviceWorkers: 'block'`) so `page.route` stubs keep working; only `ui/pwa.spec.ts` opts in (with `--ignore-certificate-errors`, since Chromium refuses to register a worker from a self-signed origin)
 - **Nitro `[...path]` catch-all doesn't match empty path** — `/editor/{id}/` needs a separate `index.ts` handler; the catch-all only matches when there's at least one path segment
 - **tmux `respawn-pane -k` without explicit command** re-runs the original pane start command — always pass `bash` (or the desired command) as the last argument
 - **h3 combined HTTP+WS handlers** — use `defineEventHandler({ handler, websocket })` when both HTTP and WebSocket must be served on the same route (e.g., code-server proxy)

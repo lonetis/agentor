@@ -3,7 +3,7 @@
 ## Overview
 
 - **API tests**: headless, no browser needed, fast execution
-- **UI tests**: Desktop Chrome (1920x1080), real browser interactions
+- **UI tests**: Desktop Chrome (1920x1080), real browser interactions; phone specs (`mobile-layout`, `mobile-modals`, `terminal-touch`) switch to a 390x844 `hasTouch` / `isMobile` context with `test.use`
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
 - Parallel execution with up to 8 workers (`TEST_WORKERS` env var overrides; CI forces 1)
 - All tests independent and self-cleaning
@@ -205,6 +205,12 @@ Use `test.describe.serial` when tests share state (e.g., stop then restart a con
 - `getByText('Text', { exact: true })` to avoid case-insensitive substring matches
 - `h1:has-text("Agentor")` instead of `text=Agentor` (avoids matching container names)
 - Button counting instead of `button svg`/`button img` (Nuxt UI renders icons variably)
+- Role queries with accessible names work for the dashboard chrome: dialogs are named by their heading (`getByRole('dialog', { name: 'New Worker' })`), worker-card icon buttons by their tooltip text, pane tabs are `role="tab"` in the `Open panes` tablist. Use `exact: true` for short names — e.g. `Close` also matches `Close <tab label>`, `Close composer` and `Close text view`
+
+### Service Workers & Mobile Emulation
+- The `ui` project sets `serviceWorkers: 'block'`, so a production build's PWA worker never intercepts navigations and `page.route` stubs keep working. Only `ui/pwa.spec.ts` opts in (`serviceWorkers: 'allow'` + Chromium `--ignore-certificate-errors`, because Chromium refuses to register a worker whose script comes from a self-signed origin even with `ignoreHTTPSErrors`; the launch option makes that file use its own Playwright worker)
+- Phone specs use `test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })`. In that context the sidebar starts collapsed (open it via `button[title="Expand sidebar"]`) and modals are full-screen sheets
+- An emulated iPhone / iPad user agent (or a macOS host with `maxTouchPoints > 1`) renders an extra footer button **Add to Home Screen** between Account settings and Sign out; set `localStorage['agentor-ios-install-hint-dismissed'] = '1'` via `addInitScript` if a test counts footer buttons
 
 ### Timeouts
 - Container creation: 90s (workers take time to start Docker containers)
@@ -222,6 +228,7 @@ Use `test.describe.serial` when tests share state (e.g., stop then restart a con
 - **Traefik integration tests**: Skipped when `BASE_DOMAINS` is not configured
 - **Agent prompting tests**: Skipped when the admin user has no agent credentials configured. The helper checks `/api/account/env-vars` for the admin's API keys and `/api/account/agent-credentials` for OAuth file status; if none are set the test is skipped.
 - **Domain mappings UI**: Some tests skipped when `BASE_DOMAINS` is not set
+- **PWA service-worker tests** (`ui/pwa.spec.ts` — registration, navigations through the worker, offline fallback): skipped when `<html data-pwa-sw>` is `dev`, `insecure`, `unsupported` or `failed` (dev server, plain-http LAN origin, failed registration). They run against the dockerized stack (production build on `https://dash.docker.localhost`)
 - **GitLab specs** (`api/gitlab*.spec.ts`, `ui/gitlab-repo-input.spec.ts`): skipped unless the `gitlab-mock` provider exists — the dockerized stack provides it (`GITLAB_INSTANCES=mock=http://gitlab-mock:8080` + the `gitlab-mock` service running `tests/docker/gitlab-mock/server.mjs`, a GitLab API v4 + git smart HTTP stand-in)
 
 ### Terminal WebSocket Tests
@@ -282,13 +289,11 @@ MCP test client. `connectMcp(session)` connects an MCP SDK client through the re
 - **Changing test patterns**: Update the Design Decisions section
 
 ### Test Count Accuracy
-Run this to get current counts per file:
+Count with Playwright's listing (exact: it expands looped tests and ignores conditional `test.skip(...)` calls inside test bodies, which a grep over `test(` would count):
 ```bash
 cd tests
-for f in api/*.spec.ts ui/*.spec.ts; do
-  count=$(grep -cE "^\s*test(\.(skip|only))?\(" "$f" 2>/dev/null || echo 0)
-  echo "$f: $count"
-done
+npx playwright test --list ui | grep -oE "› ui/[a-z0-9-]+\.spec\.ts" | sort | uniq -c
+npx playwright test --list api | grep -oE "› api/[a-z0-9-]+\.spec\.ts" | sort | uniq -c
 ```
 
 Update the overview totals (~N tests), per-category totals, and per-file counts in the tables.
