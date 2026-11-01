@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AppInstanceInfo, AppTypeInfo } from '~/types';
+import { copyText } from '~/utils/clipboard';
 
 // `appType` / `containerName` are part of the shared app-row prop contract
 // (AppsPane passes them uniformly via `<component :is>`); this specialised row
@@ -32,28 +33,36 @@ const statusLabel = computed(() => {
   return 'Stopped';
 });
 
+const toast = useToast();
+const copied = ref(false);
+let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+onBeforeUnmount(() => clearTimeout(copiedTimer));
+
 async function copyCode() {
   if (!props.instance.authCode) return;
-  try {
-    await navigator.clipboard.writeText(props.instance.authCode);
-  } catch {
-    // no-op — clipboard may be blocked
+  if (!(await copyText(props.instance.authCode))) {
+    toast.add({ title: 'Copy failed — select the text and copy it manually', color: 'error', icon: 'i-lucide-alert-circle' });
+    return;
   }
+  copied.value = true;
+  clearTimeout(copiedTimer);
+  copiedTimer = setTimeout(() => { copied.value = false; }, 1500);
 }
 </script>
 
 <template>
-  <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-800 last:border-0">
+  <div class="px-3 py-2 border-b border-(--terminal-bar-border) last:border-0">
     <div class="flex items-center justify-between gap-3">
       <div class="flex items-center gap-2 min-w-0">
-        <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="dotColor" />
+        <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="dotColor" role="img" :aria-label="instance.status" />
         <span class="text-gray-700 dark:text-gray-300 text-xs font-mono truncate">{{ instance.id }}</span>
-        <span class="text-gray-400 dark:text-gray-500 text-xs flex-shrink-0">{{ statusLabel }}</span>
+        <span class="text-gray-500 dark:text-gray-400 text-xs min-w-0 truncate" :title="statusLabel">{{ statusLabel }}</span>
       </div>
       <UButton
         size="xs"
         color="neutral"
         variant="ghost"
+        class="shrink-0 pointer-coarse:p-2"
         @click="emit('stop', instance.appType, instance.id)"
       >
         Stop
@@ -85,8 +94,9 @@ async function copyCode() {
           size="xs"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-copy"
+          :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
           :aria-label="`Copy code ${instance.authCode}`"
+          class="pointer-coarse:p-2"
           @click="copyCode"
         />
       </div>

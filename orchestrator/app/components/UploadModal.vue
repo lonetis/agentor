@@ -6,6 +6,8 @@ const props = defineProps<{
 
 const open = defineModel<boolean>('open', { default: false });
 
+const { titleId, content: dialogContent } = useDialogLabel();
+
 const files = ref<File[]>([]);
 const isUploading = ref(false);
 const uploadError = ref('');
@@ -16,6 +18,10 @@ watch(open, (isOpen) => {
     uploadError.value = '';
   }
 });
+
+function close() {
+  open.value = false;
+}
 
 async function upload() {
   if (files.value.length === 0) return;
@@ -42,21 +48,21 @@ async function upload() {
 </script>
 
 <template>
-  <UModal v-model:open="open">
+  <UModal v-model:open="open" :ui="{ content: 'modal-sheet' }" :content="dialogContent">
     <template #content>
-      <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+      <div class="modal-sheet-body p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <h2 :id="titleId" class="text-lg font-semibold text-gray-900 dark:text-white">
           Upload to Workspace
         </h2>
-        <p class="text-xs text-gray-400 dark:text-gray-500">
+        <p class="text-xs text-gray-500 dark:text-gray-400">
           Files will be uploaded to <code class="text-gray-500 dark:text-gray-400">/workspace</code> in {{ containerName }}
         </p>
 
         <FileDropZone v-model="files" />
 
-        <p v-if="uploadError" class="text-red-500 dark:text-red-400 text-xs">{{ uploadError }}</p>
+        <p v-if="uploadError" role="alert" class="text-red-500 dark:text-red-400 text-xs">{{ uploadError }}</p>
 
-        <div class="flex gap-3 pt-2">
+        <div class="modal-sheet-footer flex gap-3 pt-2">
           <UButton
             class="flex-1"
             :loading="isUploading"
@@ -68,7 +74,7 @@ async function upload() {
           <UButton
             color="neutral"
             variant="outline"
-            @click="open = false"
+            @click="close"
           >
             Cancel
           </UButton>

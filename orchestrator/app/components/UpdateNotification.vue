@@ -52,6 +52,7 @@ const anyApplyingImage = computed(() => applyingImages.value.size > 0);
     <!-- Restarting overlay -->
     <div
       v-if="isRestarting"
+      role="status"
       class="rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 p-3 text-center"
     >
       <div class="flex items-center justify-center gap-2 text-blue-700 dark:text-blue-300 text-sm font-medium">
@@ -68,7 +69,7 @@ const anyApplyingImage = computed(() => applyingImages.value.size > 0);
           <span class="font-medium text-gray-600 dark:text-gray-400">{{ imageName(info.name) }}</span>
           <div class="flex items-center gap-1.5">
             <template v-if="isProductionMode && info.updateAvailable">
-              <div class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
+              <div class="w-1.5 h-1.5 rounded-full bg-amber-500 motion-safe:animate-pulse flex-shrink-0" />
               <span class="text-amber-600 dark:text-amber-400 font-mono text-[10px]">
                 {{ shortDigest(info.localDigest) }} &rarr; {{ shortDigest(info.remoteDigest) }}
               </span>
@@ -82,7 +83,7 @@ const anyApplyingImage = computed(() => applyingImages.value.size > 0);
               </button>
             </template>
             <template v-else-if="info.error">
-              <span class="text-red-500 text-[10px]">error</span>
+              <span class="text-red-500 text-[10px]" :title="info.error">error</span>
             </template>
             <template v-else-if="info.localDigest">
               <span class="text-gray-400 dark:text-gray-500 font-mono text-[10px]">{{ shortDigest(info.localDigest) }}</span>
@@ -108,6 +109,7 @@ const anyApplyingImage = computed(() => applyingImages.value.size > 0);
         <p
           v-for="(err, i) in applyErrors"
           :key="i"
+          role="alert"
           class="text-xs text-red-600 dark:text-red-400"
         >
           {{ err }}

@@ -96,6 +96,26 @@ test.describe.serial('Workspace Upload Modal', () => {
     await expect(uploadBtn).toBeDisabled();
   });
 
+  test('the drop zone picks plain files (not only folders) and enables Upload', async ({ page }) => {
+    await goToDashboard(page);
+    const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();
+    await expect(card.locator('text=running')).toBeVisible({ timeout: 60_000 });
+    await card.locator('button').nth(4).click();
+    const dialog = page.locator('[role="dialog"]');
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Drop files or folders here')).toBeVisible();
+
+    // Phones have no folder picker, so the drop zone opens a plain file input.
+    const filesInput = dialog.locator('input[type="file"]:not([webkitdirectory])');
+    await expect(filesInput).toHaveCount(1);
+    await filesInput.setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+
+    await expect(dialog.getByText('notes.txt', { exact: true })).toBeVisible();
+    const uploadBtn = dialog.locator('button:has-text("Upload")');
+    await expect(uploadBtn).toHaveText(/Upload \(1 file\)/);
+    await expect(uploadBtn).toBeEnabled();
+  });
+
   test('upload modal can be closed with Cancel', async ({ page }) => {
     await goToDashboard(page);
     const card = page.locator('.rounded-lg').filter({ hasText: displayName }).first();

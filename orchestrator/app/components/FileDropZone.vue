@@ -8,14 +8,28 @@ const emit = defineEmits<{
 }>();
 
 const isDragOver = ref(false);
-const fileInputRef = ref<HTMLInputElement | null>(null);
+const filesInputRef = ref<HTMLInputElement | null>(null);
+const folderInputRef = ref<HTMLInputElement | null>(null);
 
-// Reset native file input when files are cleared externally (e.g., modal close)
+const { isTouch } = useDevice();
+// Phones have no folder picker; a directory-only input would leave them unable
+// to pick anything, so files are the default and folders an extra option.
+const supportsFolderPicker = 'webkitdirectory' in HTMLInputElement.prototype;
+
+function openFilesPicker() {
+  filesInputRef.value?.click();
+}
+
+function openFolderPicker() {
+  folderInputRef.value?.click();
+}
+
+// Reset native file inputs when files are cleared externally (e.g., modal close)
 // so re-uploading the same files will trigger the change event again
 watch(() => props.modelValue, (val) => {
-  if (val.length === 0 && fileInputRef.value) {
-    fileInputRef.value.value = '';
-  }
+  if (val.length > 0) return;
+  if (filesInputRef.value) filesInputRef.value.value = '';
+  if (folderInputRef.value) folderInputRef.value.value = '';
 });
 
 function onDragOver(e: DragEvent) {
@@ -122,18 +136,22 @@ const totalSize = computed(() => props.modelValue.reduce((sum, f) => sum + f.siz
 <template>
   <div>
     <div
-      class="border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer"
+      role="button"
+      tabindex="0"
+      aria-label="Choose files to upload"
+      class="border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
       :class="isDragOver ? 'border-blue-500 bg-blue-500/10' : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600'"
       @dragover="onDragOver"
       @dragleave="onDragLeave"
       @drop="onDrop"
-      @click="fileInputRef?.click()"
+      @click="openFilesPicker"
+      @keydown.enter.prevent="openFilesPicker"
+      @keydown.space.prevent="openFilesPicker"
     >
       <input
-        ref="fileInputRef"
+        ref="filesInputRef"
         type="file"
         multiple
-        webkitdirectory
         class="hidden"
         @change="onFileInput"
       />
@@ -141,9 +159,27 @@ const totalSize = computed(() => props.modelValue.reduce((sum, f) => sum + f.siz
       <p class="text-sm text-gray-500 dark:text-gray-400">
         Drop files or folders here
       </p>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-        or click to browse folders
+      <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+        {{ isTouch ? 'Tap to choose files' : 'or click to choose files' }}
       </p>
+    </div>
+
+    <div v-if="supportsFolderPicker" class="mt-1.5 text-center">
+      <input
+        ref="folderInputRef"
+        type="file"
+        multiple
+        webkitdirectory
+        class="hidden"
+        @change="onFileInput"
+      />
+      <button
+        type="button"
+        class="text-xs text-primary-600 dark:text-primary-400 hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 pointer-coarse:py-1.5"
+        @click="openFolderPicker"
+      >
+        Choose a folder
+      </button>
     </div>
 
     <div v-if="modelValue.length > 0" class="mt-2">
@@ -163,7 +199,9 @@ const totalSize = computed(() => props.modelValue.reduce((sum, f) => sum + f.siz
         >
           <span class="truncate mr-2" :title="file.name">{{ file.name }}</span>
           <button
-            class="text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 shrink-0"
+            type="button"
+            :aria-label="`Remove ${file.name}`"
+            class="text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:p-1.5 shrink-0"
             @click.stop="removeFile(idx)"
           >
             <UIcon name="i-lucide-x" class="size-3" />
