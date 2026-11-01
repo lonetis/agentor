@@ -223,6 +223,10 @@ function flushWrite() {
   if (state) writeToStorage(state.value);
 }
 
+function flushIfHidden() {
+  if (document.visibilityState === 'hidden') flushWrite();
+}
+
 function ensureState(): Ref<UiState> {
   if (!state) {
     state = ref(loadState()) as Ref<UiState>;
@@ -230,9 +234,11 @@ function ensureState(): Ref<UiState> {
     // Write immediately so the key exists on fresh start
     writeToStorage(state.value);
 
-    // Flush on page unload
+    // Flush when the page goes away. iOS Safari and backgrounded / killed PWAs
+    // never fire beforeunload, so also flush on pagehide and when hidden.
     if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', flushWrite);
+      window.addEventListener('pagehide', flushWrite);
+      document.addEventListener('visibilitychange', flushIfHidden);
     }
   }
   return state;
@@ -317,7 +323,8 @@ export function useUiState() {
 // For testing: reset module state
 export function _resetUiState() {
   if (typeof window !== 'undefined') {
-    window.removeEventListener('beforeunload', flushWrite);
+    window.removeEventListener('pagehide', flushWrite);
+    document.removeEventListener('visibilitychange', flushIfHidden);
   }
   if (writeTimer) {
     clearTimeout(writeTimer);
