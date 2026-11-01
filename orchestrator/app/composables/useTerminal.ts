@@ -22,6 +22,31 @@ export interface TerminalClasses {
 
 export type TerminalConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
+let terminalClassesPromise: Promise<TerminalClasses> | null = null;
+
+/**
+ * Loads xterm.js and its addons on first use, so pages without a terminal
+ * (login, setup, OAuth consent) never download them.
+ */
+export function loadTerminalClasses(): Promise<TerminalClasses> {
+  if (!terminalClassesPromise) {
+    terminalClassesPromise = Promise.all([
+      import('@xterm/xterm'),
+      import('@xterm/addon-fit'),
+      import('@xterm/addon-web-links'),
+    ]).then(([xterm, fit, webLinks]) => ({
+      Terminal: xterm.Terminal,
+      FitAddon: fit.FitAddon,
+      WebLinksAddon: webLinks.WebLinksAddon,
+    }));
+    // A failed chunk load (e.g. offline) must not poison later attempts.
+    terminalClassesPromise.catch(() => {
+      terminalClassesPromise = null;
+    });
+  }
+  return terminalClassesPromise;
+}
+
 interface Cell {
   /** 0-based column / row inside the visible screen. */
   col: number;

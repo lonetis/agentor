@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import type { ContextMenuItem } from '@nuxt/ui';
-import type { TerminalClasses } from '~/composables/useTerminal';
+import { loadTerminalClasses, type TerminalClasses } from '~/composables/useTerminal';
 import type { SpecialKey } from '~/utils/terminal-keys';
 
 const props = defineProps<{
   containerId: string;
 }>();
 
-const { $Terminal, $FitAddon, $WebLinksAddon } = useNuxtApp();
-const terminalClasses = { Terminal: $Terminal, FitAddon: $FitAddon, WebLinksAddon: $WebLinksAddon } as TerminalClasses;
+// xterm.js is loaded lazily (first terminal pane); windows connect once it is here.
+const terminalClasses = shallowRef<TerminalClasses | null>(null);
 
 const toast = useToast();
 const prefs = useTerminalPrefs();
@@ -66,11 +66,19 @@ function ensureTerminal(windowIndex: number) {
 function connectTerminal(windowIndex: number) {
   const entry = terminals.get(windowIndex);
   const el = terminalRefs.get(windowIndex);
-  if (!entry || !el || !$Terminal || !$FitAddon) return;
+  const classes = terminalClasses.value;
+  if (!entry || !el || !classes) return;
 
   entry.el = el;
   el.innerHTML = '';
-  entry.instance.openTerminal(props.containerId, windowIndex, el, terminalClasses);
+  entry.instance.openTerminal(props.containerId, windowIndex, el, classes);
+}
+
+function connectActiveIfNeeded() {
+  const index = activeWindowIndex.value;
+  if (index == null) return;
+  const entry = terminals.get(index);
+  if (entry && !entry.el) connectTerminal(index);
 }
 
 function destroyTerminal(windowIndex: number) {
@@ -143,15 +151,7 @@ watch(
     syncActive();
 
     // Only connect the active window after DOM update
-    nextTick(() => {
-      const index = activeWindowIndex.value;
-      if (index != null) {
-        const entry = terminals.get(index);
-        if (entry && !entry.el) {
-          connectTerminal(index);
-        }
-      }
-    });
+    nextTick(connectActiveIfNeeded);
   },
   { deep: true },
 );
@@ -178,6 +178,20 @@ watch(activeWindowIndex, (index) => {
 // soft keyboard via the app shell, toolbar / composer toggling)
 let resizeObserver: ResizeObserver | null = null;
 onMounted(() => {
+  loadTerminalClasses()
+    .then((classes) => {
+      terminalClasses.value = classes;
+      nextTick(connectActiveIfNeeded);
+    })
+    .catch((err) => {
+      console.error('[terminal] failed to load xterm.js', err);
+      toast.add({
+        title: 'Terminal failed to load',
+        description: 'Reload the page to try again.',
+        color: 'error',
+        icon: 'i-lucide-alert-circle',
+      });
+    });
   if (!terminalsContainer.value) return;
   resizeObserver = new ResizeObserver(() => {
     active.value?.fitTerminal(false);
