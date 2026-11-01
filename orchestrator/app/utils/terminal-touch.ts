@@ -28,8 +28,14 @@ const MOVE_SLOP_PX = 10;
 const MOMENTUM_MIN_VELOCITY = 0.05; // px per ms
 const MOMENTUM_FRICTION = 0.95; // per 16ms frame
 const VELOCITY_WINDOW_MS = 100;
+// Browsers emulate mouse events for touch gestures (e.g. Chrome's long-press
+// sends a mousedown). After a gesture they must not reach xterm.js, whose
+// mousedown would clear the touch selection and focus the hidden input.
+const SUPPRESS_MOUSE_AFTER_GESTURE_MS = 800;
 
 type GestureState = 'idle' | 'pending' | 'scroll' | 'select' | 'pinch';
+
+const MOUSE_EVENTS = ['mousedown', 'mouseup', 'click', 'dblclick'] as const;
 
 interface Sample {
   y: number;
@@ -52,6 +58,16 @@ export function attachTerminalTouch(el: HTMLElement, handlers: TerminalTouchHand
   let pinchStartDistance = 0;
   let pinchStartSize = 0;
   let pinchSize = 0;
+  let suppressMouseUntil = 0;
+  const touchPointers = new Set<number>();
+
+  function inGesture() {
+    return state === 'scroll' || state === 'select' || state === 'pinch';
+  }
+
+  function suppressMouseForAWhile() {
+    suppressMouseUntil = performance.now() + SUPPRESS_MOUSE_AFTER_GESTURE_MS;
+  }
 
   function clearLongPress() {
     if (longPressTimer) {
@@ -123,6 +139,7 @@ export function attachTerminalTouch(el: HTMLElement, handlers: TerminalTouchHand
       if (state !== 'pending') return;
       if (handlers.startSelection(startX, startY)) {
         state = 'select';
+        suppressMouseForAWhile();
         navigator.vibrate?.(10);
       }
     }, LONG_PRESS_MS);
@@ -163,42 +180,65 @@ export function attachTerminalTouch(el: HTMLElement, handlers: TerminalTouchHand
     }
   }
 
-  function onTouchEnd(e: TouchEvent) {
-    e.stopPropagation();
+  /**
+   * Ends the current gesture (idempotent). `e` is the touchend, when there is
+   * one: a scroll or selection then also cancels the browser's synthetic click.
+   */
+  function finishGesture(e?: TouchEvent, cancelled = false) {
     clearLongPress();
-
+    if (inGesture()) suppressMouseForAWhile();
     if (state === 'pinch') {
-      // Wait until both fingers are up before committing.
-      if (e.touches.length > 0) return;
-      e.preventDefault();
+      e?.preventDefault();
       if (pinchSize !== pinchStartSize) handlers.commitFontSize(pinchSize);
-      state = 'idle';
-      return;
-    }
-    if (state === 'scroll') {
-      // A swipe is not a tap: suppress the synthetic click so the swipe never
-      // moves focus or activates a link.
-      e.preventDefault();
-      const v = releaseVelocity();
+    } else if (state === 'scroll') {
+      // A swipe is not a tap: it must never move focus or activate a link.
+      e?.preventDefault();
+      const v = cancelled ? 0 : releaseVelocity();
       if (Math.abs(v) >= MOMENTUM_MIN_VELOCITY * 4) startMomentum(v);
     } else if (state === 'select') {
       // The synthetic mousedown of a tap would clear the new selection.
-      e.preventDefault();
+      e?.preventDefault();
       handlers.endSelection();
     }
     state = 'idle';
   }
 
+  function onTouchEnd(e: TouchEvent) {
+    e.stopPropagation();
+    // Pinch: wait until both fingers are up before committing.
+    if (state === 'pinch' && e.touches.length > 0) return;
+    finishGesture(e);
+  }
+
   function onTouchCancel() {
-    clearLongPress();
-    if (state === 'select') handlers.endSelection();
-    state = 'idle';
+    finishGesture(undefined, true);
+  }
+
+  // Pointer events are the fallback end signal: Chromium skips touchend after
+  // a long-press (it sends pointerup and emulated mouse events instead).
+  function onPointerDown(e: PointerEvent) {
+    if (e.pointerType === 'touch') touchPointers.add(e.pointerId);
+  }
+
+  function onPointerEnd(e: PointerEvent) {
+    if (e.pointerType !== 'touch') return;
+    touchPointers.delete(e.pointerId);
+    if (touchPointers.size === 0 && state !== 'idle') finishGesture(undefined, e.type === 'pointercancel');
   }
 
   // Android fires `contextmenu` on long-press; the terminal shows its own
   // selection actions instead of the browser menu.
   function onContextMenu(e: Event) {
-    if (state === 'select' || state === 'pending') e.preventDefault();
+    if (state === 'select' || state === 'pending' || performance.now() < suppressMouseUntil) e.preventDefault();
+  }
+
+  // Emulated mouse events during / right after a gesture never reach xterm.js.
+  // A plain tap still passes (it focuses the terminal and opens links).
+  function onEmulatedMouse(e: MouseEvent) {
+    if (inGesture() || performance.now() < suppressMouseUntil) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
   }
 
   // iOS Safari pinch events (non-standard); the terminal handles pinch itself.
@@ -211,7 +251,11 @@ export function attachTerminalTouch(el: HTMLElement, handlers: TerminalTouchHand
   el.addEventListener('touchmove', onTouchMove, opts);
   el.addEventListener('touchend', onTouchEnd, opts);
   el.addEventListener('touchcancel', onTouchCancel, opts);
+  el.addEventListener('pointerdown', onPointerDown, { capture: true });
+  el.addEventListener('pointerup', onPointerEnd, { capture: true });
+  el.addEventListener('pointercancel', onPointerEnd, { capture: true });
   el.addEventListener('contextmenu', onContextMenu, { capture: true });
+  for (const type of MOUSE_EVENTS) el.addEventListener(type, onEmulatedMouse, { capture: true });
   el.addEventListener('gesturestart', onGesture, opts);
   el.addEventListener('gesturechange', onGesture, opts);
 
@@ -222,7 +266,11 @@ export function attachTerminalTouch(el: HTMLElement, handlers: TerminalTouchHand
     el.removeEventListener('touchmove', onTouchMove, opts);
     el.removeEventListener('touchend', onTouchEnd, opts);
     el.removeEventListener('touchcancel', onTouchCancel, opts);
+    el.removeEventListener('pointerdown', onPointerDown, { capture: true });
+    el.removeEventListener('pointerup', onPointerEnd, { capture: true });
+    el.removeEventListener('pointercancel', onPointerEnd, { capture: true });
     el.removeEventListener('contextmenu', onContextMenu, { capture: true });
+    for (const type of MOUSE_EVENTS) el.removeEventListener(type, onEmulatedMouse, { capture: true });
     el.removeEventListener('gesturestart', onGesture, opts);
     el.removeEventListener('gesturechange', onGesture, opts);
   };
