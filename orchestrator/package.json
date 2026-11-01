@@ -33,6 +33,7 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "^1.2.150",
     "@types/better-sqlite3": "^7.6.13",
     "@types/dockerode": "^3.3.34",
     "@types/node": "^25.6.0",

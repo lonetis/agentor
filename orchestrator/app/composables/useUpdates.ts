@@ -91,21 +91,30 @@ export function useUpdates() {
     }
   }
 
+  // Waits for the replacement orchestrator, then reloads the page so the client
+  // runs the new build (an installed PWA has no reload button). The old process
+  // may still answer for a moment after the update was accepted, so a healthy
+  // probe only counts once an outage was observed — or after ~30 s, when the
+  // swap must have finished between two probes.
   function pollHealth() {
     if (healthPollTimer) return;
     const maxRetries = 150; // 150 * 2s = 5 minutes
+    const assumeSwappedAfter = 15; // 15 * 2s ≈ 30 seconds
     let retries = 0;
+    let sawDown = false;
 
     const tick = async () => {
       healthPollTimer = null;
       retries++;
       try {
         await $fetch('/api/health');
-        // Server is back
-        isRestarting.value = false;
-        await fetchStatus();
-        return;
+        if (sawDown || retries >= assumeSwappedAfter) {
+          // isRestarting stays true: the overlay remains until the page reloads.
+          window.location.reload();
+          return;
+        }
       } catch {
+        sawDown = true;
         // Still down — give up after the retry budget is exhausted.
         if (retries >= maxRetries) {
           isRestarting.value = false;

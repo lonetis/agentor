@@ -11,6 +11,13 @@
 // cached so that completing setup is picked up on the next navigation.
 let setupCompleted = false;
 
+/** A failed session check without an HTTP answer, or a gateway / server error. */
+function isServerUnreachable(error: unknown): boolean {
+  if (!error) return false;
+  const status = (error as { status?: number }).status;
+  return status === undefined || status === 0 || status >= 500;
+}
+
 export default defineNuxtRouteMiddleware(async (to) => {
   // Always allow the setup and login pages
   if (to.path === '/setup' || to.path === '/login') return;
@@ -44,6 +51,13 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (!isLoggedIn.value) {
+    // The session could not be checked at all (network down, server restarting)
+    // — that is not "signed out". With the PWA worker active, show its offline
+    // page, which reconnects by itself, instead of a login form that cannot work.
+    if (isServerUnreachable(session.value?.error) && navigator.serviceWorker?.controller) {
+      window.location.replace('/offline.html');
+      return abortNavigation();
+    }
     // Carry an OAuth authorization's signed query over to the login page, so
     // signing in resumes the authorization instead of opening the dashboard.
     if (to.path === '/oauth/consent') return navigateTo({ path: '/login', query: to.query });

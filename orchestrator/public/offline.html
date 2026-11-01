@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <title>Agentor: unreachable</title>
+  <!--
+    Served by the service worker (public/sw.js) when a page navigation fails or
+    the reverse proxy answers 502/503/504. Fully self-contained: no request may
+    leave this file, because the server it would load from is unreachable.
+  -->
+  <script>
+    // Follow the dashboard's colour mode (@nuxtjs/color-mode, default dark).
+    try {
+      const preference = localStorage.getItem('nuxt-color-mode') ?? 'dark';
+      if (preference === 'light' || preference === 'dark') document.documentElement.dataset.theme = preference;
+    } catch (err) {
+      // Storage blocked: follow the OS colour scheme.
+    }
+  </script>
+  <style>
+    :root {
+      --bg: #f9fafb;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #030712;
+        --card: #111827;
+        --text: #f3f4f6;
+        --muted: #9ca3af;
+        --border: #1f2937;
+        --accent: #3b82f6;
+        --accent-hover: #60a5fa;
+        color-scheme: dark;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #030712;
+      --card: #111827;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --border: #1f2937;
+      --accent: #3b82f6;
+      --accent-hover: #60a5fa;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding:
+        max(16px, env(safe-area-inset-top))
+        max(16px, env(safe-area-inset-right))
+        max(16px, env(safe-area-inset-bottom))
+        max(16px, env(safe-area-inset-left));
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.5;
+    }
+    main {
+      width: 100%;
+      max-width: 400px;
+      padding: 32px 24px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+      text-align: center;
+    }
+    img { display: block; margin: 0 auto 16px; }
+    h1 { margin: 0 0 8px; font-size: 1.25rem; font-weight: 600; }
+    p { margin: 0; color: var(--muted); font-size: 0.875rem; }
+    button {
+      margin-top: 24px;
+      min-height: 44px;
+      padding: 0 24px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #ffffff;
+      font: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #status { margin-top: 16px; min-height: 1.5em; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="data:image/png;base64,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" width="48" height="48" alt="">
+    <h1>Agentor is unreachable</h1>
+    <p>You are offline, or the server is restarting. This page reconnects automatically.</p>
+    <button id="retry" type="button">Retry</button>
+    <p id="status" aria-live="polite"></p>
+  </main>
+  <script>
+    (() => {
+      const FAST_MS = 5_000;
+      const SLOW_MS = 30_000;
+      // Reloads from this page within this window count as consecutive: the
+      // health check passed, but the page came back here again.
+      const CONSECUTIVE_WINDOW_MS = 60_000;
+      const MAX_FAST_RELOADS = 3;
+      const STORAGE_KEY = 'agentor-offline-reloads';
+      const status = document.getElementById('status');
+
+      function readReloads() {
+        try {
+          const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? 'null');
+          if (saved && Date.now() - saved.at < CONSECUTIVE_WINDOW_MS) return saved.count;
+        } catch (err) {
+          console.warn('[offline] reload counter unavailable', err);
+        }
+        return 0;
+      }
+
+      const reloads = readReloads();
+      const interval = reloads >= MAX_FAST_RELOADS ? SLOW_MS : FAST_MS;
+      let reloading = false;
+
+      function reconnect() {
+        if (reloading) return;
+        reloading = true;
+        try {
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ count: reloads + 1, at: Date.now() }));
+        } catch (err) {
+          console.warn('[offline] reload counter unavailable', err);
+        }
+        status.textContent = 'Connection restored. Reloading…';
+        reloadApp();
+      }
+
+      // Opened directly, this page would just reload itself: go to the dashboard.
+      function reloadApp() {
+        if (location.pathname === '/offline.html') location.replace('/');
+        else location.reload();
+      }
+
+      async function check() {
+        try {
+          const res = await fetch('/api/health', { cache: 'no-store' });
+          if (res.ok) {
+            reconnect();
+            return;
+          }
+        } catch (err) {
+          // Still unreachable: try again after the interval.
+        }
+        scheduleCheck();
+      }
+
+      function scheduleCheck() {
+        status.textContent = `Checking again in ${interval / 1000} s.`;
+        setTimeout(check, interval);
+      }
+
+      document.getElementById('retry').addEventListener('click', reloadApp);
+      window.addEventListener('online', reconnect);
+      scheduleCheck();
+    })();
+  </script>
+</body>
+</html>
