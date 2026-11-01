@@ -190,7 +190,7 @@
   align-items: center;
   justify-content: center;
   color: #6b7280;
-  background: linear-gradient(to right, rgba(249, 250, 251, 0) 0%, #f9fafb 45%);
+  background: linear-gradient(to right, transparent 0%, var(--color-gray-50) 45%);
   cursor: pointer;
   border: none;
   border-bottom: 2px solid transparent;
@@ -319,7 +319,7 @@
 
 .dark .sidebar-tab-more-btn {
   color: #7d8590;
-  background: linear-gradient(to right, rgba(17, 24, 39, 0) 0%, #111827 45%);
+  background: linear-gradient(to right, transparent 0%, var(--color-gray-900) 45%);
 }
 
 .dark .sidebar-tab-more-btn:hover {
@@ -384,7 +384,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #9ca3af;
+  color: #6b7280;
   border-bottom: 1px solid #e5e7eb;
 }
 
@@ -432,7 +432,6 @@
 .sidebar-panel {
   transition: width 0.2s ease;
   overflow: hidden;
-  will-change: width;
 }
 
 /* While actively dragging the resize handle, kill the transition so
@@ -445,14 +444,26 @@
   width: 0 !important;
 }
 
-/* Mobile: sidebar overlays content */
+/* A closing phone overlay drops back into the layout — animating its width
+   there would push the panes aside. Only the opening slide animates. */
+.sidebar-panel.sidebar-mobile.sidebar-collapsed {
+  transition: none;
+}
+
+/* Mobile: sidebar overlays content. Sized to the visual viewport like the app
+   shell (follows the soft keyboard), always leaves a strip of backdrop to tap,
+   and pads itself out of the notch / home indicator. */
 .sidebar-panel.sidebar-mobile:not(.sidebar-collapsed) {
   position: fixed;
-  top: 0;
+  top: var(--app-offset-top, 0px);
   left: 0;
-  bottom: 0;
+  bottom: auto;
+  height: var(--app-height, 100dvh);
   z-index: 40;
-  width: 320px !important;
+  width: calc(min(320px, 100vw - 56px) + env(safe-area-inset-left, 0px)) !important;
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
+  overscroll-behavior: contain;
 }
 
 /* Mobile backdrop */
@@ -463,13 +474,18 @@
   background: rgba(0, 0, 0, 0.5);
 }
 
-/* Collapsed sidebar — floating expand button */
+/* Collapsed sidebar — floating expand button. Sits inside the 36px pane tab
+   bar; the first tab bar reserves room for it (--pane-leading-inset on <main>). */
 .sidebar-expand-fab {
   position: fixed;
-  top: 10px;
-  left: 10px;
+  top: calc(var(--app-offset-top, 0px) + env(safe-area-inset-top, 0px) + 2px);
+  left: calc(env(safe-area-inset-left, 0px) + 4px);
   z-index: 50;
-  padding: 8px;
+  /* Flex, so the icon (not the text line box) sets the height: 32px in total. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
   background: #f9fafb;
@@ -504,6 +520,8 @@
   flex-shrink: 0;
   transition: background 0.15s;
   position: relative;
+  touch-action: none;
+  outline: none;
 }
 
 /* Wider hit area for easier grabbing */
@@ -517,6 +535,7 @@
 }
 
 .sidebar-handle:hover,
+.sidebar-handle:focus-visible,
 .sidebar-handle.dragging {
   background: #3b82f6;
 }
@@ -546,6 +565,161 @@ body.split-dragging-v .xterm {
 body.tab-dragging iframe,
 body.tab-dragging .xterm {
   pointer-events: none;
+}
+
+/* ===== Touch, focus & small screens ===== */
+
+/* Fingers need a bigger grab area on the sidebar handle. */
+@media (pointer: coarse) {
+  .sidebar-handle::before {
+    left: -12px;
+    right: -12px;
+  }
+
+  .sidebar-tab {
+    padding: 10px 12px;
+  }
+
+  .sidebar-tab-more-btn {
+    width: 44px;
+  }
+
+  .sidebar-tab-dropdown-item {
+    padding: 10px 12px;
+  }
+
+  .system-card-link {
+    padding: 10px 8px;
+  }
+}
+
+/* No double-tap zoom delay or grey tap flash on controls. */
+button,
+a,
+[role="button"],
+label,
+select,
+.tab-item,
+.sidebar-tab {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Long-pressing a tab must not open the iOS callout or select its label. */
+.tab-item,
+.sidebar-tab {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+/* iOS zooms the page when focusing a field with text smaller than 16px.
+   Unlayered so it beats the Tailwind text-* utilities; only WebKit on touch matches. */
+@supports (-webkit-touch-callout: none) {
+  @media (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+}
+
+/* Keyboard focus rings — inset, because these sit in scrolling tab strips. */
+.sidebar-tab:focus-visible,
+.sidebar-tab-more-btn:focus-visible,
+.sidebar-tab-dropdown-item:focus-visible,
+.system-card-link:focus-visible,
+.sidebar-expand-fab:focus-visible,
+.tab-item:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
+.dark .sidebar-tab:focus-visible,
+.dark .sidebar-tab-more-btn:focus-visible,
+.dark .sidebar-tab-dropdown-item:focus-visible,
+.dark .system-card-link:focus-visible,
+.dark .sidebar-expand-fab:focus-visible,
+.dark .tab-item:focus-visible {
+  outline-color: #58a6ff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-panel {
+    transition: none;
+  }
+
+  .sidebar-tab-bar {
+    scroll-behavior: auto;
+  }
+}
+
+/* Phones in landscape: give the sidebar header less height. */
+@media (max-height: 500px) {
+  .sidebar-header {
+    padding: 8px;
+  }
+
+  .sidebar-subtitle {
+    display: none;
+  }
+
+  .sidebar-header .agentor-header-logo {
+    height: 1.5rem;
+  }
+}
+
+/* White text on primary-500 is below 4.5:1 — use the 600 shade in light mode. */
+:root:not(.dark) {
+  --ui-primary: var(--ui-color-primary-600);
+}
+
+/* Phone modal sheets. Contract for every modal: add `modal-sheet` to the UModal
+   `content` slot, `modal-sheet-body` to its scrolling body and
+   `modal-sheet-footer` to its action row. Below 640px the dialog fills the
+   visual viewport (it follows the soft keyboard) with a sticky footer;
+   larger screens keep the centred dialog. Unlayered, so these beat UModal's
+   Tailwind utilities. */
+.modal-sheet-body {
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 639px) {
+  .modal-sheet {
+    top: var(--app-offset-top, 0px);
+    left: 0;
+    right: 0;
+    bottom: auto;
+    width: 100%;
+    max-width: none;
+    height: var(--app-height, 100dvh);
+    max-height: none;
+    translate: none;
+    border-radius: 0;
+  }
+
+  .modal-sheet-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  }
+
+  /* The sticky footer supplies the bottom inset itself. */
+  .modal-sheet-body:has(.modal-sheet-footer) {
+    padding-bottom: 0;
+  }
+
+  .modal-sheet-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin-inline: calc(-1 * max(1rem, env(safe-area-inset-left))) calc(-1 * max(1rem, env(safe-area-inset-right)));
+    padding: 0.75rem max(1rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    background: var(--ui-bg);
+    border-top: 1px solid var(--ui-border);
+    flex-wrap: wrap;
+  }
 }
 
 /* ===== App shell & terminal (mobile / touch) ===== */

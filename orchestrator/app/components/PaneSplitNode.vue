@@ -6,6 +6,8 @@ const props = defineProps<{
   node: PaneNode;
   focusedNodeId: string | null;
   isRoot?: boolean;
+  /** Top-left-most node under its parent (where the expand-sidebar button floats). */
+  atLeadingEdge?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -21,17 +23,37 @@ const { isDragging, dragPayload, startDrag, endDrag } = useDragTab();
 
 const containerEl = ref<HTMLElement | null>(null);
 
-function handleSeparatorResize(firstChildId: string, delta: number) {
-  if (!containerEl.value) return;
-  if (!isContainer(props.node)) return;
+const isLeadingEdge = computed(() => !!props.isRoot || !!props.atLeadingEdge);
 
-  const totalSize = props.node.direction === 'horizontal'
+// Measured once per separator drag: reading clientWidth on every move forces a
+// layout per pointermove.
+let dragTotalSize = 0;
+
+function measureTotalSize(): number {
+  if (!containerEl.value || !isContainer(props.node)) return 0;
+  return props.node.direction === 'horizontal'
     ? containerEl.value.clientWidth
     : containerEl.value.clientHeight;
-  if (totalSize === 0) return;
+}
 
-  const deltaFraction = delta / totalSize;
-  emit('resize', firstChildId, deltaFraction);
+/** Position of the separator after child `index`, in percent (for assistive tech). */
+function separatorPosition(index: number): number | undefined {
+  if (!isContainer(props.node)) return undefined;
+  const sizes = props.node.children.map((c) => c.sizeFraction);
+  const total = sizes.reduce((sum, s) => sum + s, 0);
+  if (!total) return undefined;
+  const before = sizes.slice(0, index + 1).reduce((sum, s) => sum + s, 0);
+  return Math.round((100 * before) / total);
+}
+
+function handleSeparatorResizeStart() {
+  dragTotalSize = measureTotalSize();
+}
+
+function handleSeparatorResize(firstChildId: string, delta: number) {
+  if (!dragTotalSize) dragTotalSize = measureTotalSize();
+  if (!dragTotalSize) return;
+  emit('resize', firstChildId, delta / dragTotalSize);
 }
 
 function handleTabDragStart(tabId: string, nodeId: string, event: DragEvent) {
@@ -70,6 +92,8 @@ const totalLeaves = computed(() => {
   if (!props.isRoot) return 2; // Non-root always shows focus border
   return countLeaves(props.node);
 });
+
+const showsFocusBorder = computed(() => totalLeaves.value > 1 && props.node.id === props.focusedNodeId);
 </script>
 
 <template>
@@ -77,14 +101,18 @@ const totalLeaves = computed(() => {
   <div
     v-if="isLeaf(node)"
     class="flex flex-col min-w-0 min-h-0"
-    :class="totalLeaves > 1 && node.id === focusedNodeId ? 'border-t-2 border-t-blue-500 dark:border-t-[#58a6ff]' : totalLeaves > 1 ? 'border-t-2 border-t-transparent' : ''"
-    :style="{ flex: `${node.sizeFraction} 1 0%` }"
-    @mousedown="emit('focusNode', node.id)"
+    :class="showsFocusBorder ? 'border-t-2' : totalLeaves > 1 ? 'border-t-2 border-t-transparent' : ''"
+    :style="{
+      flex: `${node.sizeFraction} 1 0%`,
+      borderTopColor: showsFocusBorder ? 'var(--pane-tab-active-accent)' : undefined,
+    }"
+    @pointerdown.capture="emit('focusNode', node.id)"
     @dragend="handleTabDragEnd"
   >
     <PaneGroupTabBar
       :group="node"
       :is-focused="node.id === focusedNodeId"
+      :leading-inset="isLeadingEdge"
       @activate="(tabId) => emit('activateTab', tabId, node.id)"
       @close="(tabId) => emit('closeTab', tabId)"
       @focus-group="emit('focusNode', node.id)"
@@ -116,6 +144,7 @@ const totalLeaves = computed(() => {
       <PaneSplitNode
         :node="child"
         :focused-node-id="focusedNodeId"
+        :at-leading-edge="isLeadingEdge && i === 0"
         @activate-tab="(tabId, nodeId) => emit('activateTab', tabId, nodeId)"
         @close-tab="(tabId) => emit('closeTab', tabId)"
         @focus-node="(nodeId) => emit('focusNode', nodeId)"
@@ -127,6 +156,8 @@ const totalLeaves = computed(() => {
       <PaneSeparator
         v-if="i < node.children.length - 1"
         :direction="node.direction"
+        :position="separatorPosition(i)"
+        @resize-start="handleSeparatorResizeStart"
         @resize="(delta) => handleSeparatorResize(child.id, delta)"
       />
     </template>

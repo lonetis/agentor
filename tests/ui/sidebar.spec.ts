@@ -65,6 +65,21 @@ test.describe('Sidebar', () => {
       // Sidebar content should be visible again — check for the title
       await expect(page.locator('h1:has-text("Agentor")')).toBeVisible();
     });
+
+    test('a collapsed sidebar is inert and focus follows the toggle', async ({ page }) => {
+      await goToDashboard(page);
+      const aside = page.locator('aside');
+      await expect(aside).not.toHaveAttribute('inert');
+
+      await page.click('button[title="Collapse sidebar"]');
+      // Its off-screen controls leave the tab order; the expand button takes focus.
+      await expect(aside).toHaveAttribute('inert', '');
+      await expect(page.locator('button[title="Expand sidebar"]')).toBeFocused();
+
+      await page.click('button[title="Expand sidebar"]');
+      await expect(aside).not.toHaveAttribute('inert');
+      await expect(page.locator('button[title="Collapse sidebar"]')).toBeFocused();
+    });
   });
 
   test.describe('Tab Bar', () => {
@@ -88,6 +103,17 @@ test.describe('Sidebar', () => {
       await goToDashboard(page);
       const activeTab = page.locator('aside .sidebar-tab-active');
       await expect(activeTab).toContainText('Workers');
+    });
+
+    test('the active tab is marked with aria-current', async ({ page }) => {
+      await goToDashboard(page);
+      const tabs = page.locator('aside .sidebar-tab-bar > .sidebar-tab');
+      await expect(tabs.filter({ hasText: 'Workers' })).toHaveAttribute('aria-current', 'true');
+      await expect(page.locator('aside .sidebar-tab-bar > .sidebar-tab[aria-current]')).toHaveCount(1);
+
+      await selectSidebarTab(page, 'Usage');
+      await expect(tabs.filter({ hasText: 'Usage' })).toHaveAttribute('aria-current', 'true');
+      await expect(tabs.filter({ hasText: 'Workers' })).not.toHaveAttribute('aria-current');
     });
 
     test('tab badges show counts', async ({ page }) => {
@@ -229,6 +255,25 @@ test.describe('Sidebar', () => {
       const cursor = await handle.evaluate((el) => getComputedStyle(el).cursor);
       expect(cursor).toBe('col-resize');
     });
+
+    test('the resize handle is a separator that arrow keys resize', async ({ page }) => {
+      await goToDashboard(page);
+      const handle = page.getByRole('separator', { name: 'Resize sidebar' });
+      await expect(handle).toBeVisible();
+      const before = Number(await handle.getAttribute('aria-valuenow'));
+      const asideBefore = (await page.locator('aside').boundingBox())!.width;
+
+      await handle.focus();
+      await page.keyboard.press('ArrowRight');
+
+      await expect(handle).toHaveAttribute('aria-valuenow', String(before + 16));
+      await expect.poll(async () => (await page.locator('aside').boundingBox())!.width).toBeGreaterThan(asideBefore + 15);
+      // Persisted like a drag (debounced write).
+      await expect.poll(() => page.evaluate((key) => {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw).sidebar.width : null;
+      }, STORAGE_KEY)).toBe(before + 16);
+    });
   });
 
   test.describe('Button Row Stacking', () => {
@@ -299,6 +344,20 @@ test.describe('Sidebar', () => {
         }));
       expect(overflowX).toBe('auto');
       expect(scrollWidth).toBeGreaterThan(clientWidth);
+    });
+
+    test('Escape closes the More dropdown and returns focus to the More button', async ({ page }) => {
+      await loadDashboardWithSidebarWidth(page, 220);
+      const moreBtn = page.locator('aside .sidebar-tab-more-btn');
+      await moreBtn.click();
+      await expect(page.locator('aside .sidebar-tab-dropdown')).toBeVisible();
+      await expect(moreBtn).toHaveAttribute('aria-expanded', 'true');
+
+      await page.keyboard.press('Escape');
+
+      await expect(page.locator('aside .sidebar-tab-dropdown')).toHaveCount(0);
+      await expect(moreBtn).toHaveAttribute('aria-expanded', 'false');
+      await expect(moreBtn).toBeFocused();
     });
 
     test('clicking More opens a dropdown listing overflow tabs', async ({ page }) => {

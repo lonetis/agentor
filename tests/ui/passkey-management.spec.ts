@@ -74,7 +74,7 @@ test.describe('Passkey management', () => {
       await page.getByRole('button', { name: 'Add passkey' }).click();
       await expect(page.getByText('Passkey added', { exact: true })).toBeVisible({ timeout: 15_000 });
       // Close modal
-      await page.getByRole('button', { name: 'Close' }).first().click();
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
 
       // Sign out via the sidebar footer
       await page.getByRole('button', { name: 'Sign out' }).click();
