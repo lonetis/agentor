@@ -1,11 +1,21 @@
 <script setup lang="ts">
 import type { ContextMenuItem } from '@nuxt/ui';
 import { loadTerminalClasses, type TerminalClasses } from '~/composables/useTerminal';
+import { PANE_ACTIVE_KEY } from '~/composables/usePolling';
 import type { SpecialKey } from '~/utils/terminal-keys';
 
 const props = defineProps<{
   containerId: string;
+  /** This pane's split group is the focused one. */
+  isFocused: boolean;
 }>();
+
+const emit = defineEmits<{
+  focusGroup: [];
+}>();
+
+// Whether this tab is the shown one of its group (provided by PaneTabHost).
+const paneActive = inject(PANE_ACTIVE_KEY, null);
 
 // xterm.js is loaded lazily (first terminal pane); windows connect once it is here.
 const terminalClasses = shallowRef<TerminalClasses | null>(null);
@@ -63,6 +73,41 @@ function ensureTerminal(windowIndex: number) {
   terminals.set(windowIndex, { instance, el: null });
 }
 
+// --- Activation focus --------------------------------------------------------
+
+// Focus the next connection of the active window: the first one (a freshly
+// opened or restored pane), one the user activated before it connected, or a
+// reconnect of a terminal that had focus.
+let focusOnConnect = true;
+
+function canAutoFocus() {
+  // On touch screens focusing xterm opens the soft keyboard: the user taps
+  // the terminal when they want to type.
+  return !isTouch.value && (paneActive?.value ?? true) && props.isFocused
+    && !textViewOpen.value && !composerOpen.value;
+}
+
+/** Focus the active window's terminal after a user activation (connects first if needed). */
+function focusTerminal() {
+  if (!canAutoFocus()) return;
+  const index = activeWindowIndex.value;
+  const entry = index == null ? undefined : terminals.get(index);
+  if (!entry?.el) {
+    focusOnConnect = true;
+    return;
+  }
+  entry.instance.fitTerminal(true);
+  entry.instance.requestFocus();
+}
+
+/** Drop pending activation focus (e.g. the tab was activated with the arrow keys). */
+function cancelFocus() {
+  focusOnConnect = false;
+  for (const entry of terminals.values()) entry.instance.cancelFocus();
+}
+
+defineExpose({ focusTerminal, cancelFocus });
+
 function connectTerminal(windowIndex: number) {
   const entry = terminals.get(windowIndex);
   const el = terminalRefs.get(windowIndex);
@@ -72,6 +117,10 @@ function connectTerminal(windowIndex: number) {
   entry.el = el;
   el.innerHTML = '';
   entry.instance.openTerminal(props.containerId, windowIndex, el, classes);
+  if (focusOnConnect && windowIndex === activeWindowIndex.value) {
+    focusOnConnect = false;
+    if (canAutoFocus()) entry.instance.requestFocus();
+  }
 }
 
 function connectActiveIfNeeded() {
@@ -109,10 +158,19 @@ let skipReconnect = false;
 
 // Wrap createWindow to suppress reconnection for UI-initiated creates
 async function handleCreate(name?: string) {
+  emit('focusGroup');
   skipReconnect = true;
-  await createWindow(name);
+  const created = await createWindow(name);
   await nextTick();
   skipReconnect = false;
+  if (created) focusTerminal();
+}
+
+function handleActivate(windowIndex: number) {
+  // Keyboard activation in another split group selects that group too.
+  emit('focusGroup');
+  activateWindow(windowIndex);
+  nextTick(focusTerminal);
 }
 
 // Watch windows list — create/destroy terminal instances as needed
@@ -135,6 +193,7 @@ watch(
     if (!skipReconnect && knownWindowIndices.size > 0) {
       const hasNewExternal = [...currentIndices].some((idx) => !knownWindowIndices.has(idx));
       if (hasNewExternal) {
+        if (active.value?.isFocused.value) focusOnConnect = true;
         for (const [index, entry] of terminals.entries()) {
           if (entry.el && currentIndices.has(index)) {
             resetTerminal(index);
@@ -305,7 +364,7 @@ const contextItems = computed<ContextMenuItem[][]>(() => [
       :windows="windows"
       :active-window-index="activeWindowIndex"
       :default-window-index="defaultWindowIndex"
-      @activate="activateWindow"
+      @activate="handleActivate"
       @close="closeWindow"
       @create="handleCreate"
       @rename="onRename"

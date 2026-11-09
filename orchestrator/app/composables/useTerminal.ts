@@ -154,6 +154,9 @@ export function useTerminal() {
   let reconnectAttempt = 0;
   let hiddenAt: number | null = null;
   let bypassModifiers = false;
+  // Activation focus requested while the terminal is still hidden (initial
+  // redraw): the element focused at request time, or undefined for none.
+  let pendingFocusFrom: Element | null | undefined;
 
   function getTheme(): ITheme {
     return colorMode.value === 'dark' ? DARK_THEME : LIGHT_THEME;
@@ -312,6 +315,12 @@ export function useTerminal() {
     if (t.revealed) return;
     t.revealed = true;
     t.containerEl.style.visibility = '';
+    // Apply a pending activation focus, unless the user focused another
+    // control while the connection was being established.
+    if (pendingFocusFrom !== undefined && activeTerminal.value === t && document.activeElement === pendingFocusFrom) {
+      t.term.focus();
+    }
+    cancelFocus();
   }
 
   function sendResize(t: TerminalState) {
@@ -620,6 +629,7 @@ export function useTerminal() {
   }
 
   function closeTerminal() {
+    cancelFocus();
     const t = activeTerminal.value;
     if (!t) return;
     t.disposed = true;
@@ -650,6 +660,21 @@ export function useTerminal() {
 
   function blur() {
     activeTerminal.value?.term.blur();
+  }
+
+  /** Focus after a pane / tmux window was activated, deferred until the terminal is revealed. */
+  function requestFocus() {
+    const t = activeTerminal.value;
+    if (!t) return;
+    if (!t.revealed) {
+      pendingFocusFrom = document.activeElement;
+    } else if (t.containerEl.isConnected && t.containerEl.getClientRects().length > 0) {
+      t.term.focus();
+    }
+  }
+
+  function cancelFocus() {
+    pendingFocusFrom = undefined;
   }
 
   function toggleModifier(name: 'ctrl' | 'alt') {
@@ -730,6 +755,8 @@ export function useTerminal() {
     reconnect,
     focus,
     blur,
+    requestFocus,
+    cancelFocus,
     toggleModifier,
     sendKey,
     sendText,

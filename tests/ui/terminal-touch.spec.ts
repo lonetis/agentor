@@ -107,6 +107,8 @@ test.describe.serial('Terminal on touch devices', () => {
     await expect(toolbar).toBeVisible();
     await expect(toolbar.getByRole('button', { name: 'Show keyboard' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Hide touch keys' })).toHaveAttribute('aria-pressed', 'true');
+    // Opening the pane does not focus xterm on touch (that would pop up the soft keyboard).
+    await expect(page.locator('.xterm-helper-textarea').first()).not.toBeFocused();
   });
 
   test('swiping down scrolls the tmux scrollback', async ({ page, request }) => {

@@ -3,9 +3,27 @@ import type { PaneLeafNode } from '~/types';
 
 const props = defineProps<{
   group: PaneLeafNode;
+  isFocused: boolean;
+}>();
+
+const emit = defineEmits<{
+  focusGroup: [];
 }>();
 
 const activeTabId = computed(() => props.group.activeTabId);
+
+// Each terminal pane only acts on these when it is the group's shown tab.
+const terminalPanes = ref<{ focusTerminal: () => void; cancelFocus: () => void }[]>([]);
+
+function focusTerminal() {
+  for (const pane of terminalPanes.value) pane.focusTerminal();
+}
+
+function cancelFocus() {
+  for (const pane of terminalPanes.value) pane.cancelFocus();
+}
+
+defineExpose({ focusTerminal, cancelFocus });
 
 // Track tabs that have been activated at least once.
 // v-if creates the component on first activation (proper dimensions available),
@@ -36,7 +54,10 @@ watch(() => props.group.tabs.map((t) => t.id).join('|'), () => {
       >
         <TerminalPane
           v-if="tab.type === 'terminal'"
+          ref="terminalPanes"
           :container-id="tab.containerId"
+          :is-focused="isFocused"
+          @focus-group="emit('focusGroup')"
         />
         <ServicePane
           v-else-if="tab.type === 'desktop'"

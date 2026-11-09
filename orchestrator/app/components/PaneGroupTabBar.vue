@@ -9,7 +9,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  activate: [tabId: string];
+  /** `focusContent`: move keyboard focus into the pane (click / Enter), not on arrow-key roving. */
+  activate: [tabId: string, focusContent: boolean];
   close: [tabId: string];
   focusGroup: [];
   dragStart: [tabId: string, nodeId: string, event: DragEvent];
@@ -65,7 +66,7 @@ function onTabKeydown(e: KeyboardEvent, index: number) {
     case 'Enter':
     case ' ':
       e.preventDefault();
-      emit('activate', tab.id);
+      emit('activate', tab.id, true);
       return;
     case 'Delete':
       e.preventDefault();
@@ -88,7 +89,7 @@ function onTabKeydown(e: KeyboardEvent, index: number) {
       return;
   }
   e.preventDefault();
-  emit('activate', tabs[next]!.id);
+  emit('activate', tabs[next]!.id, false);
   tabElements()[next]?.focus();
 }
 
@@ -188,7 +189,7 @@ const insertIndicatorLeft = computed(() => {
       :title="tabLabels[index]"
       draggable="true"
       @dragstart="onTabDragStart(tab.id, $event)"
-      @click="emit('activate', tab.id)"
+      @click="emit('activate', tab.id, true)"
       @keydown="onTabKeydown($event, index)"
       @mousedown.middle.prevent
       @auxclick="onMiddleClick($event, tab.id)"

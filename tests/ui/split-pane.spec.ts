@@ -82,5 +82,39 @@ test.describe.serial('Split Pane Layout', () => {
     await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
     await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'false');
     await expect(tabs.nth(0)).toBeFocused();
+    // Activation focus only follows a click / Enter: roving stays on the tabs.
+    await page.waitForTimeout(1_000);
+    await expect(tabs.nth(0)).toBeFocused();
+  });
+
+  test('arrow keys onto a terminal that connects for the first time keep focus on the tab', async ({ page }) => {
+    // Restore two terminal tabs; only the active (second) one is mounted.
+    await page.addInitScript(({ containerId, displayName }) => {
+      const tabs = [0, 1].map((index) => ({
+        id: `roving-terminal-${index}`, type: 'terminal', containerId, containerName: displayName,
+      }));
+      localStorage.setItem('agentor-ui-state', JSON.stringify({
+        panes: {
+          rootNode: { id: 'roving-group', sizeFraction: 1, tabs, activeTabId: tabs[1]!.id },
+          focusedNodeId: 'roving-group',
+        },
+      }));
+    }, { containerId, displayName });
+    await goToDashboard(page);
+    const tabs = page.locator('main .pane-tab-bar .tab-item');
+    await expect(tabs).toHaveCount(2);
+    await expect(page.locator('.xterm-helper-textarea:visible')).toBeFocused();
+
+    await tabs.nth(1).focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.xterm-rows:visible')).toBeVisible({ timeout: 15_000 });
+    // Past the initial redraw (when a pending activation focus would apply).
+    await page.waitForTimeout(1_000);
+    await expect(tabs.nth(0)).toBeFocused();
+
+    // Enter on the tab moves focus into the terminal.
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.xterm-helper-textarea:visible')).toBeFocused();
   });
 });

@@ -22,6 +22,16 @@ const emit = defineEmits<{
 const { isDragging, dragPayload, startDrag, endDrag } = useDragTab();
 
 const containerEl = ref<HTMLElement | null>(null);
+const paneContent = ref<{ focusTerminal: () => void; cancelFocus: () => void } | null>(null);
+
+function handleActivateTab(tabId: string, focusContent: boolean) {
+  emit('activateTab', tabId, props.node.id);
+  // After the tab is shown (and mounted, on its first activation).
+  nextTick(() => {
+    if (focusContent) paneContent.value?.focusTerminal();
+    else paneContent.value?.cancelFocus();
+  });
+}
 
 const isLeadingEdge = computed(() => !!props.isRoot || !!props.atLeadingEdge);
 
@@ -113,7 +123,7 @@ const showsFocusBorder = computed(() => totalLeaves.value > 1 && props.node.id =
       :group="node"
       :is-focused="node.id === focusedNodeId"
       :leading-inset="isLeadingEdge"
-      @activate="(tabId) => emit('activateTab', tabId, node.id)"
+      @activate="handleActivateTab"
       @close="(tabId) => emit('closeTab', tabId)"
       @focus-group="emit('focusNode', node.id)"
       @drag-start="handleTabDragStart"
@@ -121,7 +131,10 @@ const showsFocusBorder = computed(() => totalLeaves.value > 1 && props.node.id =
     />
     <div class="flex-1 relative min-h-0">
       <PaneContent
+        ref="paneContent"
         :group="node"
+        :is-focused="node.id === focusedNodeId"
+        @focus-group="emit('focusNode', node.id)"
       />
       <PaneDropOverlay
         v-if="isDragging"
