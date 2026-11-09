@@ -102,19 +102,21 @@ test.describe('UI State Persistence', () => {
       expect(width).toBeGreaterThan(0);
     });
 
-    test('width is clamped to 90% of viewport when viewport is smaller than stored width', async ({ page }) => {
+    test('rendered width is clamped to 90% of viewport while the stored width is kept', async ({ page }) => {
       await freshStart(page, {
         [STORAGE_KEY]: buildSeededState({ sidebar: { width: 2500, collapsed: false, activeTab: 'workers', panels: { archived: true, portMappings: false, domainMappings: false, usage: false, images: false, settings: false } } }),
       });
-      // useSidebarResize's onMounted → checkMobile re-clamps on load and
-      // calls setSidebarWidth, which writes through the 500ms debouncer.
       await waitForWrite(page);
 
       // Default UI test viewport is 1920x1080 → max is 1728
+      await expect.poll(async () => {
+        const box = await page.locator('aside').boundingBox();
+        return box ? Math.round(box.width) : 0;
+      }).toBe(1728);
+
+      // The clamp only affects rendering, so the width comes back on a wider viewport.
       const state = await getUiState(page);
-      const width = (state!.sidebar as Record<string, unknown>).width as number;
-      expect(width).toBeLessThanOrEqual(1728);
-      expect(width).toBeGreaterThan(0);
+      expect((state!.sidebar as Record<string, unknown>).width).toBe(2500);
     });
 
     test('partial state fills missing fields with defaults', async ({ page }) => {
