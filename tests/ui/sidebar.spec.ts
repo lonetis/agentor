@@ -347,9 +347,12 @@ test.describe('Sidebar', () => {
       await loadDashboardWithSidebarWidth(page, 1000);
       const handle = await page.locator('.sidebar-handle').boundingBox();
       expect(handle).not.toBeNull();
-      await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
+      // The drag is delta-based: moving the pointer 500px left shrinks 1000 → 500.
+      const grabX = handle!.x + handle!.width / 2;
+      const grabY = handle!.y + handle!.height / 2;
+      await page.mouse.move(grabX, grabY);
       await page.mouse.down();
-      await page.mouse.move(500, handle!.y + handle!.height / 2);
+      await page.mouse.move(grabX - 500, grabY, { steps: 5 });
       await page.mouse.up();
       await expectSidebarWidth(page, 500);
 
