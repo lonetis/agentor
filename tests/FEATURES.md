@@ -129,6 +129,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Landmarks: `<aside aria-label="Sidebar">`, `<nav aria-label="Sidebar sections">`, `<main>`; login, setup and OAuth consent pages also use one `<main>` landmark (with `min-h-dvh` and safe-area padding)
 - Primary colour is blue and neutrals are gray (Nuxt UI app config); in light mode solid primary elements use the 600 shade for contrast
 - Worker lifecycle actions (stop, restart, rebuild, remove, archive, save settings, unarchive, delete archived, create) ignore repeated clicks while one is running for that worker (the card shows a busy spinner, §4.1) and report failures as an error toast ("<Action> failed" + the server message) instead of failing silently; the native confirm dialogs are unchanged
+- Development server only: activating the Nuxt DevTools Component Inspector, selecting a component and closing its panel leave an open modal (and its unsaved fields) open; Close, Escape and a backdrop click still dismiss it
 
 ### 1.2 Sidebar Header
 - Agentor mark (`AppLogo`, `data-testid="agentor-logo"`, decorative `alt=""`) beside the "Agentor" heading with "Orchestrator" subtitle — the heading stays a real `<h1>` text
@@ -213,7 +214,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Drag handle at right edge of sidebar
 - Width range: 200px minimum to 90% of the current viewport width maximum
 - Dragging below the 120px collapse threshold snaps the sidebar closed on release (VS Code-style) while preserving the last valid width for re-expand
-- Width persisted to localStorage (persistence clamp 200–3000; runtime re-clamped to 90% of viewport on window resize)
+- Width persisted to localStorage (persistence clamp 200–3000). A narrower viewport (window resize, docked DevTools) clamps only the rendered width to 90% of the viewport; the stored width is kept, so the sidebar grows back to it when the viewport widens again
 - No width transition while actively dragging — the sidebar tracks the cursor instantly
 - Works with mouse, touch and pen (Pointer Events with pointer capture); larger hit area on touch screens
 - The handle is a focusable separator (`role="separator"`, `aria-label="Resize sidebar"`, `aria-valuenow` = width, `aria-valuemin`); ArrowLeft / ArrowRight shrink / grow the sidebar by 16px and persist the width
@@ -224,7 +225,7 @@ Every user-facing feature of the Agentor web dashboard, organized by category. T
 - Expand button (`title="Expand sidebar"`, `aria-expanded="false"`, 32px) restores sidebar. It sits at the top-left inside the first pane tab bar; while the sidebar is collapsed that tab bar is padded 40px on the left (`--pane-leading-inset`), so the button never covers the first tab
 - Collapse state persisted to localStorage across reloads
 - A collapsed sidebar is `inert` (not in the tab order). Collapsing moves focus to the Expand button, expanding to the Collapse button
-- **Mobile layout** — viewport narrower than 768px, or a touch screen at most 500px high (landscape phones): the sidebar starts collapsed (transient, not persisted) and opens as an overlay `min(320px, 100vw − 56px)` wide, sized to the visible viewport (follows the soft keyboard, clears the notch / home indicator), with a shadow and a strip of backdrop
+- **Mobile layout** — viewport narrower than 768px, or a touch screen at most 500px high (landscape phones): the sidebar starts collapsed (transient, not persisted; leaving the mobile layout — e.g. when docked DevTools close — restores the desktop collapse state) and opens as an overlay `min(320px, 100vw − 56px)` wide, sized to the visible viewport (follows the soft keyboard, clears the notch / home indicator), with a shadow and a strip of backdrop
   - Closes on a backdrop tap, on Escape (unless a dialog is open — the dialog closes first and the overlay stays) and whenever a pane opens (Terminal / Desktop / Editor / Apps / Logs, also after create, import and rebuild)
   - While it is open the pane area is `inert`; when it closes because a pane opened, focus moves to the Expand button only if it was inside the overlay
   - A modal opened from the overlay is painted on top of the overlay
@@ -631,6 +632,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - Active tab: highlighted background + accent bottom border
 - ARIA tabs: the bar is a `tablist` named "Open panes"; each tab is a `tab` with `aria-selected`, its label as accessible name and a roving `tabindex` (only the active tab is in the tab order)
 - Keyboard: ArrowLeft / ArrowRight / Home / End activate and focus a neighbouring tab, Enter / Space activate, Delete closes
+- Activating a terminal tab with a click or Enter / Space moves keyboard focus into its terminal (§17.1); arrow-key navigation keeps focus on the tabs
 - Close button: named "Close <label>" (e.g. "Close my-worker - Terminal"), tooltip "Close tab", not in the tab order. On touch screens only the active tab shows a larger (28px) close button; inactive tabs show none, so tapping one always activates it
 - Draggable tabs (HTML5 DnD)
 - Drop insert indicator (vertical blue line)
@@ -677,6 +679,7 @@ Every pane type supports **multiple simultaneous instances**. Clicking the Termi
 - Auto-resize on container element resize (ResizeObserver), incl. the soft keyboard opening (the app shell follows the visual viewport)
 - Theme-reactive (dark/light mode switching)
 - Clickable URLs in the output (web-links addon)
+- Activation focus (not on touch devices, where it would open the soft keyboard): opening or restoring a terminal pane, activating its pane tab or a tmux window (click or Enter, also in another split group, which then becomes the focused group) and creating a tmux window focus the terminal, so typing works without clicking into it. Only the focused group's shown tab takes focus; focus waits until the terminal has connected and is skipped if the user focused another control meanwhile, or while the composer / text view is open
 - Automatic reconnect: a dropped connection shows a "Disconnected — reconnecting…" pill (`data-testid="terminal-disconnected"`) with **Reconnect now**; reconnects with backoff while the page is visible, when the network comes back, and when the page becomes visible again (also after >30s in the background)
 
 ### 17.1a Selection & clipboard
@@ -1105,7 +1108,7 @@ The session-authenticated `/api/port-mappings`, `/api/domain-mappings`, and `/ap
 ### 25.3 Graceful Degradation
 - Corrupt localStorage: falls back to defaults
 - Partial state: fills missing fields with defaults
-- Width clamping: below 200 → 200, above 3000 → 3000 (persistence); above 90% of viewport → clamped on load/resize
+- Width clamping: below 200 → 200, above 3000 → 3000 (persistence); above 90% of viewport → rendered width clamped on load/resize (the stored width is kept)
 
 ---
 

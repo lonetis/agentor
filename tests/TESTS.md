@@ -4,7 +4,7 @@ Comprehensive end-to-end test suite for the Agentor platform using Playwright an
 
 ## Overview
 
-- **~1561 tests** across 123 test files (~953 API + ~608 UI)
+- **~1461 tests** across 124 test files (~890 API + ~571 UI)
 - **API tests**: headless, no browser needed, fast execution
 - **UI tests**: Desktop Chrome (1920x1080), real browser interactions; the phone specs (`mobile-layout`, `mobile-modals`, `terminal-touch`) use a 390x844 `hasTouch` / `isMobile` context
 - **Terminal tests**: WebSocket-based command execution and agent CLI prompting
@@ -107,13 +107,13 @@ tests/
     ui-helpers.ts          # Page navigation and interaction helpers
     terminal-ws.ts         # WebSocket terminal client + ANSI stripping + credential checks
     mcp.ts                 # MCP client over the real OAuth flow (MCP SDK) + hand-driven OAuth steps + tool-call helpers
-  api/                     # API endpoint tests (~953 tests across 70 files)
-  ui/                      # UI interaction tests (~608 tests across 53 files)
+  api/                     # API endpoint tests (~890 tests across 70 files)
+  ui/                      # UI interaction tests (~571 tests across 54 files)
 ```
 
 ## Test Categories
 
-### API Tests (~953 tests, 70 files)
+### API Tests (~890 tests, 70 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -188,7 +188,7 @@ tests/
 | `users.spec.ts` | 11 | `/api/users` admin API: list (roles, shape), create (user signs in; admin role; email lowercased), create validation (400s) + duplicate email 409, update name/email/role (+ 409 / 400 cases), an admin cannot demote, delete or reset the password of themselves, set password (new works, old fails, short 400), delete (gone from list, can't sign in), unknown ids 404, regular users 403 on every route, 401 unauth |
 | `account-profile.spec.ts` | 4 | `GET /api/account/me` (admin identity + role); a user updates their own name/email via `PATCH /api/account/profile`; profile validation (empty body/name, bad email 400, taken email 409, role cannot be escalated); 401 unauth |
 
-### UI Tests (~608 tests, 53 files)
+### UI Tests (~571 tests, 54 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -199,7 +199,7 @@ tests/
 | `account-modal.spec.ts` | 5 | Opens from sidebar footer, updates name (persists after reload), updates email (new email can sign in), changes password (new password can sign in), Close button dismisses modal |
 | `account-modal-env-vars.spec.ts` | 5 | Predefined (one masked input per `PREDEFINED_ENV_VAR_KEYS` entry, labeled by the env var NAME e.g. `GITHUB_TOKEN`, incl. `GITLAB_TOKEN`) / Custom env vars / SSH Access / Agent OAuth credentials sections render; a predefined env var saves via **Save env vars** and persists across reload; custom env var add+save+reload round-trip; invalid custom key surfaces an inline error; SSH public key saves via the **separate** Save SSH key button (own `/api/account/ssh-key` endpoint) and persists across reload |
 | `dashboard.spec.ts` | 12 | Page load, title, buttons, sections, images, sidebar labels; the empty-pane placeholder's **Create worker** button opens the New Worker modal |
-| `sidebar.spec.ts` | 31 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design, Capabilities/Instructions/Init Scripts row stacks vertically on narrow sidebar, tab bar horizontal scroll + overflow dropdown (20% visibility threshold, live updates on scroll, hidden when all tabs fit); a collapsed sidebar is inert and focus follows the toggle (Expand ↔ Collapse button); the active tab carries `aria-current`; Escape closes the More dropdown and returns focus to the More button; the resize handle is a `separator` that ArrowRight grows by 16px (`aria-valuenow`, aside width and persisted `agentor-ui-state`) |
+| `sidebar.spec.ts` | 36 | Collapse/expand, section toggles, theme buttons, resize, panel states, icon-only action buttons, single button row layout, compact card design, Capabilities/Instructions/Init Scripts row stacks vertically on narrow sidebar, tab bar horizontal scroll + overflow dropdown (20% visibility threshold, live updates on scroll, hidden when all tabs fit); a collapsed sidebar is inert and focus follows the toggle (Expand ↔ Collapse button); the active tab carries `aria-current`; Escape closes the More dropdown and returns focus to the More button; the resize handle is a `separator` that ArrowRight grows by 16px (`aria-valuenow`, aside width and persisted `agentor-ui-state`); **viewport resize**: leaving a narrow (mobile) viewport restores the expanded sidebar and its width, a desktop-viewport clamp is undone when the viewport widens, a manually collapsed sidebar stays collapsed (opening the mobile overlay doesn't replace the preference), reloading at a narrow viewport keeps the desktop preferences, and a dragged width survives resize + reload |
 | `create-worker-modal.spec.ts` | 33 | Open/close, form fields, free-form **Display name** input (placeholder is the `generate-name` suggestion; no keystroke sanitization; client sends only `{ displayName }`, never `name`), add repo/mount, environment dropdown, init preset dropdown, Create action, dropdown populates newly created environments, selecting a preset populates init-script textarea; the dialog is named by its heading (`getByRole('dialog', { name: 'New Worker' })`); clicking a mount row's "ro" label toggles that row's checkbox (not the Host path input) |
 | `cross-modal-navigation.spec.ts` | 6 | Manage button navigation between modals |
 | `container-card.spec.ts` | 18 | Display name, status, buttons, icons, stop/restart/archive, Restart hidden when running, archive action hides card after confirmation, icon-only action buttons, compact card design, **Settings pencil opens the Worker Settings modal and renames via the display-name field + Save (no recreation; old label gone, new label persists)**; a 90-char display name is truncated (`scrollWidth > clientWidth`) while the `running` badge stays inside the card; every icon button's accessible name equals its tooltip (all 12 running-card buttons by exact role name) |
@@ -224,13 +224,13 @@ tests/
 | `service-panes.spec.ts` | 13 | Desktop and editor service panes; the running desktop iframe is titled "Desktop for this worker", allows `fullscreen` and keeps "Desktop running" + "Open in tab" |
 | `apps-pane.spec.ts` | 9 | Apps pane for container, plus VS Code Tunnel and SSH singleton app types render with `Start` buttons and "Not running" empty state |
 | `workspace-upload.spec.ts` | 9 | Upload button, modal, drop zone, close; the drop zone has exactly one plain (non-`webkitdirectory`) file input — picking `notes.txt` lists it and enables "Upload (1 file)" |
-| `terminal-pane.spec.ts` | 9 | Terminal open, tmux tabs, xterm rows, create button, new tab creation, non-default tab has close button, main tab no close button, clicking Terminal twice opens two independent terminal tabs for the same worker and closing one leaves the other intact, keyboard typing produces WebSocket output |
-| `terminal-touch.spec.ts` | 4 | Terminal on a phone (390x844 `hasTouch` / `isMobile`, serial, one worker; real CDP touch events): the touch key toolbar shows by itself (`Hide touch keys` pressed); a swipe down enters tmux copy-mode and scrolls (`#{pane_in_mode}`, `#{scroll_position}`); a long-press selects the word under the finger and the floating Copy puts it on the clipboard; a pinch-out enlarges the font and persists it in `agentor-ui-state` |
+| `terminal-pane.spec.ts` | 10 | Terminal open, tmux tabs, xterm rows, create button, new tab creation, non-default tab has close button, main tab no close button, clicking Terminal twice opens two independent terminal tabs for the same worker and closing one leaves the other intact, keyboard typing produces WebSocket output; **activation focus**: opening a terminal, creating a tmux window and re-activating a pane tab focus xterm (`.xterm-helper-textarea`), and with two restored split groups Enter on a tmux tab / in the create field of the unfocused group focuses that group's terminal so typed commands run there |
+| `terminal-touch.spec.ts` | 4 | Terminal on a phone (390x844 `hasTouch` / `isMobile`, serial, one worker; real CDP touch events): the touch key toolbar shows by itself (`Hide touch keys` pressed); a swipe down enters tmux copy-mode and scrolls (`#{pane_in_mode}`, `#{scroll_position}`); a long-press selects the word under the finger and the floating Copy puts it on the clipboard; a pinch-out enlarges the font and persists it in `agentor-ui-state`; opening the pane does not focus xterm (no soft keyboard) |
 | `terminal-interaction.spec.ts` | 6 | Terminal selection & input in the browser (serial, one worker; waits for the init shell): **selection survives mouse movement while the app requests any-motion tracking** (`printf '\033[?1003h'`, verified via `#{mouse_any_flag}`; drag-select, hover around, `.xterm-selection` still rendered) + context-menu Copy read back from the clipboard; Ctrl+Shift+C copies and Ctrl+C without a selection still interrupts `sleep`; mouse wheel enters tmux copy-mode and scrolls (`#{pane_in_mode}`, `#{scroll_position}`); touch key toolbar shown via the tmux-bar toggle — Ctrl latch + typed `c` interrupts, Up recalls history; composer Send runs a command, text view shows the scrollback; context-menu font size persists in `agentor-ui-state` and resets. Assertions read shell-computed values from the capture API |
 | `tmux-tabs.spec.ts` | 9 | Tmux tab bar interactions |
-| `split-pane.spec.ts` | 5 | Placeholder, terminal pane, tab bar; pane tabs are ARIA tabs (tablist "Open panes", `role=tab`, `aria-selected`, `tabindex=0` on the active one) with a close button named `Close <name> - Terminal`; ArrowLeft activates and focuses the previous tab |
+| `split-pane.spec.ts` | 6 | Placeholder, terminal pane, tab bar; pane tabs are ARIA tabs (tablist "Open panes", `role=tab`, `aria-selected`, `tabindex=0` on the active one) with a close button named `Close <name> - Terminal`; ArrowLeft activates and focuses the previous tab and focus stays on the tab; arrow keys onto a restored terminal tab that connects for the first time keep focus on the tab, Enter then moves it into the terminal |
 | `theme-toggle.spec.ts` | 31 | Dark default, light switch, persistence, all modes; only the active theme button has `aria-pressed="true"` (before and after switching); buttons are named Default / White / Dark theme |
-| `ui-state-persistence.spec.ts` | 25 | UI state persistence across reloads, viewport clamp, drag-to-collapse |
+| `ui-state-persistence.spec.ts` | 25 | UI state persistence across reloads, viewport clamp (rendered width clamped to 90% of the viewport, stored width kept), drag-to-collapse |
 | `usage-panel.spec.ts` | 25 | Usage panel display, progress bars, auth badges; a failed `/api/usage` load (500) shows the `role=alert` row "Couldn't load usage" with **Retry** instead of "Loading...", and Retry loads the agents once the API answers again |
 | `update-notification.spec.ts` | 24 | Images section, image names, toggle, update status |
 | `archived-workers.spec.ts` | 10 | Archived section, collapsible, UI archive, worker card (name, Unarchive, Delete buttons), Unarchive action flow, Delete action flow, archived section count badge, archived-date text, multi-archived visibility |
@@ -245,6 +245,7 @@ tests/
 | `mobile-layout.spec.ts` | 7 | Phone shell (390x844 `hasTouch` / `isMobile`): the sidebar starts collapsed and opens as an overlay (≤334px wide, `<main>` inert, Collapse button focused); Escape closes it and focuses the expand button; tapping the backdrop closes it; opening a pane (System → Logs) closes it; the expand button does not cover the first pane tab; a modal opened from the overlay is painted on top of it (`elementFromPoint`) and Escape closes only the dialog; the empty-pane **Create worker** button opens the New Worker modal |
 | `mobile-modals.spec.ts` | 2 | Phone modal sheets (390x844 `hasTouch` / `isMobile`): New Worker opened from the overlay is a full-width sheet (x≈0, width 390) whose repository field is wider than 200px and whose Cancel is fully in the viewport, Escape closes it; Account settings is a full-width sheet whose exact `Close` button is fully in the viewport and closes it |
 | `polling.spec.ts` | 3 | Client polling: the worker list is polled by one shared timer (1–2 `/api/containers` polls in 12s, ≥5s apart); polling pauses while `document.visibilityState` is `hidden` (no request for 12s) and refreshes within 3s when visible again; a Desktop tab (restored for a fake worker via `agentor-ui-state`, stubbed status) stops polling `desktop/status` while a Logs tab of its group is shown and polls again within 3s of re-activation |
+| `component-inspector.spec.ts` | 1 | Nuxt DevTools Component Inspector (dev server only — skipped against a production build such as the dockerized stack): enabling the inspector, selecting a component and closing its panel keep the Account settings modal and its unsaved Name open; Close, Escape and a backdrop click still dismiss the modal |
 
 ## Design Decisions
 

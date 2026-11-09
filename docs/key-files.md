@@ -133,6 +133,7 @@
 - `orchestrator/app/pages/setup.vue` - First-run admin creation form (redirects to `/login` when setup is complete)
 - `orchestrator/app/middleware/auth.global.ts` - Global client route guard (redirects to `/setup` or `/login` as needed)
 - `orchestrator/app/composables/useAuth.ts` - better-auth Vue client wrapper (session, user, isAdmin, signIn, signOut, admin + passkey + oauth-provider client plugins; `isOAuthAuthorizationPage()`, `followOAuthRedirect()`)
+- `orchestrator/app/plugins/devtools-overlays.client.ts` - Dev server only: keeps Reka UI modals / overlays open while Nuxt DevTools and the Component Inspector are used
 - `orchestrator/app/plugins/pwa.client.ts` - PWA bootstrap: `initPwa()`, then registers `/sw.js` (scope `/`, `updateViaCache: 'none'`) after load in production + secure contexts only; unregisters our worker in dev; reports `<html data-pwa-sw="unsupported|dev|insecure|registered|failed">`
 - `orchestrator/app/plugins/viewport.client.ts` - Mirrors `window.visualViewport` into `--app-height` / `--app-offset-top` (the `.app-shell` follows the visible area above a soft keyboard; ignored while pinch-zoomed)
 - `orchestrator/app/components/AppLogo.vue` - The Agentor mark as an `<img>` (`data-testid="agentor-logo"`, decorative `alt` by default, sized by the caller) — sidebar header + login / setup / consent pages
@@ -242,7 +243,7 @@
 - `tests/helpers/webauthn.ts` - Install/dispose Chrome DevTools virtual WebAuthn authenticator for end-to-end passkey tests (`installVirtualAuthenticator(page)`)
 - `tests/helpers/mcp.ts` - MCP test client: full OAuth flow through the MCP SDK (`connectMcp`), hand-driven OAuth steps (`registerPublicClient`, `authorizationRequest`, `approveAuthorization`, `obtainTokens`, `requestTokens`), tool-call helpers (`callJson`, `callError`)
 - `tests/api/*.spec.ts` - API integration tests (70 files; incl. worker-metrics, worker-export-import, git-repos, gitlab, gitlab-worker, git-provider-access, mcp-oauth, mcp-tools, mcp-platform, worker-exec, tmux-io, desktop-control, users)
-- `tests/ui/*.spec.ts` - UI integration tests (53 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh, gitlab-repo-input, mcp-oauth, branding, terminal-interaction, terminal-touch, pwa (the only spec that allows service workers), mobile-layout + mobile-modals (390x844 touch context), polling)
+- `tests/ui/*.spec.ts` - UI integration tests (54 files; incl. worker-card-actions, import-worker-modal, github-autocomplete-refresh, gitlab-repo-input, mcp-oauth, branding, terminal-interaction, terminal-touch, pwa (the only spec that allows service workers), mobile-layout + mobile-modals (390x844 touch context), polling, component-inspector (dev server only))
 - `tests/docker/gitlab-mock/server.mjs` - Self-managed GitLab stand-in for the dockerized stack (REST API v4 subset + git smart HTTP via `git http-backend`, anonymous fetch of public projects; 2-item pages, bogus `Link` hosts, keyset project listing, 500 for deep offset membership pages); configured as `GITLAB_INSTANCES=mock=http://gitlab-mock:8080`
 - `tests/FEATURES.md` - Feature inventory driving test coverage
 - `tests/TESTS.md` - Test suite documentation with counts per file
